@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from cv_match.config import AppSettings
-from cv_match.runner import MatchRunner
+from cv_match.runtime import WorkflowRuntime
 
 
 def _read_text(*, inline_value: str | None, file_value: str | None, label: str) -> str:
@@ -27,6 +27,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-rounds", type=int)
     parser.add_argument("--min-rounds", type=int)
     parser.add_argument("--scoring-max-concurrency", type=int)
+    parser.add_argument("--search-max-pages-per-round", type=int)
+    parser.add_argument("--search-max-attempts-per-round", type=int)
+    parser.add_argument("--search-no-progress-limit", type=int)
     parser.add_argument("--enable-reflection", dest="enable_reflection", action="store_true", default=None)
     parser.add_argument("--disable-reflection", dest="enable_reflection", action="store_false")
     return parser
@@ -43,10 +46,13 @@ def main(argv: list[str] | None = None) -> int:
             max_rounds=args.max_rounds,
             min_rounds=args.min_rounds,
             scoring_max_concurrency=args.scoring_max_concurrency,
+            search_max_pages_per_round=args.search_max_pages_per_round,
+            search_max_attempts_per_round=args.search_max_attempts_per_round,
+            search_no_progress_limit=args.search_no_progress_limit,
             enable_reflection=args.enable_reflection,
         )
-        runner = MatchRunner(settings)
-        artifacts = runner.run(jd=jd, notes=notes)
+        runtime = WorkflowRuntime(settings)
+        artifacts = runtime.run(jd=jd, notes=notes)
     except Exception as exc:  # noqa: BLE001
         print(f"Error: {exc}", file=sys.stderr)
         return 1

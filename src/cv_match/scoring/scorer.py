@@ -19,7 +19,7 @@ from cv_match.models import (
 from cv_match.prompting import LoadedPrompt, json_block
 
 
-class ScoringAgent:
+class ResumeScorer:
     def __init__(self, settings: AppSettings, prompt: LoadedPrompt) -> None:
         self.settings = settings
         self.prompt = prompt
@@ -59,7 +59,7 @@ class ScoringAgent:
         scored: list[ScoredCandidate] = []
         failures: list[ScoringFailure] = []
 
-        async def worker(index: int, candidate: ResumeCandidate) -> None:
+        async def worker(index: int, candidate: NormalizedResume) -> None:
             branch_id = f"r{context.round_no}-b{index + 1}-{candidate.resume_id}"
             tracer.emit(
                 "score_branch_started",
@@ -272,6 +272,16 @@ class ScoringAgent:
         biggest_risk = hard_misses[0] if hard_misses else (
             negative_signals[0] if negative_signals else (missing_must[0] if missing_must else (info_gaps[0] if info_gaps else "low material risk"))
         )
+        strengths = [f"Matched must-have: {item}" for item in matched_must[:3]]
+        strengths.extend(f"Matched preference: {item}" for item in matched_pref[:2])
+        if candidate.current_company and candidate.current_title:
+            strengths.append(f"Current role evidence: {candidate.current_title} @ {candidate.current_company}")
+        strengths = strengths[:4]
+        weaknesses = [f"Missing must-have: {item}" for item in missing_must[:3]]
+        weaknesses.extend(f"Negative signal: {item}" for item in negative_signals[:2])
+        weaknesses.extend(f"Risk: {item}" for item in hard_misses[:2])
+        weaknesses.extend(f"Info gap: {item}" for item in info_gaps[:2])
+        weaknesses = weaknesses[:4]
         reasoning_summary = (
             f"{fit_bucket.upper()} for the current role because the resume matches {len(matched_must)}/{len(context.must_have_keywords)} must-haves. "
             f"Strongest support: {strongest_match}. "
@@ -299,6 +309,8 @@ class ScoringAgent:
             missing_must_haves=missing_must,
             matched_preferences=matched_pref,
             negative_signals=negative_signals,
+            strengths=strengths,
+            weaknesses=weaknesses,
             source_round=candidate.source_round or context.round_no,
             retry_count=attempt - 1,
         )

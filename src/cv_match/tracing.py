@@ -107,14 +107,26 @@ class RunTracer:
 
     def write_json(self, filename: str, payload: Any) -> Path:
         path = self.run_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(self._jsonable(payload), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         return path
 
+    def write_jsonl(self, filename: str, rows: list[Any]) -> Path:
+        path = self.run_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            json.dumps(self._jsonable(row), ensure_ascii=False)
+            for row in rows
+        ]
+        path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        return path
+
     def write_text(self, filename: str, content: str) -> Path:
         path = self.run_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         return path
 

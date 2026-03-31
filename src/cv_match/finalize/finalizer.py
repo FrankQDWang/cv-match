@@ -10,7 +10,7 @@ from cv_match.models import FinalCandidate, FinalResult, ScoredCandidate
 from cv_match.prompting import LoadedPrompt, json_block
 
 
-class FinalizeAgent:
+class Finalizer:
     def __init__(self, settings: AppSettings, prompt: LoadedPrompt) -> None:
         self.settings = settings
         self.prompt = prompt
@@ -37,7 +37,7 @@ class FinalizeAgent:
         stop_reason: str,
         ranked_candidates: list[ScoredCandidate],
     ) -> FinalResult:
-        if self.use_mock_backend:
+        if self.use_mock_backend or not ranked_candidates:
             return self._finalize_mock(
                 run_id=run_id,
                 run_dir=run_dir,
@@ -45,15 +45,27 @@ class FinalizeAgent:
                 stop_reason=stop_reason,
                 ranked_candidates=ranked_candidates,
             )
-        return asyncio.run(
-            self._finalize_live(
+        try:
+            return asyncio.run(
+                self._finalize_live(
+                    run_id=run_id,
+                    run_dir=run_dir,
+                    rounds_executed=rounds_executed,
+                    stop_reason=stop_reason,
+                    ranked_candidates=ranked_candidates,
+                )
+            )
+        except Exception:
+            fallback = self._finalize_mock(
                 run_id=run_id,
                 run_dir=run_dir,
                 rounds_executed=rounds_executed,
                 stop_reason=stop_reason,
                 ranked_candidates=ranked_candidates,
             )
-        )
+            return fallback.model_copy(
+                update={"summary": f"[runtime fallback] {fallback.summary}"}
+            )
 
     async def _finalize_live(
         self,
@@ -72,7 +84,10 @@ class FinalizeAgent:
             "stop_reason": stop_reason,
             "ranked_candidates": [item.model_dump(mode="json") for item in ranked_candidates],
         }
-        result = await self.agent.run(json_block("FINALIZATION_CONTEXT", payload))
+        result = await asyncio.wait_for(
+            self.agent.run(json_block("FINALIZATION_CONTEXT", payload)),
+            timeout=90,
+        )
         return result.output
 
     def _finalize_mock(
@@ -96,6 +111,8 @@ class FinalizeAgent:
                         f"Must {candidate.must_have_match_score}/100, "
                         f"preferred {candidate.preferred_match_score}/100, risk {candidate.risk_score}/100."
                     ),
+                    strengths=candidate.strengths,
+                    weaknesses=candidate.weaknesses,
                     matched_must_haves=candidate.matched_must_haves,
                     matched_preferences=candidate.matched_preferences,
                     risk_flags=candidate.risk_flags,

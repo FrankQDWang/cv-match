@@ -37,6 +37,9 @@ class AppSettings(BaseSettings):
     min_rounds: int = 3
     max_rounds: int = 5
     scoring_max_concurrency: int = 5
+    search_max_pages_per_round: int = 3
+    search_max_attempts_per_round: int = 3
+    search_no_progress_limit: int = 2
     mock_cts: bool = True
     enable_reflection: bool = True
     offline_llm_fallback: bool = True
@@ -51,6 +54,12 @@ class AppSettings(BaseSettings):
             raise ValueError("max_rounds must be >= min_rounds")
         if self.scoring_max_concurrency < 1:
             raise ValueError("scoring_max_concurrency must be >= 1")
+        if self.search_max_pages_per_round < 1:
+            raise ValueError("search_max_pages_per_round must be >= 1")
+        if self.search_max_attempts_per_round < 1:
+            raise ValueError("search_max_attempts_per_round must be >= 1")
+        if self.search_no_progress_limit < 1:
+            raise ValueError("search_no_progress_limit must be >= 1")
         return self
 
     @property

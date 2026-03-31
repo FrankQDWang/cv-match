@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from time import perf_counter
 from typing import Any, Protocol
 
@@ -10,7 +9,7 @@ from pydantic import BaseModel, Field
 from cv_match.clients.cts_models import Candidate, CandidateSearchRequest, CandidateSearchResponse
 from cv_match.config import AppSettings
 from cv_match.mock_data import load_mock_resume_corpus
-from cv_match.models import CTSQuery, FilterCondition, ResumeCandidate, stable_fallback_resume_id
+from cv_match.models import CTSFilterCondition, CTSQuery, ResumeCandidate, stable_fallback_resume_id
 
 SAFE_FIELD_MAPPING = {
     "company": "company",
@@ -48,19 +47,33 @@ class BaseCTSClient:
         notes = [
             "CTS OpenAPI does not publish exclude_ids support; seen ids are filtered locally.",
             "The project never forwards the full JD to CTS.",
+            *query.adapter_notes,
         ]
         for filter_item in query.hard_filters + query.soft_filters:
-            target = SAFE_FIELD_MAPPING.get(filter_item.field)
-            if target is None:
-                notes.append(
-                    f"Filter `{filter_item.field}` was not mapped because the validated OpenAPI does not publish a safe request field."
-                )
-                continue
+            target = SAFE_FIELD_MAPPING[filter_item.field]
             if target in payload and payload[target] not in (None, "", []):
                 continue
             payload[target] = filter_item.value
         request = CandidateSearchRequest.model_validate(payload)
         return request.model_dump(exclude_none=True), notes
+
+    def _fallback_resume_seed(self, candidate: Candidate) -> dict[str, Any]:
+        extra = candidate.model_extra or {}
+        recent_experiences = [
+            {
+                "company": item.company,
+                "title": item.title,
+                "summary": item.summary,
+            }
+            for item in candidate.workExperienceList[:2]
+        ]
+        return {
+            "candidate_name": extra.get("candidateName") or extra.get("candidate_name") or "",
+            "current_title": candidate.expectedJobCategory,
+            "current_company": candidate.workExperienceList[0].company if candidate.workExperienceList else None,
+            "locations": [item for item in [candidate.nowLocation, candidate.expectedLocation] if item],
+            "recent_experiences": recent_experiences,
+        }
 
     def _extract_resume_id(self, candidate: Candidate) -> tuple[str, bool]:
         extra = candidate.model_extra or {}
@@ -68,8 +81,7 @@ class BaseCTSClient:
             value = extra.get(key)
             if isinstance(value, (str, int)) and str(value).strip():
                 return str(value), False
-        canonical = candidate.model_dump(mode="python", exclude_none=True)
-        return stable_fallback_resume_id(canonical), True
+        return stable_fallback_resume_id(self._fallback_resume_seed(candidate)), True
 
     def _normalize_candidate(self, candidate: Candidate, *, round_no: int) -> ResumeCandidate:
         education_summaries = [
@@ -83,10 +95,10 @@ class BaseCTSClient:
         raw_payload = candidate.model_dump(mode="python", exclude_none=False)
         search_text = " ".join(
             [
-                candidate.expectedJobCategory,
-                candidate.expectedIndustry,
-                candidate.expectedLocation,
-                candidate.nowLocation,
+                candidate.expectedJobCategory or "",
+                candidate.expectedIndustry or "",
+                candidate.expectedLocation or "",
+                candidate.nowLocation or "",
                 *candidate.projectNameAll,
                 *candidate.workSummariesAll,
                 *education_summaries,
@@ -152,7 +164,7 @@ class MockCTSClient(BaseCTSClient):
         super().__init__(settings)
         self.corpus = load_mock_resume_corpus()
 
-    def _candidate_field_text(self, candidate: ResumeCandidate, filter_item: FilterCondition) -> str:
+    def _candidate_field_text(self, candidate: ResumeCandidate, filter_item: CTSFilterCondition) -> str:
         mapping = {
             "location": " ".join([candidate.now_location or "", candidate.expected_location or ""]),
             "position": candidate.expected_job_category or "",
@@ -162,7 +174,7 @@ class MockCTSClient(BaseCTSClient):
         }
         return mapping.get(filter_item.field, candidate.search_text)
 
-    def _matches_filter(self, candidate: ResumeCandidate, filter_item: FilterCondition) -> bool:
+    def _matches_filter(self, candidate: ResumeCandidate, filter_item: CTSFilterCondition) -> bool:
         haystack = self._candidate_field_text(candidate, filter_item).casefold()
         if isinstance(filter_item.value, list):
             return any(str(value).casefold() in haystack for value in filter_item.value)
@@ -199,7 +211,7 @@ class MockCTSClient(BaseCTSClient):
             candidate.model_copy(update={"source_round": round_no})
             for _, _, candidate in scored[start:end]
         ]
-        notes.append("Mock CTS also leaves exclude_ids to the runner so dedup and shortage paths are exercised.")
+        notes.append("Mock CTS also leaves exclude_ids to the runtime so dedup and shortage paths are exercised.")
         return CTSFetchResult(
             request_payload=payload,
             candidates=selected,

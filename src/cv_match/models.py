@@ -8,10 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 FitBucket = Literal["fit", "not_fit"]
 DecisionType = Literal["continue", "stop"]
+ControllerAction = Literal["search_cts", "stop"]
+PoolDecisionType = Literal["selected", "retained", "dropped"]
 ConditionSource = Literal["jd", "notes", "inferred"]
 ConditionStrictness = Literal["hard", "soft"]
 FilterOperator = Literal["equals", "contains", "in", "gte", "lte"]
 ScoringConfidence = Literal["high", "medium", "low"]
+CTSFilterField = Literal["company", "position", "school", "work_content", "location"]
 
 
 def unique_strings(values: list[str]) -> list[str]:
@@ -46,6 +49,14 @@ class FilterCondition(BaseModel):
     source: ConditionSource
     rationale: str
     strictness: ConditionStrictness
+    operator: FilterOperator = "equals"
+
+
+class CTSFilterCondition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: CTSFilterField
+    value: str | int | list[str]
     operator: FilterOperator = "equals"
 
 
@@ -87,12 +98,44 @@ class CTSQuery(BaseModel):
 
     keywords: list[str]
     keyword_query: str
-    hard_filters: list[FilterCondition] = Field(default_factory=list)
-    soft_filters: list[FilterCondition] = Field(default_factory=list)
+    hard_filters: list[CTSFilterCondition] = Field(default_factory=list)
+    soft_filters: list[CTSFilterCondition] = Field(default_factory=list)
     exclude_ids: list[str] = Field(default_factory=list)
     page: int = 1
     page_size: int = 10
     rationale: str
+    adapter_notes: list[str] = Field(default_factory=list)
+
+
+class SearchAttempt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attempt_no: int
+    requested_page: int
+    requested_page_size: int
+    raw_candidate_count: int
+    batch_duplicate_count: int
+    batch_unique_new_count: int
+    cumulative_unique_new_count: int
+    consecutive_zero_gain_attempts: int = 0
+    continue_refill: bool
+    exhausted_reason: str | None = None
+    adapter_notes: list[str] = Field(default_factory=list)
+    request_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class SearchObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    round_no: int
+    requested_count: int
+    raw_candidate_count: int
+    unique_new_count: int
+    shortage_count: int
+    fetch_attempt_count: int
+    exhausted_reason: str | None = None
+    new_resume_ids: list[str] = Field(default_factory=list)
+    new_candidate_summaries: list[str] = Field(default_factory=list)
     adapter_notes: list[str] = Field(default_factory=list)
 
 
@@ -224,6 +267,8 @@ class ScoredCandidate(BaseModel):
     missing_must_haves: list[str] = Field(default_factory=list)
     matched_preferences: list[str] = Field(default_factory=list)
     negative_signals: list[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
     source_round: int
     retry_count: int = 0
 
@@ -258,36 +303,78 @@ class ReflectionDecision(BaseModel):
     hard_filter_relaxation_reason: str | None = None
 
 
-class RunContextSnapshot(BaseModel):
+class TopPoolEntryView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_id: str
-    run_dir: str
-    round_no: int
-    seen_resume_ids: list[str] = Field(default_factory=list)
-    current_top_ids: list[str] = Field(default_factory=list)
-    strategy: SearchStrategy
-    prompt_hashes: dict[str, str]
-    model_settings: dict[str, Any]
-    reflection_enabled: bool
+    resume_id: str
+    fit_bucket: FitBucket
+    overall_score: int = Field(ge=0, le=100)
+    must_have_match_score: int = Field(ge=0, le=100)
+    risk_score: int = Field(ge=0, le=100)
+    matched_must_haves: list[str] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
+    reasoning_summary: str
 
 
-class RoundResult(BaseModel):
+class SearchObservationView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    round_no: int
-    query: CTSQuery
-    new_candidates: list[ResumeCandidate]
-    normalized_resumes: list[NormalizedResume]
-    scoring_pool_resume_ids: list[str]
-    scored_candidates: list[ScoredCandidate]
-    scoring_failures: list[ScoringFailure]
-    top_candidates: list[ScoredCandidate]
-    reflection: ReflectionDecision | None = None
-    shortage_count: int = 0
-    duplicate_count: int = 0
+    unique_new_count: int
+    shortage_count: int
+    fetch_attempt_count: int
+    exhausted_reason: str | None = None
+    new_candidate_summaries: list[str] = Field(default_factory=list)
+    adapter_notes: list[str] = Field(default_factory=list)
+
+
+class ReflectionSummaryView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: DecisionType
     stop_reason: str | None = None
-    context_snapshot: RunContextSnapshot
+    reflection_summary: str
+    strategy_changes: list[str] = Field(default_factory=list)
+
+
+class ControllerStateView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    round_no: int
+    min_rounds: int
+    max_rounds: int
+    target_new: int
+    jd_summary: str
+    notes_summary: str
+    current_strategy: SearchStrategy
+    current_top_pool: list[TopPoolEntryView] = Field(default_factory=list)
+    latest_search_observation: SearchObservationView | None = None
+    previous_reflection: ReflectionSummaryView | None = None
+    shortage_history: list[int] = Field(default_factory=list)
+    consecutive_shortage_rounds: int = 0
+    tool_capability_notes: list[str] = Field(default_factory=list)
+
+
+class ControllerDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    thought_summary: str
+    action: ControllerAction
+    decision_rationale: str
+    working_strategy: SearchStrategy | None = None
+    cts_query: CTSQuery | None = None
+    stop_reason: str | None = None
+
+
+class PoolDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resume_id: str
+    round_no: int
+    decision: PoolDecisionType
+    rank_in_round: int | None = None
+    reasons_for_selection: list[str] = Field(default_factory=list)
+    reasons_for_rejection: list[str] = Field(default_factory=list)
+    compared_against_pool_summary: str = ""
 
 
 class FinalCandidate(BaseModel):
@@ -298,6 +385,8 @@ class FinalCandidate(BaseModel):
     final_score: int
     fit_bucket: FitBucket
     match_summary: str
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
     matched_must_haves: list[str] = Field(default_factory=list)
     matched_preferences: list[str] = Field(default_factory=list)
     risk_flags: list[str] = Field(default_factory=list)

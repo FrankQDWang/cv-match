@@ -48,23 +48,23 @@ class WorkExperienceItem(BaseModel):
 class Candidate(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    activeStatus: str
-    age: int
-    educationList: list[EducationItem]
-    expectedIndustry: str
-    expectedIndustryIds: list[str]
-    expectedJobCategory: str
-    expectedJobCategoryIds: list[str]
-    expectedLocation: str
-    expectedLocationIds: list[str]
-    expectedSalary: str
-    gender: str
-    jobState: str
-    nowLocation: str
-    projectNameAll: list[str]
-    workExperienceList: list[WorkExperienceItem]
-    workSummariesAll: list[str]
-    workYear: int
+    activeStatus: str | None = None
+    age: int | None = None
+    educationList: list[EducationItem] = Field(default_factory=list)
+    expectedIndustry: str | None = None
+    expectedIndustryIds: list[str] = Field(default_factory=list)
+    expectedJobCategory: str | None = None
+    expectedJobCategoryIds: list[str] = Field(default_factory=list)
+    expectedLocation: str | None = None
+    expectedLocationIds: list[str] = Field(default_factory=list)
+    expectedSalary: str | None = None
+    gender: str | None = None
+    jobState: str | None = None
+    nowLocation: str | None = None
+    projectNameAll: list[str] = Field(default_factory=list)
+    workExperienceList: list[WorkExperienceItem] = Field(default_factory=list)
+    workSummariesAll: list[str] = Field(default_factory=list)
+    workYear: int | None = None
 
 
 class Timings(BaseModel):

@@ -1,6 +1,6 @@
 # cv-match
 
-`cv-match` 是一个本地 CLI 实验项目，用 `uv + Python + pydantic-ai` 实现“确定性流程 + 小 agent 模块”的多轮简历检索与评分闭环。
+`cv-match` 是一个本地 CLI 实验项目，用 `uv + Python + pydantic-ai` 实现“single-controller ReAct + deterministic runtime”的多轮简历检索与评分闭环。
 
 目标不是上线，而是把下面几件事做干净：
 
@@ -13,17 +13,20 @@
 
 ## 为什么不是一个巨大 agent
 
-这里刻意没有做“开放式任意工具调用”的大 agent，而是拆成：
+这里刻意没有做“开放式任意工具调用”的大 agent，也没有做自治式 `multi-agent`。
 
-- `strategy agent`
-- `scoring agent`
-- `reflection agent`
-- `finalize agent`
-- `runner / orchestrator`
+当前实现是：
+
+- 一个真正的 `ReAct controller`
+- 一个唯一外显 `tool`：`search_cts`
+- 一个确定性 `runtime`
+- 一个固定的 `reflection critic` 步骤
+- 一组受控并发的 `resume scorers`
+- 一个最终答案 `finalizer`
 
 这样做的原因很直接：
 
-- 轮次、去重、top5 保留、停止条件都由 Python 显式控制，行为稳定且可复盘
+- 轮次、补拉、去重、top pool 保留、停止条件都由 Python 显式控制，行为稳定且可复盘
 - prompt 职责单一，后续更容易替换和迭代
 - tracing 不依赖隐藏 chain-of-thought，而是记录结构化摘要
 - mock 模式和真实模式共用同一流程骨架
@@ -49,14 +52,20 @@
 ├── README.md
 ├── runs/
 └── src/cv_match/
-    ├── agent/
-    │   ├── finalize_agent.py
-    │   ├── reflection_agent.py
-    │   ├── scoring_agent.py
-    │   └── strategy_agent.py
     ├── clients/
     │   ├── cts_client.py
     │   └── cts_models.py
+    ├── controller/
+    │   ├── react_controller.py
+    │   └── strategy_bootstrap.py
+    ├── finalize/
+    │   └── finalizer.py
+    ├── reflection/
+    │   └── critic.py
+    ├── runtime/
+    │   └── orchestrator.py
+    ├── scoring/
+    │   └── scorer.py
     ├── cli.py
     ├── config.py
     ├── mock_data.py
@@ -64,11 +73,10 @@
     ├── normalization.py
     ├── prompting.py
     ├── prompts/
+    │   ├── controller.md
     │   ├── finalize.md
     │   ├── reflection.md
-    │   ├── scoring.md
-    │   └── strategy_extraction.md
-    ├── runner.py
+    │   └── scoring.md
     └── tracing.py
 ```
 
@@ -102,7 +110,7 @@
 - `age`
 - `active`
 
-`exclude_ids` 在 OpenAPI 里没有发布支持，所以 runner 统一做本地 dedup 和 shortage 处理。
+`exclude_ids` 在 OpenAPI 里没有发布支持，所以 runtime 统一做本地 dedup 和 shortage 处理。
 
 最重要的一条业务约束已经在 adapter 中硬限制：
 
@@ -140,6 +148,9 @@ export OPENAI_API_KEY=...
 - `CVMATCH_MIN_ROUNDS`
 - `CVMATCH_MAX_ROUNDS`
 - `CVMATCH_SCORING_MAX_CONCURRENCY`
+- `CVMATCH_SEARCH_MAX_PAGES_PER_ROUND`
+- `CVMATCH_SEARCH_MAX_ATTEMPTS_PER_ROUND`
+- `CVMATCH_SEARCH_NO_PROGRESS_LIMIT`
 - `CVMATCH_MOCK_CTS`
 - `CVMATCH_ENABLE_REFLECTION`
 
@@ -183,18 +194,21 @@ uv run python -m cv_match.cli --jd-file examples/jd.md --notes-file examples/not
 
 第 0 步：
 
-- `strategy agent` 从 `JD + 寻访须知` 生成 `SearchStrategy`
+- `Runtime` 先用 `JD + 寻访须知` 做一次确定性 `strategy bootstrap`
+- `ReAct controller` 只基于压缩后的 `StateView` 决定本轮是否继续 `search_cts`
+- `Runtime` 负责执行 `search_cts`、同轮补拉、dedup、normalization、scoring 和 reflection
 
 进入评分前还有一个显式的纯 Python 规范化步骤：
 
 - CTS 返回的单份检索结果先被整理成统一的 `NormalizedResume`
-- scoring agent 只看 `NormalizedResume`
+- scoring worker 只看 `NormalizedResume`
 - 不把原始 CTS 杂乱 payload 直接暴露给 scoring prompt
 - 这样后续 CTS 字段变化时，主要修改点被收敛在 normalization 层
 
 第 1 轮：
 
 - CTS 检索目标 `10`
+- 若 dedup 后不足目标数量，则在同一轮内分页补拉
 - 对实际拿到的去重后候选人做并发评分
 - 保留 `top5`
 
@@ -213,7 +227,7 @@ uv run python -m cv_match.cli --jd-file examples/jd.md --notes-file examples/not
 
 ## top5 如何跨轮保留
 
-runner 会保存上一轮 `top5` 的 `resume_id` 和候选对象。
+runtime 会保存上一轮 `top5` 的 `resume_id` 和候选对象。
 
 下一轮评分池构造规则：
 
@@ -286,8 +300,9 @@ runner 会保存上一轮 `top5` 的 `resume_id` 和候选对象。
 当前 dedup 行为：
 
 - 每轮维护全局 `seen_resume_ids`
+- 每轮同时维护 `seen_dedup_keys`
 - CTS 请求里保留 `exclude_ids` 语义，但因 OpenAPI 未发布服务端支持，当前不下发给接口
-- runner 在本地执行 dedup
+- runtime 在本地按 `dedup_key` 执行批次内和跨轮 dedup
 - 如果重复导致本轮新候选不足，会记录 shortage
 - 如果连续拿不到足够新候选，会收敛退出
 
@@ -341,20 +356,31 @@ fallback dedup key 的使用也会通过 normalization trace 暴露出来。
 - `runs/<timestamp>_<run_id>/trace.log`
 - `runs/<timestamp>_<run_id>/events.jsonl`
 - `runs/<timestamp>_<run_id>/run_config.json`
-- `runs/<timestamp>_<run_id>/round_summaries.json`
 - `runs/<timestamp>_<run_id>/final_candidates.json`
 - `runs/<timestamp>_<run_id>/final_answer.md`
+- `runs/<timestamp>_<run_id>/rounds/round_xx/react_step.json`
+- `runs/<timestamp>_<run_id>/rounds/round_xx/search_observation.json`
+- `runs/<timestamp>_<run_id>/rounds/round_xx/search_attempts.json`
+- `runs/<timestamp>_<run_id>/rounds/round_xx/normalized_resumes.jsonl`
+- `runs/<timestamp>_<run_id>/rounds/round_xx/scorecards.jsonl`
+- `runs/<timestamp>_<run_id>/rounds/round_xx/selected_candidates.json`
+- `runs/<timestamp>_<run_id>/rounds/round_xx/dropped_candidates.json`
+- `runs/<timestamp>_<run_id>/rounds/round_xx/round_review.md`
+- `runs/<timestamp>_<run_id>/resumes/<resume_id>.json`
 
 `trace.log` 适合人读，`events.jsonl` 适合机器处理。
+规范化后的 per-round / per-resume 文件是 canonical audit path，不再生成一个大而全的 `round_summaries.json` 总包。
 
 ### 关键事件
 
 当前事件流至少包括：
 
 - `run_started`
-- `strategy_extracted`
-- `cts_query_built`
+- `user_input_captured`
+- `react_step_started`
+- `react_decision`
 - `tool_called`
+- `search_refill_attempted`
 - `tool_succeeded`
 - `tool_failed`
 - `dedup_applied`
@@ -366,13 +392,26 @@ fallback dedup key 的使用也会通过 normalization trace 暴露出来。
 - `score_branch_completed`
 - `score_branch_failed`
 - `scoring_fanin_completed`
-- `top5_updated`
+- `top_pool_updated`
+- `pool_decision_recorded`
 - `reflection_started`
 - `reflection_decision`
 - `final_answer_created`
 - `run_finished`
 
 为了减少敏感信息暴露，trace 默认记录的是简历摘要和规范化结果，不直接原样写入完整长文本。
+`run_config.json` 也只保留非敏感运行配置，不落 tenant secret。
+
+## 最终结果字段
+
+`final_candidates.json` 里的两个摘要字段会保留：
+
+- `match_summary`
+  - 面向 reviewer 的单候选短摘要
+  - 只做展示，不替代 `why_selected` / `strengths` / `weaknesses`
+- `summary`
+  - 整次 run 的短总览
+  - 只做展示，不替代结构化 run 元数据
 
 ## mock 模式覆盖了什么
 

@@ -1,6 +1,6 @@
 # Single Resume Scoring
 
-You are the scoring agent for one resume only.
+You are the resume scorer for one resume only.
 
 ## Input contract
 
@@ -71,6 +71,8 @@ You must return a structured object with at least:
 - `missing_must_haves`
 - `matched_preferences`
 - `negative_signals`
+- `strengths`
+- `weaknesses`
 - `reasoning_summary`
 - `evidence`
 - `confidence`
