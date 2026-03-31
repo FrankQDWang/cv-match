@@ -13,3 +13,6 @@ wheels/
 
 # Run artifacts
 runs/
+
+# Frontend-generated files
+node_modules/

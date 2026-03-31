@@ -11,6 +11,41 @@
 - 落盘完整 trace、events、run config 和最终答案
 - 在 mock 模式下本地直接跑通
 
+## 快速启动 Web UI
+
+如果你的目标是直接打开浏览器跑最小 UI，按下面两步：
+
+先启动本地后端：
+
+```bash
+uv run cv-match-ui-api
+```
+
+再启动前端：
+
+```bash
+cd apps/web-user-lite
+pnpm install
+pnpm dev
+```
+
+访问：
+
+```text
+http://127.0.0.1:5176
+```
+
+默认端口：
+
+- 前端：`5176`
+- 后端：`8011`
+
+说明：
+
+- 这个后端是仓库内置的本地 UI shim，不是独立业务平台。
+- UI 只覆盖 `JD`、`寻访偏好`、启动运行、Top 5 结果展示和候选人简历展开。
+- 如果你只想跑 CLI，直接看后面的“运行”章节即可。
+
 ## 为什么不是一个巨大 agent
 
 这里刻意没有做“开放式任意工具调用”的大 agent，也没有做自治式 `multi-agent`。
@@ -189,6 +224,41 @@ uv run python -m cv_match.cli --jd "Python agent engineer..." --notes "优先上
 ```bash
 uv run python -m cv_match.cli --jd-file examples/jd.md --notes-file examples/notes.md --real-cts
 ```
+
+## 最小 Web UI
+
+仓库现在提供一个隔离的本地 UI 方案：
+
+- 后端 shim：`cv-match-ui-api`
+- 前端目录：`apps/web-user-lite`
+- 前端端口：`5176`
+- 后端端口：`8011`
+
+启动方式：
+
+```bash
+uv run cv-match-ui-api
+```
+
+然后另开一个终端：
+
+```bash
+cd apps/web-user-lite
+pnpm install
+pnpm dev
+```
+
+浏览器访问：
+
+```text
+http://127.0.0.1:5176
+```
+
+说明：
+
+- UI 只覆盖 `JD`、`寻访偏好`、启动运行、Top 5 结果展示和候选人简历展开。
+- 不包含 trace、历史列表、Langfuse、Temporal。
+- 运行中不展示轮次进度，结果会在整个 run 完成后一次性出现。
 
 ## 多轮流程
 
