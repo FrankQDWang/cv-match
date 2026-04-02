@@ -4,7 +4,6 @@ from cv_match.models import (
     CitySearchSummary,
     ConstraintProjectionResult,
     ControllerContext,
-    ControllerDecision,
     DegreeRequirement,
     FinalizeContext,
     HardConstraintSlots,
@@ -26,6 +25,7 @@ from cv_match.models import (
     RunState,
     ScoredCandidate,
     ScoringPolicy,
+    SearchControllerDecision,
     SearchAttempt,
     SearchObservation,
     SentQueryRecord,
@@ -185,7 +185,7 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
         target_new=10,
         rationale="Round 1 uses two anchor terms.",
     )
-    controller_decision = ControllerDecision(
+    controller_decision = SearchControllerDecision(
         thought_summary="Search round 1 with two anchor terms.",
         action="search_cts",
         decision_rationale="Need initial recall.",

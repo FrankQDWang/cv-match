@@ -6,7 +6,7 @@ from time import perf_counter
 from pydantic_ai import Agent
 
 from cv_match.config import AppSettings
-from cv_match.llm import build_model, build_model_settings
+from cv_match.llm import build_model, build_model_settings, build_output_spec
 from cv_match.models import (
     ScoredCandidate,
     ScoringFailure,
@@ -23,11 +23,14 @@ class ResumeScorer:
 
     def _get_agent(self) -> Agent[None, ScoredCandidate]:
         if self.agent is None:
+            model = build_model(self.settings.scoring_model)
             self.agent = Agent(
-                model=build_model(self.settings.scoring_model),
-                output_type=ScoredCandidate,
+                model=model,
+                output_type=build_output_spec(self.settings.scoring_model, model, ScoredCandidate),
                 system_prompt=self.prompt.content,
                 model_settings=build_model_settings(self.settings, self.settings.scoring_model),
+                retries=0,
+                output_retries=1,
             )
         return self.agent
 
@@ -66,7 +69,7 @@ class ResumeScorer:
                 summary=candidate.compact_summary(),
             )
             async with semaphore:
-                result, failure = await self._score_one_with_retry(
+                result, failure = await self._score_one(
                     context=context,
                     branch_id=branch_id,
                     tracer=tracer,
@@ -79,7 +82,7 @@ class ResumeScorer:
         await asyncio.gather(*(worker(index, context) for index, context in enumerate(contexts)))
         return scored, failures
 
-    async def _score_one_with_retry(
+    async def _score_one(
         self,
         *,
         context: ScoringContext,
@@ -87,85 +90,67 @@ class ResumeScorer:
         tracer: object,
     ) -> tuple[ScoredCandidate | None, ScoringFailure | None]:
         candidate = context.normalized_resume
-        for attempt in (1, 2):
-            started_at = perf_counter()
-            try:
-                result = await self._score_one_live(
-                    context=context,
-                    attempt=attempt,
-                )
-                result = result.model_copy(
-                    update={
-                        "resume_id": candidate.resume_id,
-                        "source_round": candidate.source_round or context.round_no,
-                        "retry_count": attempt - 1,
-                    }
-                )
-                latency_ms = max(1, int((perf_counter() - started_at) * 1000))
-                tracer.emit(
-                    "score_branch_completed",
-                    round_no=context.round_no,
-                    resume_id=candidate.resume_id,
-                    branch_id=branch_id,
-                    model=self.settings.scoring_model,
-                    latency_ms=latency_ms,
-                    summary=result.reasoning_summary,
-                    payload={
-                        "fit_bucket": result.fit_bucket,
-                        "overall_score": result.overall_score,
-                        "risk_score": result.risk_score,
-                        "confidence": result.confidence,
-                        "reasoning_summary": result.reasoning_summary,
-                        "retry_count": result.retry_count,
-                        "retried": result.retry_count > 0,
-                        "final_failure": False,
-                        "missing_must_haves": result.missing_must_haves,
-                        "negative_signals": result.negative_signals,
-                        "risk_flags": result.risk_flags,
-                    },
-                )
-                return result, None
-            except Exception as exc:  # noqa: BLE001
-                if attempt == 2:
-                    latency_ms = max(1, int((perf_counter() - started_at) * 1000))
-                    failure = ScoringFailure(
-                        resume_id=candidate.resume_id,
-                        branch_id=branch_id,
-                        round_no=context.round_no,
-                        attempts=attempt,
-                        error_message=str(exc),
-                        retried=True,
-                        final_failure=True,
-                        latency_ms=latency_ms,
-                    )
-                    tracer.emit(
-                        "score_branch_failed",
-                        round_no=context.round_no,
-                        resume_id=candidate.resume_id,
-                        branch_id=branch_id,
-                        model=self.settings.scoring_model,
-                        latency_ms=latency_ms,
-                        summary=str(exc),
-                        payload={
-                            "attempts": attempt,
-                            "retry_count": attempt - 1,
-                            "retried": True,
-                            "final_failure": True,
-                        },
-                    )
-                    return None, failure
-        return None, None
+        started_at = perf_counter()
+        try:
+            result = await self._score_one_live(context=context)
+            result = result.model_copy(
+                update={
+                    "resume_id": candidate.resume_id,
+                    "source_round": candidate.source_round or context.round_no,
+                }
+            )
+            latency_ms = max(1, int((perf_counter() - started_at) * 1000))
+            tracer.emit(
+                "score_branch_completed",
+                round_no=context.round_no,
+                resume_id=candidate.resume_id,
+                branch_id=branch_id,
+                model=self.settings.scoring_model,
+                latency_ms=latency_ms,
+                summary=result.reasoning_summary,
+                payload={
+                    "fit_bucket": result.fit_bucket,
+                    "overall_score": result.overall_score,
+                    "risk_score": result.risk_score,
+                    "confidence": result.confidence,
+                    "reasoning_summary": result.reasoning_summary,
+                    "missing_must_haves": result.missing_must_haves,
+                    "negative_signals": result.negative_signals,
+                    "risk_flags": result.risk_flags,
+                },
+            )
+            return result, None
+        except Exception as exc:  # noqa: BLE001
+            latency_ms = max(1, int((perf_counter() - started_at) * 1000))
+            failure = ScoringFailure(
+                resume_id=candidate.resume_id,
+                branch_id=branch_id,
+                round_no=context.round_no,
+                attempts=1,
+                error_message=str(exc),
+                latency_ms=latency_ms,
+            )
+            tracer.emit(
+                "score_branch_failed",
+                round_no=context.round_no,
+                resume_id=candidate.resume_id,
+                branch_id=branch_id,
+                model=self.settings.scoring_model,
+                latency_ms=latency_ms,
+                summary=str(exc),
+                payload={"attempts": 1},
+            )
+            return None, failure
 
     async def _score_one_live(
         self,
         *,
         context: ScoringContext,
-        attempt: int,
     ) -> ScoredCandidate:
         prompt = "\n\n".join(
             [
                 json_block("SCORING_CONTEXT", context.model_dump(mode="json")),
-                json_block("CALL_METADATA", {"attempt": attempt}),
+                json_block("CALL_METADATA", {"attempt": 1}),
             ]
         )
         result = await self._get_agent().run(prompt)

@@ -4,7 +4,6 @@ from pathlib import Path
 from cv_match.config import AppSettings
 from cv_match.models import (
     CTSQuery,
-    ControllerDecision,
     FinalCandidate,
     FinalResult,
     HardConstraintSlots,
@@ -16,26 +15,34 @@ from cv_match.models import (
     RequirementSheet,
     ScoredCandidate,
     ScoringFailure,
+    SearchControllerDecision,
 )
 from cv_match.runtime import WorkflowRuntime
 from cv_match.tracing import RunTracer
+
+
+def _sample_inputs() -> tuple[str, str]:
+    return (
+        "Senior Python Engineer responsible for resume matching workflows.",
+        "Prefer retrieval experience and shipping production AI features.",
+    )
 
 
 class SequenceController:
     def __init__(self) -> None:
         self.calls = 0
 
-    def decide(self, *, context) -> ControllerDecision:
+    def decide(self, *, context):
         self.calls += 1
         if self.calls == 1:
-            return ControllerDecision(
+            return SearchControllerDecision(
                 thought_summary="Round 1 anchor search.",
                 action="search_cts",
                 decision_rationale="Start with the two strongest anchor terms.",
                 proposed_query_terms=["python", "resume matching"],
                 proposed_filter_plan=ProposedFilterPlan(),
             )
-        return ControllerDecision(
+        return SearchControllerDecision(
             thought_summary="Round 2 widens the domain surface.",
             action="search_cts",
             decision_rationale="Add one reflection term while keeping the same filter shape.",
@@ -118,7 +125,7 @@ class StubScorer:
                 branch_id=f"r{context.round_no}-{context.normalized_resume.resume_id}",
                 model="stub-scorer",
                 summary="stub score",
-                payload={"final_failure": False},
+                payload={},
             )
             scored.append(
                 ScoredCandidate(
@@ -139,7 +146,6 @@ class StubScorer:
                     strengths=["Strong backend match."],
                     weaknesses=[],
                     source_round=context.normalized_resume.source_round or context.round_no,
-                    retry_count=0,
                 )
             )
         return scored, failures
@@ -187,8 +193,7 @@ def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
     runtime.resume_scorer = StubScorer()
     runtime.finalizer = StubFinalizer()
     tracer = RunTracer(tmp_path / "trace-runs")
-    jd = (Path.cwd() / "examples" / "jd.md").read_text(encoding="utf-8")
-    notes = (Path.cwd() / "examples" / "notes.md").read_text(encoding="utf-8")
+    jd, notes = _sample_inputs()
 
     try:
         run_state = runtime._build_run_state(jd=jd, notes=notes, tracer=tracer)

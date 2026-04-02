@@ -3,24 +3,30 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic_ai.models.test import TestModel
 
 from cv_match.config import AppSettings
 from cv_match.controller.react_controller import ReActController
 from cv_match.finalize.finalizer import Finalizer
+from cv_match.llm import build_model
 from cv_match.models import (
     ControllerContext,
     HardConstraintSlots,
     InputTruth,
     LocationExecutionPlan,
+    NormalizedResume,
     QueryTermCandidate,
     ReflectionContext,
     RequirementSheet,
     RoundRetrievalPlan,
+    ScoringContext,
+    ScoringPolicy,
     SearchObservation,
 )
 from cv_match.prompting import LoadedPrompt
 from cv_match.requirements import RequirementExtractor
 from cv_match.reflection.critic import ReflectionCritic
+from cv_match.scoring.scorer import ResumeScorer
 
 
 def _prompt(name: str) -> LoadedPrompt:
@@ -30,6 +36,11 @@ def _prompt(name: str) -> LoadedPrompt:
 def _settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     return AppSettings(_env_file=None)
+
+
+def _test_model(output_text: str) -> TestModel:
+    real = build_model("openai-responses:gpt-5.4-mini")
+    return TestModel(custom_output_text=output_text, profile=real.profile)
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -118,6 +129,29 @@ def _reflection_context() -> ReflectionContext:
     )
 
 
+def _scoring_context() -> ScoringContext:
+    return ScoringContext(
+        round_no=1,
+        scoring_policy=ScoringPolicy(
+            role_title="Senior Python Engineer",
+            role_summary="Build resume matching workflows.",
+            must_have_capabilities=["python"],
+            scoring_rationale="Score Python fit first.",
+        ),
+        normalized_resume=NormalizedResume(
+            resume_id="resume-1",
+            dedup_key="resume-1",
+            current_title="Python Engineer",
+            current_company="Example Co",
+            locations=["上海"],
+            skills=["python"],
+            raw_text_excerpt="Python retrieval trace",
+            completeness_score=90,
+            source_round=1,
+        ),
+    )
+
+
 def test_controller_decide_raises_live_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     controller = ReActController(_settings(monkeypatch), _prompt("controller"))
 
@@ -177,3 +211,66 @@ def test_finalizer_uses_live_path_and_raises_for_empty_ranked_list(monkeypatch: 
             stop_reason="controller_stop",
             ranked_candidates=[],
         )
+
+
+def test_requirement_extractor_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    extractor = RequirementExtractor(_settings(monkeypatch), _prompt("requirements"))
+    monkeypatch.setattr("cv_match.requirements.extractor.build_model", lambda model_id: _test_model("{}"))
+
+    with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
+        extractor.extract(
+            input_truth=InputTruth(
+                jd="jd",
+                notes="notes",
+                jd_sha256="jd-hash",
+                notes_sha256="notes-hash",
+            )
+        )
+
+
+def test_controller_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    controller = ReActController(_settings(monkeypatch), _prompt("controller"))
+    monkeypatch.setattr(
+        "cv_match.controller.react_controller.build_model",
+        lambda model_id: _test_model('{"action":"search_cts"}'),
+    )
+
+    with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
+        controller.decide(context=_controller_context())
+
+
+def test_reflection_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    critic = ReflectionCritic(_settings(monkeypatch), _prompt("reflection"))
+    monkeypatch.setattr("cv_match.reflection.critic.build_model", lambda model_id: _test_model("{}"))
+
+    with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
+        critic.reflect(context=_reflection_context())
+
+
+def test_finalizer_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    finalizer = Finalizer(_settings(monkeypatch), _prompt("finalize"))
+    monkeypatch.setattr("cv_match.finalize.finalizer.build_model", lambda model_id: _test_model("{}"))
+
+    with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
+        finalizer.finalize(
+            run_id="run-1",
+            run_dir="/tmp/run-1",
+            rounds_executed=1,
+            stop_reason="controller_stop",
+            ranked_candidates=[],
+        )
+
+
+def test_scorer_returns_failure_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    scorer = ResumeScorer(_settings(monkeypatch), _prompt("scoring"))
+    monkeypatch.setattr("cv_match.scoring.scorer.build_model", lambda model_id: _test_model("{}"))
+
+    class StubTracer:
+        def emit(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            return None
+
+    scored, failures = scorer.score_candidates_parallel(contexts=[_scoring_context()], tracer=StubTracer())
+
+    assert scored == []
+    assert len(failures) == 1
+    assert failures[0].error_message == "Exceeded maximum retries (1) for output validation"

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Any
+
+from pydantic_ai import NativeOutput
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.settings import ModelSettings
 
@@ -12,6 +15,18 @@ def model_provider(model_id: str) -> str:
 
 def build_model(model_id: str) -> Model:
     return infer_model(model_id)
+
+
+def ensure_native_structured_output(model_id: str, model: Model) -> None:
+    profile = model.profile
+    if getattr(profile, "supports_json_schema_output", False):
+        return
+    raise ValueError(f"{model_id} does not support native structured output via JSON Schema.")
+
+
+def build_output_spec(model_id: str, model: Model, output_type: Any) -> Any:
+    ensure_native_structured_output(model_id, model)
+    return NativeOutput(output_type, strict=True)
 
 
 def build_model_settings(settings: AppSettings, model_id: str) -> ModelSettings:
@@ -37,5 +52,6 @@ def preflight_models(settings: AppSettings) -> None:
     ):
         if model_id in seen:
             continue
-        build_model(model_id)
+        model = build_model(model_id)
+        ensure_native_structured_output(model_id, model)
         seen.add(model_id)

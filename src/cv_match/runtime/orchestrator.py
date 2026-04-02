@@ -26,6 +26,7 @@ from cv_match.models import (
     RunState,
     ScoredCandidate,
     ScoringPolicy,
+    SearchControllerDecision,
     SearchAttempt,
     SearchObservation,
     SentQueryRecord,
@@ -430,7 +431,7 @@ class WorkflowRuntime:
         )
 
     def _force_continue_decision(self, *, run_state: RunState, round_no: int) -> ControllerDecision:
-        return ControllerDecision(
+        return SearchControllerDecision(
             thought_summary="Runtime override: continue until min_rounds is satisfied.",
             action="search_cts",
             decision_rationale="Early stop is not allowed before min_rounds.",

@@ -1,12 +1,15 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
+from pydantic_ai.exceptions import ModelRetry
 
 from cv_match.config import AppSettings
+from cv_match.controller.react_controller import ReActController
 from cv_match.models import (
     CTSQuery,
     ControllerDecision,
+    ControllerContext,
     HardConstraintSlots,
     InputTruth,
     LocationExecutionPlan,
@@ -21,7 +24,10 @@ from cv_match.models import (
     RoundState,
     RunState,
     ScoringPolicy,
+    SearchControllerDecision,
+    StopControllerDecision,
 )
+from cv_match.prompting import LoadedPrompt
 from cv_match.runtime import WorkflowRuntime
 
 
@@ -80,7 +86,7 @@ def _run_state_with_previous_reflection() -> RunState:
         round_history=[
             RoundState(
                 round_no=1,
-                controller_decision=ControllerDecision(
+                controller_decision=SearchControllerDecision(
                     thought_summary="Round 1 search.",
                     action="search_cts",
                     decision_rationale="Need initial recall.",
@@ -130,7 +136,7 @@ def _run_state_with_previous_reflection() -> RunState:
 
 def test_controller_decision_requires_proposals_for_search() -> None:
     with pytest.raises(ValidationError):
-        ControllerDecision(
+        SearchControllerDecision(
             thought_summary="Search.",
             action="search_cts",
             decision_rationale="Need recall.",
@@ -139,12 +145,14 @@ def test_controller_decision_requires_proposals_for_search() -> None:
 
 def test_controller_decision_rejects_stop_with_search_fields() -> None:
     with pytest.raises(ValidationError):
-        ControllerDecision(
-            thought_summary="Stop.",
-            action="stop",
-            decision_rationale="Enough signal.",
-            proposed_query_terms=["python"],
-            stop_reason="controller_stop",
+        TypeAdapter(ControllerDecision).validate_python(
+            {
+                "thought_summary": "Stop.",
+                "action": "stop",
+                "decision_rationale": "Enough signal.",
+                "stop_reason": "controller_stop",
+                "proposed_query_terms": ["python"],
+            }
         )
 
 
@@ -157,7 +165,7 @@ def test_runtime_requires_response_to_reflection_after_previous_round() -> None:
     settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True)
     runtime = WorkflowRuntime(settings)
     run_state = _run_state_with_previous_reflection()
-    decision = ControllerDecision(
+    decision = SearchControllerDecision(
         thought_summary="Search again.",
         action="search_cts",
         decision_rationale="Add one more term.",
@@ -167,3 +175,78 @@ def test_runtime_requires_response_to_reflection_after_previous_round() -> None:
 
     with pytest.raises(ValueError, match="response_to_reflection"):
         runtime._sanitize_controller_decision(decision=decision, run_state=run_state, round_no=2)
+
+
+def test_controller_decision_discriminated_union_accepts_stop_payload() -> None:
+    decision = TypeAdapter(ControllerDecision).validate_python(
+        {
+            "thought_summary": "Stop.",
+            "action": "stop",
+            "decision_rationale": "Enough strong candidates.",
+            "stop_reason": "controller_stop",
+        }
+    )
+
+    assert isinstance(decision, StopControllerDecision)
+    assert decision.stop_reason == "controller_stop"
+
+
+def test_controller_output_validator_rejects_missing_response_to_reflection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        AppSettings(_env_file=None),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    validator = controller._get_agent()._output_validators[0].function
+    context = ControllerContext(
+        full_jd="JD text",
+        full_notes="Notes text",
+        requirement_sheet=_requirement_sheet(),
+        round_no=2,
+        min_rounds=1,
+        max_rounds=3,
+        target_new=5,
+        previous_reflection={"decision": "continue", "reflection_summary": "Add one term."},
+    )
+    decision = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Add one more term.",
+        proposed_query_terms=["python", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+
+    with pytest.raises(ModelRetry, match="response_to_reflection"):
+        validator(type("Ctx", (), {"deps": context})(), decision)
+
+
+def test_controller_output_validator_rejects_empty_query_terms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        AppSettings(_env_file=None),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    validator = controller._get_agent()._output_validators[0].function
+    context = ControllerContext(
+        full_jd="JD text",
+        full_notes="Notes text",
+        requirement_sheet=_requirement_sheet(),
+        round_no=1,
+        min_rounds=1,
+        max_rounds=3,
+        target_new=5,
+    )
+    decision = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Need recall.",
+        proposed_query_terms=[],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+
+    with pytest.raises(ModelRetry, match="proposed_query_terms"):
+        validator(type("Ctx", (), {"deps": context})(), decision)

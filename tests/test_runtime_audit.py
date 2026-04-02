@@ -5,7 +5,6 @@ from cv_match.clients.cts_client import CTSClientProtocol, CTSFetchResult
 from cv_match.config import AppSettings
 from cv_match.models import (
     CTSQuery,
-    ControllerDecision,
     FinalCandidate,
     FinalResult,
     HardConstraintSlots,
@@ -18,6 +17,7 @@ from cv_match.models import (
     ResumeCandidate,
     ScoredCandidate,
     ScoringFailure,
+    SearchControllerDecision,
 )
 from cv_match.runtime import WorkflowRuntime
 from cv_match.tracing import RunTracer
@@ -30,6 +30,13 @@ def _read_json(path: Path) -> object:
 def _read_jsonl(path: Path) -> list[object]:
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     return [json.loads(line) for line in lines]
+
+
+def _sample_inputs() -> tuple[str, str]:
+    return (
+        "Senior Python Engineer responsible for resume matching workflows.",
+        "Prefer retrieval experience and shipping production AI features.",
+    )
 
 
 def _make_candidate(resume_id: str, *, location: str = "上海") -> ResumeCandidate:
@@ -69,8 +76,8 @@ class DuplicatePagingCTS(CTSClientProtocol):
 
 
 class StubController:
-    def decide(self, *, context) -> ControllerDecision:
-        return ControllerDecision(
+    def decide(self, *, context):
+        return SearchControllerDecision(
             thought_summary="Continue retrieval with the current requirement truth.",
             action="search_cts",
             decision_rationale="Need one live retrieval round for the audit fixture.",
@@ -121,7 +128,7 @@ class StubScorer:
                 branch_id=f"r{context.round_no}-{candidate.resume_id}",
                 model="stub-scorer",
                 summary="stub score",
-                payload={"final_failure": False},
+                payload={},
             )
             scored.append(
                 ScoredCandidate(
@@ -142,7 +149,6 @@ class StubScorer:
                     strengths=["Strong backend match."],
                     weaknesses=[],
                     source_round=candidate.source_round or context.round_no,
-                    retry_count=0,
                 )
             )
         return scored, []
@@ -155,10 +161,8 @@ class FailingScorer:
             resume_id=candidate.resume_id,
             branch_id=f"r{contexts[0].round_no}-b1-{candidate.resume_id}",
             round_no=contexts[0].round_no,
-            attempts=2,
+            attempts=1,
             error_message="forced scoring failure",
-            retried=True,
-            final_failure=True,
             latency_ms=1,
         )
         tracer.emit(
@@ -169,7 +173,7 @@ class FailingScorer:
             model="stub-scorer",
             latency_ms=1,
             summary=failure.error_message,
-            payload={"final_failure": True},
+            payload={"attempts": 1},
         )
         return [], [failure]
 
@@ -278,8 +282,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     runtime.resume_scorer = StubScorer()
     runtime.reflection_critic = StubReflection()
     runtime.finalizer = StubFinalizer()
-    jd = (Path.cwd() / "examples" / "jd.md").read_text(encoding="utf-8")
-    notes = (Path.cwd() / "examples" / "notes.md").read_text(encoding="utf-8")
+    jd, notes = _sample_inputs()
 
     artifacts = runtime.run(jd=jd, notes=notes)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from hashlib import sha1
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -57,25 +57,25 @@ class InputTruth(BaseModel):
 class RequirementExtractionDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    role_title: str = Field(min_length=1)
-    role_summary: str = Field(min_length=1)
-    must_have_capabilities: list[str] = Field(default_factory=list)
-    preferred_capabilities: list[str] = Field(default_factory=list)
-    exclusion_signals: list[str] = Field(default_factory=list)
-    locations: list[str] = Field(default_factory=list)
-    school_names: list[str] = Field(default_factory=list)
-    degree_requirement: str | None = None
-    school_type_requirement: list[str] = Field(default_factory=list)
-    experience_requirement: str | None = None
-    gender_requirement: str | None = None
-    age_requirement: str | None = None
-    company_names: list[str] = Field(default_factory=list)
-    preferred_locations: list[str] = Field(default_factory=list)
-    preferred_companies: list[str] = Field(default_factory=list)
-    preferred_domains: list[str] = Field(default_factory=list)
-    preferred_backgrounds: list[str] = Field(default_factory=list)
-    preferred_query_terms: list[str] = Field(default_factory=list)
-    scoring_rationale: str = Field(min_length=1)
+    role_title: str = Field(min_length=1, description="Short normalized role title from the JD and notes.")
+    role_summary: str = Field(min_length=1, description="Concise business summary of the role scope.")
+    must_have_capabilities: list[str] = Field(default_factory=list, description="Critical capabilities required for fit.")
+    preferred_capabilities: list[str] = Field(default_factory=list, description="Nice-to-have capabilities that strengthen fit.")
+    exclusion_signals: list[str] = Field(default_factory=list, description="Signals that make the candidate unsuitable.")
+    locations: list[str] = Field(default_factory=list, description="All allowed work locations mentioned by the input.")
+    school_names: list[str] = Field(default_factory=list, description="Explicit school-name constraints mentioned by the input.")
+    degree_requirement: str | None = Field(default=None, description="Human-readable degree requirement phrase.")
+    school_type_requirement: list[str] = Field(default_factory=list, description="Human-readable school-type requirements.")
+    experience_requirement: str | None = Field(default=None, description="Human-readable work experience requirement phrase.")
+    gender_requirement: str | None = Field(default=None, description="Human-readable gender requirement phrase.")
+    age_requirement: str | None = Field(default=None, description="Human-readable age requirement phrase.")
+    company_names: list[str] = Field(default_factory=list, description="Explicit company-name constraints mentioned by the input.")
+    preferred_locations: list[str] = Field(default_factory=list, description="Ordered preferred locations only when the input states a priority.")
+    preferred_companies: list[str] = Field(default_factory=list, description="Preferred companies or employers.")
+    preferred_domains: list[str] = Field(default_factory=list, description="Preferred industry or business domains.")
+    preferred_backgrounds: list[str] = Field(default_factory=list, description="Preferred candidate background signals.")
+    preferred_query_terms: list[str] = Field(default_factory=list, description="Reusable query-term hints, not a round query.")
+    scoring_rationale: str = Field(min_length=1, description="Short explanation of the core scoring emphasis.")
 
 
 class DegreeRequirement(BaseModel):
@@ -201,14 +201,14 @@ class ReflectionFilterAdvice(BaseModel):
 class ReflectionAdvice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    strategy_assessment: str
-    quality_assessment: str
-    coverage_assessment: str
-    keyword_advice: ReflectionKeywordAdvice = Field(default_factory=ReflectionKeywordAdvice)
-    filter_advice: ReflectionFilterAdvice = Field(default_factory=ReflectionFilterAdvice)
-    suggest_stop: bool = False
-    suggested_stop_reason: str | None = None
-    reflection_summary: str
+    strategy_assessment: str = Field(min_length=1, description="Short critique of the current retrieval direction.")
+    quality_assessment: str = Field(min_length=1, description="Short critique of top-pool quality.")
+    coverage_assessment: str = Field(min_length=1, description="Short critique of recall and coverage.")
+    keyword_advice: ReflectionKeywordAdvice = Field(default_factory=ReflectionKeywordAdvice, description="Field-safe query-term advice for the next round.")
+    filter_advice: ReflectionFilterAdvice = Field(default_factory=ReflectionFilterAdvice, description="Field-level non-location filter advice for the next round.")
+    suggest_stop: bool = Field(default=False, description="Whether the critic recommends stopping after this round.")
+    suggested_stop_reason: str | None = Field(default=None, description="Concrete stop reason when suggest_stop is true.")
+    reflection_summary: str = Field(min_length=1, description="Compact log-safe summary of the reflection output.")
 
     @model_validator(mode="after")
     def validate_stop_fields(self) -> ReflectionAdvice:
@@ -483,24 +483,23 @@ class ScoringContext(BaseModel):
 class ScoredCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    resume_id: str
-    fit_bucket: FitBucket
-    overall_score: int = Field(ge=0, le=100)
-    must_have_match_score: int = Field(ge=0, le=100)
-    preferred_match_score: int = Field(ge=0, le=100)
-    risk_score: int = Field(ge=0, le=100)
-    risk_flags: list[str] = Field(default_factory=list)
-    reasoning_summary: str
-    evidence: list[str] = Field(default_factory=list)
-    confidence: ScoringConfidence
-    matched_must_haves: list[str] = Field(default_factory=list)
-    missing_must_haves: list[str] = Field(default_factory=list)
-    matched_preferences: list[str] = Field(default_factory=list)
-    negative_signals: list[str] = Field(default_factory=list)
-    strengths: list[str] = Field(default_factory=list)
-    weaknesses: list[str] = Field(default_factory=list)
-    source_round: int
-    retry_count: int = 0
+    resume_id: str = Field(description="Stable resume identifier from the candidate source.")
+    fit_bucket: FitBucket = Field(description="Top-level keep-or-drop decision for this resume.")
+    overall_score: int = Field(ge=0, le=100, description="Overall role-fit score.")
+    must_have_match_score: int = Field(ge=0, le=100, description="Score for critical must-have alignment.")
+    preferred_match_score: int = Field(ge=0, le=100, description="Score for preferred-signal alignment.")
+    risk_score: int = Field(ge=0, le=100, description="Risk score where higher means more concern.")
+    risk_flags: list[str] = Field(default_factory=list, description="Concise risk flags grounded in the resume.")
+    reasoning_summary: str = Field(min_length=1, description="Short scoring rationale for reviewers and logs.")
+    evidence: list[str] = Field(default_factory=list, description="Resume-grounded evidence snippets supporting the judgment.")
+    confidence: ScoringConfidence = Field(description="Confidence in the scoring judgment.")
+    matched_must_haves: list[str] = Field(default_factory=list, description="Must-have signals supported by resume evidence.")
+    missing_must_haves: list[str] = Field(default_factory=list, description="Must-have signals missing or unsupported by resume evidence.")
+    matched_preferences: list[str] = Field(default_factory=list, description="Preferred signals supported by resume evidence.")
+    negative_signals: list[str] = Field(default_factory=list, description="Resume signals that count against the candidate.")
+    strengths: list[str] = Field(default_factory=list, description="Concise strengths worth surfacing downstream.")
+    weaknesses: list[str] = Field(default_factory=list, description="Concise weaknesses worth surfacing downstream.")
+    source_round: int = Field(description="Round number in which this resume entered the scoring flow.")
 
 
 class ScoringFailure(BaseModel):
@@ -511,8 +510,6 @@ class ScoringFailure(BaseModel):
     round_no: int
     attempts: int
     error_message: str
-    retried: bool
-    final_failure: bool
     latency_ms: int | None = None
 
 
@@ -569,34 +566,31 @@ class ControllerContext(BaseModel):
     shortage_history: list[int] = Field(default_factory=list)
 
 
-class ControllerDecision(BaseModel):
+class SearchControllerDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    thought_summary: str
-    action: ControllerAction
-    decision_rationale: str
-    proposed_query_terms: list[str] | None = None
-    proposed_filter_plan: ProposedFilterPlan | None = None
-    response_to_reflection: str | None = None
-    stop_reason: str | None = None
+    thought_summary: str = Field(min_length=1, description="Short summary of the controller's current decision.")
+    action: Literal["search_cts"] = Field(description="Continue to the next CTS search round.")
+    decision_rationale: str = Field(min_length=1, description="Short operational rationale for the search decision.")
+    proposed_query_terms: list[str] = Field(description="Proposed round query terms before runtime canonicalization.")
+    proposed_filter_plan: ProposedFilterPlan = Field(description="Proposed non-location filter plan before runtime canonicalization.")
+    response_to_reflection: str | None = Field(default=None, description="Explicit response to the previous round's reflection when one exists.")
 
-    @model_validator(mode="after")
-    def validate_action_fields(self) -> ControllerDecision:
-        if self.action == "search_cts":
-            if self.proposed_query_terms is None:
-                raise ValueError("proposed_query_terms is required when action=search_cts")
-            if self.proposed_filter_plan is None:
-                raise ValueError("proposed_filter_plan is required when action=search_cts")
-            if self.stop_reason is not None:
-                raise ValueError("stop_reason must be null when action=search_cts")
-            return self
-        if self.stop_reason is None:
-            raise ValueError("stop_reason is required when action=stop")
-        if self.proposed_query_terms is not None:
-            raise ValueError("proposed_query_terms must be null when action=stop")
-        if self.proposed_filter_plan is not None:
-            raise ValueError("proposed_filter_plan must be null when action=stop")
-        return self
+
+class StopControllerDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    thought_summary: str = Field(min_length=1, description="Short summary of the controller's current decision.")
+    action: Literal["stop"] = Field(description="Stop retrieval and finish the run.")
+    decision_rationale: str = Field(min_length=1, description="Short operational rationale for the stop decision.")
+    response_to_reflection: str | None = Field(default=None, description="Explicit response to the previous round's reflection when one exists.")
+    stop_reason: str = Field(min_length=1, description="Concrete stop reason for ending retrieval.")
+
+
+ControllerDecision = Annotated[
+    SearchControllerDecision | StopControllerDecision,
+    Field(discriminator="action"),
+]
 
 
 class PoolDecision(BaseModel):
@@ -614,29 +608,29 @@ class PoolDecision(BaseModel):
 class FinalCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    resume_id: str
-    rank: int
-    final_score: int
-    fit_bucket: FitBucket
-    match_summary: str
-    strengths: list[str] = Field(default_factory=list)
-    weaknesses: list[str] = Field(default_factory=list)
-    matched_must_haves: list[str] = Field(default_factory=list)
-    matched_preferences: list[str] = Field(default_factory=list)
-    risk_flags: list[str] = Field(default_factory=list)
-    why_selected: str
-    source_round: int
+    resume_id: str = Field(description="Stable resume identifier copied from the scored candidate.")
+    rank: int = Field(description="Final shortlist rank, contiguous and starting at 1.")
+    final_score: int = Field(description="Final score surfaced in the shortlist.")
+    fit_bucket: FitBucket = Field(description="Top-level fit decision copied from scoring.")
+    match_summary: str = Field(min_length=1, description="Short presentation summary of the candidate match.")
+    strengths: list[str] = Field(default_factory=list, description="Strengths kept for reviewer display.")
+    weaknesses: list[str] = Field(default_factory=list, description="Weaknesses kept for reviewer display.")
+    matched_must_haves: list[str] = Field(default_factory=list, description="Matched must-have signals to surface downstream.")
+    matched_preferences: list[str] = Field(default_factory=list, description="Matched preference signals to surface downstream.")
+    risk_flags: list[str] = Field(default_factory=list, description="Risk flags to surface downstream.")
+    why_selected: str = Field(min_length=1, description="Short explanation of why the candidate was selected.")
+    source_round: int = Field(description="Round number in which this candidate first entered the pool.")
 
 
 class FinalResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_id: str
-    run_dir: str
-    rounds_executed: int
-    stop_reason: str
-    candidates: list[FinalCandidate]
-    summary: str
+    run_id: str = Field(description="Runtime-generated run identifier.")
+    run_dir: str = Field(description="Filesystem path for the run artifacts.")
+    rounds_executed: int = Field(description="Number of rounds executed before finalization.")
+    stop_reason: str = Field(description="Canonical stop reason chosen by runtime.")
+    candidates: list[FinalCandidate] = Field(description="Final shortlist candidates in runtime-preserved order.")
+    summary: str = Field(min_length=1, description="Short top-level summary of the final shortlist.")
 
 
 class ReflectionContext(BaseModel):

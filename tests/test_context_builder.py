@@ -1,7 +1,6 @@
 from cv_match.models import (
     CTSQuery,
     CitySearchSummary,
-    ControllerDecision,
     HardConstraintSlots,
     InputTruth,
     LocationExecutionPlan,
@@ -18,6 +17,7 @@ from cv_match.models import (
     RunState,
     ScoredCandidate,
     ScoringPolicy,
+    SearchControllerDecision,
     SearchAttempt,
     SearchObservation,
     SentQueryRecord,
@@ -126,7 +126,7 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
         round_history=[
             RoundState(
                 round_no=1,
-                controller_decision=ControllerDecision(
+                controller_decision=SearchControllerDecision(
                     thought_summary="Search round 1.",
                     action="search_cts",
                     decision_rationale="Need initial recall.",
