@@ -29,7 +29,8 @@ def build_model_settings(settings: AppSettings, model_id: str) -> ModelSettings:
 def preflight_models(settings: AppSettings) -> None:
     seen: set[str] = set()
     for model_id in (
-        settings.strategy_model,
+        settings.requirements_model,
+        settings.controller_model,
         settings.scoring_model,
         settings.reflection_model,
         settings.finalize_model,

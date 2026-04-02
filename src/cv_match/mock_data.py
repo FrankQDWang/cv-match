@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from cv_match.locations import normalize_location
 from cv_match.models import ResumeCandidate, stable_fallback_resume_id
 
 
@@ -22,6 +23,7 @@ def _candidate(
     headline: str | None = None,
     full_text: str | None = None,
 ) -> ResumeCandidate:
+    canonical_location = normalize_location(location)
     work_experience_summaries = [
         " | ".join(part for part in [item.get("company", ""), item.get("title", ""), item.get("summary", "")] if part)
         for item in experiences
@@ -56,7 +58,7 @@ def _candidate(
                 "candidate_name": candidate_name,
                 "title": title,
                 "current_company": current_company,
-                "location": location,
+                "location": canonical_location,
                 "experiences": experiences[:2],
             }
         )
@@ -66,7 +68,7 @@ def _candidate(
             candidate_name,
             title,
             current_company,
-            location,
+            canonical_location,
             industry,
             *projects,
             *education,
@@ -80,9 +82,9 @@ def _candidate(
         used_fallback_id=used_fallback_id,
         age=28 + min(work_year or 5, 10),
         gender="unknown",
-        now_location=location,
+        now_location=canonical_location,
         work_year=work_year,
-        expected_location=location,
+        expected_location=canonical_location,
         expected_job_category=title,
         expected_industry=industry,
         expected_salary="面议",

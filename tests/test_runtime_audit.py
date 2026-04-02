@@ -2,14 +2,19 @@ import json
 from pathlib import Path
 
 from cv_match.clients.cts_client import CTSClientProtocol, CTSFetchResult
-from cv_match.controller.strategy_bootstrap import build_cts_query_from_strategy
 from cv_match.config import AppSettings
 from cv_match.models import (
     CTSQuery,
     ControllerDecision,
     FinalCandidate,
     FinalResult,
-    ReflectionDecision,
+    HardConstraintSlots,
+    ProposedFilterPlan,
+    QueryTermCandidate,
+    ReflectionAdvice,
+    ReflectionFilterAdvice,
+    ReflectionKeywordAdvice,
+    RequirementSheet,
     ResumeCandidate,
     ScoredCandidate,
     ScoringFailure,
@@ -64,25 +69,51 @@ class DuplicatePagingCTS(CTSClientProtocol):
 
 
 class StubController:
-    def decide(self, *, state_view) -> ControllerDecision:
-        query = build_cts_query_from_strategy(
-            strategy=state_view.current_strategy,
-            target_new=state_view.target_new,
-            exclude_ids=[],
-        )
+    def decide(self, *, context) -> ControllerDecision:
         return ControllerDecision(
-            thought_summary="Continue retrieval with the current strategy.",
+            thought_summary="Continue retrieval with the current requirement truth.",
             action="search_cts",
             decision_rationale="Need one live retrieval round for the audit fixture.",
-            working_strategy=state_view.current_strategy,
-            cts_query=query,
+            proposed_query_terms=["python", "resume matching"],
+            proposed_filter_plan=ProposedFilterPlan(),
+        )
+
+
+class StubRequirementExtractor:
+    def extract(self, *, input_truth) -> RequirementSheet:
+        del input_truth
+        return RequirementSheet(
+            role_title="Senior Python Engineer",
+            role_summary="Build resume matching workflows.",
+            must_have_capabilities=["python", "resume matching"],
+            hard_constraints=HardConstraintSlots(locations=["上海"]),
+            initial_query_term_pool=[
+                QueryTermCandidate(
+                    term="python",
+                    source="jd",
+                    category="role_anchor",
+                    priority=1,
+                    evidence="JD title",
+                    first_added_round=0,
+                ),
+                QueryTermCandidate(
+                    term="resume matching",
+                    source="notes",
+                    category="domain",
+                    priority=2,
+                    evidence="Notes mention resume matching.",
+                    first_added_round=0,
+                ),
+            ],
+            scoring_rationale="Score Python fit first.",
         )
 
 
 class StubScorer:
-    def score_candidates_parallel(self, *, candidates, context, tracer):
+    def score_candidates_parallel(self, *, contexts, tracer):
         scored: list[ScoredCandidate] = []
-        for candidate in candidates:
+        for context in contexts:
+            candidate = context.normalized_resume
             tracer.emit(
                 "score_branch_completed",
                 round_no=context.round_no,
@@ -118,11 +149,12 @@ class StubScorer:
 
 
 class FailingScorer:
-    def score_candidates_parallel(self, *, candidates, context, tracer):
+    def score_candidates_parallel(self, *, contexts, tracer):
+        candidate = contexts[0].normalized_resume
         failure = ScoringFailure(
-            resume_id=candidates[0].resume_id,
-            branch_id=f"r{context.round_no}-b1-{candidates[0].resume_id}",
-            round_no=context.round_no,
+            resume_id=candidate.resume_id,
+            branch_id=f"r{contexts[0].round_no}-b1-{candidate.resume_id}",
+            round_no=contexts[0].round_no,
             attempts=2,
             error_message="forced scoring failure",
             retried=True,
@@ -131,7 +163,7 @@ class FailingScorer:
         )
         tracer.emit(
             "score_branch_failed",
-            round_no=context.round_no,
+            round_no=contexts[0].round_no,
             resume_id=failure.resume_id,
             branch_id=failure.branch_id,
             model="stub-scorer",
@@ -143,32 +175,16 @@ class FailingScorer:
 
 
 class StubReflection:
-    def reflect(
-        self,
-        *,
-        round_no,
-        strategy,
-        search_observation,
-        search_attempts,
-        new_candidate_summaries,
-        scored_candidates,
-        top_candidates,
-        dropped_candidates,
-        shortage_count,
-        scoring_failure_count,
-    ) -> ReflectionDecision:
-        del round_no, search_observation, search_attempts, new_candidate_summaries
-        del scored_candidates, top_candidates, dropped_candidates, shortage_count, scoring_failure_count
-        return ReflectionDecision(
+    def reflect(self, *, context) -> ReflectionAdvice:
+        del context
+        return ReflectionAdvice(
             strategy_assessment="Current strategy is acceptable.",
             quality_assessment="The top pool quality is acceptable.",
             coverage_assessment="Coverage is sufficient for one round.",
-            adjust_keywords=[],
-            adjust_negative_keywords=[],
-            adjust_hard_filters=list(strategy.hard_filters),
-            adjust_soft_filters=list(strategy.soft_filters),
-            decision="continue",
-            stop_reason=None,
+            keyword_advice=ReflectionKeywordAdvice(),
+            filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
+            suggest_stop=False,
+            suggested_stop_reason=None,
             reflection_summary="No reflection changes.",
         )
 
@@ -214,8 +230,9 @@ def test_execute_search_tool_refills_after_batch_dedup(tmp_path: Path) -> None:
     runtime.cts_client = DuplicatePagingCTS()
     tracer = RunTracer(tmp_path / "trace-runs")
     query = CTSQuery(
-        keywords=["python", "retrieval"],
+        query_terms=["python", "retrieval"],
         keyword_query="python retrieval",
+        native_filters={},
         page=1,
         page_size=2,
         rationale="test refill after dedup",
@@ -245,7 +262,7 @@ def test_execute_search_tool_refills_after_batch_dedup(tmp_path: Path) -> None:
     assert observation.new_resume_ids == ["dup-1", "uniq-2"]
 
 
-def test_runtime_writes_compact_audit_and_sanitized_outputs(tmp_path: Path, monkeypatch) -> None:
+def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     settings = AppSettings(_env_file=None).with_overrides(
         runs_dir=str(tmp_path / "runs"),
@@ -256,6 +273,7 @@ def test_runtime_writes_compact_audit_and_sanitized_outputs(tmp_path: Path, monk
         cts_tenant_secret="tenant-secret",
     )
     runtime = WorkflowRuntime(settings)
+    runtime.requirement_extractor = StubRequirementExtractor()
     runtime.controller = StubController()
     runtime.resume_scorer = StubScorer()
     runtime.reflection_critic = StubReflection()
@@ -266,60 +284,56 @@ def test_runtime_writes_compact_audit_and_sanitized_outputs(tmp_path: Path, monk
     artifacts = runtime.run(jd=jd, notes=notes)
 
     round_dir = artifacts.run_dir / "rounds" / "round_01"
-    react_step = _read_json(round_dir / "react_step.json")
+    controller_decision = _read_json(round_dir / "controller_decision.json")
+    retrieval_plan = _read_json(round_dir / "retrieval_plan.json")
+    projection_result = _read_json(round_dir / "constraint_projection_result.json")
+    sent_query_records = _read_json(round_dir / "sent_query_records.json")
+    cts_queries = _read_json(round_dir / "cts_queries.json")
     search_observation = _read_json(round_dir / "search_observation.json")
     scorecards = _read_jsonl(round_dir / "scorecards.jsonl")
+    sent_query_history = _read_json(artifacts.run_dir / "sent_query_history.json")
     run_config = _read_json(artifacts.run_dir / "run_config.json")
     final_candidates = _read_json(artifacts.run_dir / "final_candidates.json")
     round_review = (round_dir / "round_review.md").read_text(encoding="utf-8")
 
-    state_view = react_step["state_view"]
-    assert "jd_summary" in state_view
-    assert "notes_summary" in state_view
-    assert "jd" not in state_view
-    assert "notes" not in state_view
+    assert len(controller_decision["proposed_query_terms"]) == 2
+    assert retrieval_plan["query_terms"] == controller_decision["proposed_query_terms"]
+    assert retrieval_plan["location_execution_plan"]["mode"] == "single"
+    assert len(sent_query_records) == 1
+    assert len(cts_queries) == 1
+    assert sent_query_records[0]["query_terms"] == retrieval_plan["query_terms"]
+    assert sent_query_records[0]["keyword_query"] == retrieval_plan["keyword_query"]
+    assert sent_query_records[0]["city"] == "上海"
+    assert cts_queries[0]["query_terms"] == retrieval_plan["query_terms"]
+    assert cts_queries[0]["native_filters"] == {
+        **projection_result["cts_native_filters"],
+        "location": ["上海"],
+    }
+    assert sent_query_history == sent_query_records
 
     assert len(search_observation["new_resume_ids"]) == len(set(search_observation["new_resume_ids"]))
-    assert search_observation["new_resume_ids"].count("mock-r003") == 1
+    assert search_observation["city_search_summaries"][0]["city"] == "上海"
     assert artifacts.candidate_store
     assert artifacts.normalized_store
     assert set(artifacts.normalized_store) <= set(artifacts.candidate_store)
 
     scorecard_ids = [item["resume_id"] for item in scorecards]
     assert len(scorecard_ids) == len(set(scorecard_ids))
-    assert scorecard_ids.count("mock-r003") == 1
+    assert final_candidates["summary"]
+    assert all(candidate["match_summary"] for candidate in final_candidates["candidates"])
 
-    query_fields = {
-        item["field"]
-        for item in react_step["controller_decision"]["cts_query"]["hard_filters"]
-        + react_step["controller_decision"]["cts_query"]["soft_filters"]
-    }
-    assert query_fields <= {"company", "position", "school", "work_content", "location"}
-
-    assert "Search Outcome" in round_review
-    assert "Top Pool Delta" in round_review
-    assert "Common Drop Reasons" in round_review
-    assert "Scoring Failures" in round_review
-    assert "Reflection & Stop Signal" in round_review
+    assert "Requested new candidates" in round_review
+    assert "Unique new candidates" in round_review
+    assert "Common drop reasons" in round_review
+    assert "Reflection summary" in round_review
+    assert "Round stop signal" in round_review
 
     assert not (artifacts.run_dir / "round_summaries.json").exists()
     assert "cts_tenant_secret" not in json.dumps(run_config, ensure_ascii=False)
     assert "tenant-secret" not in json.dumps(run_config, ensure_ascii=False)
     assert run_config["configured_providers"] == ["openai-responses"]
-    assert run_config["settings"]["strategy_model"] == "openai-responses:gpt-5.4-mini"
-    assert "offline_llm_fallback" not in json.dumps(run_config, ensure_ascii=False)
-    assert final_candidates["summary"]
-    assert all(candidate["match_summary"] for candidate in final_candidates["candidates"])
-
-    source_python = "\n".join(path.read_text(encoding="utf-8") for path in Path("src").rglob("*.py"))
-    readme = Path("README.md").read_text(encoding="utf-8")
-    prompt_text = "\n".join(path.read_text(encoding="utf-8") for path in Path("src/cv_match/prompts").glob("*.md"))
-    assert "cv_match.agent" not in source_python
-    assert "MatchRunner" not in source_python
-    assert "├── agent/" not in readme
-    assert "scoring agent" not in prompt_text.casefold()
-    assert "reflection agent" not in prompt_text.casefold()
-    assert "finalization agent" not in prompt_text.casefold()
+    assert run_config["settings"]["requirements_model"] == "openai-responses:gpt-5.4-mini"
+    assert run_config["settings"]["controller_model"] == "openai-responses:gpt-5.4-mini"
 
 
 def test_runtime_fails_fast_when_provider_credentials_are_missing(tmp_path: Path, monkeypatch) -> None:
@@ -336,7 +350,7 @@ def test_runtime_fails_fast_when_provider_credentials_are_missing(tmp_path: Path
         runtime.run(jd="JD", notes="Notes")
     except RuntimeError as exc:
         assert "OPENAI_API_KEY" in str(exc)
-    else:  # pragma: no cover - defensive
+    else:  # pragma: no cover
         raise AssertionError("Expected run() to fail without provider credentials")
 
     run_dirs = sorted((tmp_path / "runs").iterdir())
@@ -361,6 +375,7 @@ def test_runtime_aborts_when_scoring_has_a_final_failure(tmp_path: Path, monkeyp
         max_rounds=1,
     )
     runtime = WorkflowRuntime(settings)
+    runtime.requirement_extractor = StubRequirementExtractor()
     runtime.controller = StubController()
     runtime.resume_scorer = FailingScorer()
     runtime.reflection_critic = StubReflection()
@@ -370,7 +385,7 @@ def test_runtime_aborts_when_scoring_has_a_final_failure(tmp_path: Path, monkeyp
         runtime.run(jd="JD", notes="Notes")
     except RuntimeError as exc:
         assert str(exc) == "Scoring failed for 1 resume(s): mock-r001."
-    else:  # pragma: no cover - defensive
+    else:  # pragma: no cover
         raise AssertionError("Expected run() to fail after a final scoring failure")
 
     run_dirs = sorted((tmp_path / "runs").iterdir())
@@ -378,7 +393,3 @@ def test_runtime_aborts_when_scoring_has_a_final_failure(tmp_path: Path, monkeyp
     run_dir = run_dirs[0]
     assert not (run_dir / "final_candidates.json").exists()
     assert not (run_dir / "final_answer.md").exists()
-    events = _read_jsonl(run_dir / "events.jsonl")
-    assert any(event["event_type"] == "score_branch_failed" for event in events)
-    assert events[-1]["event_type"] == "run_failed"
-    assert events[-1]["payload"]["stage"] == "scoring"

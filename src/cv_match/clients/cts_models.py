@@ -107,9 +107,8 @@ class AuthFailureResponse(BaseModel):
 
 
 class CandidateSearchRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
-    jd: str | None = None
     keyword: str | None = None
     school: str | None = None
     company: str | None = None
@@ -121,6 +120,5 @@ class CandidateSearchRequest(BaseModel):
     workExperienceRange: int | None = None
     gender: int | None = None
     age: int | None = None
-    active: int | None = None
     page: int | str = 1
     pageSize: int | str = 10

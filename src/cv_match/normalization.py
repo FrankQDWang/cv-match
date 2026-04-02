@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from cv_match.locations import normalize_locations
 from cv_match.models import (
     NormalizedExperience,
     NormalizedResume,
@@ -257,7 +258,7 @@ def normalize_resume(candidate: ResumeCandidate) -> NormalizedResume:
         headline = current_title
         normalization_notes.append("Filled headline from current_title.")
     years_of_experience = candidate.work_year
-    locations = _normalize_strings(
+    locations = normalize_locations(
         [
             candidate.now_location,
             candidate.expected_location,

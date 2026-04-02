@@ -4,17 +4,30 @@ import json
 from hashlib import sha1
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 FitBucket = Literal["fit", "not_fit"]
 DecisionType = Literal["continue", "stop"]
 ControllerAction = Literal["search_cts", "stop"]
 PoolDecisionType = Literal["selected", "retained", "dropped"]
 ConditionSource = Literal["jd", "notes", "inferred"]
-ConditionStrictness = Literal["hard", "soft"]
-FilterOperator = Literal["equals", "contains", "in", "gte", "lte"]
 ScoringConfidence = Literal["high", "medium", "low"]
-CTSFilterField = Literal["company", "position", "school", "work_content", "location"]
+ConstraintValue = str | int | list[str]
+QueryTermSource = Literal["jd", "notes", "reflection"]
+QueryTermCategory = Literal["role_anchor", "domain", "tooling", "expansion"]
+LocationExecutionMode = Literal["none", "single", "priority_then_fallback", "balanced_all"]
+LocationExecutionPhase = Literal["priority", "balanced"]
+FilterField = Literal[
+    "company_names",
+    "school_names",
+    "degree_requirement",
+    "school_type_requirement",
+    "experience_requirement",
+    "gender_requirement",
+    "age_requirement",
+    "position",
+    "work_content",
+]
 
 
 def unique_strings(values: list[str]) -> list[str]:
@@ -32,75 +45,264 @@ def unique_strings(values: list[str]) -> list[str]:
     return output
 
 
-class KeywordAttribution(BaseModel):
+class InputTruth(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    keyword: str
-    source: ConditionSource
-    bucket: Literal["must_have", "preferred", "negative"]
-    reason: str
+    jd: str
+    notes: str
+    jd_sha256: str
+    notes_sha256: str
 
 
-class FilterCondition(BaseModel):
+class RequirementExtractionDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    field: str
-    value: str | int | list[str]
+    role_title: str = Field(min_length=1)
+    role_summary: str = Field(min_length=1)
+    must_have_capabilities: list[str] = Field(default_factory=list)
+    preferred_capabilities: list[str] = Field(default_factory=list)
+    exclusion_signals: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    school_names: list[str] = Field(default_factory=list)
+    degree_requirement: str | None = None
+    school_type_requirement: list[str] = Field(default_factory=list)
+    experience_requirement: str | None = None
+    gender_requirement: str | None = None
+    age_requirement: str | None = None
+    company_names: list[str] = Field(default_factory=list)
+    preferred_locations: list[str] = Field(default_factory=list)
+    preferred_companies: list[str] = Field(default_factory=list)
+    preferred_domains: list[str] = Field(default_factory=list)
+    preferred_backgrounds: list[str] = Field(default_factory=list)
+    preferred_query_terms: list[str] = Field(default_factory=list)
+    scoring_rationale: str = Field(min_length=1)
+
+
+class DegreeRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    canonical_degree: str
+    raw_text: str
+    pinned: bool = False
+
+
+class SchoolTypeRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    canonical_types: list[str] = Field(default_factory=list)
+    raw_text: str
+    pinned: bool = False
+
+
+class ExperienceRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min_years: int | None = None
+    max_years: int | None = None
+    raw_text: str
+    pinned: bool = False
+
+
+class GenderRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    canonical_gender: str
+    raw_text: str
+    pinned: bool = False
+
+
+class AgeRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min_age: int | None = None
+    max_age: int | None = None
+    raw_text: str
+    pinned: bool = False
+
+
+class HardConstraintSlots(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    locations: list[str] = Field(default_factory=list)
+    school_names: list[str] = Field(default_factory=list)
+    degree_requirement: DegreeRequirement | None = None
+    school_type_requirement: SchoolTypeRequirement | None = None
+    experience_requirement: ExperienceRequirement | None = None
+    gender_requirement: GenderRequirement | None = None
+    age_requirement: AgeRequirement | None = None
+    company_names: list[str] = Field(default_factory=list)
+
+
+class PreferenceSlots(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    preferred_locations: list[str] = Field(default_factory=list)
+    preferred_companies: list[str] = Field(default_factory=list)
+    preferred_domains: list[str] = Field(default_factory=list)
+    preferred_backgrounds: list[str] = Field(default_factory=list)
+    preferred_query_terms: list[str] = Field(default_factory=list)
+
+
+class QueryTermCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    term: str
+    source: QueryTermSource
+    category: QueryTermCategory
+    priority: int
+    evidence: str
+    first_added_round: int
+    active: bool = True
+
+
+class RequirementSheet(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role_title: str
+    role_summary: str
+    must_have_capabilities: list[str] = Field(default_factory=list)
+    preferred_capabilities: list[str] = Field(default_factory=list)
+    exclusion_signals: list[str] = Field(default_factory=list)
+    hard_constraints: HardConstraintSlots = Field(default_factory=HardConstraintSlots)
+    preferences: PreferenceSlots = Field(default_factory=PreferenceSlots)
+    initial_query_term_pool: list[QueryTermCandidate] = Field(default_factory=list)
+    scoring_rationale: str
+
+
+class RequirementDigest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role_title: str
+    role_summary: str
+    top_must_have_capabilities: list[str] = Field(default_factory=list)
+    top_preferences: list[str] = Field(default_factory=list)
+    hard_constraint_summary: list[str] = Field(default_factory=list)
+
+
+class ReflectionKeywordAdvice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    suggested_add_terms: list[str] = Field(default_factory=list)
+    suggested_keep_terms: list[str] = Field(default_factory=list)
+    suggested_deprioritize_terms: list[str] = Field(default_factory=list)
+    suggested_drop_terms: list[str] = Field(default_factory=list)
+    critique: str = ""
+
+
+class ReflectionFilterAdvice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    suggested_keep_filter_fields: list[FilterField] = Field(default_factory=list)
+    suggested_drop_filter_fields: list[FilterField] = Field(default_factory=list)
+    suggested_add_filter_fields: list[FilterField] = Field(default_factory=list)
+    critique: str = ""
+
+
+class ReflectionAdvice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    strategy_assessment: str
+    quality_assessment: str
+    coverage_assessment: str
+    keyword_advice: ReflectionKeywordAdvice = Field(default_factory=ReflectionKeywordAdvice)
+    filter_advice: ReflectionFilterAdvice = Field(default_factory=ReflectionFilterAdvice)
+    suggest_stop: bool = False
+    suggested_stop_reason: str | None = None
+    reflection_summary: str
+
+    @model_validator(mode="after")
+    def validate_stop_fields(self) -> ReflectionAdvice:
+        if self.suggest_stop and not self.suggested_stop_reason:
+            raise ValueError("suggested_stop_reason is required when suggest_stop is true")
+        if not self.suggest_stop and self.suggested_stop_reason is not None:
+            raise ValueError("suggested_stop_reason must be null when suggest_stop is false")
+        return self
+
+
+class RuntimeConstraint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: FilterField
+    normalized_value: ConstraintValue
     source: ConditionSource
     rationale: str
-    strictness: ConditionStrictness
-    operator: FilterOperator = "equals"
+    blocking: bool
 
 
-class CTSFilterCondition(BaseModel):
+class ConstraintProjectionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    field: CTSFilterField
-    value: str | int | list[str]
-    operator: FilterOperator = "equals"
+    cts_native_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
+    runtime_only_constraints: list[RuntimeConstraint] = Field(default_factory=list)
+    adapter_notes: list[str] = Field(default_factory=list)
 
 
-class SearchStrategy(BaseModel):
+class ProposedFilterPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    must_have_keywords: list[str] = Field(default_factory=list)
-    preferred_keywords: list[str] = Field(default_factory=list)
-    negative_keywords: list[str] = Field(default_factory=list)
-    hard_filters: list[FilterCondition] = Field(default_factory=list)
-    soft_filters: list[FilterCondition] = Field(default_factory=list)
-    keyword_attributions: list[KeywordAttribution] = Field(default_factory=list)
-    search_rationale: str
-    strategy_version: int = 1
+    pinned_filters: dict[FilterField, ConstraintValue] = Field(default_factory=dict)
+    optional_filters: dict[FilterField, ConstraintValue] = Field(default_factory=dict)
+    dropped_filter_fields: list[FilterField] = Field(default_factory=list)
+    added_filter_fields: list[FilterField] = Field(default_factory=list)
 
-    def normalized(self) -> "SearchStrategy":
-        return self.model_copy(
-            update={
-                "must_have_keywords": unique_strings(self.must_have_keywords),
-                "preferred_keywords": unique_strings(
-                    [
-                        value
-                        for value in self.preferred_keywords
-                        if value.casefold()
-                        not in {item.casefold() for item in self.must_have_keywords}
-                    ]
-                ),
-                "negative_keywords": unique_strings(self.negative_keywords),
-            }
-        )
 
-    @property
-    def retrieval_keywords(self) -> list[str]:
-        return unique_strings(self.must_have_keywords + self.preferred_keywords)
+class LocationExecutionPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: LocationExecutionMode
+    allowed_locations: list[str] = Field(default_factory=list)
+    preferred_locations: list[str] = Field(default_factory=list)
+    priority_order: list[str] = Field(default_factory=list)
+    balanced_order: list[str] = Field(default_factory=list)
+    rotation_offset: int = 0
+    target_new: int
+
+
+class RoundRetrievalPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan_version: int
+    round_no: int
+    query_terms: list[str] = Field(default_factory=list)
+    keyword_query: str
+    projected_cts_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
+    runtime_only_constraints: list[RuntimeConstraint] = Field(default_factory=list)
+    location_execution_plan: LocationExecutionPlan
+    target_new: int
+    rationale: str
+
+
+class SentQueryRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    round_no: int
+    city: str | None = None
+    phase: LocationExecutionPhase | None = None
+    batch_no: int
+    requested_count: int
+    query_terms: list[str] = Field(default_factory=list)
+    keyword_query: str
+    source_plan_version: int
+    rationale: str
+
+
+class RetrievalState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_plan_version: int = 0
+    query_term_pool: list[QueryTermCandidate] = Field(default_factory=list)
+    sent_query_history: list[SentQueryRecord] = Field(default_factory=list)
+    reflection_keyword_advice_history: list[ReflectionKeywordAdvice] = Field(default_factory=list)
+    reflection_filter_advice_history: list[ReflectionFilterAdvice] = Field(default_factory=list)
+    last_projection_result: ConstraintProjectionResult | None = None
 
 
 class CTSQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    keywords: list[str]
+    query_terms: list[str] = Field(default_factory=list)
     keyword_query: str
-    hard_filters: list[CTSFilterCondition] = Field(default_factory=list)
-    soft_filters: list[CTSFilterCondition] = Field(default_factory=list)
-    exclude_ids: list[str] = Field(default_factory=list)
+    native_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
     page: int = 1
     page_size: int = 10
     rationale: str
@@ -110,6 +312,9 @@ class CTSQuery(BaseModel):
 class SearchAttempt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    city: str | None = None
+    phase: LocationExecutionPhase | None = None
+    batch_no: int | None = None
     attempt_no: int
     requested_page: int
     requested_page_size: int
@@ -122,6 +327,21 @@ class SearchAttempt(BaseModel):
     exhausted_reason: str | None = None
     adapter_notes: list[str] = Field(default_factory=list)
     request_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class CitySearchSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    city: str
+    phase: LocationExecutionPhase
+    batch_no: int
+    requested_count: int
+    unique_new_count: int
+    shortage_count: int
+    start_page: int
+    next_page: int
+    fetch_attempt_count: int
+    exhausted_reason: str | None = None
 
 
 class SearchObservation(BaseModel):
@@ -137,6 +357,7 @@ class SearchObservation(BaseModel):
     new_resume_ids: list[str] = Field(default_factory=list)
     new_candidate_summaries: list[str] = Field(default_factory=list)
     adapter_notes: list[str] = Field(default_factory=list)
+    city_search_summaries: list[CitySearchSummary] = Field(default_factory=list)
 
 
 class ResumeCandidate(BaseModel):
@@ -238,16 +459,25 @@ class NormalizedResume(BaseModel):
         return " ".join(chunk for chunk in chunks if chunk)
 
 
+class ScoringPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role_title: str
+    role_summary: str
+    must_have_capabilities: list[str] = Field(default_factory=list)
+    preferred_capabilities: list[str] = Field(default_factory=list)
+    exclusion_signals: list[str] = Field(default_factory=list)
+    hard_constraints: HardConstraintSlots = Field(default_factory=HardConstraintSlots)
+    preferences: PreferenceSlots = Field(default_factory=PreferenceSlots)
+    scoring_rationale: str
+
+
 class ScoringContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     round_no: int
-    must_have_keywords: list[str] = Field(default_factory=list)
-    preferred_keywords: list[str] = Field(default_factory=list)
-    negative_keywords: list[str] = Field(default_factory=list)
-    hard_filters: list[FilterCondition] = Field(default_factory=list)
-    soft_filters: list[FilterCondition] = Field(default_factory=list)
-    scoring_rationale: str
+    scoring_policy: ScoringPolicy
+    normalized_resume: NormalizedResume
 
 
 class ScoredCandidate(BaseModel):
@@ -286,23 +516,6 @@ class ScoringFailure(BaseModel):
     latency_ms: int | None = None
 
 
-class ReflectionDecision(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    strategy_assessment: str
-    quality_assessment: str
-    coverage_assessment: str
-    adjust_keywords: list[str] = Field(default_factory=list)
-    adjust_negative_keywords: list[str] = Field(default_factory=list)
-    adjust_hard_filters: list[FilterCondition] = Field(default_factory=list)
-    adjust_soft_filters: list[FilterCondition] = Field(default_factory=list)
-    decision: DecisionType
-    stop_reason: str | None = None
-    reflection_summary: str
-    strategy_changes: list[str] = Field(default_factory=list)
-    hard_filter_relaxation_reason: str | None = None
-
-
 class TopPoolEntryView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -325,6 +538,7 @@ class SearchObservationView(BaseModel):
     exhausted_reason: str | None = None
     new_candidate_summaries: list[str] = Field(default_factory=list)
     adapter_notes: list[str] = Field(default_factory=list)
+    city_search_summaries: list[CitySearchSummary] = Field(default_factory=list)
 
 
 class ReflectionSummaryView(BaseModel):
@@ -333,25 +547,26 @@ class ReflectionSummaryView(BaseModel):
     decision: DecisionType
     stop_reason: str | None = None
     reflection_summary: str
-    strategy_changes: list[str] = Field(default_factory=list)
 
 
-class ControllerStateView(BaseModel):
+class ControllerContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    full_jd: str
+    full_notes: str
+    requirement_sheet: RequirementSheet
     round_no: int
     min_rounds: int
     max_rounds: int
     target_new: int
-    jd_summary: str
-    notes_summary: str
-    current_strategy: SearchStrategy
+    requirement_digest: RequirementDigest | None = None
+    query_term_pool: list[QueryTermCandidate] = Field(default_factory=list)
     current_top_pool: list[TopPoolEntryView] = Field(default_factory=list)
     latest_search_observation: SearchObservationView | None = None
     previous_reflection: ReflectionSummaryView | None = None
+    latest_reflection_keyword_advice: ReflectionKeywordAdvice | None = None
+    latest_reflection_filter_advice: ReflectionFilterAdvice | None = None
     shortage_history: list[int] = Field(default_factory=list)
-    consecutive_shortage_rounds: int = 0
-    tool_capability_notes: list[str] = Field(default_factory=list)
 
 
 class ControllerDecision(BaseModel):
@@ -360,9 +575,28 @@ class ControllerDecision(BaseModel):
     thought_summary: str
     action: ControllerAction
     decision_rationale: str
-    working_strategy: SearchStrategy | None = None
-    cts_query: CTSQuery | None = None
+    proposed_query_terms: list[str] | None = None
+    proposed_filter_plan: ProposedFilterPlan | None = None
+    response_to_reflection: str | None = None
     stop_reason: str | None = None
+
+    @model_validator(mode="after")
+    def validate_action_fields(self) -> ControllerDecision:
+        if self.action == "search_cts":
+            if self.proposed_query_terms is None:
+                raise ValueError("proposed_query_terms is required when action=search_cts")
+            if self.proposed_filter_plan is None:
+                raise ValueError("proposed_filter_plan is required when action=search_cts")
+            if self.stop_reason is not None:
+                raise ValueError("stop_reason must be null when action=search_cts")
+            return self
+        if self.stop_reason is None:
+            raise ValueError("stop_reason is required when action=stop")
+        if self.proposed_query_terms is not None:
+            raise ValueError("proposed_query_terms must be null when action=stop")
+        if self.proposed_filter_plan is not None:
+            raise ValueError("proposed_filter_plan must be null when action=stop")
+        return self
 
 
 class PoolDecision(BaseModel):
@@ -403,6 +637,63 @@ class FinalResult(BaseModel):
     stop_reason: str
     candidates: list[FinalCandidate]
     summary: str
+
+
+class ReflectionContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    round_no: int
+    full_jd: str
+    full_notes: str
+    requirement_sheet: RequirementSheet
+    current_retrieval_plan: RoundRetrievalPlan
+    search_observation: SearchObservation
+    search_attempts: list[SearchAttempt] = Field(default_factory=list)
+    top_candidates: list[ScoredCandidate] = Field(default_factory=list)
+    dropped_candidates: list[ScoredCandidate] = Field(default_factory=list)
+    scoring_failures: list[ScoringFailure] = Field(default_factory=list)
+    sent_query_history: list[SentQueryRecord] = Field(default_factory=list)
+
+
+class FinalizeContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    run_dir: str
+    rounds_executed: int
+    stop_reason: str
+    top_candidates: list[ScoredCandidate] = Field(default_factory=list)
+    requirement_digest: RequirementDigest | None = None
+    sent_query_history: list[SentQueryRecord] = Field(default_factory=list)
+
+
+class RoundState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    round_no: int
+    controller_decision: ControllerDecision
+    retrieval_plan: RoundRetrievalPlan
+    cts_queries: list[CTSQuery] = Field(default_factory=list)
+    search_observation: SearchObservation | None = None
+    search_attempts: list[SearchAttempt] = Field(default_factory=list)
+    top_pool_ids: list[str] = Field(default_factory=list)
+    dropped_candidate_ids: list[str] = Field(default_factory=list)
+    reflection_advice: ReflectionAdvice | None = None
+
+
+class RunState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input_truth: InputTruth
+    requirement_sheet: RequirementSheet
+    scoring_policy: ScoringPolicy
+    retrieval_state: RetrievalState
+    seen_resume_ids: list[str] = Field(default_factory=list)
+    candidate_store: dict[str, ResumeCandidate] = Field(default_factory=dict)
+    normalized_store: dict[str, NormalizedResume] = Field(default_factory=dict)
+    scorecards_by_resume_id: dict[str, ScoredCandidate] = Field(default_factory=dict)
+    top_pool_ids: list[str] = Field(default_factory=list)
+    round_history: list[RoundState] = Field(default_factory=list)
 
 
 def stable_fallback_resume_id(payload: dict[str, Any]) -> str:

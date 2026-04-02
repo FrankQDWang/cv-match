@@ -8,15 +8,21 @@ from pydantic import BaseModel, Field
 
 from cv_match.clients.cts_models import Candidate, CandidateSearchRequest, CandidateSearchResponse
 from cv_match.config import AppSettings
+from cv_match.locations import normalize_location, normalize_locations
 from cv_match.mock_data import load_mock_resume_corpus
-from cv_match.models import CTSFilterCondition, CTSQuery, ResumeCandidate, stable_fallback_resume_id
+from cv_match.models import CTSQuery, ResumeCandidate, stable_fallback_resume_id
 
-SAFE_FIELD_MAPPING = {
-    "company": "company",
-    "position": "position",
-    "school": "school",
-    "work_content": "workContent",
-    "location": "location",
+ALLOWED_NATIVE_FILTERS = {
+    "company",
+    "position",
+    "school",
+    "workContent",
+    "location",
+    "degree",
+    "schoolType",
+    "workExperienceRange",
+    "gender",
+    "age",
 }
 
 
@@ -45,15 +51,18 @@ class BaseCTSClient:
             "pageSize": query.page_size,
         }
         notes = [
-            "CTS OpenAPI does not publish exclude_ids support; seen ids are filtered locally.",
+            "Dedup stays in runtime; CTS request does not receive seen ids.",
             "The project never forwards the full JD to CTS.",
             *query.adapter_notes,
         ]
-        for filter_item in query.hard_filters + query.soft_filters:
-            target = SAFE_FIELD_MAPPING[filter_item.field]
-            if target in payload and payload[target] not in (None, "", []):
-                continue
-            payload[target] = filter_item.value
+        for field, value in query.native_filters.items():
+            if field not in ALLOWED_NATIVE_FILTERS:
+                raise ValueError(f"Unsupported native filter: {field}")
+            if field != "location" and isinstance(value, list):
+                raise ValueError(f"Native filter `{field}` must not be a list.")
+            if field in {"degree", "schoolType", "workExperienceRange", "gender", "age"} and not isinstance(value, int):
+                raise ValueError(f"Native filter `{field}` must be an integer code.")
+            payload[field] = value
         request = CandidateSearchRequest.model_validate(payload)
         return request.model_dump(exclude_none=True), notes
 
@@ -113,9 +122,9 @@ class BaseCTSClient:
             source_round=round_no,
             age=candidate.age,
             gender=candidate.gender,
-            now_location=candidate.nowLocation,
+            now_location=normalize_location(candidate.nowLocation),
             work_year=candidate.workYear,
-            expected_location=candidate.expectedLocation,
+            expected_location=normalize_location(candidate.expectedLocation),
             expected_job_category=candidate.expectedJobCategory,
             expected_industry=candidate.expectedIndustry,
             expected_salary=candidate.expectedSalary,
@@ -164,35 +173,40 @@ class MockCTSClient(BaseCTSClient):
         super().__init__(settings)
         self.corpus = load_mock_resume_corpus()
 
-    def _candidate_field_text(self, candidate: ResumeCandidate, filter_item: CTSFilterCondition) -> str:
+    def _candidate_field_text(self, candidate: ResumeCandidate, field: str) -> str:
         mapping = {
             "location": " ".join([candidate.now_location or "", candidate.expected_location or ""]),
             "position": candidate.expected_job_category or "",
             "company": " ".join(candidate.work_experience_summaries),
             "school": " ".join(candidate.education_summaries),
-            "work_content": " ".join(candidate.work_summaries + candidate.work_experience_summaries),
+            "workContent": " ".join(candidate.work_summaries + candidate.work_experience_summaries),
         }
-        return mapping.get(filter_item.field, candidate.search_text)
+        return mapping.get(field, candidate.search_text)
 
-    def _matches_filter(self, candidate: ResumeCandidate, filter_item: CTSFilterCondition) -> bool:
-        haystack = self._candidate_field_text(candidate, filter_item).casefold()
-        if isinstance(filter_item.value, list):
-            return any(str(value).casefold() in haystack for value in filter_item.value)
-        return str(filter_item.value).casefold() in haystack
+    def _matches_filter(self, candidate: ResumeCandidate, field: str, value: str | int | list[str]) -> bool:
+        if field == "location":
+            candidate_locations = normalize_locations([candidate.now_location, candidate.expected_location])
+            if isinstance(value, list):
+                return any(normalize_location(str(item)) in candidate_locations for item in value)
+            return normalize_location(str(value)) in candidate_locations
+        haystack = self._candidate_field_text(candidate, field).casefold()
+        if isinstance(value, str) and "|" in value:
+            parts = [part.strip() for part in value.split("|") if part.strip()]
+            return any(part.casefold() in haystack for part in parts)
+        if isinstance(value, list):
+            return any(str(item).casefold() in haystack for item in value)
+        return str(value).casefold() in haystack
 
     def _retrieval_score(self, candidate: ResumeCandidate, query: CTSQuery) -> int:
         text = candidate.search_text.casefold()
         score = 0
-        for keyword in query.keywords:
+        for keyword in query.query_terms:
             if keyword.casefold() in text:
                 score += 6
-        for filter_item in query.hard_filters:
-            if not self._matches_filter(candidate, filter_item):
+        for field, value in query.native_filters.items():
+            if not self._matches_filter(candidate, field, value):
                 return -999
             score += 4
-        for filter_item in query.soft_filters:
-            if self._matches_filter(candidate, filter_item):
-                score += 2
         return score
 
     def search(self, query: CTSQuery, *, round_no: int, trace_id: str) -> CTSFetchResult:
@@ -211,7 +225,6 @@ class MockCTSClient(BaseCTSClient):
             candidate.model_copy(update={"source_round": round_no})
             for _, _, candidate in scored[start:end]
         ]
-        notes.append("Mock CTS also leaves exclude_ids to the runtime so dedup and shortage paths are exercised.")
         return CTSFetchResult(
             request_payload=payload,
             candidates=selected,

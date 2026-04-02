@@ -8,7 +8,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 ReasoningEffort = Literal["low", "medium", "high"]
-MODEL_FIELDS = ("strategy_model", "scoring_model", "finalize_model", "reflection_model")
+MODEL_FIELDS = (
+    "requirements_model",
+    "controller_model",
+    "scoring_model",
+    "finalize_model",
+    "reflection_model",
+)
 
 
 def _is_qualified_model_id(model_id: str) -> bool:
@@ -32,7 +38,8 @@ class AppSettings(BaseSettings):
     cts_timeout_seconds: float = 20.0
     cts_spec_path: str = "cts.validated.yaml"
 
-    strategy_model: str = "openai-responses:gpt-5.4-mini"
+    requirements_model: str = "openai-responses:gpt-5.4-mini"
+    controller_model: str = "openai-responses:gpt-5.4-mini"
     scoring_model: str = "openai-responses:gpt-5.4-mini"
     finalize_model: str = "openai-responses:gpt-5.4-mini"
     reflection_model: str = "openai-responses:gpt-5.4"

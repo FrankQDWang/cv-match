@@ -60,9 +60,10 @@ python "Pydantic AI" "resume matching"
 3. 如果对应字段为空，不得阻断流程。
 4. `location` 是特例：
    - 一旦在 `JD` 或 `notes` 中出现，就必须进入业务真相
-   - 它默认是 `pinned filter`
-   - `Controller` 不应随意取消地点约束
-5. `location` 的 canonical vocabulary 不应被限制为截图中的几个快捷选项，而应覆盖中国全国省级行政区与地级市标准名称。
+   - `hard_constraints.locations` 保存完整允许地点集合
+   - `preferences.preferred_locations` 只在多地点且有明确优先级时使用
+   - `Runtime` 负责把地点语义展开成每轮 `location_execution_plan`
+5. `Controller` 与 `Reflection` 都不直接拥有 `location` filter 的增删权；地点执行顺序和预算分配由 runtime 决定。
 6. 除 `location` 之外，其他 filter 即使来自 `JD` 或 `notes`，`Controller` 也可以在后续轮次根据检索效果决定保留、取消或新增。
 7. `经验要求` 与 `年龄要求` 必须先抽成数值语义，再考虑是否映射到 CTS 的枚举字段。
 8. 发给 CTS 的枚举类值，必须优先使用 CTS 客户端可见的枚举词作为 canonical label，而不是自由文本。
@@ -138,7 +139,7 @@ python "Pydantic AI" "resume matching"
    - ranking
    - reflection
 10. `Controller` 是每一轮 query terms 的唯一 owner，包括第 `1` 轮，并且必须看到完整 `JD + notes + RequirementSheet`。
-11. `Controller` 同时负责每轮 filter 组合决策，其中 `location` 默认 pinned，其他 filter 允许逐轮调整。
+11. `Controller` 同时负责每轮非地点 filter 组合决策；地点集合来自 `RequirementSheet`，地点执行计划由 runtime 生成。
 12. `Reflection` 是 `Controller` 的 `critic`，必须看到完整 `JD + notes + RequirementSheet`，但只输出建议，不直接决定 query terms 或最终 filter 组合。
 13. `Context Builder` 成为一等组件，由 runtime 为不同阶段自动拼装最小且完整的上下文。
 
@@ -156,7 +157,7 @@ python "Pydantic AI" "resume matching"
 | --- | --- | --- | --- |
 | `CLI` | interface | 否 | 读取 `JD + notes`，启动 run |
 | `Runtime` | workflow controller | 否 | 执行全流程、控制预算、写审计 |
-| `Requirement Extractor` | structured processor | 是/混合 | 从完整输入抽取 `RequirementSheet` |
+| `Requirement Extractor` | structured processor | 是 | 从完整输入抽取 `RequirementExtractionDraft`，再经 deterministic normalization 生成 `RequirementSheet` |
 | `Query Plan Canonicalizer` | deterministic planner | 否 | 对 `Controller` 提议的 query terms 与 filter plan 做预算校验、规范化，并构建 `Round Retrieval Plan` |
 | `ReAct Controller` | agent | 是 | 决定执行 `search_cts` 或停止，并决定本轮 query terms |
 | `search_cts` | tool | 否 | 调用 CTS 检索 |
@@ -173,7 +174,8 @@ python "Pydantic AI" "resume matching"
 flowchart TD
     A["CLI: full JD + full notes"] --> B["Runtime 初始化 InputTruth / RunState / RunTracer"]
     B --> C["Requirement Extractor"]
-    C --> D["RequirementSheet"]
+    C --> C2["Requirement Draft Normalization"]
+    C2 --> D["RequirementSheet"]
     D --> E["Build frozen ScoringPolicy"]
     D --> F["Build ControllerContext"]
     F --> G["ReAct Controller"]
@@ -297,7 +299,7 @@ class HardConstraintSlots(BaseModel):
 1. 所有字段都允许为空。
 2. 为空表示“未明确提出”，不是“匹配失败”。
 3. 只有在 `JD/notes` 明确要求时才填充。
-4. `locations` 一旦抽出，默认应视为 `pinned`。
+4. `locations` 一旦抽出，表示允许地点集合；它不再作为 controller-managed pinned filter 处理。
 
 ### 5.5 `PreferenceSlots`
 
@@ -321,15 +323,14 @@ class PreferenceSlots(BaseModel):
 `v0.2` 对 filter 的 ownership 规定如下：
 
 - `Requirement Extractor`
-  - 负责把 `JD + notes` 中出现的 filter 事实抽出来
+  - 负责把 `JD + notes` 中出现的 filter 事实抽成 `RequirementExtractionDraft`
 - `Controller`
-  - 负责决定本轮真正发送哪些 filter
-  - 对除 `location` 外的其他 filter，可以按轮次动态保留、取消或新增
+  - 负责决定本轮真正发送哪些非地点 filter
 - `Reflection`
   - 只能评价 filter 是否过严、过松、缺失或无效
   - 只能给建议，不能直接改写最终 filter 计划
 - `Runtime`
-  - 负责校验 pinned 规则和枚举合法性
+  - 负责地点执行计划、filter 校验和枚举合法性
 
 ### 5.5.1 约束值对象
 
@@ -350,22 +351,19 @@ class SchoolTypeRequirement(BaseModel):
 - `canonical_degree` 与 `canonical_types` 是业务归一化结果
 - 是否可投影到 CTS 枚举，取决于本地 mapping table，而不取决于抽取本身
 
-### 5.5.3 Pinned filter
+### 5.5.3 Location execution ownership
 
-`pinned filter` 表示：
+`location` 不再走 `pinned_filters` 语义，而是拆成三层：
 
-> 一旦从业务输入中确认，该字段在检索计划中默认保留，`Controller` 不能在没有明确理由的情况下取消。
+1. `hard_constraints.locations`：完整允许地点集合
+2. `preferences.preferred_locations`：多地点下的优先级顺序
+3. `location_execution_plan`：runtime 按 `round_no + target_new` 动态生成的本轮执行计划
 
-`v0.2` 当前只把 `location` 设为默认 pinned。
+结果是：
 
-原因：
-
-1. 地点通常是招聘检索中的一等约束。
-2. 地点可以用全国省市 taxonomy 做稳定标准化。
-3. 一旦去掉地点约束，召回面会发生非常剧烈的变化。
-4. 2026-03-31 的 live CTS probe 表明：真实省市名称通常能生效，而未知值可能被接口静默忽略，因此更需要 runtime 侧强约束。
-
-除 `location` 以外，其他 filter 默认都不是 pinned。
+1. `Controller` 不再通过 `proposed_filter_plan` 决定 location。
+2. `Reflection` 只能在 prose 中评价地点覆盖，不返回 `location` filter advice。
+3. runtime 对每个城市单独发 CTS 请求，并负责预算分配、余数轮转和续页。
 
 ### 5.6 为什么不再使用 `soft filter`
 
@@ -537,8 +535,8 @@ class ReflectionFilterAdvice(BaseModel):
 规则：
 
 1. `Reflection` 可以评价 filter 是否过严、过松或缺失。
-2. `Reflection` 可以建议 controller 取消或新增除 `location` 外的其他 filter。
-3. `Reflection` 不应建议取消已经抽出的 `location`，除非存在明确业务矛盾。
+2. `Reflection` 可以建议 controller 取消或新增非地点 filter。
+3. `Reflection` 可以在 prose 中评价地点覆盖，但不返回 `location` filter advice。
 
 ### 6.8 Query 决策与 canonicalization
 
@@ -663,9 +661,9 @@ class CTSQuery(BaseModel):
 
 1. 这些字段只要在 `JD/notes` 中出现，就必须进入 `RequirementSheet`。
 2. 进入 `RequirementSheet` 不等于必须每轮都发给 CTS。
-3. `location` 若存在，默认必须进入每轮 `Round Retrieval Plan`。
+3. `location` 若存在，默认必须进入每轮 `Round Retrieval Plan.location_execution_plan`。
 4. 其他字段是否进入每轮计划，由 `Controller` 决定。
-5. `locations` 的 canonical vocabulary 应覆盖全国省级行政区与地级市，不以 CTS 客户端当前截图中的快捷入口为限。
+5. `preferred_locations` 只在存在多个允许地点且输入给出明确顺序时保留。
 
 ### 7.3 CTS 原生字段
 
@@ -688,8 +686,8 @@ class CTSQuery(BaseModel):
 2. `CTS Adapter` 再把这些 canonical labels 映射成 API 需要的 payload 值。
 3. 如果 API 恰好接受这些词，则 adapter 可直传。
 4. 如果 API 实际接受 code 或 integer，则 adapter 负责转码。
-5. `location` 是特例：业务层 canonical value 应优先使用中国标准行政区名称，adapter 再决定是否以全称或兼容别名下发。
-6. 2026-03-31 live probe 表明，`location` 对真实省市名通常会生效，但对未知值可能静默忽略，因此“HTTP 200”不代表 location 过滤一定生效。
+5. `location` 是特例：业务层只保留原始允许地点集合和优先级；真正的 CTS `location` 字段只在 runtime 的单城市 dispatch 中出现。
+6. CTS 已提供地点别名映射，因此本仓库不再维护本地 geography taxonomy 或 alias source-of-truth。
 
 ### 7.4 `ConstraintProjectionResult`
 
@@ -729,7 +727,7 @@ class RuntimeConstraint(BaseModel):
 
 | 业务槽位 | 可投影 CTS 字段 | 规则 |
 | --- | --- | --- |
-| `locations` | `location` | 可发送字符串或字符串数组 |
+| `locations` | `location` | 只在 runtime 单城市 dispatch 时发送单元素数组 |
 | `company_names` | `company` | 多个公司名需先规则化后发送 |
 | 学校明确名称 | `school` | 仅在存在学校名时可发送 |
 | 岗位名称线索 | `position` | 来自 role title 或 JD 头部摘要 |
@@ -737,7 +735,7 @@ class RuntimeConstraint(BaseModel):
 
 附加规则：
 
-1. `location` 若已抽出且非空，应默认进入每轮 CTS query。
+1. `location` 若已抽出且非空，应默认进入每轮 `location_execution_plan`，由 runtime 逐城市下发。
 2. `company_names` 是否进入 CTS query，由 `Controller` 按轮次决定。
 3. 文本字段若为空或无法可靠规则化，则不发送，但不得报错。
 
@@ -757,26 +755,16 @@ class RuntimeConstraint(BaseModel):
    - 协议层 payload value
 4. 无映射表时，字段只能保留为 `runtime-only constraint`
 
-### 7.6.1 地点字段不是截图枚举，而是全国 taxonomy
+### 7.6.1 地点字段不做本地枚举表
 
-`location` 不应被建成“截图中可见值”的有限枚举。
+`location` 不再被建成本地 taxonomy 或 alias 表。
 
-`v0.2` 的要求是：
+`v0.2` 当前要求是：
 
-1. `location` 的 canonical vocabulary 覆盖中国全国省级行政区与地级市标准名称。
-2. 直辖市、省、自治区、特别行政区都应作为标准值支持。
-3. 常见城市短名，例如 `上海`、`北京`、`深圳`，可以作为 alias 接受，但默认序列化仍优先使用标准全称，例如 `上海市`、`北京市`、`深圳市`。
-4. 截图中的地点只应理解为 UI 快捷入口，不是 location 全量枚举定义。
-5. 2026-03-31 的 live probe 已确认：
-   - 34 个省级行政区名称可被 CTS 接受并显著改变结果总量
-   - 多个典型城市名称可被 CTS 接受并显著改变结果总量
-   - 常见短名通常也可被接受
-   - 未知值例如 `火星市` 不会报错，但会回退到近似 baseline 结果
-6. 因此 `location` 的 adapter 设计必须是 `taxonomy-first + probe-aware`，而不能依赖 CTS 侧报错兜底。
-
-详见同目录文档：
-
-- `docs/v-0.2/cts-location-probing.md`
+1. `RequirementSheet` 只保存从输入中抽出的允许地点集合和优先级。
+2. runtime 在每轮把地点拆成单城市 CTS dispatch。
+3. CTS 侧别名映射视为上游能力，本仓库不再维护本地 geography source-of-truth。
+4. 因此 `location` 的核心问题不再是“本地标准化成什么”，而是“如何按允许集合、优先级和预算稳定执行”。
 
 ### 7.6.2 其他客户端枚举词
 
@@ -792,12 +780,11 @@ class RuntimeConstraint(BaseModel):
 
 1. `design.md` 只保留枚举字段的建模规则、投影规则和 ownership。
 2. 当前已观察到的客户端枚举值，统一维护在 [cts-enum-observations.md](/Users/frankqdwang/Agents/cv-match/docs/v-0.2/cts-enum-observations.md)。
-3. `location` 的 live probe 与全国 geography 结论，统一维护在 [cts-location-probing.md](/Users/frankqdwang/Agents/cv-match/docs/v-0.2/cts-location-probing.md)。
-4. 后续若开始实现稳定的 `canonical label -> CTS payload value` 映射表，应再新增一份专门的 mapping source-of-truth 文档或代码表，而不是继续把列表堆回设计文档。
+3. 后续若开始实现稳定的 `canonical label -> CTS payload value` 映射表，应再新增一份专门的 mapping source-of-truth 文档或代码表，而不是继续把列表堆回设计文档。
 
 说明：
 
-1. `location` 不适用“仅靠截图枚举”的建模方式，应单独使用全国 geography taxonomy。
+1. `location` 不再使用本地 geography taxonomy。
 2. 其他字段当前以客户端可见枚举词作为 canonical label 候选集，具体值以引用文档为准。
 3. 若截图之外还有更多枚举，应补充到 reference 文档和后续 mapping table。
 4. `Controller` 不应输出 reference 文档之外的自由枚举文本，除非该字段明确允许 `自定义`。
@@ -1072,7 +1059,8 @@ class FinalizeContext(BaseModel): ...
 - `sent_query_history.json`
 - `rounds/round_xx/retrieval_plan.json`
 - `rounds/round_xx/controller_decision.json`
-- `rounds/round_xx/sent_query_record.json`
+- `rounds/round_xx/sent_query_records.json`
+- `rounds/round_xx/cts_queries.json`
 - `rounds/round_xx/search_attempts.json`
 - `rounds/round_xx/search_observation.json`
 - `rounds/round_xx/scorecards.jsonl`
@@ -1183,7 +1171,7 @@ class RoundState(BaseModel):
     round_no: int
     controller_decision: ControllerDecision
     retrieval_plan: RoundRetrievalPlan
-    cts_query: CTSQuery
+    cts_queries: list[CTSQuery] = []
     search_observation: SearchObservation | None = None
     top_pool_ids: list[str] = []
     reflection_advice: ReflectionAdvice | None = None
@@ -1253,7 +1241,7 @@ class ReflectionAdvice(BaseModel):
 4. 应当建议下一轮增加哪些 term，扩大哪类检索面？
 5. 应当建议下一轮丢弃哪些 term，避免继续噪音召回？
 6. 当前 filter 组合是否过严导致召回不足？
-7. 除 `location` 外，是否有某些 filter 应该被取消或新增？
+7. 是否有某些非地点 filter 应该被取消或新增？
 
 ---
 
@@ -1309,9 +1297,9 @@ class ProposedFilterPlan(BaseModel):
 
 规则：
 
-1. `location` 若存在，应进入 `pinned_filters`。
+1. `proposed_filter_plan` 不包含 `location`。
 2. 其他来自 `JD/notes` 的字段可以进入 `optional_filters`，也可以在有理由时进入 `dropped_filter_fields`。
-3. `added_filter_fields` 表示 controller 在本轮主动增加的新 filter 字段。
+3. `added_filter_fields` 表示 controller 在本轮主动增加的新非地点 filter 字段。
 
 ### 12.4 为什么保留 Controller
 
@@ -1404,6 +1392,12 @@ class SentQueryRecord(BaseModel):
   - 承担：
     - requirement draft normalization
     - scoring policy bootstrap
+- `requirements/extractor.py`
+  - 承担：
+    - `RequirementExtractionDraft` 的 LLM 抽取
+- `prompts/requirements.md`
+  - 承担：
+    - requirement extraction prompt contract
 - `retrieval/query_plan.py`
   - 承担 query plan canonicalization
 - `retrieval/filter_projection.py`
@@ -1411,6 +1405,7 @@ class SentQueryRecord(BaseModel):
 - `models.py`
   - 新增：
     - `InputTruth`
+    - `RequirementExtractionDraft`
     - `RequirementSheet`
     - `HardConstraintSlots`
     - `PreferenceSlots`

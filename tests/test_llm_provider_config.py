@@ -9,19 +9,21 @@ from cv_match.llm import build_model, build_model_settings, model_provider, pref
 
 def test_app_settings_rejects_unqualified_model_ids() -> None:
     with pytest.raises(ValidationError, match="provider:model"):
-        AppSettings(_env_file=None, strategy_model="gpt-5.4-mini")
+        AppSettings(_env_file=None, requirements_model="gpt-5.4-mini")
 
 
 def test_app_settings_accepts_fully_qualified_model_ids() -> None:
     settings = AppSettings(
         _env_file=None,
-        strategy_model="openai-responses:gpt-5.4-mini",
+        requirements_model="openai-responses:gpt-5.4-mini",
+        controller_model="openai-responses:gpt-5.4-mini",
         scoring_model="anthropic:claude-sonnet-4-5",
         finalize_model="google-gla:gemini-2.5-flash",
         reflection_model="openai-responses:gpt-5.4",
     )
 
-    assert settings.strategy_model == "openai-responses:gpt-5.4-mini"
+    assert settings.requirements_model == "openai-responses:gpt-5.4-mini"
+    assert settings.controller_model == "openai-responses:gpt-5.4-mini"
     assert settings.scoring_model == "anthropic:claude-sonnet-4-5"
     assert settings.finalize_model == "google-gla:gemini-2.5-flash"
 
@@ -80,7 +82,8 @@ def test_preflight_models_surfaces_provider_credential_errors(
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     settings = AppSettings(_env_file=None).with_overrides(
-        strategy_model=model_id,
+        requirements_model=model_id,
+        controller_model=model_id,
         scoring_model=model_id,
         reflection_model=model_id,
         finalize_model=model_id,

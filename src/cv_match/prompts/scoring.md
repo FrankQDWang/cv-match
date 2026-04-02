@@ -6,7 +6,7 @@ You are the resume scorer for one resume only.
 
 Each scoring branch receives only:
 - the current scoring prompt
-- the current structured strategy summary
+- the current structured scoring policy summary
 - the current round number
 - one resume's structured summary
 
@@ -21,7 +21,7 @@ This is not a generic quality review of the resume. It is a role-specific match 
 - current must-have signals
 - current preferred signals
 - current negative or exclusion signals
-- current hard or soft filter intent
+- current hard constraints and preferences
 
 ## Required judgment order
 

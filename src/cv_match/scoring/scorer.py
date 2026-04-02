@@ -8,10 +8,9 @@ from pydantic_ai import Agent
 from cv_match.config import AppSettings
 from cv_match.llm import build_model, build_model_settings
 from cv_match.models import (
-    NormalizedResume,
     ScoredCandidate,
-    ScoringContext,
     ScoringFailure,
+    ScoringContext,
 )
 from cv_match.prompting import LoadedPrompt, json_block
 
@@ -35,24 +34,28 @@ class ResumeScorer:
     def score_candidates_parallel(
         self,
         *,
-        candidates: list[NormalizedResume],
-        context: ScoringContext,
+        contexts: list[ScoringContext],
         tracer: object,
     ) -> tuple[list[ScoredCandidate], list[ScoringFailure]]:
-        return asyncio.run(self._score_candidates_parallel(candidates=candidates, context=context, tracer=tracer))
+        return asyncio.run(
+            self._score_candidates_parallel(
+                contexts=contexts,
+                tracer=tracer,
+            )
+        )
 
     async def _score_candidates_parallel(
         self,
         *,
-        candidates: list[NormalizedResume],
-        context: ScoringContext,
+        contexts: list[ScoringContext],
         tracer: object,
     ) -> tuple[list[ScoredCandidate], list[ScoringFailure]]:
         semaphore = asyncio.Semaphore(self.settings.scoring_max_concurrency)
         scored: list[ScoredCandidate] = []
         failures: list[ScoringFailure] = []
 
-        async def worker(index: int, candidate: NormalizedResume) -> None:
+        async def worker(index: int, context: ScoringContext) -> None:
+            candidate = context.normalized_resume
             branch_id = f"r{context.round_no}-b{index + 1}-{candidate.resume_id}"
             tracer.emit(
                 "score_branch_started",
@@ -64,7 +67,6 @@ class ResumeScorer:
             )
             async with semaphore:
                 result, failure = await self._score_one_with_retry(
-                    candidate=candidate,
                     context=context,
                     branch_id=branch_id,
                     tracer=tracer,
@@ -74,21 +76,24 @@ class ResumeScorer:
             if failure is not None:
                 failures.append(failure)
 
-        await asyncio.gather(*(worker(index, candidate) for index, candidate in enumerate(candidates)))
+        await asyncio.gather(*(worker(index, context) for index, context in enumerate(contexts)))
         return scored, failures
 
     async def _score_one_with_retry(
         self,
         *,
-        candidate: NormalizedResume,
         context: ScoringContext,
         branch_id: str,
         tracer: object,
     ) -> tuple[ScoredCandidate | None, ScoringFailure | None]:
+        candidate = context.normalized_resume
         for attempt in (1, 2):
             started_at = perf_counter()
             try:
-                result = await self._score_one_live(candidate=candidate, context=context, attempt=attempt)
+                result = await self._score_one_live(
+                    context=context,
+                    attempt=attempt,
+                )
                 result = result.model_copy(
                     update={
                         "resume_id": candidate.resume_id,
@@ -154,14 +159,12 @@ class ResumeScorer:
     async def _score_one_live(
         self,
         *,
-        candidate: NormalizedResume,
         context: ScoringContext,
         attempt: int,
     ) -> ScoredCandidate:
         prompt = "\n\n".join(
             [
                 json_block("SCORING_CONTEXT", context.model_dump(mode="json")),
-                json_block("NORMALIZED_RESUME", candidate.model_dump(mode="json")),
                 json_block("CALL_METADATA", {"attempt": attempt}),
             ]
         )
