@@ -165,6 +165,7 @@ python "Pydantic AI" "resume matching"
 | `Resume Normalizer` | processor | 否 | 统一简历结构 |
 | `Resume Scorer` | LLM worker | 是 | 单简历评分 |
 | `Reflection Critic` | LLM step | 是 | 评估轮次结果并向 `Controller` 提供下一轮 query / filter 调整建议 |
+| `Finalizer` | agent | 是 | 基于最终排序结果生成 `FinalResult` |
 | `Context Builder` | deterministic builder | 否 | 给各阶段自动拼装最小完备上下文 |
 | `RunTracer` | infra | 否 | 写 `trace.log`、`events.jsonl` 和审计产物 |
 
@@ -203,6 +204,32 @@ flowchart TD
 7. scoring policy 必须稳定，不能随着每轮检索词波动而漂移。
 8. `RunState` 是在线唯一真相源，其他给 LLM 的输入都只是 context projection。
 9. context 必须由系统按需组装，而不是交给模型自由选择。
+
+### 4.4 LLM 结构化输出契约
+
+`v0.2` 当前实现把结构化输出视为硬契约，而不是 prompt 习惯。
+
+规则如下：
+
+1. 5 个 LLM 调用点都通过 `pydantic-ai` 输出结构化结果。
+2. 对当前主路径模型，必须使用 provider-native structured output，并要求 strict schema。
+3. 不允许静默退回 tool mode、prompted JSON 或自由文本解析。
+4. retry 只允许用于结构化输出修复：
+   - `retries=0`
+   - `output_retries=1`
+5. 不允许额外添加网络失败、超时、fallback model chain 等通用重试链。
+6. 只有在 schema 之外仍有真实业务约束时，才允许使用 `output_validator + ModelRetry`。
+
+当前已落地的 validator 重点包括：
+
+- `Controller`
+  - 上一轮存在 reflection 时，必须返回 `response_to_reflection`
+  - `action=search_cts` 时，`proposed_query_terms` 不得为空
+- `Finalizer`
+  - 不得编造 `resume_id`
+  - 不得重复候选人
+  - rank 必须从 `1` 连续递增
+  - 不得改写 `source_round` 或打乱 runtime 排序
 
 ---
 
@@ -551,7 +578,7 @@ query term 的选择由 `Controller` 完成，但必须经过 runtime 的 determ
    - 去重
    - budget 校验
    - deterministic serialization
-3. 若 budget 不符，优先触发 controller repair；若仍不符，应直接 fail-fast
+3. 若 budget 不符，当前实现直接 fail-fast，不做隐式 repair
 
 示意算法：
 
@@ -598,6 +625,7 @@ class RoundRetrievalPlan(BaseModel):
     keyword_query: str
     projected_cts_filters: dict[str, str | int | list[str]]
     runtime_only_constraints: list[RuntimeConstraint]
+    location_execution_plan: LocationExecutionPlan
     target_new: int
     rationale: str
 ```
@@ -608,6 +636,7 @@ class RoundRetrievalPlan(BaseModel):
 2. `keyword_query` 必须是 `query_terms` 的 deterministic serialization
 3. `projected_cts_filters` 只能包含安全映射后的字段
 4. `runtime_only_constraints` 不得静默丢失
+5. `location_execution_plan` 是 runtime-owned 的本轮地点执行计划，必须与 `hard_constraints.locations` / `preferences.preferred_locations` 一致
 
 ### 6.11 最终 `CTSQuery`
 
@@ -891,7 +920,7 @@ class AgeRequirement(BaseModel):
 | `search_cts` | 结构化 `CTSQuery` | 任意自由文本 prompt |
 | `Scorer` | 冻结的 `ScoringPolicy`、一份 `NormalizedResume` | 其他候选人、检索历史 |
 | `Reflection` | 完整 `JD`、完整 `notes`、`RequirementSheet`、本轮 query/filter 计划、search outcome、scoring gap、top pool、dropped pattern | 全量原始简历全文、全量历史 event log |
-| `Finalizer` | 最终 top candidates、运行摘要、停止原因 | 全量中间态 |
+| `Finalizer` | 最终 top candidates、运行摘要、停止原因；当前实际 LLM payload 为 narrowed finalization payload | 全量中间态 |
 
 ### 8.4 `ControllerContext`
 
@@ -1047,6 +1076,17 @@ class FinalizeContext(BaseModel): ...
 - 只服务当前阶段任务
 - 目标是最小充分集，而不是完整状态镜像
 
+补充说明：
+
+1. `FinalizeContext` 仍然是正式 context projection，并会落盘到 `finalizer_context.json`。
+2. 但当前实际发给 finalizer 模型的 user payload 更窄，只包含：
+   - `run_id`
+   - `run_dir`
+   - `rounds_executed`
+   - `stop_reason`
+   - `ranked_candidates`
+3. `FinalizeContext.top_candidates` 当前还被用于 finalizer output validation，而不是全部透传到 prompt payload。
+
 ### 9.5 `Audit Store`
 
 保存在 `runs/<run_id>/` 下。
@@ -1066,10 +1106,14 @@ class FinalizeContext(BaseModel): ...
 - `rounds/round_xx/scorecards.jsonl`
 - `rounds/round_xx/reflection_context.json`
 - `rounds/round_xx/reflection_advice.json`
-- `rounds/round_xx/query_term_pool_after_reflection.json`
 - `finalizer_context.json`
-- `final_presentation.json`
 - `final_candidates.json`
+- `final_answer.md`
+
+说明：
+
+1. `query_term_pool_after_reflection.json` 当前实现未单独落盘；反思后的 query pool 变化体现在 `RunState`、`sent_query_history` 和轮次审计里。
+2. `final_presentation.json` 当前实现未单独落盘；最终展示产物为 `final_candidates.json` 与 `final_answer.md`。
 
 ### 9.6 明确不做的 memory
 
@@ -1268,14 +1312,25 @@ class ReflectionAdvice(BaseModel):
 ### 12.3 输出 schema
 
 ```python
-class ControllerDecision(BaseModel):
+class SearchControllerDecision(BaseModel):
     thought_summary: str
-    action: Literal["search_cts", "stop"]
+    action: Literal["search_cts"]
     decision_rationale: str
-    proposed_query_terms: list[str] | None = None
-    proposed_filter_plan: ProposedFilterPlan | None = None
+    proposed_query_terms: list[str]
+    proposed_filter_plan: ProposedFilterPlan
     response_to_reflection: str | None = None
-    stop_reason: str | None = None
+
+class StopControllerDecision(BaseModel):
+    thought_summary: str
+    action: Literal["stop"]
+    decision_rationale: str
+    response_to_reflection: str | None = None
+    stop_reason: str
+
+ControllerDecision = Annotated[
+    SearchControllerDecision | StopControllerDecision,
+    Field(discriminator="action"),
+]
 ```
 
 解释：
@@ -1284,6 +1339,7 @@ class ControllerDecision(BaseModel):
 - `Controller` 也是本轮 filter 组合的 owner，因此必须显式输出 `proposed_filter_plan`
 - runtime 先把这些 query/filter proposals 变成 `Round Retrieval Plan + ConstraintProjectionResult`，再由 `CTS Adapter` 生成最终 `CTSQuery`
 - `response_to_reflection` 用于记录是否采纳了 critic 的关键建议
+- `action=search_cts` 与 `action=stop` 当前是两个判别分支，不再共用一套“可空字段”模型
 
 推荐：
 
@@ -1374,11 +1430,20 @@ class ProposedFilterPlan(BaseModel):
 ```python
 class SentQueryRecord(BaseModel):
     round_no: int
+    city: str | None = None
+    phase: Literal["priority", "balanced"] | None = None
+    batch_no: int
+    requested_count: int
     query_terms: list[str]
     keyword_query: str
     source_plan_version: int
     rationale: str
 ```
+
+说明：
+
+1. `SentQueryRecord` 当前粒度是“每次城市 dispatch 一条”，不再是“每轮一条”。
+2. 多城市场景下，同一轮可能出现多条 `SentQueryRecord`。
 
 ---
 
