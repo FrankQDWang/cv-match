@@ -23,7 +23,7 @@ def _prompt(name: str) -> LoadedPrompt:
 
 def _settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    return AppSettings()
+    return AppSettings(_env_file=None)
 
 
 def _strategy() -> SearchStrategy:

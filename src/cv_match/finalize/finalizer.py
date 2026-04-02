@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 
 from cv_match.config import AppSettings
+from cv_match.llm import build_model, build_model_settings
 from cv_match.models import FinalResult, ScoredCandidate
 from cv_match.prompting import LoadedPrompt, json_block
 
@@ -19,14 +19,10 @@ class Finalizer:
     def _get_agent(self) -> Agent[None, FinalResult]:
         if self.agent is None:
             self.agent = Agent(
-                model=OpenAIResponsesModel(self.settings.finalize_model),
+                model=build_model(self.settings.finalize_model),
                 output_type=FinalResult,
                 system_prompt=self.prompt.content,
-                model_settings=OpenAIResponsesModelSettings(
-                    openai_reasoning_effort=self.settings.reasoning_effort,
-                    openai_reasoning_summary="concise",
-                    openai_text_verbosity="low",
-                ),
+                model_settings=build_model_settings(self.settings, self.settings.finalize_model),
             )
         return self.agent
 

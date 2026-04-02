@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 
 from cv_match.config import AppSettings
+from cv_match.llm import build_model, build_model_settings
 from cv_match.models import (
     ReflectionDecision,
     ScoredCandidate,
@@ -25,14 +25,10 @@ class ReflectionCritic:
     def _get_agent(self) -> Agent[None, ReflectionDecision]:
         if self.agent is None:
             self.agent = Agent(
-                model=OpenAIResponsesModel(self.settings.reflection_model),
+                model=build_model(self.settings.reflection_model),
                 output_type=ReflectionDecision,
                 system_prompt=self.prompt.content,
-                model_settings=OpenAIResponsesModelSettings(
-                    openai_reasoning_effort=self.settings.reasoning_effort,
-                    openai_reasoning_summary="concise",
-                    openai_text_verbosity="low",
-                ),
+                model_settings=build_model_settings(self.settings, self.settings.reflection_model),
             )
         return self.agent
 

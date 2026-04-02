@@ -11,6 +11,7 @@ from cv_match.config import AppSettings
 from cv_match.controller import ReActController
 from cv_match.controller.strategy_bootstrap import bootstrap_search_strategy, build_cts_query_from_strategy
 from cv_match.finalize.finalizer import Finalizer
+from cv_match.llm import model_provider, preflight_models
 from cv_match.models import (
     CTSQuery,
     ControllerDecision,
@@ -31,7 +32,7 @@ from cv_match.models import (
     scored_candidate_sort_key,
     unique_strings,
 )
-from cv_match.normalization import ResumeNormalizer
+from cv_match.normalization import normalize_resume
 from cv_match.prompting import PromptRegistry
 from cv_match.reflection.critic import ReflectionCritic
 from cv_match.scoring.scorer import ResumeScorer
@@ -66,6 +67,8 @@ class RunArtifacts:
     run_id: str
     run_dir: Path
     trace_log_path: Path
+    candidate_store: dict[str, ResumeCandidate]
+    normalized_store: dict[str, NormalizedResume]
 
 
 class RunStageError(RuntimeError):
@@ -84,343 +87,22 @@ class WorkflowRuntime:
         self.resume_scorer = ResumeScorer(settings, prompt_map["scoring"])
         self.reflection_critic = ReflectionCritic(settings, prompt_map["reflection"])
         self.finalizer = Finalizer(settings, prompt_map["finalize"])
-        self.resume_normalizer = ResumeNormalizer()
         self.cts_client: CTSClientProtocol = MockCTSClient(settings) if settings.mock_cts else CTSClient(settings)
 
     def run(self, *, jd: str, notes: str) -> RunArtifacts:
         tracer = RunTracer(self.settings.runs_path)
+        candidate_store: dict[str, ResumeCandidate] = {}
+        normalized_store: dict[str, NormalizedResume] = {}
         try:
-            candidate_store: dict[str, ResumeCandidate] = {}
-            normalized_store: dict[str, NormalizedResume] = {}
-            seen_resume_ids: set[str] = set()
-            seen_dedup_keys: set[str] = set()
-            top_scored: list[ScoredCandidate] = []
-            current_strategy = bootstrap_search_strategy(jd=jd, notes=notes)
-            latest_search_observation: SearchObservation | None = None
-            previous_reflection: ReflectionDecision | None = None
-            stop_reason = "max_rounds_reached"
-            consecutive_shortage_rounds = 0
-            shortage_history: list[int] = []
-            rounds_executed = 0
-
-            tracer.write_json("run_config.json", self._build_public_run_config())
-            input_snapshot = {
-                "jd_chars": len(jd),
-                "notes_chars": len(notes),
-                "jd_sha256": hashlib.sha256(jd.encode("utf-8")).hexdigest(),
-                "notes_sha256": hashlib.sha256(notes.encode("utf-8")).hexdigest(),
-                "jd_preview": self._preview_text(jd, limit=180),
-                "notes_preview": self._preview_text(notes, limit=180),
-            }
-            tracer.write_json("input_snapshot.json", input_snapshot)
-            tracer.emit(
-                "run_started",
-                summary="Starting one-tool ReAct runtime.",
-                payload={
-                    "mock_cts": self.settings.mock_cts,
-                    "llm_backend_mode": self.settings.llm_backend_mode,
-                },
-            )
-            tracer.emit(
-                "user_input_captured",
-                summary=(
-                    f"Captured sanitized input snapshot; jd_chars={len(jd)}, notes_chars={len(notes)}. "
-                    f"JD preview: {input_snapshot['jd_preview']}"
-                ),
-                payload=input_snapshot,
-            )
+            self._write_run_preamble(tracer=tracer, jd=jd, notes=notes)
             self._require_live_llm_config()
-
-            for round_no in range(1, self.settings.max_rounds + 1):
-                target_new = 10 if round_no == 1 else 5
-                state_view = ControllerStateView(
-                    round_no=round_no,
-                    min_rounds=self.settings.min_rounds,
-                    max_rounds=self.settings.max_rounds,
-                    target_new=target_new,
-                    jd_summary=self._preview_text(jd, limit=240),
-                    notes_summary=self._preview_text(notes, limit=240),
-                    current_strategy=current_strategy,
-                    current_top_pool=self._summarize_top_pool(top_scored),
-                    latest_search_observation=self._summarize_search_observation(latest_search_observation),
-                    previous_reflection=self._summarize_reflection(previous_reflection),
-                    shortage_history=shortage_history,
-                    consecutive_shortage_rounds=consecutive_shortage_rounds,
-                    tool_capability_notes=TOOL_CAPABILITY_NOTES,
-                )
-                tracer.emit(
-                    "react_step_started",
-                    round_no=round_no,
-                    model=self.settings.strategy_model,
-                    summary=f"Planning round {round_no} action.",
-                )
-                try:
-                    controller_decision = self.controller.decide(state_view=state_view)
-                except Exception as exc:  # noqa: BLE001
-                    raise RunStageError("controller", str(exc)) from exc
-                controller_decision = self._sanitize_controller_decision(
-                    decision=controller_decision,
-                    current_strategy=current_strategy,
-                    target_new=target_new,
-                    seen_ids=sorted(seen_resume_ids),
-                    round_no=round_no,
-                )
-                if controller_decision.action == "stop" and round_no <= self.settings.min_rounds:
-                    tracer.emit(
-                        "react_decision",
-                        round_no=round_no,
-                        model=self.settings.strategy_model,
-                        summary="Controller attempted early stop before min_rounds; runtime will continue searching.",
-                        payload=controller_decision.model_dump(mode="json"),
-                    )
-                    controller_decision = self._force_continue_decision(
-                        current_strategy=current_strategy,
-                        seen_ids=sorted(seen_resume_ids),
-                        target_new=target_new,
-                    )
-                tracer.emit(
-                    "react_decision",
-                    round_no=round_no,
-                    model=self.settings.strategy_model,
-                    stop_reason=controller_decision.stop_reason if controller_decision.action == "stop" else None,
-                    summary=controller_decision.thought_summary,
-                    payload=controller_decision.model_dump(mode="json"),
-                )
-                tracer.write_json(
-                    f"rounds/round_{round_no:02d}/react_step.json",
-                    {
-                        "state_view": state_view.model_dump(mode="json"),
-                        "controller_decision": controller_decision.model_dump(mode="json"),
-                    },
-                )
-
-                if controller_decision.action == "stop":
-                    stop_reason = self._normalize_stop_reason(
-                        proposed=controller_decision.stop_reason,
-                        top_candidates=top_scored,
-                        shortage_count=0,
-                        search_observation=latest_search_observation,
-                    )
-                    break
-
-                current_strategy = controller_decision.working_strategy
-                query = controller_decision.cts_query
-                assert query is not None
-
-                try:
-                    new_candidates, search_observation, search_attempts, duplicate_count = self._execute_search_tool(
-                        round_no=round_no,
-                        query=query,
-                        target_new=target_new,
-                        seen_resume_ids=seen_resume_ids,
-                        seen_dedup_keys=seen_dedup_keys,
-                        tracer=tracer,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    raise RunStageError("search_cts", str(exc)) from exc
-                tracer.write_json(
-                    f"rounds/round_{round_no:02d}/search_observation.json",
-                    search_observation.model_dump(mode="json"),
-                )
-                tracer.write_json(
-                    f"rounds/round_{round_no:02d}/search_attempts.json",
-                    [item.model_dump(mode="json") for item in search_attempts],
-                )
-
-                for candidate in new_candidates:
-                    candidate_store[candidate.resume_id] = candidate
-                seen_resume_ids.update(candidate.resume_id for candidate in new_candidates)
-                seen_dedup_keys.update(candidate.dedup_key for candidate in new_candidates)
-
-                shortage_count = search_observation.shortage_count
-                shortage_history.append(shortage_count)
-                consecutive_shortage_rounds = consecutive_shortage_rounds + 1 if shortage_count else 0
-                latest_search_observation = search_observation
-
-                scoring_pool = self._build_scoring_pool(
-                    round_no=round_no,
-                    top_scored=top_scored,
-                    new_candidates=new_candidates,
-                    candidate_store=candidate_store,
-                )
-                scoring_context = ScoringContext(
-                    round_no=round_no,
-                    must_have_keywords=current_strategy.must_have_keywords,
-                    preferred_keywords=current_strategy.preferred_keywords,
-                    negative_keywords=current_strategy.negative_keywords,
-                    hard_filters=current_strategy.hard_filters,
-                    soft_filters=current_strategy.soft_filters,
-                    scoring_rationale=current_strategy.search_rationale,
-                )
-                normalized_scoring_pool = self._normalize_scoring_pool(
-                    round_no=round_no,
-                    scoring_pool=scoring_pool,
-                    tracer=tracer,
-                    normalized_store=normalized_store,
-                )
-                tracer.write_jsonl(
-                    f"rounds/round_{round_no:02d}/normalized_resumes.jsonl",
-                    [item.model_dump(mode="json") for item in normalized_scoring_pool],
-                )
-
-                tracer.emit(
-                    "scoring_fanout_started",
-                    round_no=round_no,
-                    summary=(
-                        f"Scoring {len(normalized_scoring_pool)} resumes with max_concurrency="
-                        f"{self.settings.scoring_max_concurrency}."
-                    ),
-                )
-                scored_candidates, scoring_failures = self.resume_scorer.score_candidates_parallel(
-                    candidates=normalized_scoring_pool,
-                    context=scoring_context,
-                    tracer=tracer,
-                )
-                retried_successes = sum(1 for item in scored_candidates if item.retry_count > 0)
-                tracer.emit(
-                    "scoring_fanin_completed",
-                    round_no=round_no,
-                    summary=(
-                        f"Scored {len(scored_candidates)} resumes; "
-                        f"retried_successes={retried_successes}; failures={len(scoring_failures)}."
-                    ),
-                    payload={
-                        "successful_scores": len(scored_candidates) - retried_successes,
-                        "retried_successes": retried_successes,
-                        "final_failures": len(scoring_failures),
-                    },
-                )
-                if scoring_failures:
-                    raise RunStageError(
-                        "scoring",
-                        self._format_scoring_failure_message(scoring_failures),
-                    )
-
-                ranked = sorted(scored_candidates, key=scored_candidate_sort_key)
-                previous_top_ids = {candidate.resume_id for candidate in top_scored}
-                top_scored = ranked[:5]
-                pool_decisions = self._build_pool_decisions(
-                    round_no=round_no,
-                    ranked_candidates=ranked,
-                    top_candidates=top_scored,
-                    previous_top_ids=previous_top_ids,
-                )
-                tracer.emit(
-                    "top_pool_updated",
-                    round_no=round_no,
-                    summary=", ".join(candidate.resume_id for candidate in top_scored) or "No scored resumes.",
-                    payload={"top_pool_ids": [candidate.resume_id for candidate in top_scored]},
-                )
-                tracer.emit(
-                    "pool_decision_recorded",
-                    round_no=round_no,
-                    summary=f"Recorded {len(pool_decisions)} pool decisions.",
-                    payload={"decision_count": len(pool_decisions)},
-                )
-                tracer.write_jsonl(
-                    f"rounds/round_{round_no:02d}/scorecards.jsonl",
-                    [item.model_dump(mode="json") for item in ranked],
-                )
-                tracer.write_json(
-                    f"rounds/round_{round_no:02d}/selected_candidates.json",
-                    [item.model_dump(mode="json") for item in pool_decisions if item.decision in {"selected", "retained"}],
-                )
-                tracer.write_json(
-                    f"rounds/round_{round_no:02d}/dropped_candidates.json",
-                    [item.model_dump(mode="json") for item in pool_decisions if item.decision == "dropped"],
-                )
-
-                dropped_candidates = [
-                    candidate
-                    for candidate in ranked
-                    if candidate.resume_id not in {item.resume_id for item in top_scored}
-                ]
-                reflection = None
-                round_stop_reason = None
-                if self.settings.enable_reflection:
-                    tracer.emit(
-                        "reflection_started",
-                        round_no=round_no,
-                        model=self.settings.reflection_model,
-                        summary="Starting round reflection.",
-                    )
-                    try:
-                        reflection = self.reflection_critic.reflect(
-                            round_no=round_no,
-                            strategy=current_strategy,
-                            search_observation=search_observation,
-                            search_attempts=search_attempts,
-                            new_candidate_summaries=search_observation.new_candidate_summaries,
-                            scored_candidates=ranked,
-                            top_candidates=top_scored,
-                            dropped_candidates=dropped_candidates,
-                            shortage_count=shortage_count,
-                            scoring_failure_count=len(scoring_failures),
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        raise RunStageError("reflection", str(exc)) from exc
-                    current_strategy, changes = self._apply_reflection(
-                        strategy=current_strategy,
-                        reflection=reflection,
-                    )
-                    reflection = reflection.model_copy(update={"strategy_changes": changes})
-                    previous_reflection = reflection
-                    effective_stop_reason = None
-                    if round_no >= self.settings.min_rounds and reflection.decision == "stop":
-                        stop_reason = self._normalize_stop_reason(
-                            proposed=reflection.stop_reason,
-                            top_candidates=top_scored,
-                            shortage_count=shortage_count,
-                            search_observation=search_observation,
-                        )
-                        round_stop_reason = stop_reason
-                        effective_stop_reason = round_stop_reason
-                    tracer.emit(
-                        "reflection_decision",
-                        round_no=round_no,
-                        model=self.settings.reflection_model,
-                        stop_reason=effective_stop_reason,
-                        summary=reflection.reflection_summary,
-                        payload=reflection.model_dump(mode="json"),
-                    )
-                else:
-                    previous_reflection = None
-
-                if (
-                    round_no >= self.settings.min_rounds
-                    and consecutive_shortage_rounds >= 2
-                    and not (self.settings.enable_reflection and reflection is not None and reflection.decision == "stop")
-                ):
-                    stop_reason = latest_search_observation.exhausted_reason or "insufficient_new_candidates"
-                    round_stop_reason = stop_reason
-
-                tracer.write_text(
-                    f"rounds/round_{round_no:02d}/round_review.md",
-                    self._render_round_review(
-                        round_no=round_no,
-                        observation=search_observation,
-                        pool_decisions=pool_decisions,
-                        top_candidates=top_scored,
-                        dropped_candidates=dropped_candidates,
-                        reflection=reflection,
-                        scoring_failures=scoring_failures,
-                        stop_reason=round_stop_reason,
-                    ),
-                )
-
-                rounds_executed = round_no
-                if round_no >= self.settings.min_rounds:
-                    if self.settings.enable_reflection and reflection is not None and reflection.decision == "stop":
-                        break
-                    if consecutive_shortage_rounds >= 2:
-                        break
-
-            if rounds_executed == 0:
-                rounds_executed = (
-                    min(self.settings.min_rounds, self.settings.max_rounds)
-                    if stop_reason != "max_rounds_reached"
-                    else 0
-                )
+            top_scored, stop_reason, rounds_executed = self._run_rounds(
+                jd=jd,
+                notes=notes,
+                tracer=tracer,
+                candidate_store=candidate_store,
+                normalized_store=normalized_store,
+            )
 
             try:
                 final_result = self.finalizer.finalize(
@@ -450,6 +132,8 @@ class WorkflowRuntime:
                 run_id=tracer.run_id,
                 run_dir=tracer.run_dir,
                 trace_log_path=tracer.trace_log_path,
+                candidate_store=candidate_store,
+                normalized_store=normalized_store,
             )
         except Exception as exc:  # noqa: BLE001
             stage = exc.stage if isinstance(exc, RunStageError) else "runtime"
@@ -465,6 +149,401 @@ class WorkflowRuntime:
             raise
         finally:
             tracer.close()
+
+    def _write_run_preamble(self, *, tracer: RunTracer, jd: str, notes: str) -> None:
+        tracer.write_json("run_config.json", self._build_public_run_config())
+        input_snapshot = {
+            "jd_chars": len(jd),
+            "notes_chars": len(notes),
+            "jd_sha256": hashlib.sha256(jd.encode("utf-8")).hexdigest(),
+            "notes_sha256": hashlib.sha256(notes.encode("utf-8")).hexdigest(),
+            "jd_preview": self._preview_text(jd, limit=180),
+            "notes_preview": self._preview_text(notes, limit=180),
+        }
+        tracer.write_json("input_snapshot.json", input_snapshot)
+        tracer.emit(
+            "run_started",
+            summary="Starting one-tool ReAct runtime.",
+            payload={
+                "mock_cts": self.settings.mock_cts,
+                "configured_models": {
+                    "strategy": self.settings.strategy_model,
+                    "scoring": self.settings.scoring_model,
+                    "reflection": self.settings.reflection_model,
+                    "finalize": self.settings.finalize_model,
+                },
+                "configured_providers": self._configured_providers(),
+            },
+        )
+        tracer.emit(
+            "user_input_captured",
+            summary=(
+                f"Captured sanitized input snapshot; jd_chars={len(jd)}, notes_chars={len(notes)}. "
+                f"JD preview: {input_snapshot['jd_preview']}"
+            ),
+            payload=input_snapshot,
+        )
+
+    def _run_rounds(
+        self,
+        *,
+        jd: str,
+        notes: str,
+        tracer: RunTracer,
+        candidate_store: dict[str, ResumeCandidate],
+        normalized_store: dict[str, NormalizedResume],
+    ) -> tuple[list[ScoredCandidate], str, int]:
+        seen_resume_ids: set[str] = set()
+        seen_dedup_keys: set[str] = set()
+        top_scored: list[ScoredCandidate] = []
+        current_strategy = bootstrap_search_strategy(jd=jd, notes=notes)
+        latest_search_observation: SearchObservation | None = None
+        previous_reflection: ReflectionDecision | None = None
+        stop_reason = "max_rounds_reached"
+        consecutive_shortage_rounds = 0
+        shortage_history: list[int] = []
+        rounds_executed = 0
+
+        for round_no in range(1, self.settings.max_rounds + 1):
+            target_new = 10 if round_no == 1 else 5
+            state_view = ControllerStateView(
+                round_no=round_no,
+                min_rounds=self.settings.min_rounds,
+                max_rounds=self.settings.max_rounds,
+                target_new=target_new,
+                jd_summary=self._preview_text(jd, limit=240),
+                notes_summary=self._preview_text(notes, limit=240),
+                current_strategy=current_strategy,
+                current_top_pool=self._summarize_top_pool(top_scored),
+                latest_search_observation=self._summarize_search_observation(latest_search_observation),
+                previous_reflection=self._summarize_reflection(previous_reflection),
+                shortage_history=shortage_history,
+                consecutive_shortage_rounds=consecutive_shortage_rounds,
+                tool_capability_notes=TOOL_CAPABILITY_NOTES,
+            )
+            tracer.emit(
+                "react_step_started",
+                round_no=round_no,
+                model=self.settings.strategy_model,
+                summary=f"Planning round {round_no} action.",
+            )
+            try:
+                controller_decision = self.controller.decide(state_view=state_view)
+            except Exception as exc:  # noqa: BLE001
+                raise RunStageError("controller", str(exc)) from exc
+            controller_decision = self._sanitize_controller_decision(
+                decision=controller_decision,
+                current_strategy=current_strategy,
+                target_new=target_new,
+                seen_ids=sorted(seen_resume_ids),
+                round_no=round_no,
+            )
+            if controller_decision.action == "stop" and round_no <= self.settings.min_rounds:
+                tracer.emit(
+                    "react_decision",
+                    round_no=round_no,
+                    model=self.settings.strategy_model,
+                    summary="Controller attempted early stop before min_rounds; runtime will continue searching.",
+                    payload=controller_decision.model_dump(mode="json"),
+                )
+                controller_decision = self._force_continue_decision(
+                    current_strategy=current_strategy,
+                    seen_ids=sorted(seen_resume_ids),
+                    target_new=target_new,
+                )
+            tracer.emit(
+                "react_decision",
+                round_no=round_no,
+                model=self.settings.strategy_model,
+                stop_reason=controller_decision.stop_reason if controller_decision.action == "stop" else None,
+                summary=controller_decision.thought_summary,
+                payload=controller_decision.model_dump(mode="json"),
+            )
+            tracer.write_json(
+                f"rounds/round_{round_no:02d}/react_step.json",
+                {
+                    "state_view": state_view.model_dump(mode="json"),
+                    "controller_decision": controller_decision.model_dump(mode="json"),
+                },
+            )
+
+            if controller_decision.action == "stop":
+                stop_reason = self._normalize_stop_reason(
+                    proposed=controller_decision.stop_reason,
+                    top_candidates=top_scored,
+                    shortage_count=0,
+                    search_observation=latest_search_observation,
+                )
+                break
+
+            current_strategy = controller_decision.working_strategy
+            query = controller_decision.cts_query
+            assert current_strategy is not None
+            assert query is not None
+
+            try:
+                new_candidates, search_observation, search_attempts, _ = self._execute_search_tool(
+                    round_no=round_no,
+                    query=query,
+                    target_new=target_new,
+                    seen_resume_ids=seen_resume_ids,
+                    seen_dedup_keys=seen_dedup_keys,
+                    tracer=tracer,
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise RunStageError("search_cts", str(exc)) from exc
+            tracer.write_json(
+                f"rounds/round_{round_no:02d}/search_observation.json",
+                search_observation.model_dump(mode="json"),
+            )
+            tracer.write_json(
+                f"rounds/round_{round_no:02d}/search_attempts.json",
+                [item.model_dump(mode="json") for item in search_attempts],
+            )
+
+            for candidate in new_candidates:
+                candidate_store[candidate.resume_id] = candidate
+            seen_resume_ids.update(candidate.resume_id for candidate in new_candidates)
+            seen_dedup_keys.update(candidate.dedup_key for candidate in new_candidates)
+
+            shortage_count = search_observation.shortage_count
+            shortage_history.append(shortage_count)
+            consecutive_shortage_rounds = consecutive_shortage_rounds + 1 if shortage_count else 0
+            latest_search_observation = search_observation
+
+            top_scored, ranked_candidates, pool_decisions, dropped_candidates = self._score_round(
+                round_no=round_no,
+                strategy=current_strategy,
+                top_scored=top_scored,
+                new_candidates=new_candidates,
+                candidate_store=candidate_store,
+                normalized_store=normalized_store,
+                tracer=tracer,
+            )
+            reflection, current_strategy, round_stop_reason = self._reflect_round(
+                round_no=round_no,
+                strategy=current_strategy,
+                search_observation=search_observation,
+                search_attempts=search_attempts,
+                ranked_candidates=ranked_candidates,
+                top_candidates=top_scored,
+                dropped_candidates=dropped_candidates,
+                shortage_count=shortage_count,
+                tracer=tracer,
+            )
+            previous_reflection = reflection
+            if round_stop_reason is not None:
+                stop_reason = round_stop_reason
+
+            if (
+                round_no >= self.settings.min_rounds
+                and consecutive_shortage_rounds >= 2
+                and not (reflection is not None and reflection.decision == "stop")
+            ):
+                stop_reason = latest_search_observation.exhausted_reason or "insufficient_new_candidates"
+                round_stop_reason = stop_reason
+
+            tracer.write_text(
+                f"rounds/round_{round_no:02d}/round_review.md",
+                self._render_round_review(
+                    round_no=round_no,
+                    observation=search_observation,
+                    pool_decisions=pool_decisions,
+                    top_candidates=top_scored,
+                    dropped_candidates=dropped_candidates,
+                    reflection=reflection,
+                    scoring_failures=[],
+                    stop_reason=round_stop_reason,
+                ),
+            )
+
+            rounds_executed = round_no
+            if round_no >= self.settings.min_rounds:
+                if reflection is not None and reflection.decision == "stop":
+                    break
+                if consecutive_shortage_rounds >= 2:
+                    break
+
+        if rounds_executed == 0:
+            rounds_executed = (
+                min(self.settings.min_rounds, self.settings.max_rounds)
+                if stop_reason != "max_rounds_reached"
+                else 0
+            )
+        return top_scored, stop_reason, rounds_executed
+
+    def _score_round(
+        self,
+        *,
+        round_no: int,
+        strategy: SearchStrategy,
+        top_scored: list[ScoredCandidate],
+        new_candidates: list[ResumeCandidate],
+        candidate_store: dict[str, ResumeCandidate],
+        normalized_store: dict[str, NormalizedResume],
+        tracer: RunTracer,
+    ) -> tuple[list[ScoredCandidate], list[ScoredCandidate], list[PoolDecision], list[ScoredCandidate]]:
+        scoring_pool = self._build_scoring_pool(
+            round_no=round_no,
+            top_scored=top_scored,
+            new_candidates=new_candidates,
+            candidate_store=candidate_store,
+        )
+        scoring_context = ScoringContext(
+            round_no=round_no,
+            must_have_keywords=strategy.must_have_keywords,
+            preferred_keywords=strategy.preferred_keywords,
+            negative_keywords=strategy.negative_keywords,
+            hard_filters=strategy.hard_filters,
+            soft_filters=strategy.soft_filters,
+            scoring_rationale=strategy.search_rationale,
+        )
+        normalized_scoring_pool = self._normalize_scoring_pool(
+            round_no=round_no,
+            scoring_pool=scoring_pool,
+            tracer=tracer,
+            normalized_store=normalized_store,
+        )
+        tracer.write_jsonl(
+            f"rounds/round_{round_no:02d}/normalized_resumes.jsonl",
+            [item.model_dump(mode="json") for item in normalized_scoring_pool],
+        )
+
+        tracer.emit(
+            "scoring_fanout_started",
+            round_no=round_no,
+            summary=(
+                f"Scoring {len(normalized_scoring_pool)} resumes with max_concurrency="
+                f"{self.settings.scoring_max_concurrency}."
+            ),
+        )
+        scored_candidates, scoring_failures = self.resume_scorer.score_candidates_parallel(
+            candidates=normalized_scoring_pool,
+            context=scoring_context,
+            tracer=tracer,
+        )
+        retried_successes = sum(1 for item in scored_candidates if item.retry_count > 0)
+        tracer.emit(
+            "scoring_fanin_completed",
+            round_no=round_no,
+            summary=(
+                f"Scored {len(scored_candidates)} resumes; "
+                f"retried_successes={retried_successes}; failures={len(scoring_failures)}."
+            ),
+            payload={
+                "successful_scores": len(scored_candidates) - retried_successes,
+                "retried_successes": retried_successes,
+                "final_failures": len(scoring_failures),
+            },
+        )
+        if scoring_failures:
+            raise RunStageError(
+                "scoring",
+                self._format_scoring_failure_message(scoring_failures),
+            )
+
+        ranked_candidates = sorted(scored_candidates, key=scored_candidate_sort_key)
+        previous_top_ids = {candidate.resume_id for candidate in top_scored}
+        top_scored = ranked_candidates[:5]
+        pool_decisions = self._build_pool_decisions(
+            round_no=round_no,
+            ranked_candidates=ranked_candidates,
+            top_candidates=top_scored,
+            previous_top_ids=previous_top_ids,
+        )
+        tracer.emit(
+            "top_pool_updated",
+            round_no=round_no,
+            summary=", ".join(candidate.resume_id for candidate in top_scored) or "No scored resumes.",
+            payload={"top_pool_ids": [candidate.resume_id for candidate in top_scored]},
+        )
+        tracer.emit(
+            "pool_decision_recorded",
+            round_no=round_no,
+            summary=f"Recorded {len(pool_decisions)} pool decisions.",
+            payload={"decision_count": len(pool_decisions)},
+        )
+        tracer.write_jsonl(
+            f"rounds/round_{round_no:02d}/scorecards.jsonl",
+            [item.model_dump(mode="json") for item in ranked_candidates],
+        )
+        tracer.write_json(
+            f"rounds/round_{round_no:02d}/selected_candidates.json",
+            [item.model_dump(mode="json") for item in pool_decisions if item.decision in {"selected", "retained"}],
+        )
+        tracer.write_json(
+            f"rounds/round_{round_no:02d}/dropped_candidates.json",
+            [item.model_dump(mode="json") for item in pool_decisions if item.decision == "dropped"],
+        )
+
+        dropped_candidates = [
+            candidate
+            for candidate in ranked_candidates
+            if candidate.resume_id not in {item.resume_id for item in top_scored}
+        ]
+        return top_scored, ranked_candidates, pool_decisions, dropped_candidates
+
+    def _reflect_round(
+        self,
+        *,
+        round_no: int,
+        strategy: SearchStrategy,
+        search_observation: SearchObservation,
+        search_attempts: list[SearchAttempt],
+        ranked_candidates: list[ScoredCandidate],
+        top_candidates: list[ScoredCandidate],
+        dropped_candidates: list[ScoredCandidate],
+        shortage_count: int,
+        tracer: RunTracer,
+    ) -> tuple[ReflectionDecision | None, SearchStrategy, str | None]:
+        if not self.settings.enable_reflection:
+            return None, strategy, None
+
+        tracer.emit(
+            "reflection_started",
+            round_no=round_no,
+            model=self.settings.reflection_model,
+            summary="Starting round reflection.",
+        )
+        try:
+            reflection = self.reflection_critic.reflect(
+                round_no=round_no,
+                strategy=strategy,
+                search_observation=search_observation,
+                search_attempts=search_attempts,
+                new_candidate_summaries=search_observation.new_candidate_summaries,
+                scored_candidates=ranked_candidates,
+                top_candidates=top_candidates,
+                dropped_candidates=dropped_candidates,
+                shortage_count=shortage_count,
+                scoring_failure_count=0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise RunStageError("reflection", str(exc)) from exc
+        strategy, changes = self._apply_reflection(
+            strategy=strategy,
+            reflection=reflection,
+        )
+        reflection = reflection.model_copy(update={"strategy_changes": changes})
+        round_stop_reason = None
+        effective_stop_reason = None
+        if round_no >= self.settings.min_rounds and reflection.decision == "stop":
+            round_stop_reason = self._normalize_stop_reason(
+                proposed=reflection.stop_reason,
+                top_candidates=top_candidates,
+                shortage_count=shortage_count,
+                search_observation=search_observation,
+            )
+            effective_stop_reason = round_stop_reason
+        tracer.emit(
+            "reflection_decision",
+            round_no=round_no,
+            model=self.settings.reflection_model,
+            stop_reason=effective_stop_reason,
+            summary=reflection.reflection_summary,
+            payload=reflection.model_dump(mode="json"),
+        )
+        return reflection, strategy, round_stop_reason
 
     def _build_public_run_config(self) -> dict[str, object]:
         return {
@@ -487,7 +566,7 @@ class WorkflowRuntime:
                 "mock_cts": self.settings.mock_cts,
                 "enable_reflection": self.settings.enable_reflection,
             },
-            "llm_backend_mode": self.settings.llm_backend_mode,
+            "configured_providers": self._configured_providers(),
             "selected_openapi_file": str(self.settings.spec_file),
             "prompt_hashes": self.prompts.prompt_hashes(),
             "prompt_files": self.prompts.prompt_files(),
@@ -499,9 +578,25 @@ class WorkflowRuntime:
 
     def _require_live_llm_config(self) -> None:
         try:
-            self.settings.require_openai_api_key()
-        except ValueError as exc:
+            preflight_models(self.settings)
+        except Exception as exc:  # noqa: BLE001
             raise RunStageError("llm_preflight", str(exc)) from exc
+
+    def _configured_providers(self) -> list[str]:
+        providers: list[str] = []
+        seen: set[str] = set()
+        for model_id in (
+            self.settings.strategy_model,
+            self.settings.scoring_model,
+            self.settings.reflection_model,
+            self.settings.finalize_model,
+        ):
+            provider = model_provider(model_id)
+            if provider in seen:
+                continue
+            providers.append(provider)
+            seen.add(provider)
+        return providers
 
     def _format_scoring_failure_message(self, failures: list[object]) -> str:
         resume_ids = [getattr(item, "resume_id", "unknown") for item in failures]
@@ -859,7 +954,7 @@ class WorkflowRuntime:
                 resume_id=candidate.resume_id,
                 summary=candidate.compact_summary(),
             )
-            normalized = self.resume_normalizer.normalize(candidate)
+            normalized = normalize_resume(candidate)
             normalized_store[normalized.resume_id] = normalized
             tracer.write_json(
                 f"resumes/{normalized.resume_id}.json",

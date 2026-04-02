@@ -203,7 +203,7 @@ class StubFinalizer:
 
 
 def test_execute_search_tool_refills_after_batch_dedup(tmp_path: Path) -> None:
-    settings = AppSettings().with_overrides(
+    settings = AppSettings(_env_file=None).with_overrides(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         search_max_pages_per_round=3,
@@ -247,7 +247,7 @@ def test_execute_search_tool_refills_after_batch_dedup(tmp_path: Path) -> None:
 
 def test_runtime_writes_compact_audit_and_sanitized_outputs(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    settings = AppSettings().with_overrides(
+    settings = AppSettings(_env_file=None).with_overrides(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
@@ -281,6 +281,9 @@ def test_runtime_writes_compact_audit_and_sanitized_outputs(tmp_path: Path, monk
 
     assert len(search_observation["new_resume_ids"]) == len(set(search_observation["new_resume_ids"]))
     assert search_observation["new_resume_ids"].count("mock-r003") == 1
+    assert artifacts.candidate_store
+    assert artifacts.normalized_store
+    assert set(artifacts.normalized_store) <= set(artifacts.candidate_store)
 
     scorecard_ids = [item["resume_id"] for item in scorecards]
     assert len(scorecard_ids) == len(set(scorecard_ids))
@@ -302,7 +305,8 @@ def test_runtime_writes_compact_audit_and_sanitized_outputs(tmp_path: Path, monk
     assert not (artifacts.run_dir / "round_summaries.json").exists()
     assert "cts_tenant_secret" not in json.dumps(run_config, ensure_ascii=False)
     assert "tenant-secret" not in json.dumps(run_config, ensure_ascii=False)
-    assert run_config["llm_backend_mode"] == "openai-responses"
+    assert run_config["configured_providers"] == ["openai-responses"]
+    assert run_config["settings"]["strategy_model"] == "openai-responses:gpt-5.4-mini"
     assert "offline_llm_fallback" not in json.dumps(run_config, ensure_ascii=False)
     assert final_candidates["summary"]
     assert all(candidate["match_summary"] for candidate in final_candidates["candidates"])
@@ -318,9 +322,9 @@ def test_runtime_writes_compact_audit_and_sanitized_outputs(tmp_path: Path, monk
     assert "finalization agent" not in prompt_text.casefold()
 
 
-def test_runtime_fails_fast_when_openai_api_key_is_missing(tmp_path: Path, monkeypatch) -> None:
+def test_runtime_fails_fast_when_provider_credentials_are_missing(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    settings = AppSettings().with_overrides(
+    settings = AppSettings(_env_file=None).with_overrides(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
@@ -331,9 +335,9 @@ def test_runtime_fails_fast_when_openai_api_key_is_missing(tmp_path: Path, monke
     try:
         runtime.run(jd="JD", notes="Notes")
     except RuntimeError as exc:
-        assert str(exc) == "OPENAI_API_KEY is required to start a run."
+        assert "OPENAI_API_KEY" in str(exc)
     else:  # pragma: no cover - defensive
-        raise AssertionError("Expected run() to fail without OPENAI_API_KEY")
+        raise AssertionError("Expected run() to fail without provider credentials")
 
     run_dirs = sorted((tmp_path / "runs").iterdir())
     assert len(run_dirs) == 1
@@ -345,12 +349,12 @@ def test_runtime_fails_fast_when_openai_api_key_is_missing(tmp_path: Path, monke
     events = _read_jsonl(run_dir / "events.jsonl")
     assert events[-1]["event_type"] == "run_failed"
     assert events[-1]["payload"]["stage"] == "llm_preflight"
-    assert events[-1]["payload"]["error_message"] == "OPENAI_API_KEY is required to start a run."
+    assert "OPENAI_API_KEY" in events[-1]["payload"]["error_message"]
 
 
 def test_runtime_aborts_when_scoring_has_a_final_failure(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    settings = AppSettings().with_overrides(
+    settings = AppSettings(_env_file=None).with_overrides(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,

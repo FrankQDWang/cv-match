@@ -9,24 +9,14 @@ from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Protocol
 from urllib.parse import unquote, urlparse
 
 from pydantic import ValidationError
 
 from cv_match.config import AppSettings
-from cv_match.models import NormalizedResume, ResumeCandidate
-from cv_match.runtime import RunArtifacts
+from cv_match.runtime import WorkflowRuntime
 from cv_match_ui.mapper import build_ui_payloads
 from cv_match_ui.models import CandidateDetailResponse, RunCreateRequest, RunCreateResponse, RunStatusResponse
-from cv_match_ui.runtime_adapter import UiWorkflowRuntime
-
-
-class RuntimeWithUiState(Protocol):
-    candidate_store: dict[str, ResumeCandidate]
-    normalized_store: dict[str, NormalizedResume]
-
-    def run(self, *, jd: str, notes: str) -> RunArtifacts: ...
 
 
 @dataclass
@@ -59,7 +49,7 @@ class RunRegistry:
         self,
         settings: AppSettings,
         *,
-        runtime_factory=UiWorkflowRuntime,
+        runtime_factory=WorkflowRuntime,
     ) -> None:
         self.settings = settings
         self.runtime_factory = runtime_factory
@@ -119,8 +109,8 @@ class RunRegistry:
             )
             shortlist, details = build_ui_payloads(
                 artifacts.final_result,
-                runtime.candidate_store,
-                runtime.normalized_store,
+                artifacts.candidate_store,
+                artifacts.normalized_store,
             )
         except Exception as exc:  # noqa: BLE001
             with self._lock:

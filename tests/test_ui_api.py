@@ -10,7 +10,7 @@ import httpx
 from cv_match.config import AppSettings
 from cv_match.mock_data import load_mock_resume_corpus
 from cv_match.models import FinalCandidate, FinalResult
-from cv_match.normalization import ResumeNormalizer
+from cv_match.normalization import normalize_resume
 from cv_match.runtime import RunArtifacts
 from cv_match_ui.server import RunRegistry, create_server
 
@@ -18,8 +18,6 @@ from cv_match_ui.server import RunRegistry, create_server
 @dataclass
 class FakeRuntimeController:
     artifacts: RunArtifacts
-    candidate_store: dict
-    normalized_store: dict
     started: threading.Event
     release: threading.Event
     error_message: str | None = None
@@ -29,8 +27,6 @@ def _build_runtime_factory(controller: FakeRuntimeController):
     class FakeRuntime:
         def __init__(self, settings: AppSettings) -> None:
             del settings
-            self.candidate_store = controller.candidate_store
-            self.normalized_store = controller.normalized_store
 
         def run(self, *, jd: str, notes: str) -> RunArtifacts:
             assert jd
@@ -65,7 +61,7 @@ def _wait_for_status(client: httpx.Client, url: str, expected: str, *, timeout: 
 
 def _build_controller(tmp_path: Path) -> FakeRuntimeController:
     candidate = load_mock_resume_corpus()[0]
-    normalized = ResumeNormalizer().normalize(candidate)
+    normalized = normalize_resume(candidate)
     trace_log_path = tmp_path / "trace.log"
     trace_log_path.write_text("", encoding="utf-8")
     artifacts = RunArtifacts(
@@ -96,11 +92,11 @@ def _build_controller(tmp_path: Path) -> FakeRuntimeController:
         run_id="worker-run-1",
         run_dir=tmp_path,
         trace_log_path=trace_log_path,
+        candidate_store={candidate.resume_id: candidate},
+        normalized_store={candidate.resume_id: normalized},
     )
     return FakeRuntimeController(
         artifacts=artifacts,
-        candidate_store={candidate.resume_id: candidate},
-        normalized_store={candidate.resume_id: normalized},
         started=threading.Event(),
         release=threading.Event(),
     )
@@ -108,7 +104,7 @@ def _build_controller(tmp_path: Path) -> FakeRuntimeController:
 
 def test_ui_api_serves_run_lifecycle_and_candidate_detail(tmp_path: Path) -> None:
     controller = _build_controller(tmp_path)
-    settings = AppSettings().with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     registry = RunRegistry(settings, runtime_factory=_build_runtime_factory(controller))
     server, thread, base_url = _start_server(registry)
 
@@ -151,7 +147,7 @@ def test_ui_api_serves_run_lifecycle_and_candidate_detail(tmp_path: Path) -> Non
 def test_ui_api_marks_failed_runs(tmp_path: Path) -> None:
     controller = _build_controller(tmp_path)
     controller.error_message = "boom"
-    settings = AppSettings().with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     registry = RunRegistry(settings, runtime_factory=_build_runtime_factory(controller))
     server, thread, base_url = _start_server(registry)
 

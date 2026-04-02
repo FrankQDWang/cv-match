@@ -163,7 +163,19 @@ uv sync
 export OPENAI_API_KEY=...
 ```
 
-如果不设置 `OPENAI_API_KEY`，run 会在启动前预检失败；UI 服务本身仍可启动，但具体 run 会进入 `failed`。
+默认模型都使用 `provider:model` 格式，例如：
+
+- `openai-responses:gpt-5.4-mini`
+- `anthropic:claude-sonnet-4-5`
+- `google-gla:gemini-2.5-pro`
+
+run 会在启动前按当前配置的 provider 做预检：
+
+- `openai-responses:*` 需要 `OPENAI_API_KEY`
+- `anthropic:*` 需要 `ANTHROPIC_API_KEY`
+- `google-gla:*` 需要 `GOOGLE_API_KEY`
+
+UI 服务本身仍可启动；如果 provider 凭证缺失，具体 run 会进入 `failed`。
 
 ## 环境变量
 
@@ -197,6 +209,12 @@ export OPENAI_API_KEY=...
 - `mock_cts=true`
 - `reflection=true`
 
+说明：
+
+- 四个模型配置都必须使用 `provider:model` 格式。
+- `reasoning_effort` 走通用 `ModelSettings.thinking`。
+- `openai-responses:*` 额外固定使用 `reasoning_summary=concise` 和 `text_verbosity=low`，不单独开放配置。
+
 ## 运行
 
 ### mock 模式
@@ -215,7 +233,7 @@ uv run python -m cv_match.cli --jd "Python agent engineer..." --notes "优先上
 
 先配置：
 
-- `OPENAI_API_KEY`
+- 与所选 provider 对应的模型凭证，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 或 `GOOGLE_API_KEY`
 - `CVMATCH_CTS_TENANT_KEY`
 - `CVMATCH_CTS_TENANT_SECRET`
 
@@ -318,7 +336,7 @@ runtime 会保存上一轮 `top5` 的 `resume_id` 和候选对象。
 
 ## 简历规范化摘要器
 
-评分前会执行 [normalization.py](/Users/frankqdwang/Agents/cv-match/src/cv_match/normalization.py) 中的 `ResumeNormalizer`。
+评分前会执行 [normalization.py](/Users/frankqdwang/Agents/cv-match/src/cv_match/normalization.py) 中的 `normalize_resume`。
 
 这一层优先做确定性数据整理，不额外调用 LLM。目标是把 CTS 检索结果整理成稳定、紧凑、可审计的评分输入。
 

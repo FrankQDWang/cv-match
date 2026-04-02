@@ -57,7 +57,7 @@ def _fallback_title(candidate: ResumeCandidate | None, normalized: NormalizedRes
         return ""
     return _first_text(
         candidate.expected_job_category,
-        candidate.raw.get("title") if isinstance(candidate.raw, dict) else None,
+        candidate.raw.get("title"),
     )
 
 
@@ -70,17 +70,16 @@ def _fallback_company(candidate: ResumeCandidate | None, normalized: NormalizedR
             return _first_text(normalized.recent_experiences[0].company)
     if candidate is None:
         return ""
-    if isinstance(candidate.raw, dict):
-        raw_company = _first_text(candidate.raw.get("current_company"), candidate.raw.get("currentCompany"))
-        if raw_company:
-            return raw_company
-        raw_work_experience = candidate.raw.get("workExperienceList")
-        if isinstance(raw_work_experience, list):
-            for item in raw_work_experience:
-                if isinstance(item, dict):
-                    company = _first_text(item.get("company"))
-                    if company:
-                        return company
+    raw_company = _first_text(candidate.raw.get("current_company"), candidate.raw.get("currentCompany"))
+    if raw_company:
+        return raw_company
+    raw_work_experience = candidate.raw.get("workExperienceList")
+    if isinstance(raw_work_experience, list):
+        for item in raw_work_experience:
+            if isinstance(item, dict):
+                company = _first_text(item.get("company"))
+                if company:
+                    return company
     if candidate.work_experience_summaries:
         first_item = candidate.work_experience_summaries[0]
         parts = [part.strip() for part in first_item.split("|")]
@@ -102,7 +101,7 @@ def _fallback_name(candidate: ResumeCandidate | None, normalized: NormalizedResu
         name = _first_text(normalized.candidate_name)
         if name:
             return name
-    if candidate is not None and isinstance(candidate.raw, dict):
+    if candidate is not None:
         name = _first_text(
             candidate.raw.get("candidate_name"),
             candidate.raw.get("candidateName"),
@@ -148,7 +147,7 @@ def _education_from_string(raw_value: str) -> ResumeEducationItem:
 
 
 def _map_education(candidate: ResumeCandidate | None, normalized: NormalizedResume | None) -> list[ResumeEducationItem]:
-    if candidate is not None and isinstance(candidate.raw, dict):
+    if candidate is not None:
         raw_items = candidate.raw.get("educationList")
         if isinstance(raw_items, list):
             mapped: list[ResumeEducationItem] = []
@@ -178,7 +177,7 @@ def _map_education(candidate: ResumeCandidate | None, normalized: NormalizedResu
 
 
 def _map_work_experience_raw(candidate: ResumeCandidate) -> list[ResumeWorkExperienceItem]:
-    raw_items = candidate.raw.get("workExperienceList") if isinstance(candidate.raw, dict) else None
+    raw_items = candidate.raw.get("workExperienceList")
     if not isinstance(raw_items, list):
         return []
     mapped: list[ResumeWorkExperienceItem] = []

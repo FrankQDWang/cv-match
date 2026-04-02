@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Literal
 
-from dotenv import load_dotenv
-from pydantic import Field, model_validator
+from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-load_dotenv()
 
 
 ReasoningEffort = Literal["low", "medium", "high"]
+MODEL_FIELDS = ("strategy_model", "scoring_model", "finalize_model", "reflection_model")
+
+
+def _is_qualified_model_id(model_id: str) -> bool:
+    if ":" not in model_id:
+        return False
+    provider, name = model_id.split(":", 1)
+    return bool(provider and name)
 
 
 class AppSettings(BaseSettings):
@@ -28,10 +32,10 @@ class AppSettings(BaseSettings):
     cts_timeout_seconds: float = 20.0
     cts_spec_path: str = "cts.validated.yaml"
 
-    strategy_model: str = "gpt-5.4-mini"
-    scoring_model: str = "gpt-5.4-mini"
-    finalize_model: str = "gpt-5.4-mini"
-    reflection_model: str = "gpt-5.4"
+    strategy_model: str = "openai-responses:gpt-5.4-mini"
+    scoring_model: str = "openai-responses:gpt-5.4-mini"
+    finalize_model: str = "openai-responses:gpt-5.4-mini"
+    reflection_model: str = "openai-responses:gpt-5.4"
     reasoning_effort: ReasoningEffort = "medium"
 
     min_rounds: int = 3
@@ -44,6 +48,15 @@ class AppSettings(BaseSettings):
     enable_reflection: bool = True
 
     runs_dir: str = "runs"
+
+    @field_validator(*MODEL_FIELDS)
+    @classmethod
+    def validate_model_id(cls, value: str, info: ValidationInfo) -> str:
+        if _is_qualified_model_id(value):
+            return value
+        raise ValueError(
+            f"{info.field_name} must use the provider:model format, got {value!r}."
+        )
 
     @model_validator(mode="after")
     def validate_ranges(self) -> "AppSettings":
@@ -77,21 +90,6 @@ class AppSettings(BaseSettings):
     def runs_path(self) -> Path:
         return self.project_root / self.runs_dir
 
-    @property
-    def openai_api_key_present(self) -> bool:
-        return bool(os.getenv("OPENAI_API_KEY"))
-
-    @property
-    def llm_backend_mode(self) -> str:
-        if self.openai_api_key_present:
-            return "openai-responses"
-        return "missing-openai-key"
-
-    def require_openai_api_key(self) -> None:
-        if self.openai_api_key_present:
-            return
-        raise ValueError("OPENAI_API_KEY is required to start a run.")
-
     def require_cts_credentials(self) -> None:
         if self.mock_cts:
             return
@@ -102,4 +100,4 @@ class AppSettings(BaseSettings):
 
     def with_overrides(self, **overrides: object) -> "AppSettings":
         filtered = {key: value for key, value in overrides.items() if value is not None}
-        return self.model_copy(update=filtered)
+        return type(self).model_validate({**self.model_dump(), **filtered})
