@@ -9,6 +9,7 @@ from cv_match.config import AppSettings
 from cv_match.llm import build_model, build_model_settings, build_output_spec
 from cv_match.models import ControllerContext, ControllerDecision
 from cv_match.prompting import LoadedPrompt, json_block
+from cv_match.retrieval.query_plan import canonicalize_controller_query_terms
 
 
 class ReActController:
@@ -39,6 +40,12 @@ class ReActController:
                 if output.action == "search_cts" and not output.proposed_query_terms:
                     self.last_validator_retry_count += 1
                     raise ModelRetry("proposed_query_terms must contain at least one term.")
+                if output.action == "search_cts":
+                    try:
+                        canonicalize_controller_query_terms(output.proposed_query_terms, ctx.deps.round_no)
+                    except ValueError as exc:
+                        self.last_validator_retry_count += 1
+                        raise ModelRetry(str(exc)) from exc
                 if ctx.deps.previous_reflection is not None and not (output.response_to_reflection or "").strip():
                     self.last_validator_retry_count += 1
                     raise ModelRetry("response_to_reflection is required when previous_reflection exists.")

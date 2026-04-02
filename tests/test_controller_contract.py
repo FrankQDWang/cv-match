@@ -214,7 +214,7 @@ def test_controller_output_validator_rejects_missing_response_to_reflection(
         thought_summary="Search again.",
         action="search_cts",
         decision_rationale="Add one more term.",
-        proposed_query_terms=["python", "trace"],
+        proposed_query_terms=["python", "resume matching", "trace"],
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
@@ -249,4 +249,34 @@ def test_controller_output_validator_rejects_empty_query_terms(
     )
 
     with pytest.raises(ModelRetry, match="proposed_query_terms"):
+        validator(type("Ctx", (), {"deps": context})(), decision)
+
+
+def test_controller_output_validator_rejects_query_terms_over_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        AppSettings(_env_file=None),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    validator = controller._get_agent()._output_validators[0].function
+    context = ControllerContext(
+        full_jd="JD text",
+        full_notes="Notes text",
+        requirement_sheet=_requirement_sheet(),
+        round_no=1,
+        min_rounds=1,
+        max_rounds=3,
+        target_new=5,
+    )
+    decision = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Need recall.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+
+    with pytest.raises(ModelRetry, match="expected 2 query terms, got 3"):
         validator(type("Ctx", (), {"deps": context})(), decision)
