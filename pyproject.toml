@@ -1,8 +1,9 @@
 [project]
 name = "cv-match"
-version = "0.1.0"
-description = "Local CLI experiment for deterministic multi-round resume matching with Pydantic AI"
+version = "0.2.0"
+description = "Local CLI Agent for deterministic multi-round resume matching with Pydantic AI"
 readme = "README.md"
+license = { text = "GNU Affero General Public License v3.0" }
 authors = [
     { name = "frankqdwang", email = "wang15850317595@163.com" }
 ]
