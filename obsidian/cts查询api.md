@@ -1,4 +1,0 @@
-  - 文本类：jd、keyword、school、company、position、workContent
-  - 地域：location，既可以是字符串，也可以是字符串数组，见 cts.validated.yaml:112
-  - 条件枚举类：degree、schoolType、workExperienceRange、gender、age、active
-  - 分页：page、pageSize
