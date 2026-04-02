@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlparse
 
 from pydantic import ValidationError
 
-from cv_match.config import AppSettings
+from cv_match.config import AppSettings, load_process_env
 from cv_match.runtime import WorkflowRuntime
 from cv_match_ui.mapper import build_ui_payloads
 from cv_match_ui.models import CandidateDetailResponse, RunCreateRequest, RunCreateResponse, RunStatusResponse
@@ -242,6 +242,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    load_process_env()
     settings = AppSettings().with_overrides(mock_cts=args.mock_cts)
     registry = RunRegistry(settings)
     server = create_server(args.host, args.port, registry)

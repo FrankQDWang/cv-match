@@ -6,7 +6,7 @@ from pydantic_ai import NativeOutput
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.settings import ModelSettings
 
-from cv_match.config import AppSettings
+from cv_match.config import AppSettings, load_process_env
 
 
 def model_provider(model_id: str) -> str:
@@ -14,6 +14,7 @@ def model_provider(model_id: str) -> str:
 
 
 def build_model(model_id: str) -> Model:
+    load_process_env()
     return infer_model(model_id)
 
 

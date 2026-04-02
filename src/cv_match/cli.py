@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from cv_match.config import AppSettings
+from cv_match.config import AppSettings, load_process_env
 from cv_match.runtime import WorkflowRuntime
 
 
@@ -39,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        load_process_env()
         jd = _read_text(inline_value=args.jd, file_value=args.jd_file, label="jd")
         notes = _read_text(inline_value=args.notes, file_value=args.notes_file, label="notes")
         settings = AppSettings().with_overrides(

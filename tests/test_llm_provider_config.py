@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from cv_match.config import AppSettings
+from cv_match.config import AppSettings, load_process_env
 from cv_match.controller.react_controller import ReActController
 from cv_match.finalize.finalizer import Finalizer
 from cv_match.llm import (
@@ -53,6 +54,9 @@ def test_model_provider_returns_prefix() -> None:
 
 def test_build_model_routes_through_infer_model(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
+    loaded: list[bool] = []
+
+    monkeypatch.setattr("cv_match.llm.load_process_env", lambda: loaded.append(True))
 
     def fake_infer_model(model_id: str) -> object:
         calls.append(model_id)
@@ -62,7 +66,33 @@ def test_build_model_routes_through_infer_model(monkeypatch: pytest.MonkeyPatch)
 
     build_model("openai-responses:gpt-5.4-mini")
 
+    assert loaded == [True]
     assert calls == ["openai-responses:gpt-5.4-mini"]
+
+
+def test_load_process_env_sets_missing_variables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=file-key\nGOOGLE_API_KEY=google-key\n", encoding="utf-8")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+    load_process_env(env_file)
+
+    assert os.environ["OPENAI_API_KEY"] == "file-key"
+    assert os.environ["GOOGLE_API_KEY"] == "google-key"
+
+
+def test_load_process_env_does_not_override_existing_variables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=file-key\n", encoding="utf-8")
+    monkeypatch.setenv("OPENAI_API_KEY", "existing-key")
+
+    load_process_env(env_file)
+
+    assert os.environ["OPENAI_API_KEY"] == "existing-key"
 
 
 def test_build_output_spec_uses_native_output_for_openai(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -122,6 +152,7 @@ def test_preflight_models_surfaces_provider_credential_errors(
     model_id: str,
     env_var: str,
 ) -> None:
+    monkeypatch.setattr("cv_match.llm.load_process_env", lambda: None)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
