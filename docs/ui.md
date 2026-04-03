@@ -6,7 +6,7 @@ It is not a hosted product surface and it does not replace the CLI.
 
 ## Components
 
-- Backend API script: `cv-match-ui-api`
+- Backend API script: `deepmatch-ui-api`
 - Frontend app: `apps/web-user-lite`
 - Default backend address: `http://127.0.0.1:8011`
 - Default frontend address: `http://127.0.0.1:5176`
@@ -14,7 +14,7 @@ It is not a hosted product surface and it does not replace the CLI.
 ## Start the backend
 
 ```bash
-uv run cv-match-ui-api
+uv run deepmatch-ui-api
 ```
 
 Optional flags:

@@ -2,9 +2,9 @@ import asyncio
 import json
 from pathlib import Path
 
-from cv_match.clients.cts_client import CTSClientProtocol, CTSFetchResult
-from cv_match.config import AppSettings
-from cv_match.models import (
+from deepmatch.clients.cts_client import CTSClientProtocol, CTSFetchResult
+from deepmatch.config import AppSettings
+from deepmatch.models import (
     CTSQuery,
     FinalCandidate,
     FinalResult,
@@ -22,8 +22,8 @@ from cv_match.models import (
     SearchControllerDecision,
     StopControllerDecision,
 )
-from cv_match.runtime import WorkflowRuntime
-from cv_match.tracing import RunTracer
+from deepmatch.runtime import WorkflowRuntime
+from deepmatch.tracing import RunTracer
 
 
 def _read_json(path: Path) -> object:
@@ -533,7 +533,7 @@ def test_runtime_audit_records_terminal_controller_round(tmp_path: Path, monkeyp
 
 
 def test_runtime_fails_fast_when_provider_credentials_are_missing(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr("cv_match.llm.load_process_env", lambda: None)
+    monkeypatch.setattr("deepmatch.llm.load_process_env", lambda: None)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     settings = AppSettings(_env_file=None).with_overrides(
         runs_dir=str(tmp_path / "runs"),

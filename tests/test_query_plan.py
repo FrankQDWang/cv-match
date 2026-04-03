@@ -1,5 +1,5 @@
-from cv_match.models import QueryTermCandidate
-from cv_match.retrieval.query_plan import (
+from deepmatch.models import QueryTermCandidate
+from deepmatch.retrieval.query_plan import (
     canonicalize_controller_query_terms,
     select_query_terms,
     serialize_keyword_query,

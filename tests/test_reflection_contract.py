@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from cv_match.models import ReflectionAdvice, ReflectionFilterAdvice, ReflectionKeywordAdvice
+from deepmatch.models import ReflectionAdvice, ReflectionFilterAdvice, ReflectionKeywordAdvice
 
 
 def test_reflection_advice_requires_stop_reason_when_stopping() -> None:

@@ -1,4 +1,4 @@
-# cv-match
+# deepmatch
 
 <p>
   <a href="#english"><img src="https://img.shields.io/badge/Language-English-0A66C2" alt="English"></a>
@@ -7,126 +7,196 @@
 
 ## English
 
-`cv-match` is an experimental open-source resume matching Agent for local use. It turns a job description and sourcing notes into a deterministic multi-round shortlist using LLM-based requirement extraction, controlled CTS retrieval, per-resume scoring, reflection, and finalization.
+`deepmatch` is an experimental local-first resume matching engine. It turns a job description and sourcing notes into a deterministic multi-round shortlist using requirement extraction, controlled CTS retrieval, per-resume scoring, reflection, and finalization.
 
-The project is usable today, but it is still intentionally narrow:
+The current product shape is intentionally narrow:
 
-- It is optimized for local iteration and auditability, not for hosted multi-tenant deployment.
-- It connects to CTS through authenticated search.
-- It exposes a CLI and a minimal local web UI.
+- the primary product is a local CLI
+- the same runtime can also be imported as a Python dependency
+- a minimal local web UI still exists, but it is secondary
 
 ## Highlights
 
-- Deterministic Python Agent with explicit control over a small number of LLM-backed steps
+- Installable CLI with stable subcommands: `run`, `init`, `doctor`, `version`
+- Stable Python entrypoints: `run_match(...)` and `run_match_async(...)`
+- Structured run artifacts written under `runs/` by default
+- Explicit model configuration using `provider:model`
 - Real CTS integration with explicit credential requirements
-- Structured run artifacts written to `runs/` for review and debugging
-- Minimal web UI for entering JD / sourcing notes and browsing shortlist results
-- Explicit model configuration using `provider:model` IDs
 
 ## Quick Start
 
-The recommended way to use `cv-match` is the local web UI.
-
-### 1. Open a terminal
-
-- On macOS: press `Command + Space`, type `Terminal`, and open it.
-- On Windows: open `Windows Terminal` or `PowerShell` from the Start menu.
-
-### 2. Go to the project folder
-
-```bash
-cd path/to/cv-match
-```
-
-### 3. Make sure you have the prerequisites
+### Prerequisites
 
 - Python `3.12+`
-- [`uv`](https://docs.astral.sh/uv/)
-- Node.js and `pnpm`
 - one supported LLM provider credential
-- CTS credentials
+- CTS credentials for real CTS mode
 
-### 4. Install dependencies
+### Install as a CLI
 
-```bash
-uv sync
-```
-
-### 5. Copy `.env.example` to `.env`
+From a local checkout:
 
 ```bash
-cp .env.example .env
+uv build
+pipx install dist/deepmatch-0.2.0-py3-none-any.whl
 ```
 
-Windows PowerShell:
+If you prefer a plain Python environment:
 
 ```bash
-Copy-Item .env.example .env
+pip install dist/deepmatch-0.2.0-py3-none-any.whl
 ```
 
-### 6. Fill the required values in `.env`
+### Create a starter env file
 
-For most users, the default model names in `.env.example` can stay as they are.
+```bash
+deepmatch init
+```
 
-You must fill:
+### Fill the required values in `.env`
 
-- one LLM provider key matching your configured models
-- `CVMATCH_CTS_TENANT_KEY`
-- `CVMATCH_CTS_TENANT_SECRET`
-
-Example:
+At minimum:
 
 ```dotenv
 OPENAI_API_KEY=your-openai-key
-CVMATCH_CTS_TENANT_KEY=your-cts-tenant-key
-CVMATCH_CTS_TENANT_SECRET=your-cts-tenant-secret
+DEEPMATCH_CTS_TENANT_KEY=your-cts-tenant-key
+DEEPMATCH_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
 If you keep the default `openai-responses:*` models, `OPENAI_API_KEY` is the only provider key you need.
 
-### 7. Start the backend
+### Validate the local setup
 
 ```bash
-uv run cv-match-ui-api
+deepmatch doctor
 ```
 
-### 8. Start the frontend in another terminal
+### Run one workflow
 
 ```bash
-cd path/to/cv-match/apps/web-user-lite
-pnpm install
-pnpm dev
+deepmatch run \
+  --jd "Python agent engineer with retrieval and ranking experience" \
+  --notes "Shanghai preferred, avoid pure frontend profiles" \
+  --real-cts
 ```
 
-### 9. Open the app in your browser
-
-```text
-http://127.0.0.1:5176
-```
-
-## Installation
-
-For normal usage:
+Canonical output is human-readable. For wrappers and scripts, use machine output:
 
 ```bash
-uv sync
+deepmatch run \
+  --jd "Python agent engineer" \
+  --notes "Shanghai preferred" \
+  --mock-cts \
+  --json
 ```
+
+## Install Paths
+
+### Terminal users
+
+Recommended:
+
+```bash
+pipx install dist/deepmatch-0.2.0-py3-none-any.whl
+```
+
+This gives you the `deepmatch` command directly.
+
+### Python integrators
+
+```bash
+pip install dist/deepmatch-0.2.0-py3-none-any.whl
+```
+
+Then:
+
+```python
+from deepmatch import run_match
+
+result = run_match(
+    jd="Python agent engineer",
+    notes="Shanghai preferred",
+)
+
+print(result.final_markdown)
+print(result.run_dir)
+```
+
+## CLI
+
+The canonical entrypoint is:
+
+```bash
+deepmatch run --help
+```
+
+Available commands:
+
+- `deepmatch run`
+- `deepmatch init`
+- `deepmatch doctor`
+- `deepmatch version`
+
+For one compatibility cycle, the legacy alias still works:
+
+```bash
+deepmatch --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
+```
+
+Key options on `run`:
+
+- `--jd` or `--jd-file`
+- `--notes` or `--notes-file`
+- `--mock-cts` or `--real-cts`
+- `--env-file`
+- `--output-dir`
+- `--json`
+
+The default output root is `./runs` relative to the current working directory. Override it per run with:
+
+```bash
+deepmatch run \
+  --jd "Python agent engineer" \
+  --notes "Shanghai preferred" \
+  --mock-cts \
+  --output-dir ./outputs
+```
+
+Full CLI reference:
+
+- [docs/cli.md](docs/cli.md)
+
+## Wrapping `deepmatch`
+
+Two supported wrapper patterns are intentionally stable:
+
+### Wrap the CLI
+
+Run:
+
+```bash
+deepmatch run --jd "..." --notes "..." --json
+```
+
+Then read the single JSON object from stdout.
+
+### Wrap the library
+
+```python
+from deepmatch import run_match
+
+result = run_match(jd="...", notes="...")
+payload = result.final_result.model_dump(mode="json")
+```
+
+Use this path when you want to build your own API server, desktop shell, or workflow wrapper around the runtime.
 
 ## Configuration
 
-Environment variables are read from `.env` automatically.
+Environment variables are read from `.env` by default. You will usually configure:
 
-You will usually configure three groups of variables:
-
-- LLM provider credentials such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_API_KEY`
-- CTS connection settings such as `CVMATCH_CTS_BASE_URL`, `CVMATCH_CTS_TENANT_KEY`, and `CVMATCH_CTS_TENANT_SECRET`
-- Agent behavior such as model IDs, round limits, concurrency, and output directory
-
-Minimum values required to run the Agent:
-
-- one provider key that matches your configured models
-- `CVMATCH_CTS_TENANT_KEY`
-- `CVMATCH_CTS_TENANT_SECRET`
+- provider credentials such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_API_KEY`
+- CTS settings such as `DEEPMATCH_CTS_BASE_URL`, `DEEPMATCH_CTS_TENANT_KEY`, and `DEEPMATCH_CTS_TENANT_SECRET`
+- runtime settings such as round limits, concurrency, and output directory
 
 Full configuration reference:
 
@@ -134,41 +204,16 @@ Full configuration reference:
 
 Important rules:
 
-- Model variables must use the `provider:model` format.
-- If you use `openai`, `openai-chat`, or `openai-responses` model IDs, set `OPENAI_API_KEY`.
-- If you use `anthropic:*`, set `ANTHROPIC_API_KEY`.
-- If you use `google-gla:*`, set `GOOGLE_API_KEY`.
-
-## CLI Usage
-
-Run with files:
-
-```bash
-uv run cv-match --jd-file examples/jd.md --notes-file examples/notes.md --real-cts
-```
-
-Run with inline text:
-
-```bash
-uv run cv-match --jd "Python agent engineer" --notes "Shanghai preferred" --real-cts
-```
-
-The CLI prints:
-
-- final markdown output
-- `run_id`
-- `run_directory`
-- `trace_log`
-
-Full CLI reference:
-
-- [docs/cli.md](docs/cli.md)
+- model variables must use the `provider:model` format
+- OpenAI-family models require `OPENAI_API_KEY`
+- `anthropic:*` requires `ANTHROPIC_API_KEY`
+- `google-gla:*` requires `GOOGLE_API_KEY`
 
 ## Web UI
 
-The repository includes a minimal local web UI:
+The repository still includes a minimal local web UI:
 
-- backend API: `cv-match-ui-api`
+- backend API: `deepmatch-ui-api`
 - frontend app: `apps/web-user-lite`
 - default backend port: `8011`
 - default frontend port: `5176`
@@ -176,7 +221,7 @@ The repository includes a minimal local web UI:
 Start the backend:
 
 ```bash
-uv run cv-match-ui-api
+uv run deepmatch-ui-api
 ```
 
 Start the frontend in another terminal:
@@ -193,13 +238,9 @@ Then open:
 http://127.0.0.1:5176
 ```
 
-Full UI reference:
-
-- [docs/ui.md](docs/ui.md)
-
 ## Outputs
 
-Each run creates a timestamped directory under `runs/`, including files such as:
+Each run creates a timestamped directory under `runs/` by default, including files such as:
 
 - `trace.log`
 - `events.jsonl`
@@ -216,16 +257,16 @@ Output reference:
 
 Current boundaries are intentional:
 
-- This is an experimental local Agent, not a hosted product.
-- The web UI is a small local shim, not a full recruiting platform.
-- The CTS adapter is scoped to the fields and semantics currently implemented in this repository.
-- The Agent is built for auditable deterministic control flow, not open-ended autonomous tool use.
+- this is an experimental local engine, not a hosted multi-tenant product
+- the web UI is a thin local shim, not a full recruiting platform
+- the CTS adapter is scoped to the fields and semantics implemented in this repository
+- the runtime is built for auditable deterministic control flow, not open-ended autonomous tool use
 
 ## Docs
 
 - [Configuration](docs/configuration.md)
-- [UI](docs/ui.md)
 - [CLI](docs/cli.md)
+- [UI](docs/ui.md)
 - [Outputs](docs/outputs.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)

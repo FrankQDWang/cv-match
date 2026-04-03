@@ -9,7 +9,7 @@ from pydantic_ai.providers import infer_provider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
-from cv_match.config import AppSettings, load_process_env
+from deepmatch.config import AppSettings, load_process_env
 
 
 def model_provider(model_id: str) -> str:

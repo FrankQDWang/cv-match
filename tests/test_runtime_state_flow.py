@@ -2,8 +2,8 @@ import asyncio
 import json
 from pathlib import Path
 
-from cv_match.config import AppSettings
-from cv_match.models import (
+from deepmatch.config import AppSettings
+from deepmatch.models import (
     CTSQuery,
     FinalCandidate,
     FinalResult,
@@ -20,8 +20,8 @@ from cv_match.models import (
     SearchControllerDecision,
     StopControllerDecision,
 )
-from cv_match.runtime import WorkflowRuntime
-from cv_match.tracing import RunTracer
+from deepmatch.runtime import WorkflowRuntime
+from deepmatch.tracing import RunTracer
 
 
 def _sample_inputs() -> tuple[str, str]:

@@ -1,12 +1,12 @@
 import asyncio
 from pathlib import Path
 
-from cv_match.clients.cts_client import CTSClientProtocol, CTSFetchResult
-from cv_match.config import AppSettings
-from cv_match.models import CTSQuery, HardConstraintSlots, QueryTermCandidate, RequirementSheet, ResumeCandidate
-from cv_match.retrieval import build_location_execution_plan, build_round_retrieval_plan
-from cv_match.runtime import WorkflowRuntime
-from cv_match.tracing import RunTracer
+from deepmatch.clients.cts_client import CTSClientProtocol, CTSFetchResult
+from deepmatch.config import AppSettings
+from deepmatch.models import CTSQuery, HardConstraintSlots, QueryTermCandidate, RequirementSheet, ResumeCandidate
+from deepmatch.retrieval import build_location_execution_plan, build_round_retrieval_plan
+from deepmatch.runtime import WorkflowRuntime
+from deepmatch.tracing import RunTracer
 
 
 def _candidate(resume_id: str, city: str) -> ResumeCandidate:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pydantic_ai import Agent
 
-from cv_match.config import AppSettings
-from cv_match.llm import build_model, build_model_settings, build_output_spec
-from cv_match.models import ReflectionAdvice, ReflectionContext
-from cv_match.prompting import LoadedPrompt, json_block
+from deepmatch.config import AppSettings
+from deepmatch.llm import build_model, build_model_settings, build_output_spec
+from deepmatch.models import ReflectionAdvice, ReflectionContext
+from deepmatch.prompting import LoadedPrompt, json_block
 
 
 class ReflectionCritic:

@@ -1,4 +1,4 @@
-from cv_match.models import (
+from deepmatch.models import (
     CTSQuery,
     AgeRequirement,
     CitySearchSummary,

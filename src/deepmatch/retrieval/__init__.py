@@ -1,9 +1,9 @@
-from cv_match.retrieval.filter_projection import (
+from deepmatch.retrieval.filter_projection import (
     build_default_filter_plan,
     canonicalize_filter_plan,
     project_constraints_to_cts,
 )
-from cv_match.retrieval.query_plan import (
+from deepmatch.retrieval.query_plan import (
     allocate_balanced_city_targets,
     build_location_execution_plan,
     build_round_retrieval_plan,

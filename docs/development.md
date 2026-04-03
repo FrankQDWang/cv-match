@@ -25,13 +25,19 @@ uv run pytest
 Run the CLI help:
 
 ```bash
-uv run cv-match --help
+uv run deepmatch --help
+```
+
+Run the canonical `run` help:
+
+```bash
+uv run deepmatch run --help
 ```
 
 Run the UI API help:
 
 ```bash
-uv run cv-match-ui-api --help
+uv run deepmatch-ui-api --help
 ```
 
 Run frontend tests:
@@ -48,13 +54,13 @@ pnpm test
 Example:
 
 ```bash
-uv run cv-match --jd-file examples/jd.md --notes-file examples/notes.md --mock-cts
+uv run deepmatch run --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
 ```
 
 Or set:
 
 ```dotenv
-CVMATCH_MOCK_CTS=true
+DEEPMATCH_MOCK_CTS=true
 ```
 
 Notes:
@@ -67,8 +73,8 @@ Notes:
 
 Key directories:
 
-- `src/cv_match/` for the main Agent implementation and CLI
-- `src/cv_match_ui/` for the minimal backend API used by the web UI
+- `src/deepmatch/` for the main Agent implementation and CLI
+- `src/deepmatch_ui/` for the minimal backend API used by the web UI
 - `apps/web-user-lite/` for the frontend
 - `tests/` for Python tests
 - `docs/v-*` for versioned historical design notes

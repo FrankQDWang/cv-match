@@ -9,12 +9,12 @@ from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 
-from cv_match.clients.cts_client import CTSClient, CTSClientProtocol, CTSFetchResult, MockCTSClient
-from cv_match.config import AppSettings
-from cv_match.controller import ReActController
-from cv_match.finalize.finalizer import Finalizer
-from cv_match.llm import model_provider, preflight_models
-from cv_match.models import (
+from deepmatch.clients.cts_client import CTSClient, CTSClientProtocol, CTSFetchResult, MockCTSClient
+from deepmatch.config import AppSettings
+from deepmatch.controller import ReActController
+from deepmatch.finalize.finalizer import Finalizer
+from deepmatch.llm import model_provider, preflight_models
+from deepmatch.models import (
     CTSQuery,
     CitySearchSummary,
     ControllerDecision,
@@ -37,15 +37,15 @@ from cv_match.models import (
     scored_candidate_sort_key,
     unique_strings,
 )
-from cv_match.normalization import normalize_resume
-from cv_match.prompting import PromptRegistry
-from cv_match.reflection.critic import ReflectionCritic
-from cv_match.requirements import (
+from deepmatch.normalization import normalize_resume
+from deepmatch.prompting import PromptRegistry
+from deepmatch.reflection.critic import ReflectionCritic
+from deepmatch.requirements import (
     RequirementExtractor,
     build_input_truth,
     build_scoring_policy,
 )
-from cv_match.retrieval import (
+from deepmatch.retrieval import (
     allocate_balanced_city_targets,
     build_default_filter_plan,
     build_location_execution_plan,
@@ -55,15 +55,15 @@ from cv_match.retrieval import (
     project_constraints_to_cts,
     select_query_terms,
 )
-from cv_match.runtime.context_builder import (
+from deepmatch.runtime.context_builder import (
     build_controller_context,
     build_finalize_context,
     build_reflection_context,
     build_scoring_context,
     top_candidates,
 )
-from cv_match.scoring.scorer import ResumeScorer
-from cv_match.tracing import LLMCallSnapshot, RunTracer
+from deepmatch.scoring.scorer import ResumeScorer
+from deepmatch.tracing import LLMCallSnapshot, RunTracer
 
 CANONICAL_STOP_REASONS = {
     "enough_high_fit_candidates",

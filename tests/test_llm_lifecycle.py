@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from cv_match.config import AppSettings
-from cv_match.controller.react_controller import ReActController
-from cv_match.finalize.finalizer import Finalizer
-from cv_match.models import (
+from deepmatch.config import AppSettings
+from deepmatch.controller.react_controller import ReActController
+from deepmatch.finalize.finalizer import Finalizer
+from deepmatch.models import (
     ControllerContext,
     FinalCandidate,
     FinalResult,
@@ -29,10 +29,10 @@ from cv_match.models import (
     ScoredCandidate,
     ScoringContext,
 )
-from cv_match.prompting import LoadedPrompt
-from cv_match.reflection.critic import ReflectionCritic
-from cv_match.requirements.extractor import RequirementExtractor
-from cv_match.scoring.scorer import ResumeScorer
+from deepmatch.prompting import LoadedPrompt
+from deepmatch.reflection.critic import ReflectionCritic
+from deepmatch.requirements.extractor import RequirementExtractor
+from deepmatch.scoring.scorer import ResumeScorer
 
 
 def _prompt(name: str) -> LoadedPrompt:

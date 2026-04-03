@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from cv_match.models import FinalCandidate, FinalResult, NormalizedExperience, NormalizedResume, ResumeCandidate
-from cv_match_ui.models import (
+from deepmatch.models import FinalCandidate, FinalResult, NormalizedExperience, NormalizedResume, ResumeCandidate
+from deepmatch_ui.models import (
     AgentShortlistCandidate,
     CandidateCard,
     CandidateDetailResponse,

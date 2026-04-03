@@ -1,6 +1,6 @@
 # Architecture
 
-`cv-match` is built as a deterministic Python Agent with a small number of LLM-backed stages.
+`deepmatch` is built as a deterministic Python Agent with a small number of LLM-backed stages.
 
 The design goal is controlled behavior and auditability rather than open-ended agent autonomy.
 

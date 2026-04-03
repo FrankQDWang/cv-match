@@ -6,11 +6,11 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, Field
 
-from cv_match.clients.cts_models import Candidate, CandidateSearchRequest, CandidateSearchResponse
-from cv_match.config import AppSettings
-from cv_match.locations import normalize_location, normalize_locations
-from cv_match.mock_data import load_mock_resume_corpus
-from cv_match.models import CTSQuery, ResumeCandidate, stable_fallback_resume_id
+from deepmatch.clients.cts_models import Candidate, CandidateSearchRequest, CandidateSearchResponse
+from deepmatch.config import AppSettings
+from deepmatch.locations import normalize_location, normalize_locations
+from deepmatch.mock_data import load_mock_resume_corpus
+from deepmatch.models import CTSQuery, ResumeCandidate, stable_fallback_resume_id
 
 ALLOWED_NATIVE_FILTERS = {
     "company",

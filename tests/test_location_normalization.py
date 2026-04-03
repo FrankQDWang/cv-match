@@ -1,9 +1,9 @@
 import asyncio
 
-from cv_match.clients.cts_client import MockCTSClient
-from cv_match.config import AppSettings
-from cv_match.models import CTSQuery, ResumeCandidate
-from cv_match.normalization import normalize_resume
+from deepmatch.clients.cts_client import MockCTSClient
+from deepmatch.config import AppSettings
+from deepmatch.models import CTSQuery, ResumeCandidate
+from deepmatch.normalization import normalize_resume
 
 
 def test_normalize_resume_keeps_exact_location_text() -> None:

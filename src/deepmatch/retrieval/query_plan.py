@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cv_match.models import (
+from deepmatch.models import (
     LocationExecutionPlan,
     QueryTermCandidate,
     RoundRetrievalPlan,

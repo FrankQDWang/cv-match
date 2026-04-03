@@ -1,3 +1,3 @@
-from cv_match.finalize.finalizer import Finalizer
+from deepmatch.finalize.finalizer import Finalizer
 
 __all__ = ["Finalizer"]

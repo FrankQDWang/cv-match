@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cv_match.models import (
+from deepmatch.models import (
     ControllerContext,
     FinalizeContext,
     ReflectionContext,
@@ -12,7 +12,7 @@ from cv_match.models import (
     SearchObservationView,
     TopPoolEntryView,
 )
-from cv_match.requirements import build_requirement_digest
+from deepmatch.requirements import build_requirement_digest
 
 
 def build_controller_context(

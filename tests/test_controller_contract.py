@@ -4,9 +4,9 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 from pydantic_ai.exceptions import ModelRetry
 
-from cv_match.config import AppSettings
-from cv_match.controller.react_controller import ReActController
-from cv_match.models import (
+from deepmatch.config import AppSettings
+from deepmatch.controller.react_controller import ReActController
+from deepmatch.models import (
     CTSQuery,
     ControllerDecision,
     ControllerContext,
@@ -27,8 +27,8 @@ from cv_match.models import (
     SearchControllerDecision,
     StopControllerDecision,
 )
-from cv_match.prompting import LoadedPrompt
-from cv_match.runtime import WorkflowRuntime
+from deepmatch.prompting import LoadedPrompt
+from deepmatch.runtime import WorkflowRuntime
 
 
 def _requirement_sheet() -> RequirementSheet:

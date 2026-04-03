@@ -1,0 +1,176 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from deepmatch.api import MatchRunResult
+from deepmatch.cli import main
+from deepmatch.models import FinalResult
+
+
+def _result(tmp_path: Path) -> MatchRunResult:
+    trace_log = tmp_path / "trace.log"
+    trace_log.write_text("", encoding="utf-8")
+    return MatchRunResult(
+        final_result=FinalResult(
+            run_id="run-1",
+            run_dir=str(tmp_path),
+            rounds_executed=2,
+            stop_reason="controller_stop",
+            summary="done",
+            candidates=[],
+        ),
+        final_markdown="# Final",
+        run_id="run-1",
+        run_dir=tmp_path,
+        trace_log_path=trace_log,
+    )
+
+
+def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["--help"])
+    assert exc.value.code == 0
+    assert "deepmatch" in capsys.readouterr().out
+
+
+def test_version_command_prints_version(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["version"]) == 0
+    assert capsys.readouterr().out.strip()
+
+
+def test_init_writes_env_template(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env_file = tmp_path / ".env"
+
+    assert main(["init", "--env-file", str(env_file)]) == 0
+
+    assert env_file.exists()
+    assert "OPENAI_API_KEY=" in env_file.read_text(encoding="utf-8")
+    assert str(env_file) in capsys.readouterr().out
+
+
+def test_init_refuses_to_overwrite_without_force(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=existing\n", encoding="utf-8")
+
+    assert main(["init", "--env-file", str(env_file)]) == 1
+
+    assert "already exists" in capsys.readouterr().err
+
+
+def test_doctor_json_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=test-key\nDEEPMATCH_MOCK_CTS=true\n", encoding="utf-8")
+
+    assert main(
+        [
+            "doctor",
+            "--env-file",
+            str(env_file),
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert {item["name"] for item in payload["checks"]} >= {
+        "packaged_prompts",
+        "default_spec",
+        "settings",
+        "output_dir",
+        "provider_credentials",
+        "cts_credentials",
+    }
+
+
+def test_doctor_fails_for_missing_real_cts_credentials(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=test-key\nDEEPMATCH_MOCK_CTS=false\n", encoding="utf-8")
+
+    assert main(["doctor", "--env-file", str(env_file), "--real-cts"]) == 1
+
+    assert "FAIL cts_credentials" in capsys.readouterr().out
+
+
+def test_run_supports_legacy_alias_and_json_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr("deepmatch.cli.run_match", lambda **kwargs: _result(tmp_path))
+
+    assert main(["--jd", "JD", "--notes", "Notes", "--mock-cts", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["run_id"] == "run-1"
+    assert payload["final_markdown"] == "# Final"
+
+
+def test_run_json_errors_emit_single_object(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def _boom(**kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr("deepmatch.cli.run_match", _boom)
+
+    assert main(["run", "--jd", "JD", "--notes", "Notes", "--json"]) == 1
+
+    payload = json.loads(capsys.readouterr().err)
+    assert payload == {"error": "boom", "error_type": "ValueError"}
+
+
+def test_run_validates_input_pairs(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["run", "--jd", "JD"]) == 1
+    assert "notes is required" in capsys.readouterr().err
+
+
+def test_run_rejects_duplicate_input_sources(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    jd_file = tmp_path / "jd.md"
+    jd_file.write_text("JD", encoding="utf-8")
+
+    assert main(["run", "--jd", "JD", "--jd-file", str(jd_file), "--notes", "Notes"]) == 1
+    assert "Use only one of --jd or --jd-file." in capsys.readouterr().err
+
+
+def test_output_dir_flag_overrides_env_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env_file = tmp_path / "custom.env"
+    env_file.write_text("DEEPMATCH_RUNS_DIR=from-env\n", encoding="utf-8")
+    captured = {}
+
+    def _fake_run_match(**kwargs):
+        captured["env_file"] = kwargs["env_file"]
+        captured["runs_dir"] = kwargs["settings"].runs_dir
+        return _result(tmp_path)
+
+    monkeypatch.setattr("deepmatch.cli.run_match", _fake_run_match)
+
+    assert main(
+        [
+            "run",
+            "--jd",
+            "JD",
+            "--notes",
+            "Notes",
+            "--env-file",
+            str(env_file),
+            "--output-dir",
+            str(tmp_path / "explicit-runs"),
+        ]
+    ) == 0
+
+    assert captured["env_file"] == str(env_file)
+    assert captured["runs_dir"] == str((tmp_path / "explicit-runs").resolve())
+    assert "run_id: run-1" in capsys.readouterr().out

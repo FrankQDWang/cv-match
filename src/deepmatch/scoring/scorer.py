@@ -6,15 +6,15 @@ from time import perf_counter
 
 from pydantic_ai import Agent
 
-from cv_match.config import AppSettings
-from cv_match.llm import build_model, build_model_settings, build_output_spec, model_provider
-from cv_match.models import (
+from deepmatch.config import AppSettings
+from deepmatch.llm import build_model, build_model_settings, build_output_spec, model_provider
+from deepmatch.models import (
     ScoredCandidate,
     ScoringFailure,
     ScoringContext,
 )
-from cv_match.prompting import LoadedPrompt, json_block
-from cv_match.tracing import LLMCallSnapshot
+from deepmatch.prompting import LoadedPrompt, json_block
+from deepmatch.tracing import LLMCallSnapshot
 
 
 class ResumeScorer:

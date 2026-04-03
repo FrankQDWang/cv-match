@@ -1,5 +1,5 @@
-from cv_match.requirements.extractor import RequirementExtractor
-from cv_match.requirements.normalization import (
+from deepmatch.requirements.extractor import RequirementExtractor
+from deepmatch.requirements.normalization import (
     build_input_truth,
     build_requirement_digest,
     build_scoring_policy,

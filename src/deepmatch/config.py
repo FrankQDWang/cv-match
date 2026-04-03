@@ -7,6 +7,8 @@ from typing import Literal
 from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from deepmatch.resources import DEFAULT_CTS_SPEC_NAME, package_prompt_dir, package_spec_file, resolve_user_path
+
 
 ReasoningEffort = Literal["low", "medium", "high"]
 MODEL_FIELDS = (
@@ -55,7 +57,7 @@ def _is_qualified_model_id(model_id: str) -> bool:
 
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="CVMATCH_",
+        env_prefix="DEEPMATCH_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
@@ -65,7 +67,7 @@ class AppSettings(BaseSettings):
     cts_tenant_key: str | None = None
     cts_tenant_secret: str | None = None
     cts_timeout_seconds: float = 20.0
-    cts_spec_path: str = "cts.validated.yaml"
+    cts_spec_path: str = DEFAULT_CTS_SPEC_NAME
 
     requirements_model: str = "openai-responses:gpt-5.4-mini"
     controller_model: str = "openai-responses:gpt-5.4-mini"
@@ -116,22 +118,24 @@ class AppSettings(BaseSettings):
 
     @property
     def prompt_dir(self) -> Path:
-        return self.project_root / "src" / "cv_match" / "prompts"
+        return package_prompt_dir()
 
     @property
     def spec_file(self) -> Path:
-        return self.project_root / self.cts_spec_path
+        if self.cts_spec_path == DEFAULT_CTS_SPEC_NAME:
+            return package_spec_file()
+        return resolve_user_path(self.cts_spec_path)
 
     @property
     def runs_path(self) -> Path:
-        return self.project_root / self.runs_dir
+        return resolve_user_path(self.runs_dir)
 
     def require_cts_credentials(self) -> None:
         if self.mock_cts:
             return
         if not self.cts_tenant_key or not self.cts_tenant_secret:
             raise ValueError(
-                "Real CTS mode requires CVMATCH_CTS_TENANT_KEY and CVMATCH_CTS_TENANT_SECRET."
+                "Real CTS mode requires DEEPMATCH_CTS_TENANT_KEY and DEEPMATCH_CTS_TENANT_SECRET."
             )
 
     def with_overrides(self, **overrides: object) -> "AppSettings":

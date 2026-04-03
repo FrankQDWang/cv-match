@@ -8,6 +8,12 @@ runs/<timestamp>_<run_id>/
 
 The exact path is printed by the CLI on success.
 
+By default, `runs/` is resolved relative to the current working directory. Override it for one run with:
+
+```bash
+deepmatch run --jd "..." --notes "..." --output-dir ./outputs
+```
+
 ## Top-level files
 
 Common top-level files include:

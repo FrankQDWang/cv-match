@@ -1,4 +1,4 @@
-from cv_match.models import (
+from deepmatch.models import (
     CTSQuery,
     CitySearchSummary,
     HardConstraintSlots,
@@ -22,7 +22,7 @@ from cv_match.models import (
     SearchObservation,
     SentQueryRecord,
 )
-from cv_match.runtime.context_builder import (
+from deepmatch.runtime.context_builder import (
     build_controller_context,
     build_finalize_context,
     build_reflection_context,

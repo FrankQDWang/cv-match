@@ -1,4 +1,4 @@
-from cv_match.models import (
+from deepmatch.models import (
     AgeRequirement,
     DegreeRequirement,
     ExperienceRequirement,
@@ -9,7 +9,7 @@ from cv_match.models import (
     RequirementSheet,
     SchoolTypeRequirement,
 )
-from cv_match.retrieval.filter_projection import (
+from deepmatch.retrieval.filter_projection import (
     build_default_filter_plan,
     canonicalize_filter_plan,
     project_constraints_to_cts,

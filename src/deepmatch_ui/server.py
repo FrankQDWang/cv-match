@@ -13,10 +13,10 @@ from urllib.parse import unquote, urlparse
 
 from pydantic import ValidationError
 
-from cv_match.config import AppSettings, load_process_env
-from cv_match.runtime import WorkflowRuntime
-from cv_match_ui.mapper import build_ui_payloads
-from cv_match_ui.models import CandidateDetailResponse, RunCreateRequest, RunCreateResponse, RunStatusResponse
+from deepmatch.config import AppSettings, load_process_env
+from deepmatch.runtime import WorkflowRuntime
+from deepmatch_ui.mapper import build_ui_payloads
+from deepmatch_ui.models import CandidateDetailResponse, RunCreateRequest, RunCreateResponse, RunStatusResponse
 
 
 @dataclass
@@ -74,7 +74,7 @@ class RunRegistry:
         worker = threading.Thread(
             target=self._run_workflow,
             args=(run_id,),
-            name=f"cv-match-ui-{run_id}",
+            name=f"deepmatch-ui-{run_id}",
             daemon=True,
         )
         worker.start()
@@ -138,7 +138,7 @@ class RunRegistry:
 
 def create_server(host: str, port: int, registry: RunRegistry) -> ThreadingHTTPServer:
     class UiApiHandler(BaseHTTPRequestHandler):
-        server_version = "CvMatchUiApi/0.1"
+        server_version = "DeepMatchUiApi/0.1"
 
         def log_message(self, format: str, *args) -> None:  # noqa: A003
             return
@@ -231,7 +231,7 @@ def create_server(host: str, port: int, registry: RunRegistry) -> ThreadingHTTPS
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Local API server for the cv-match minimal web UI.")
+    parser = argparse.ArgumentParser(description="Local API server for the deepmatch minimal web UI.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8011)
     parser.add_argument("--mock-cts", dest="mock_cts", action="store_true", default=None)
@@ -246,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = AppSettings().with_overrides(mock_cts=args.mock_cts)
     registry = RunRegistry(settings)
     server = create_server(args.host, args.port, registry)
-    print(f"CV Match UI API listening on http://{args.host}:{args.port}")
+    print(f"DeepMatch UI API listening on http://{args.host}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

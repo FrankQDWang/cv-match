@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cv_match.models import unique_strings
+from deepmatch.models import unique_strings
 
 
 def normalize_location(value: str | None) -> str:

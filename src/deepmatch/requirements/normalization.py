@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 import re
 
-from cv_match.locations import normalize_locations
-from cv_match.models import (
+from deepmatch.locations import normalize_locations
+from deepmatch.models import (
     AgeRequirement,
     DegreeRequirement,
     ExperienceRequirement,

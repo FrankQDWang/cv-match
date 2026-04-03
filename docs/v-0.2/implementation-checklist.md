@@ -1,4 +1,4 @@
-# cv-match v0.2 实施清单
+# deepmatch v0.2 实施清单
 
 ## 0. 文档目的
 
@@ -55,10 +55,10 @@
 
 ### 2.2 文件
 
-- `src/cv_match/models.py`
+- `src/deepmatch/models.py`
 - 可选新增：
-  - `src/cv_match/requirements/__init__.py`
-  - `src/cv_match/retrieval/__init__.py`
+  - `src/deepmatch/requirements/__init__.py`
+  - `src/deepmatch/retrieval/__init__.py`
 
 ### 2.3 必须新增的模型
 
@@ -119,12 +119,12 @@
 
 ### 3.2 文件
 
-- 新增 `src/cv_match/requirements/extractor.py`
-- 新增 `src/cv_match/requirements/normalization.py`
-- 新增 `src/cv_match/prompts/requirements.md`
-- 旧 `src/cv_match/controller/strategy_bootstrap.py`
-- `src/cv_match/models.py`
-- `src/cv_match/config.py`
+- 新增 `src/deepmatch/requirements/extractor.py`
+- 新增 `src/deepmatch/requirements/normalization.py`
+- 新增 `src/deepmatch/prompts/requirements.md`
+- 旧 `src/deepmatch/controller/strategy_bootstrap.py`
+- `src/deepmatch/models.py`
+- `src/deepmatch/config.py`
 
 ### 3.3 具体改动
 
@@ -179,10 +179,10 @@
 
 ### 4.2 文件
 
-- 新增 `src/cv_match/retrieval/query_plan.py`
-- 新增 `src/cv_match/retrieval/filter_projection.py`
-- `src/cv_match/clients/cts_client.py`
-- `src/cv_match/models.py`
+- 新增 `src/deepmatch/retrieval/query_plan.py`
+- 新增 `src/deepmatch/retrieval/filter_projection.py`
+- `src/deepmatch/clients/cts_client.py`
+- `src/deepmatch/models.py`
 
 ### 4.3 `query_plan.py`
 
@@ -250,9 +250,9 @@
 
 ### 5.2 文件
 
-- `src/cv_match/runtime/orchestrator.py`
-- 新增 `src/cv_match/runtime/context_builder.py`
-- `src/cv_match/models.py`
+- `src/deepmatch/runtime/orchestrator.py`
+- 新增 `src/deepmatch/runtime/context_builder.py`
+- `src/deepmatch/models.py`
 
 ### 5.3 `context_builder.py`
 
@@ -315,11 +315,11 @@
 
 ### 6.2 文件
 
-- `src/cv_match/controller/react_controller.py`
-- `src/cv_match/reflection/critic.py`
-- `src/cv_match/prompts/controller.md`
-- `src/cv_match/prompts/reflection.md`
-- `src/cv_match/models.py`
+- `src/deepmatch/controller/react_controller.py`
+- `src/deepmatch/reflection/critic.py`
+- `src/deepmatch/prompts/controller.md`
+- `src/deepmatch/prompts/reflection.md`
+- `src/deepmatch/models.py`
 
 ### 6.3 Controller 改动
 
@@ -382,8 +382,8 @@
 
 文件：
 
-- `src/cv_match/clients/cts_client.py`
-- `src/cv_match/clients/cts_models.py`
+- `src/deepmatch/clients/cts_client.py`
+- `src/deepmatch/clients/cts_models.py`
 
 改动：
 
@@ -396,8 +396,8 @@
 
 文件：
 
-- `src/cv_match/runtime/orchestrator.py`
-- `src/cv_match/tracing.py`
+- `src/deepmatch/runtime/orchestrator.py`
+- `src/deepmatch/tracing.py`
 
 至少新增落盘：
 
@@ -439,8 +439,8 @@
 
 文件：
 
-- `src/cv_match_ui/server.py`
-- `src/cv_match_ui/mapper.py`
+- `src/deepmatch_ui/server.py`
+- `src/deepmatch_ui/mapper.py`
 
 原则：
 

@@ -7,12 +7,12 @@ from pathlib import Path
 
 import httpx
 
-from cv_match.config import AppSettings
-from cv_match.mock_data import load_mock_resume_corpus
-from cv_match.models import FinalCandidate, FinalResult
-from cv_match.normalization import normalize_resume
-from cv_match.runtime import RunArtifacts
-from cv_match_ui.server import RunRegistry, create_server
+from deepmatch.config import AppSettings
+from deepmatch.mock_data import load_mock_resume_corpus
+from deepmatch.models import FinalCandidate, FinalResult
+from deepmatch.normalization import normalize_resume
+from deepmatch.runtime import RunArtifacts
+from deepmatch_ui.server import RunRegistry, create_server
 
 
 @dataclass

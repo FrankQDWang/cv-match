@@ -1,5 +1,5 @@
 [project]
-name = "cv-match"
+name = "deepmatch"
 version = "0.2.0"
 description = "Local CLI Agent for deterministic multi-round resume matching with Pydantic AI"
 readme = "README.md"
@@ -22,8 +22,8 @@ dev = [
 ]
 
 [project.scripts]
-cv-match = "cv_match.cli:main"
-cv-match-ui-api = "cv_match_ui.server:main"
+deepmatch = "deepmatch.cli:main"
+deepmatch-ui-api = "deepmatch_ui.server:main"
 
 [build-system]
 requires = ["uv_build>=0.11.2,<0.12.0"]

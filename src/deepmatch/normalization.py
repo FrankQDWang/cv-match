@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from cv_match.locations import normalize_locations
-from cv_match.models import (
+from deepmatch.locations import normalize_locations
+from deepmatch.models import (
     NormalizedExperience,
     NormalizedResume,
     ResumeCandidate,

@@ -1,36 +1,36 @@
 # CLI
 
-[简体中文](cli.zh-CN.md)
+[English](cli.md)
 
-The canonical CLI entrypoint is:
+规范 CLI 入口是：
 
 ```bash
 deepmatch run --help
 ```
 
-For one compatibility cycle, the legacy alias still works:
+为兼容现有用法，当前一个发布周期内仍保留旧别名：
 
 ```bash
 deepmatch --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
 ```
 
-## Commands
+## 命令
 
 ### `deepmatch init`
 
-Write a starter env file in the current directory:
+在当前目录写入一个启动用 env 文件：
 
 ```bash
 deepmatch init
 ```
 
-Write to a custom path:
+写入自定义路径：
 
 ```bash
 deepmatch init --env-file ./local.env
 ```
 
-Overwrite an existing file:
+覆盖已存在文件：
 
 ```bash
 deepmatch init --force
@@ -38,13 +38,13 @@ deepmatch init --force
 
 ### `deepmatch doctor`
 
-Run local checks without network calls:
+运行本地检查，不发网络请求：
 
 ```bash
 deepmatch doctor
 ```
 
-Machine-readable output:
+机器可读输出：
 
 ```bash
 deepmatch doctor --json
@@ -52,7 +52,7 @@ deepmatch doctor --json
 
 ### `deepmatch version`
 
-Print the installed package version:
+打印当前安装包版本：
 
 ```bash
 deepmatch version
@@ -60,17 +60,17 @@ deepmatch version
 
 ## `deepmatch run`
 
-Each run requires two inputs:
+每次运行都需要两个输入：
 
-- a job description
+- job description
 - sourcing notes / sourcing preferences
 
-You must provide each value with exactly one source:
+每个值只能提供一种来源：
 
-- `--jd` or `--jd-file`
-- `--notes` or `--notes-file`
+- `--jd` 或 `--jd-file`
+- `--notes` 或 `--notes-file`
 
-### Run from inline text
+### 直接传文本运行
 
 ```bash
 deepmatch run \
@@ -79,7 +79,7 @@ deepmatch run \
   --real-cts
 ```
 
-### Run from files
+### 从文件运行
 
 ```bash
 deepmatch run \
@@ -88,7 +88,7 @@ deepmatch run \
   --real-cts
 ```
 
-### Override output location
+### 覆盖输出目录
 
 ```bash
 deepmatch run \
@@ -98,7 +98,7 @@ deepmatch run \
   --output-dir ./outputs
 ```
 
-### Use a custom env file
+### 使用自定义 env 文件
 
 ```bash
 deepmatch run \
@@ -108,7 +108,7 @@ deepmatch run \
   --env-file ./local.env
 ```
 
-### Machine-readable output
+### 机器可读输出
 
 ```bash
 deepmatch run \
@@ -118,31 +118,31 @@ deepmatch run \
   --json
 ```
 
-In `--json` mode, stdout contains exactly one JSON object on success. On failure, stderr contains exactly one JSON object.
+在 `--json` 模式下，成功时 stdout 只会输出一个 JSON 对象；失败时 stderr 只会输出一个 JSON 对象。
 
-## Success output
+## 成功输出
 
-Default success output is human-readable:
+默认成功输出是人类可读文本：
 
 - final markdown answer
 - `run_id`
 - `run_directory`
 - `trace_log`
 
-When `--output-dir` is omitted, artifacts go under `./runs` relative to the current working directory.
+如果不传 `--output-dir`，产物会写到当前工作目录下的 `./runs`。
 
-## Failure behavior
+## 失败行为
 
-The CLI fails fast when:
+CLI 会在这些情况下 fail fast：
 
-- required input is missing
-- both inline and file input are supplied for the same field
-- model configuration is invalid
-- provider credentials are missing
-- real CTS credentials are missing in `--real-cts` mode
-- any runtime stage raises an exception
+- 缺少必填输入
+- 同一个字段同时传了 inline 和 file 两种输入
+- 模型配置不合法
+- 缺少 provider 凭证
+- 在 `--real-cts` 模式下缺少 CTS 凭证
+- 任意 runtime stage 抛出异常
 
-## Related docs
+## 相关文档
 
 - [Configuration](configuration.md)
 - [Outputs](outputs.md)

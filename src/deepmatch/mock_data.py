@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from cv_match.locations import normalize_location
-from cv_match.models import ResumeCandidate, stable_fallback_resume_id
+from deepmatch.locations import normalize_location
+from deepmatch.models import ResumeCandidate, stable_fallback_resume_id
 
 
 def _candidate(
