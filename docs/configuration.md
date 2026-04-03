@@ -135,7 +135,7 @@ seektalent doctor
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `SEEKTALENT_MOCK_CTS` | `false` | Enables the local mock CTS client. Use this for local development and tests. |
+| `SEEKTALENT_MOCK_CTS` | `false` | Enables the local mock CTS client for source-checkout development and tests. The published PyPI CLI rejects this mode. |
 
 ## Related docs
 

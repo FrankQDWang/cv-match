@@ -17,7 +17,7 @@
 
 ## 核心特性
 
-- 可安装 CLI，稳定命令为 `run`、`init`、`doctor`、`version`
+- 可安装 CLI，稳定命令为 `run`、`init`、`doctor`、`version`、`update`
 - 稳定 Python 入口：`run_match(...)` 和 `run_match_async(...)`
 - 默认把结构化运行产物写到 `runs/`
 - 所有模型配置统一使用 `provider:model`
@@ -37,13 +37,13 @@
 
 ```bash
 uv build
-pipx install dist/seektalent-0.2.0-py3-none-any.whl
+pipx install dist/seektalent-0.2.3-py3-none-any.whl
 ```
 
 如果你更希望装进现有 Python 环境：
 
 ```bash
-pip install dist/seektalent-0.2.0-py3-none-any.whl
+pip install dist/seektalent-0.2.3-py3-none-any.whl
 ```
 
 ### 生成启动配置
@@ -70,12 +70,20 @@ SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 seektalent doctor
 ```
 
+### 推荐的黑盒使用顺序
+
+```bash
+seektalent --help
+seektalent doctor
+seektalent run --jd-file ./jd.md
+seektalent update
+```
+
 ### 运行一次工作流
 
 ```bash
 seektalent run \
-  --jd "Python agent engineer with retrieval and ranking experience" \
-  --real-cts
+  --jd "Python agent engineer with retrieval and ranking experience"
 ```
 
 如果你需要补充寻访偏好或排除条件，再加 `notes`：
@@ -83,8 +91,7 @@ seektalent run \
 ```bash
 seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
-  --notes "Shanghai preferred, avoid pure frontend profiles" \
-  --real-cts
+  --notes "Shanghai preferred, avoid pure frontend profiles"
 ```
 
 默认输出是人类可读文本。给包壳程序或脚本时，使用机器输出：
@@ -93,8 +100,13 @@ seektalent run \
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --json
+```
+
+### 打印升级说明
+
+```bash
+seektalent update
 ```
 
 ## 安装路径
@@ -104,7 +116,7 @@ seektalent run \
 推荐：
 
 ```bash
-pipx install dist/seektalent-0.2.0-py3-none-any.whl
+pipx install dist/seektalent-0.2.3-py3-none-any.whl
 ```
 
 这样会直接得到 `seektalent` 命令。
@@ -112,7 +124,7 @@ pipx install dist/seektalent-0.2.0-py3-none-any.whl
 ### 给 Python 集成方
 
 ```bash
-pip install dist/seektalent-0.2.0-py3-none-any.whl
+pip install dist/seektalent-0.2.3-py3-none-any.whl
 ```
 
 然后：
@@ -142,18 +154,19 @@ seektalent run --help
 - `seektalent init`
 - `seektalent doctor`
 - `seektalent version`
+- `seektalent update`
 
-为兼容现有用法，当前一个发布周期内仍保留旧别名：
+推荐的黑盒调用顺序：
 
-```bash
-seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
-```
+- `seektalent --help`
+- `seektalent doctor`
+- `seektalent run`
+- `seektalent update`
 
 `run` 的关键参数：
 
 - `--jd` 或 `--jd-file`，用于必填 JD
 - `--notes` 或 `--notes-file`，用于可选的寻访偏好
-- `--mock-cts` 或 `--real-cts`
 - `--env-file`
 - `--output-dir`
 - `--json`
@@ -164,7 +177,6 @@ seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --output-dir ./outputs
 ```
 

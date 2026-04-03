@@ -51,6 +51,8 @@ pnpm test
 
 `mock CTS` is a development-only path for local testing, regression checks, and prompt/runtime work.
 
+It is not available in the published PyPI CLI.
+
 Example:
 
 ```bash

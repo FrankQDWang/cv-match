@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from seektalent import __version__
 from seektalent.api import MatchRunResult
 from seektalent.cli import main
 from seektalent.models import FinalResult
@@ -39,12 +40,27 @@ def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--help"])
     assert exc.value.code == 0
-    assert "seektalent" in capsys.readouterr().out
+    help_text = capsys.readouterr().out
+    assert "seektalent" in help_text
+    assert "update" in help_text
+    assert "OPENAI_API_KEY" in help_text
+    assert "seektalent doctor" in help_text
 
 
 def test_version_command_prints_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["version"]) == 0
     assert capsys.readouterr().out.strip()
+
+
+def test_update_command_prints_upgrade_instructions(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["update"]) == 0
+
+    output = capsys.readouterr().out
+    assert f"Current version: {__version__}" in output
+    assert "pip install -U seektalent" in output
+    assert f"pip install -U seektalent=={__version__}" in output
+    assert "pipx upgrade seektalent" in output
+    assert "does not modify your environment" in output
 
 
 def test_init_writes_env_template(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

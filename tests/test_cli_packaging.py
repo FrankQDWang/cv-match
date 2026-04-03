@@ -41,6 +41,8 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         text=True,
     )
     assert "seektalent" in help_result.stdout
+    assert "update" in help_result.stdout
+    assert "OPENAI_API_KEY" in help_result.stdout
 
     version_result = subprocess.run(
         [str(cli), "version"],
@@ -51,6 +53,17 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         text=True,
     )
     assert version_result.stdout.strip()
+
+    update_result = subprocess.run(
+        [str(cli), "update"],
+        cwd=work_dir,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "pip install -U seektalent" in update_result.stdout
+    assert "pipx upgrade seektalent" in update_result.stdout
 
     subprocess.run(
         [str(cli), "init"],

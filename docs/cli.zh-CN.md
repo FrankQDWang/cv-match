@@ -5,13 +5,16 @@
 规范 CLI 入口是：
 
 ```bash
-seektalent run --help
+seektalent --help
 ```
 
-为兼容现有用法，当前一个发布周期内仍保留旧别名：
+推荐的黑盒使用顺序：
 
 ```bash
-seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
+seektalent --help
+seektalent doctor
+seektalent run --jd-file ./jd.md
+seektalent update
 ```
 
 ## 命令
@@ -58,6 +61,14 @@ seektalent doctor --json
 seektalent version
 ```
 
+### `seektalent update`
+
+打印 pip 和 pipx 的升级说明：
+
+```bash
+seektalent update
+```
+
 ## `seektalent run`
 
 每次运行都需要一个必填输入和一个可选补充输入：
@@ -77,8 +88,7 @@ JD 必须且只能提供一种来源：
 
 ```bash
 seektalent run \
-  --jd "Python agent engineer with retrieval and ranking experience" \
-  --real-cts
+  --jd "Python agent engineer with retrieval and ranking experience"
 ```
 
 ### 直接传文本运行
@@ -86,8 +96,7 @@ seektalent run \
 ```bash
 seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
-  --notes "Shanghai preferred, avoid pure frontend profiles" \
-  --real-cts
+  --notes "Shanghai preferred, avoid pure frontend profiles"
 ```
 
 ### 从文件运行
@@ -95,8 +104,7 @@ seektalent run \
 ```bash
 seektalent run \
   --jd-file ./jd.md \
-  --notes-file ./notes.md \
-  --real-cts
+  --notes-file ./notes.md
 ```
 
 ### 覆盖输出目录
@@ -105,7 +113,6 @@ seektalent run \
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --output-dir ./outputs
 ```
 
@@ -115,7 +122,6 @@ seektalent run \
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --env-file ./local.env
 ```
 
@@ -125,7 +131,6 @@ seektalent run \
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --json
 ```
 
@@ -150,7 +155,8 @@ CLI 会在这些情况下 fail fast：
 - 同一个字段同时传了 inline 和 file 两种输入
 - 模型配置不合法
 - 缺少 provider 凭证
-- 在 `--real-cts` 模式下缺少 CTS 凭证
+- 缺少 CTS 凭证
+- 通过配置请求了 mock CTS
 - 任意 runtime stage 抛出异常
 
 ## 相关文档

@@ -17,7 +17,7 @@ The current product shape is intentionally narrow:
 
 ## Highlights
 
-- Installable CLI with stable subcommands: `run`, `init`, `doctor`, `version`
+- Installable CLI with stable subcommands: `run`, `init`, `doctor`, `version`, `update`
 - Stable Python entrypoints: `run_match(...)` and `run_match_async(...)`
 - Structured run artifacts written under `runs/` by default
 - Explicit model configuration using `provider:model`
@@ -37,13 +37,13 @@ From a local checkout:
 
 ```bash
 uv build
-pipx install dist/seektalent-0.2.0-py3-none-any.whl
+pipx install dist/seektalent-0.2.3-py3-none-any.whl
 ```
 
 If you prefer a plain Python environment:
 
 ```bash
-pip install dist/seektalent-0.2.0-py3-none-any.whl
+pip install dist/seektalent-0.2.3-py3-none-any.whl
 ```
 
 ### Create a starter env file
@@ -70,12 +70,20 @@ If you keep the default `openai-responses:*` models, `OPENAI_API_KEY` is the onl
 seektalent doctor
 ```
 
+### Recommended black-box workflow
+
+```bash
+seektalent --help
+seektalent doctor
+seektalent run --jd-file ./jd.md
+seektalent update
+```
+
 ### Run one workflow
 
 ```bash
 seektalent run \
-  --jd "Python agent engineer with retrieval and ranking experience" \
-  --real-cts
+  --jd "Python agent engineer with retrieval and ranking experience"
 ```
 
 Add `notes` when you want to inject sourcing preferences or exclusions:
@@ -83,8 +91,7 @@ Add `notes` when you want to inject sourcing preferences or exclusions:
 ```bash
 seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
-  --notes "Shanghai preferred, avoid pure frontend profiles" \
-  --real-cts
+  --notes "Shanghai preferred, avoid pure frontend profiles"
 ```
 
 Canonical output is human-readable. For wrappers and scripts, use machine output:
@@ -93,8 +100,13 @@ Canonical output is human-readable. For wrappers and scripts, use machine output
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --json
+```
+
+### Print upgrade instructions
+
+```bash
+seektalent update
 ```
 
 ## Install Paths
@@ -104,7 +116,7 @@ seektalent run \
 Recommended:
 
 ```bash
-pipx install dist/seektalent-0.2.0-py3-none-any.whl
+pipx install dist/seektalent-0.2.3-py3-none-any.whl
 ```
 
 This gives you the `seektalent` command directly.
@@ -112,7 +124,7 @@ This gives you the `seektalent` command directly.
 ### Python integrators
 
 ```bash
-pip install dist/seektalent-0.2.0-py3-none-any.whl
+pip install dist/seektalent-0.2.3-py3-none-any.whl
 ```
 
 Then:
@@ -142,18 +154,19 @@ Available commands:
 - `seektalent init`
 - `seektalent doctor`
 - `seektalent version`
+- `seektalent update`
 
-For one compatibility cycle, the legacy alias still works:
+Recommended black-box sequence:
 
-```bash
-seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
-```
+- `seektalent --help`
+- `seektalent doctor`
+- `seektalent run`
+- `seektalent update`
 
 Key options on `run`:
 
 - `--jd` or `--jd-file` for the required job description
 - `--notes` or `--notes-file` for optional sourcing preferences
-- `--mock-cts` or `--real-cts`
 - `--env-file`
 - `--output-dir`
 - `--json`
@@ -164,7 +177,6 @@ The default output root is `./runs` relative to the current working directory. O
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --output-dir ./outputs
 ```
 

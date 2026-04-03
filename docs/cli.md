@@ -5,13 +5,16 @@
 The canonical CLI entrypoint is:
 
 ```bash
-seektalent run --help
+seektalent --help
 ```
 
-For one compatibility cycle, the legacy alias still works:
+Recommended black-box sequence:
 
 ```bash
-seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
+seektalent --help
+seektalent doctor
+seektalent run --jd-file ./jd.md
+seektalent update
 ```
 
 ## Commands
@@ -58,6 +61,14 @@ Print the installed package version:
 seektalent version
 ```
 
+### `seektalent update`
+
+Print upgrade instructions for pip and pipx installs:
+
+```bash
+seektalent update
+```
+
 ## `seektalent run`
 
 Each run requires one required input and one optional supplement:
@@ -77,8 +88,7 @@ If you want to add sourcing preferences, provide them with exactly one source:
 
 ```bash
 seektalent run \
-  --jd "Python agent engineer with retrieval and ranking experience" \
-  --real-cts
+  --jd "Python agent engineer with retrieval and ranking experience"
 ```
 
 ### Run from inline text
@@ -86,8 +96,7 @@ seektalent run \
 ```bash
 seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
-  --notes "Shanghai preferred, avoid pure frontend profiles" \
-  --real-cts
+  --notes "Shanghai preferred, avoid pure frontend profiles"
 ```
 
 ### Run from files
@@ -95,8 +104,7 @@ seektalent run \
 ```bash
 seektalent run \
   --jd-file ./jd.md \
-  --notes-file ./notes.md \
-  --real-cts
+  --notes-file ./notes.md
 ```
 
 ### Override output location
@@ -105,7 +113,6 @@ seektalent run \
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --output-dir ./outputs
 ```
 
@@ -115,7 +122,6 @@ seektalent run \
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --env-file ./local.env
 ```
 
@@ -125,7 +131,6 @@ seektalent run \
 seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
-  --mock-cts \
   --json
 ```
 
@@ -150,7 +155,8 @@ The CLI fails fast when:
 - both inline and file input are supplied for the same field
 - model configuration is invalid
 - provider credentials are missing
-- real CTS credentials are missing in `--real-cts` mode
+- CTS credentials are missing
+- mock CTS is requested through configuration
 - any runtime stage raises an exception
 
 ## Related docs

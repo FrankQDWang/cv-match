@@ -27,7 +27,25 @@ PROVIDER_ENV_VAR_BY_PREFIX = {
     "anthropic": "ANTHROPIC_API_KEY",
     "google-gla": "GOOGLE_API_KEY",
 }
-SUBCOMMANDS = {"run", "init", "doctor", "version"}
+SUBCOMMANDS = {"run", "init", "doctor", "version", "update"}
+ROOT_HELP_EPILOG = """Primary workflow:
+  1. seektalent doctor
+  2. seektalent run --jd-file ./jd.md
+
+Required environment variables:
+  OPENAI_API_KEY
+  SEEKTALENT_CTS_TENANT_KEY
+  SEEKTALENT_CTS_TENANT_SECRET
+
+Inputs:
+  Provide the job description with --jd or --jd-file.
+
+Artifacts:
+  Runs write structured outputs under ./runs by default or --output-dir when set.
+
+Upgrade:
+  seektalent update
+"""
 
 
 @dataclass(frozen=True)
@@ -305,8 +323,23 @@ def _version_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _update_command(args: argparse.Namespace) -> int:
+    del args
+    print(f"Current version: {__version__}")
+    print("Upgrade with pip: pip install -U seektalent")
+    print(f"Install this exact version: pip install -U seektalent=={__version__}")
+    print("Upgrade with pipx: pipx upgrade seektalent")
+    print("This command prints upgrade instructions only. It does not modify your environment.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="seektalent", description="Deterministic local resume matching CLI.")
+    parser = argparse.ArgumentParser(
+        prog="seektalent",
+        description="Deterministic local resume matching CLI.",
+        epilog=ROOT_HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--version", action="store_true", help="Print the installed seektalent version and exit.")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -368,6 +401,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     version_parser = subparsers.add_parser("version", help="Print the installed seektalent version.")
     version_parser.set_defaults(handler=_version_command)
+
+    update_parser = subparsers.add_parser("update", help="Print upgrade instructions for pip and pipx installs.")
+    update_parser.set_defaults(handler=_update_command)
     return parser
 
 
