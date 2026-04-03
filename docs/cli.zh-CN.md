@@ -14,6 +14,7 @@ seektalent --help
 seektalent --help
 seektalent doctor
 seektalent run --jd-file ./jd.md
+seektalent inspect --json
 seektalent update
 ```
 
@@ -67,6 +68,15 @@ seektalent version
 
 ```bash
 seektalent update
+```
+
+### `seektalent inspect`
+
+输出面向 wrappers、agents 和 automation 的发布版 CLI 描述：
+
+```bash
+seektalent inspect
+seektalent inspect --json
 ```
 
 ## `seektalent run`

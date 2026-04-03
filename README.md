@@ -17,7 +17,7 @@ The current product shape is intentionally narrow:
 
 ## Highlights
 
-- Installable CLI with stable subcommands: `run`, `init`, `doctor`, `version`, `update`
+- Installable CLI with stable subcommands: `run`, `init`, `doctor`, `version`, `update`, `inspect`
 - Stable Python entrypoints: `run_match(...)` and `run_match_async(...)`
 - Structured run artifacts written under `runs/` by default
 - Explicit model configuration using `provider:model`
@@ -37,13 +37,13 @@ From a local checkout:
 
 ```bash
 uv build
-pipx install dist/seektalent-0.2.3-py3-none-any.whl
+pipx install dist/seektalent-0.2.4-py3-none-any.whl
 ```
 
 If you prefer a plain Python environment:
 
 ```bash
-pip install dist/seektalent-0.2.3-py3-none-any.whl
+pip install dist/seektalent-0.2.4-py3-none-any.whl
 ```
 
 ### Create a starter env file
@@ -76,6 +76,7 @@ seektalent doctor
 seektalent --help
 seektalent doctor
 seektalent run --jd-file ./jd.md
+seektalent inspect --json
 seektalent update
 ```
 
@@ -109,6 +110,12 @@ seektalent run \
 seektalent update
 ```
 
+### Inspect the published CLI contract
+
+```bash
+seektalent inspect --json
+```
+
 ## Install Paths
 
 ### Terminal users
@@ -116,7 +123,7 @@ seektalent update
 Recommended:
 
 ```bash
-pipx install dist/seektalent-0.2.3-py3-none-any.whl
+pipx install dist/seektalent-0.2.4-py3-none-any.whl
 ```
 
 This gives you the `seektalent` command directly.
@@ -124,7 +131,7 @@ This gives you the `seektalent` command directly.
 ### Python integrators
 
 ```bash
-pip install dist/seektalent-0.2.3-py3-none-any.whl
+pip install dist/seektalent-0.2.4-py3-none-any.whl
 ```
 
 Then:
@@ -155,12 +162,14 @@ Available commands:
 - `seektalent doctor`
 - `seektalent version`
 - `seektalent update`
+- `seektalent inspect`
 
 Recommended black-box sequence:
 
 - `seektalent --help`
 - `seektalent doctor`
 - `seektalent run`
+- `seektalent inspect --json`
 - `seektalent update`
 
 Key options on `run`:

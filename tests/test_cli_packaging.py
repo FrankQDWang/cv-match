@@ -42,6 +42,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     )
     assert "seektalent" in help_result.stdout
     assert "update" in help_result.stdout
+    assert "inspect" in help_result.stdout
     assert "OPENAI_API_KEY" in help_result.stdout
 
     version_result = subprocess.run(
@@ -64,6 +65,23 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     )
     assert "pip install -U seektalent" in update_result.stdout
     assert "pipx upgrade seektalent" in update_result.stdout
+
+    inspect_result = subprocess.run(
+        [str(cli), "inspect", "--json"],
+        cwd=work_dir,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    inspect_payload = json.loads(inspect_result.stdout)
+    assert inspect_payload["tool"] == "seektalent"
+    assert "inspect" in inspect_payload["commands"]
+    assert inspect_payload["environment"]["required_for_default_run"] == [
+        "OPENAI_API_KEY",
+        "SEEKTALENT_CTS_TENANT_KEY",
+        "SEEKTALENT_CTS_TENANT_SECRET",
+    ]
 
     subprocess.run(
         [str(cli), "init"],

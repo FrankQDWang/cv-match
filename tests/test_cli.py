@@ -43,8 +43,10 @@ def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
     help_text = capsys.readouterr().out
     assert "seektalent" in help_text
     assert "update" in help_text
+    assert "inspect" in help_text
     assert "OPENAI_API_KEY" in help_text
     assert "seektalent doctor" in help_text
+    assert "seektalent inspect --json" in help_text
 
 
 def test_version_command_prints_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -61,6 +63,43 @@ def test_update_command_prints_upgrade_instructions(capsys: pytest.CaptureFixtur
     assert f"pip install -U seektalent=={__version__}" in output
     assert "pipx upgrade seektalent" in output
     assert "does not modify your environment" in output
+
+
+def test_inspect_command_points_to_json(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["inspect"]) == 0
+
+    output = capsys.readouterr().out
+    assert "SeekTalent published CLI inspection summary" in output
+    assert "seektalent inspect --json" in output
+
+
+def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["inspect", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["tool"] == "seektalent"
+    assert payload["version"] == __version__
+    assert payload["recommended_workflow"][-1] == "seektalent update"
+    assert "run" in payload["commands"]
+    assert "doctor" in payload["commands"]
+    assert "inspect" in payload["commands"]
+    assert payload["environment"]["required_for_default_run"] == [
+        "OPENAI_API_KEY",
+        "SEEKTALENT_CTS_TENANT_KEY",
+        "SEEKTALENT_CTS_TENANT_SECRET",
+    ]
+    run_args = {item["name"]: item for item in payload["commands"]["run"]["arguments"]}
+    assert run_args["--jd"]["mutually_exclusive_with"] == ["--jd-file"]
+    assert run_args["--jd-file"]["mutually_exclusive_with"] == ["--jd"]
+    assert payload["json_contracts"]["run"]["stdout_success_fields"] == [
+        "final_markdown",
+        "run_id",
+        "run_dir",
+        "trace_log_path",
+        "final_result",
+    ]
+    assert payload["json_contracts"]["doctor"]["stdout_success_fields"] == ["ok", "checks"]
+    assert payload["failure_contract"]["stderr_json_fields"] == ["error", "error_type"]
 
 
 def test_init_writes_env_template(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -14,6 +14,7 @@ Recommended black-box sequence:
 seektalent --help
 seektalent doctor
 seektalent run --jd-file ./jd.md
+seektalent inspect --json
 seektalent update
 ```
 
@@ -67,6 +68,15 @@ Print upgrade instructions for pip and pipx installs:
 
 ```bash
 seektalent update
+```
+
+### `seektalent inspect`
+
+Describe the published CLI for wrappers, agents, and automation:
+
+```bash
+seektalent inspect
+seektalent inspect --json
 ```
 
 ## `seektalent run`

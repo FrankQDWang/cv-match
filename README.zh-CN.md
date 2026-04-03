@@ -17,7 +17,7 @@
 
 ## 核心特性
 
-- 可安装 CLI，稳定命令为 `run`、`init`、`doctor`、`version`、`update`
+- 可安装 CLI，稳定命令为 `run`、`init`、`doctor`、`version`、`update`、`inspect`
 - 稳定 Python 入口：`run_match(...)` 和 `run_match_async(...)`
 - 默认把结构化运行产物写到 `runs/`
 - 所有模型配置统一使用 `provider:model`
@@ -37,13 +37,13 @@
 
 ```bash
 uv build
-pipx install dist/seektalent-0.2.3-py3-none-any.whl
+pipx install dist/seektalent-0.2.4-py3-none-any.whl
 ```
 
 如果你更希望装进现有 Python 环境：
 
 ```bash
-pip install dist/seektalent-0.2.3-py3-none-any.whl
+pip install dist/seektalent-0.2.4-py3-none-any.whl
 ```
 
 ### 生成启动配置
@@ -76,6 +76,7 @@ seektalent doctor
 seektalent --help
 seektalent doctor
 seektalent run --jd-file ./jd.md
+seektalent inspect --json
 seektalent update
 ```
 
@@ -109,6 +110,12 @@ seektalent run \
 seektalent update
 ```
 
+### 查看发布版 CLI 的机器可读描述
+
+```bash
+seektalent inspect --json
+```
+
 ## 安装路径
 
 ### 给终端用户
@@ -116,7 +123,7 @@ seektalent update
 推荐：
 
 ```bash
-pipx install dist/seektalent-0.2.3-py3-none-any.whl
+pipx install dist/seektalent-0.2.4-py3-none-any.whl
 ```
 
 这样会直接得到 `seektalent` 命令。
@@ -124,7 +131,7 @@ pipx install dist/seektalent-0.2.3-py3-none-any.whl
 ### 给 Python 集成方
 
 ```bash
-pip install dist/seektalent-0.2.3-py3-none-any.whl
+pip install dist/seektalent-0.2.4-py3-none-any.whl
 ```
 
 然后：
@@ -155,12 +162,14 @@ seektalent run --help
 - `seektalent doctor`
 - `seektalent version`
 - `seektalent update`
+- `seektalent inspect`
 
 推荐的黑盒调用顺序：
 
 - `seektalent --help`
 - `seektalent doctor`
 - `seektalent run`
+- `seektalent inspect --json`
 - `seektalent update`
 
 `run` 的关键参数：

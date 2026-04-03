@@ -27,7 +27,51 @@ PROVIDER_ENV_VAR_BY_PREFIX = {
     "anthropic": "ANTHROPIC_API_KEY",
     "google-gla": "GOOGLE_API_KEY",
 }
-SUBCOMMANDS = {"run", "init", "doctor", "version", "update"}
+OPTIONAL_RUNTIME_ENV_VARS = [
+    "SEEKTALENT_CTS_BASE_URL",
+    "SEEKTALENT_CTS_TIMEOUT_SECONDS",
+    "SEEKTALENT_CTS_SPEC_PATH",
+    "SEEKTALENT_REQUIREMENTS_MODEL",
+    "SEEKTALENT_CONTROLLER_MODEL",
+    "SEEKTALENT_SCORING_MODEL",
+    "SEEKTALENT_FINALIZE_MODEL",
+    "SEEKTALENT_REFLECTION_MODEL",
+    "SEEKTALENT_REASONING_EFFORT",
+    "SEEKTALENT_MIN_ROUNDS",
+    "SEEKTALENT_MAX_ROUNDS",
+    "SEEKTALENT_SCORING_MAX_CONCURRENCY",
+    "SEEKTALENT_SEARCH_MAX_PAGES_PER_ROUND",
+    "SEEKTALENT_SEARCH_MAX_ATTEMPTS_PER_ROUND",
+    "SEEKTALENT_SEARCH_NO_PROGRESS_LIMIT",
+    "SEEKTALENT_ENABLE_REFLECTION",
+    "SEEKTALENT_RUNS_DIR",
+]
+TOP_LEVEL_ARTIFACT_FILES = [
+    "trace.log",
+    "events.jsonl",
+    "run_config.json",
+    "input_snapshot.json",
+    "input_truth.json",
+    "requirement_extraction_draft.json",
+    "requirements_call.json",
+    "requirement_sheet.json",
+    "scoring_policy.json",
+    "sent_query_history.json",
+    "finalizer_context.json",
+    "finalizer_call.json",
+    "final_candidates.json",
+    "final_answer.md",
+    "judge_packet.json",
+    "run_summary.md",
+]
+KEY_HANDOFF_FILES = [
+    "trace.log",
+    "events.jsonl",
+    "run_config.json",
+    "final_answer.md",
+    "final_candidates.json",
+]
+SUBCOMMANDS = {"run", "init", "doctor", "version", "update", "inspect"}
 ROOT_HELP_EPILOG = """Primary workflow:
   1. seektalent doctor
   2. seektalent run --jd-file ./jd.md
@@ -45,6 +89,9 @@ Artifacts:
 
 Upgrade:
   seektalent update
+
+Machine-readable discovery:
+  seektalent inspect --json
 """
 
 
@@ -53,6 +100,32 @@ class DoctorCheck:
     name: str
     ok: bool
     message: str
+
+
+def _arg_spec(
+    name: str,
+    kind: str,
+    description: str,
+    *,
+    required: bool = False,
+    repeatable: bool = False,
+    mutually_exclusive_with: list[str] | None = None,
+    default: object | None = None,
+    applies_to: str | None = None,
+) -> dict[str, object]:
+    spec: dict[str, object] = {
+        "name": name,
+        "kind": kind,
+        "required": required,
+        "repeatable": repeatable,
+        "mutually_exclusive_with": mutually_exclusive_with or [],
+        "description": description,
+    }
+    if default is not None:
+        spec["default"] = default
+    if applies_to:
+        spec["applies_to"] = applies_to
+    return spec
 
 
 def _normalize_legacy_argv(argv: list[str]) -> list[str]:
@@ -179,6 +252,177 @@ def _write_human_result(result: MatchRunResult) -> None:
     print(f"run_id: {result.run_id}")
     print(f"run_directory: {result.run_dir}")
     print(f"trace_log: {result.trace_log_path}")
+
+
+def _inspect_payload() -> dict[str, object]:
+    commands = {
+        "run": {
+            "description": "Run one resume-matching workflow.",
+            "machine_readable": False,
+            "arguments": [
+                _arg_spec("--jd", "string", "Inline job description text.", mutually_exclusive_with=["--jd-file"]),
+                _arg_spec("--jd-file", "path", "Path to a job description file.", mutually_exclusive_with=["--jd"]),
+                _arg_spec("--notes", "string", "Optional inline sourcing notes text.", mutually_exclusive_with=["--notes-file"]),
+                _arg_spec("--notes-file", "path", "Path to an optional sourcing notes file.", mutually_exclusive_with=["--notes"]),
+                _arg_spec("--env-file", "path", "Path to the env file for this run.", default=".env"),
+                _arg_spec("--output-dir", "path", "Directory where run artifacts should be written."),
+                _arg_spec("--json", "flag", "Emit a single JSON object."),
+                _arg_spec("--max-rounds", "integer", "Override the max retrieval rounds."),
+                _arg_spec("--min-rounds", "integer", "Override the min retrieval rounds."),
+                _arg_spec("--scoring-max-concurrency", "integer", "Override max parallel scoring workers."),
+                _arg_spec("--search-max-pages-per-round", "integer", "Override the per-round CTS page budget."),
+                _arg_spec("--search-max-attempts-per-round", "integer", "Override the per-round CTS attempt budget."),
+                _arg_spec("--search-no-progress-limit", "integer", "Override the repeated no-progress threshold."),
+                _arg_spec("--enable-reflection", "flag", "Enable reflection for this run.", mutually_exclusive_with=["--disable-reflection"]),
+                _arg_spec("--disable-reflection", "flag", "Disable reflection for this run.", mutually_exclusive_with=["--enable-reflection"]),
+            ],
+            "examples": [
+                "seektalent run --jd-file ./jd.md",
+                "seektalent run --jd 'Python engineer' --notes 'Shanghai preferred' --json",
+            ],
+            "outputs": "Human-readable shortlist on stdout by default. In --json mode, stdout contains one JSON object.",
+            "side_effects": "Creates a run artifact directory under ./runs or the path passed to --output-dir.",
+        },
+        "doctor": {
+            "description": "Run local configuration checks without network calls.",
+            "machine_readable": False,
+            "arguments": [
+                _arg_spec("--env-file", "path", "Path to the env file to inspect.", default=".env"),
+                _arg_spec("--output-dir", "path", "Directory to validate as the artifact root."),
+                _arg_spec("--json", "flag", "Emit a single JSON object."),
+            ],
+            "examples": [
+                "seektalent doctor",
+                "seektalent doctor --env-file ./local.env --json",
+            ],
+            "outputs": "Human-readable checks on stdout by default. In --json mode, stdout contains one JSON object.",
+            "side_effects": "May create the configured output directory to verify writability.",
+        },
+        "init": {
+            "description": "Write a starter env file in the current directory.",
+            "machine_readable": False,
+            "arguments": [
+                _arg_spec("--env-file", "path", "Where to write the generated env file.", default=".env"),
+                _arg_spec("--force", "flag", "Overwrite the target file if it exists."),
+            ],
+            "examples": [
+                "seektalent init",
+                "seektalent init --env-file ./local.env --force",
+            ],
+            "outputs": "Writes the generated env-file path to stdout.",
+            "side_effects": "Creates or overwrites an env file on disk.",
+        },
+        "version": {
+            "description": "Print the installed seektalent version.",
+            "machine_readable": False,
+            "arguments": [],
+            "examples": ["seektalent version"],
+            "outputs": "Prints the installed version to stdout.",
+            "side_effects": "No filesystem changes.",
+        },
+        "update": {
+            "description": "Print upgrade instructions for pip and pipx installs.",
+            "machine_readable": False,
+            "arguments": [],
+            "examples": ["seektalent update"],
+            "outputs": "Prints upgrade instructions to stdout.",
+            "side_effects": "No filesystem changes and no package modifications.",
+        },
+        "inspect": {
+            "description": "Describe the published CLI for wrappers, agents, and automation.",
+            "machine_readable": False,
+            "arguments": [
+                _arg_spec("--json", "flag", "Emit a single JSON object describing the CLI."),
+            ],
+            "examples": [
+                "seektalent inspect",
+                "seektalent inspect --json",
+            ],
+            "outputs": "Prints a short summary by default. In --json mode, stdout contains one JSON object.",
+            "side_effects": "No filesystem changes. Mock CTS is not available in the published CLI.",
+        },
+    }
+    commands["run"]["notes"] = [
+        "Provide the job description with exactly one of --jd or --jd-file.",
+        "Provide sourcing notes with at most one of --notes or --notes-file.",
+    ]
+    return {
+        "tool": "seektalent",
+        "version": __version__,
+        "summary": "Deterministic local resume matching CLI for CTS retrieval and shortlist generation.",
+        "recommended_workflow": [
+            "seektalent --help",
+            "seektalent doctor",
+            "seektalent run --jd-file ./jd.md",
+            "seektalent update",
+        ],
+        "commands": commands,
+        "environment": {
+            "required_for_default_run": [
+                "OPENAI_API_KEY",
+                "SEEKTALENT_CTS_TENANT_KEY",
+                "SEEKTALENT_CTS_TENANT_SECRET",
+            ],
+            "optional_provider_vars": [
+                "OPENAI_BASE_URL",
+                "ANTHROPIC_API_KEY",
+                "GOOGLE_API_KEY",
+            ],
+            "optional_runtime_vars": OPTIONAL_RUNTIME_ENV_VARS,
+            "env_file_support": "run and doctor accept --env-file to load values from a file; shell environment variables remain first-class.",
+        },
+        "artifacts": {
+            "default_runs_dir": "./runs",
+            "override_flag": "--output-dir",
+            "top_level_files": TOP_LEVEL_ARTIFACT_FILES,
+            "key_handoff_files": KEY_HANDOFF_FILES,
+        },
+        "json_contracts": {
+            "run": {
+                "flag": "--json",
+                "stdout_success_fields": ["final_markdown", "run_id", "run_dir", "trace_log_path", "final_result"],
+            },
+            "doctor": {
+                "flag": "--json",
+                "stdout_success_fields": ["ok", "checks"],
+            },
+        },
+        "failure_contract": {
+            "stderr_json_fields": ["error", "error_type"],
+            "known_failure_categories": [
+                {
+                    "name": "missing_env",
+                    "description": "Required environment variables are missing for the selected workflow.",
+                    "commands": ["run", "doctor"],
+                },
+                {
+                    "name": "invalid_input",
+                    "description": "CLI inputs are missing or mutually exclusive arguments were supplied together.",
+                    "commands": ["run", "init"],
+                },
+                {
+                    "name": "invalid_settings",
+                    "description": "Configuration values or environment settings do not pass validation.",
+                    "commands": ["run", "doctor"],
+                },
+                {
+                    "name": "auth_failed",
+                    "description": "A downstream provider or CTS request was rejected due to invalid credentials.",
+                    "commands": ["run"],
+                },
+                {
+                    "name": "runtime_exception",
+                    "description": "A runtime stage raised an exception after the CLI had already started the workflow.",
+                    "commands": ["run"],
+                },
+            ],
+        },
+        "notes": [
+            "Use seektalent inspect --json as the preferred machine-readable discovery entrypoint.",
+            "The published CLI rejects mock CTS even if SEEKTALENT_MOCK_CTS is set.",
+            "Existing run --json and doctor --json payloads are unchanged in 0.2.4.",
+        ],
+    }
 
 
 def _run_command(args: argparse.Namespace) -> int:
@@ -333,6 +577,17 @@ def _update_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _inspect_command(args: argparse.Namespace) -> int:
+    payload = _inspect_payload()
+    if args.json_output:
+        _emit_json(sys.stdout, payload)
+        return 0
+    print("SeekTalent published CLI inspection summary")
+    print(f"Version: {payload['version']}")
+    print("Use `seektalent inspect --json` for a machine-readable CLI description.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="seektalent",
@@ -404,6 +659,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     update_parser = subparsers.add_parser("update", help="Print upgrade instructions for pip and pipx installs.")
     update_parser.set_defaults(handler=_update_command)
+
+    inspect_parser = subparsers.add_parser("inspect", help="Describe the published CLI for wrappers and agents.")
+    inspect_parser.add_argument("--json", dest="json_output", action="store_true", help="Emit a single JSON object.")
+    inspect_parser.set_defaults(handler=_inspect_command)
     return parser
 
 
