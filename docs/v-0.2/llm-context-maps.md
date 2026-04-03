@@ -4,11 +4,11 @@
 
 ---
 
-## 1. 总图：Memory -> Context -> LLM -> Output
+## 1. 总图：Runtime Truth -> Context -> LLM -> Output -> Runtime Truth
 
 ```mermaid
 flowchart LR
-    subgraph M["Total Memory / Runtime Truth"]
+    subgraph M["Runtime Truth"]
         IT["InputTruth<br/>- full JD<br/>- full notes<br/>- jd_sha256<br/>- notes_sha256"]
         RS["RequirementSheet<br/>- role truth<br/>- hard_constraints<br/>- preferences<br/>- initial_query_term_pool"]
         SP["ScoringPolicy<br/>- frozen scoring truth"]
@@ -41,6 +41,15 @@ flowchart LR
         O_FIN["FinalResult"]
     end
 
+    subgraph U["Runtime Truth"]
+        IT2["InputTruth<br/>- full JD<br/>- full notes<br/>- jd_sha256<br/>- notes_sha256"]
+        RS2["RequirementSheet<br/>- role truth<br/>- hard_constraints<br/>- preferences<br/>- initial_query_term_pool"]
+        SP2["ScoringPolicy<br/>- frozen scoring truth"]
+        RT2["RetrievalState<br/>- query_term_pool<br/>- sent_query_history<br/>- reflection histories<br/>- last_projection_result"]
+        RH2["RoundHistory<br/>- retrieval_plan<br/>- cts_queries<br/>- search_observation<br/>- search_attempts<br/>- reflection_advice"]
+        STORES2["Stores<br/>- candidate_store<br/>- normalized_store<br/>- scorecards_by_resume_id<br/>- top_pool_ids<br/>- seen_resume_ids"]
+    end
+
     IT --> C_REQ
 
     IT --> C_CTL
@@ -66,6 +75,14 @@ flowchart LR
     C_SCO --> L_SCO --> O_SCO
     C_REF --> L_REF --> O_REF
     C_FIN --> L_FIN --> O_FIN
+
+    O_REQ --> RS2
+    O_REQ --> SP2
+    O_CTL --> RH2
+    O_SCO --> STORES2
+    O_REF --> RT2
+    O_REF --> RH2
+    O_FIN --> STORES2
 ```
 
 这张图表达的是：
@@ -74,6 +91,17 @@ flowchart LR
 - 各个 LLM 不直接读取全部 memory
 - runtime 先做 deterministic context projection，再把投影结果交给对应 LLM
 - 每个 LLM 的输出也都是结构化对象，而不是自由文本
+- 第 1 列和第 5 列是同一套 runtime truth 结构；左边表示调用前，右边表示吸收 structured output 之后
+- 图中保留了 runtime truth 的具体组成，不把细节压扁成抽象占位框
+- `LLM Call Points` 的上下顺序按实际执行顺序展示：requirements -> controller -> scoring -> reflection -> finalizer
+
+第 5 列表达的是这些具体更新：
+
+- 第 1 行：`RequirementExtractionDraft` 会被归一化成 `RequirementSheet`，并冻结出 `ScoringPolicy`
+- 第 2 行：`ControllerDecision` 会进入 `RoundHistory`，驱动下一步执行
+- 第 3 行：`ScoredCandidate` 会进入 `Stores`，并参与排序和 top pool 更新
+- 第 4 行：`ReflectionAdvice` 会更新 `RetrievalState`，同时写入 `RoundHistory`
+- 第 5 行：`FinalResult` 会被 runtime 接住并写出最终产物；这是终点，不再进入下一轮循环
 
 ---
 

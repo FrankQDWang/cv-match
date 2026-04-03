@@ -179,18 +179,22 @@ flowchart TD
     C2 --> D["RequirementSheet"]
     D --> E["Build frozen ScoringPolicy"]
     D --> F["Build ControllerContext"]
-    F --> G["ReAct Controller"]
+    F --> G["Controller
+    per-round structured decision"]
     G -->|action=search_cts| H["Runtime Query/Filter Canonicalization"]
     H --> I["Round Retrieval Plan + ConstraintProjectionResult"]
     I --> J["CTS Adapter builds CTSQuery"]
     J --> K["Tool: search_cts / Real-Mock CTS"]
-    G -->|action=stop| O["Finalize from RunState"]
+    G -->|action=stop| O["Exit round loop
+    with terminal controller decision"]
     K --> L["Dedup + Same-round Refill + Resume Normalization"]
     L --> M["Scoring Workers + Deterministic Ranking"]
     M --> N["Reflection Critic"]
     N --> P["Runtime records ReflectionAdvice + updates RetrievalState"]
     P --> F
-    O --> Q["Final Answer + Audit Store"]
+    O --> O2["Build FinalizeContext"]
+    O2 --> O3["Finalizer"]
+    O3 --> Q["Final Answer + Audit Store"]
 ```
 
 ### 4.3 核心设计原则
@@ -1197,31 +1201,38 @@ sequenceDiagram
     participant CLI
     participant Runtime
     participant Extractor as Requirement Extractor
+    participant Normalizer as Requirement Draft Normalizer
     participant Canon as Query Plan Canonicalizer
     participant Adapter as CTS Adapter
     participant Controller
     participant CTS as search_cts
     participant Scorer as Scoring Workers
+    participant Finalizer
     participant Reflector as Reflection Critic
 
     CLI->>Runtime: full JD + full notes
     Runtime->>Extractor: InputTruth
-    Extractor-->>Runtime: RequirementSheet
+    Extractor-->>Runtime: RequirementExtractionDraft
+    Runtime->>Normalizer: RequirementExtractionDraft
+    Normalizer-->>Runtime: RequirementSheet
     Runtime->>Runtime: Freeze ScoringPolicy
     Runtime->>Controller: ControllerContext
     Controller-->>Runtime: ControllerDecision(action, proposed_query_terms, proposed_filter_plan)
     alt action = stop
-        Runtime->>Runtime: Finalize from RunState
+        Runtime->>Runtime: exit round loop with terminal controller decision
     else action = search_cts
         Runtime->>Canon: proposed_query_terms + proposed_filter_plan + round budget
         Canon-->>Runtime: RoundRetrievalPlan + ConstraintProjectionResult
-        Runtime->>Adapter: RoundRetrievalPlan + projection result
-        Adapter-->>Runtime: CTSQuery
-        Runtime->>CTS: CTSQuery
-        loop "same-round refill with same semantics"
-            CTS-->>Runtime: raw candidates
-            Runtime->>Runtime: dedup / refill decision
-            Runtime->>CTS: next page if shortage remains
+        Runtime->>Runtime: build location_execution_plan
+        loop "per-city dispatches within one round"
+            Runtime->>Adapter: RoundRetrievalPlan + projection result + city dispatch
+            Adapter-->>Runtime: CTSQuery
+            Runtime->>CTS: CTSQuery
+            loop "same-city refill with same semantics"
+                CTS-->>Runtime: raw candidates
+                Runtime->>Runtime: dedup / refill decision
+                Runtime->>CTS: next page if shortage remains
+            end
         end
         Runtime->>Scorer: normalized resumes + frozen ScoringPolicy
         Scorer-->>Runtime: scorecards
@@ -1230,6 +1241,8 @@ sequenceDiagram
         Runtime->>Runtime: update RetrievalState + round history
         Runtime->>Controller: next ControllerContext + latest advice
     end
+    Runtime->>Finalizer: FinalizeContext(top candidates, stop reason, rounds)
+    Finalizer-->>Runtime: FinalResult
 ```
 
 ### 10.3 同轮补拉边界

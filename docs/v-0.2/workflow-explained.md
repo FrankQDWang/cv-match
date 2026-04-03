@@ -12,21 +12,25 @@ sequenceDiagram
     participant CLI
     participant Runtime
     participant Extractor as Requirement Extractor
+    participant Normalizer as Requirement Draft Normalizer
     participant Canon as Query Plan Canonicalizer
     participant Adapter as CTS Adapter
     participant Controller
     participant CTS as search_cts
     participant Scorer as Scoring Workers
+    participant Finalizer
     participant Reflector as Reflection Critic
 
     CLI->>Runtime: full JD + full notes
     Runtime->>Extractor: InputTruth
-    Extractor-->>Runtime: RequirementSheet
+    Extractor-->>Runtime: RequirementExtractionDraft
+    Runtime->>Normalizer: RequirementExtractionDraft
+    Normalizer-->>Runtime: RequirementSheet
     Runtime->>Runtime: Freeze ScoringPolicy
     Runtime->>Controller: ControllerContext
     Controller-->>Runtime: ControllerDecision(action, proposed_query_terms, proposed_filter_plan)
     alt action = stop
-        Runtime->>Runtime: Finalize from RunState
+        Runtime->>Runtime: exit round loop with terminal controller decision
     else action = search_cts
         Runtime->>Canon: proposed_query_terms + proposed_filter_plan + round budget
         Canon-->>Runtime: RoundRetrievalPlan + ConstraintProjectionResult
@@ -48,6 +52,8 @@ sequenceDiagram
         Runtime->>Runtime: update RetrievalState + round history
         Runtime->>Controller: next ControllerContext + latest advice
     end
+    Runtime->>Finalizer: FinalizeContext(top candidates, stop reason, rounds)
+    Finalizer-->>Runtime: FinalResult
 ```
 
 ---
@@ -60,13 +66,15 @@ sequenceDiagram
 |------|--------|----------|
 | CLI | 命令行入口 | 前台接待员，把客户的需求递进来 |
 | Runtime | 流程总调度 | 项目经理，控制整个流程的节奏和规则 |
-| Requirement Extractor | 需求抽取器（AI） | 需求分析师，把客户的自然语言需求翻译成结构化表格 |
+| Requirement Extractor | 需求抽取器（AI） | 需求分析师，先产出结构化草稿 |
+| Requirement Draft Normalizer | 需求归一化器（确定性处理） | 质检员，把草稿清洗成最终 `RequirementSheet` |
 | Query Plan Canonicalizer | 查询计划校验器 | 质检员，检查搜索方案是否符合规则 |
 | CTS Adapter | CTS 适配器 | 翻译官，把业务语言翻译成简历库能理解的查询格式 |
-| Controller | 控制器（AI） | 搜索策略师，决定每一轮用什么关键词和筛选条件去搜 |
+| Controller | 控制器（AI） | 搜索策略师，每一轮做一次结构化决策 |
 | search_cts | CTS 简历搜索服务 | 简历库，真正执行搜索并返回简历 |
 | Scoring Workers | 评分工人（AI） | 面试官，逐份简历打分判断是否匹配岗位 |
 | Reflection Critic | 反思评审（AI） | 复盘顾问，评价这一轮搜得好不好，给下一轮提改进建议 |
+| Finalizer | 最终汇总器（AI） | 把最终候选池整理成输出结果 |
 
 ---
 
@@ -105,13 +113,17 @@ Runtime 把原始文本封装成 `InputTruth`：
 
 ---
 
-### 第三步：抽取结构化需求
+### 第三步：先抽取草稿，再归一化成 `RequirementSheet`
 
 ```
-Extractor -->> Runtime: RequirementSheet
+Extractor -->> Runtime: RequirementExtractionDraft
+Runtime ->> Normalizer: RequirementExtractionDraft
+Normalizer -->> Runtime: RequirementSheet
 ```
 
-Requirement Extractor（AI）阅读完整 JD 和 notes，输出一份结构化的**需求清单** `RequirementSheet`：
+Requirement Extractor（AI）先阅读完整 JD 和 notes，输出一份结构化草稿。
+
+随后 runtime 会做一次确定性的归一化，把草稿清洗成最终的 **需求清单** `RequirementSheet`：
 
 | 字段 | 含义 | 举例 |
 |------|------|------|
@@ -194,13 +206,26 @@ Controller 看完这些信息后，做出决策 `ControllerDecision`：
 
 ---
 
+这里补一个实现细节：
+
+- `Controller` 当前代码里是“每轮一次结构化输出”
+- 它不是在内部自己循环调用工具的那种多步 `ReAct`
+
 ### 分支 A：如果 Controller 决定停止
 
 ```
-Runtime ->> Runtime: Finalize from RunState
+Runtime ->> Runtime: exit round loop with terminal controller decision
+Runtime ->> Finalizer: FinalizeContext
+Finalizer -->> Runtime: FinalResult
 ```
 
-如果 Controller 认为已经找到足够多的优质候选人，或者继续搜也不会有更好的结果，就决定停止。Runtime 进入最终汇总阶段（跳到最后的"输出结果"）。
+如果 Controller 认为已经找到足够多的优质候选人，或者继续搜也不会有更好的结果，就决定停止。
+
+代码里的真实顺序不是“当场 finalize”，而是：
+
+1. 先退出 round loop
+2. 再构建 `FinalizeContext`
+3. 最后单独调用 `Finalizer`
 
 ---
 
