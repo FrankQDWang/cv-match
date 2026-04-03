@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from deepmatch import AppSettings, MatchRunResult, run_match, run_match_async
-from deepmatch.models import FinalResult
-from deepmatch.runtime import RunArtifacts
+from seektalent import AppSettings, MatchRunResult, run_match, run_match_async
+from seektalent.models import FinalResult
+from seektalent.runtime import RunArtifacts
 
 
 def _artifacts(tmp_path: Path) -> RunArtifacts:
@@ -41,8 +41,8 @@ def test_run_match_returns_stable_result(monkeypatch, tmp_path: Path) -> None:
             captured["notes"] = notes
             return _artifacts(tmp_path)
 
-    monkeypatch.setattr("deepmatch.api.WorkflowRuntime", FakeRuntime)
-    monkeypatch.setattr("deepmatch.api.load_process_env", lambda env_file: captured.setdefault("env_file", env_file))
+    monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
+    monkeypatch.setattr("seektalent.api.load_process_env", lambda env_file: captured.setdefault("env_file", env_file))
 
     result = run_match(
         jd="JD",
@@ -73,8 +73,8 @@ def test_run_match_defaults_notes_to_empty_string(monkeypatch, tmp_path: Path) -
             captured["notes"] = notes
             return _artifacts(tmp_path)
 
-    monkeypatch.setattr("deepmatch.api.WorkflowRuntime", FakeRuntime)
-    monkeypatch.setattr("deepmatch.api.load_process_env", lambda env_file: None)
+    monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
+    monkeypatch.setattr("seektalent.api.load_process_env", lambda env_file: None)
 
     result = run_match(jd="JD", settings=AppSettings(_env_file=None, mock_cts=True), env_file=None)
 
@@ -92,8 +92,8 @@ def test_run_match_async_returns_stable_result(monkeypatch, tmp_path: Path) -> N
             assert notes == "Notes"
             return _artifacts(tmp_path)
 
-    monkeypatch.setattr("deepmatch.api.WorkflowRuntime", FakeRuntime)
-    monkeypatch.setattr("deepmatch.api.load_process_env", lambda env_file: None)
+    monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
+    monkeypatch.setattr("seektalent.api.load_process_env", lambda env_file: None)
 
     result = asyncio.run(
         run_match_async(
@@ -118,8 +118,8 @@ def test_run_match_async_defaults_notes_to_empty_string(monkeypatch, tmp_path: P
             assert notes == ""
             return _artifacts(tmp_path)
 
-    monkeypatch.setattr("deepmatch.api.WorkflowRuntime", FakeRuntime)
-    monkeypatch.setattr("deepmatch.api.load_process_env", lambda env_file: None)
+    monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
+    monkeypatch.setattr("seektalent.api.load_process_env", lambda env_file: None)
 
     result = asyncio.run(
         run_match_async(

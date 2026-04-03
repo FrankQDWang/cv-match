@@ -1,5 +1,5 @@
-from deepmatch.models import RequirementExtractionDraft
-from deepmatch.requirements import build_scoring_policy, normalize_requirement_draft
+from seektalent.models import RequirementExtractionDraft
+from seektalent.requirements import build_scoring_policy, normalize_requirement_draft
 
 
 def test_normalize_requirement_draft_covers_standard_slots() -> None:

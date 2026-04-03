@@ -15,13 +15,13 @@ def _bin_dir(venv_dir: Path) -> Path:
 def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     subprocess.run(["uv", "build"], cwd=repo_root, check=True)
-    wheel = max((repo_root / "dist").glob("deepmatch-*.whl"))
+    wheel = max((repo_root / "dist").glob("seektalent-*.whl"))
 
     venv_dir = tmp_path / "venv"
     subprocess.run(["python3", "-m", "venv", str(venv_dir)], check=True)
     bin_dir = _bin_dir(venv_dir)
     python = bin_dir / ("python.exe" if os.name == "nt" else "python")
-    cli = bin_dir / ("deepmatch.exe" if os.name == "nt" else "deepmatch")
+    cli = bin_dir / ("seektalent.exe" if os.name == "nt" else "seektalent")
 
     subprocess.run([str(python), "-m", "pip", "install", "--no-deps", str(wheel)], check=True)
 
@@ -40,7 +40,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert "deepmatch" in help_result.stdout
+    assert "seektalent" in help_result.stdout
 
     version_result = subprocess.run(
         [str(cli), "version"],
@@ -63,7 +63,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     assert (work_dir / ".env").exists()
 
     doctor_env = work_dir / "doctor.env"
-    doctor_env.write_text("OPENAI_API_KEY=test-key\nDEEPMATCH_MOCK_CTS=true\n", encoding="utf-8")
+    doctor_env.write_text("OPENAI_API_KEY=test-key\nSEEKTALENT_MOCK_CTS=true\n", encoding="utf-8")
     doctor_result = subprocess.run(
         [str(cli), "doctor", "--env-file", str(doctor_env), "--json"],
         cwd=work_dir,

@@ -1,4 +1,4 @@
-# deepmatch v0.2 实施清单
+# SeekTalent v0.2 实施清单
 
 ## 0. 文档目的
 
@@ -55,10 +55,10 @@
 
 ### 2.2 文件
 
-- `src/deepmatch/models.py`
+- `src/seektalent/models.py`
 - 可选新增：
-  - `src/deepmatch/requirements/__init__.py`
-  - `src/deepmatch/retrieval/__init__.py`
+  - `src/seektalent/requirements/__init__.py`
+  - `src/seektalent/retrieval/__init__.py`
 
 ### 2.3 必须新增的模型
 
@@ -119,12 +119,12 @@
 
 ### 3.2 文件
 
-- 新增 `src/deepmatch/requirements/extractor.py`
-- 新增 `src/deepmatch/requirements/normalization.py`
-- 新增 `src/deepmatch/prompts/requirements.md`
-- 旧 `src/deepmatch/controller/strategy_bootstrap.py`
-- `src/deepmatch/models.py`
-- `src/deepmatch/config.py`
+- 新增 `src/seektalent/requirements/extractor.py`
+- 新增 `src/seektalent/requirements/normalization.py`
+- 新增 `src/seektalent/prompts/requirements.md`
+- 旧 `src/seektalent/controller/strategy_bootstrap.py`
+- `src/seektalent/models.py`
+- `src/seektalent/config.py`
 
 ### 3.3 具体改动
 
@@ -179,10 +179,10 @@
 
 ### 4.2 文件
 
-- 新增 `src/deepmatch/retrieval/query_plan.py`
-- 新增 `src/deepmatch/retrieval/filter_projection.py`
-- `src/deepmatch/clients/cts_client.py`
-- `src/deepmatch/models.py`
+- 新增 `src/seektalent/retrieval/query_plan.py`
+- 新增 `src/seektalent/retrieval/filter_projection.py`
+- `src/seektalent/clients/cts_client.py`
+- `src/seektalent/models.py`
 
 ### 4.3 `query_plan.py`
 
@@ -250,9 +250,9 @@
 
 ### 5.2 文件
 
-- `src/deepmatch/runtime/orchestrator.py`
-- 新增 `src/deepmatch/runtime/context_builder.py`
-- `src/deepmatch/models.py`
+- `src/seektalent/runtime/orchestrator.py`
+- 新增 `src/seektalent/runtime/context_builder.py`
+- `src/seektalent/models.py`
 
 ### 5.3 `context_builder.py`
 
@@ -315,11 +315,11 @@
 
 ### 6.2 文件
 
-- `src/deepmatch/controller/react_controller.py`
-- `src/deepmatch/reflection/critic.py`
-- `src/deepmatch/prompts/controller.md`
-- `src/deepmatch/prompts/reflection.md`
-- `src/deepmatch/models.py`
+- `src/seektalent/controller/react_controller.py`
+- `src/seektalent/reflection/critic.py`
+- `src/seektalent/prompts/controller.md`
+- `src/seektalent/prompts/reflection.md`
+- `src/seektalent/models.py`
 
 ### 6.3 Controller 改动
 
@@ -382,8 +382,8 @@
 
 文件：
 
-- `src/deepmatch/clients/cts_client.py`
-- `src/deepmatch/clients/cts_models.py`
+- `src/seektalent/clients/cts_client.py`
+- `src/seektalent/clients/cts_models.py`
 
 改动：
 
@@ -396,8 +396,8 @@
 
 文件：
 
-- `src/deepmatch/runtime/orchestrator.py`
-- `src/deepmatch/tracing.py`
+- `src/seektalent/runtime/orchestrator.py`
+- `src/seektalent/tracing.py`
 
 至少新增落盘：
 
@@ -439,8 +439,8 @@
 
 文件：
 
-- `src/deepmatch_ui/server.py`
-- `src/deepmatch_ui/mapper.py`
+- `src/seektalent_ui/server.py`
+- `src/seektalent_ui/mapper.py`
 
 原则：
 

@@ -5,60 +5,60 @@
 The canonical CLI entrypoint is:
 
 ```bash
-deepmatch run --help
+seektalent run --help
 ```
 
 For one compatibility cycle, the legacy alias still works:
 
 ```bash
-deepmatch --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
+seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
 ```
 
 ## Commands
 
-### `deepmatch init`
+### `seektalent init`
 
 Write a starter env file in the current directory:
 
 ```bash
-deepmatch init
+seektalent init
 ```
 
 Write to a custom path:
 
 ```bash
-deepmatch init --env-file ./local.env
+seektalent init --env-file ./local.env
 ```
 
 Overwrite an existing file:
 
 ```bash
-deepmatch init --force
+seektalent init --force
 ```
 
-### `deepmatch doctor`
+### `seektalent doctor`
 
 Run local checks without network calls:
 
 ```bash
-deepmatch doctor
+seektalent doctor
 ```
 
 Machine-readable output:
 
 ```bash
-deepmatch doctor --json
+seektalent doctor --json
 ```
 
-### `deepmatch version`
+### `seektalent version`
 
 Print the installed package version:
 
 ```bash
-deepmatch version
+seektalent version
 ```
 
-## `deepmatch run`
+## `seektalent run`
 
 Each run requires one required input and one optional supplement:
 
@@ -76,7 +76,7 @@ If you want to add sourcing preferences, provide them with exactly one source:
 ### Run with only a JD
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
   --real-cts
 ```
@@ -84,7 +84,7 @@ deepmatch run \
 ### Run from inline text
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
   --notes "Shanghai preferred, avoid pure frontend profiles" \
   --real-cts
@@ -93,7 +93,7 @@ deepmatch run \
 ### Run from files
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd-file ./jd.md \
   --notes-file ./notes.md \
   --real-cts
@@ -102,7 +102,7 @@ deepmatch run \
 ### Override output location
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \
@@ -112,7 +112,7 @@ deepmatch run \
 ### Use a custom env file
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \
@@ -122,7 +122,7 @@ deepmatch run \
 ### Machine-readable output
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \

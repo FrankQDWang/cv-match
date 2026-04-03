@@ -25,19 +25,19 @@ uv run pytest
 Run the CLI help:
 
 ```bash
-uv run deepmatch --help
+uv run seektalent --help
 ```
 
 Run the canonical `run` help:
 
 ```bash
-uv run deepmatch run --help
+uv run seektalent run --help
 ```
 
 Run the UI API help:
 
 ```bash
-uv run deepmatch-ui-api --help
+uv run seektalent-ui-api --help
 ```
 
 Run frontend tests:
@@ -54,13 +54,13 @@ pnpm test
 Example:
 
 ```bash
-uv run deepmatch run --jd "Python agent engineer" --mock-cts
+uv run seektalent run --jd "Python agent engineer" --mock-cts
 ```
 
 Or set:
 
 ```dotenv
-DEEPMATCH_MOCK_CTS=true
+SEEKTALENT_MOCK_CTS=true
 ```
 
 Notes:
@@ -73,8 +73,8 @@ Notes:
 
 Key directories:
 
-- `src/deepmatch/` for the main Agent implementation and CLI
-- `src/deepmatch_ui/` for the minimal backend API used by the web UI
+- `src/seektalent/` for the main Agent implementation and CLI
+- `src/seektalent_ui/` for the minimal backend API used by the web UI
 - `apps/web-user-lite/` for the frontend
 - `tests/` for Python tests
 - `docs/v-*` for versioned historical design notes

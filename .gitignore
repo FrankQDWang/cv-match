@@ -15,7 +15,7 @@ wheels/
 # Run artifacts
 runs/
 cts.validated.yaml
-!src/deepmatch/cts.validated.yaml
+!src/seektalent/cts.validated.yaml
 examples/
 obsidian/
 

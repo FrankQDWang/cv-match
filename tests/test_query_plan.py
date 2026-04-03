@@ -1,5 +1,5 @@
-from deepmatch.models import QueryTermCandidate
-from deepmatch.retrieval.query_plan import (
+from seektalent.models import QueryTermCandidate
+from seektalent.retrieval.query_plan import (
     canonicalize_controller_query_terms,
     select_query_terms,
     serialize_keyword_query,

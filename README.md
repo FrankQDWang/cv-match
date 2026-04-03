@@ -1,4 +1,4 @@
-# deepmatch
+# SeekTalent
 
 <p>
   <a href="#english"><img src="https://img.shields.io/badge/Language-English-0A66C2" alt="English"></a>
@@ -7,7 +7,7 @@
 
 ## English
 
-`deepmatch` is an experimental local-first resume matching engine. It turns a job description and optional sourcing notes into a deterministic multi-round shortlist using requirement extraction, controlled CTS retrieval, per-resume scoring, reflection, and finalization.
+`SeekTalent` is an experimental local-first resume matching engine. It turns a job description and optional sourcing notes into a deterministic multi-round shortlist using requirement extraction, controlled CTS retrieval, per-resume scoring, reflection, and finalization.
 
 The current product shape is intentionally narrow:
 
@@ -37,19 +37,19 @@ From a local checkout:
 
 ```bash
 uv build
-pipx install dist/deepmatch-0.2.0-py3-none-any.whl
+pipx install dist/seektalent-0.2.0-py3-none-any.whl
 ```
 
 If you prefer a plain Python environment:
 
 ```bash
-pip install dist/deepmatch-0.2.0-py3-none-any.whl
+pip install dist/seektalent-0.2.0-py3-none-any.whl
 ```
 
 ### Create a starter env file
 
 ```bash
-deepmatch init
+seektalent init
 ```
 
 ### Fill the required values in `.env`
@@ -58,8 +58,8 @@ At minimum:
 
 ```dotenv
 OPENAI_API_KEY=your-openai-key
-DEEPMATCH_CTS_TENANT_KEY=your-cts-tenant-key
-DEEPMATCH_CTS_TENANT_SECRET=your-cts-tenant-secret
+SEEKTALENT_CTS_TENANT_KEY=your-cts-tenant-key
+SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
 If you keep the default `openai-responses:*` models, `OPENAI_API_KEY` is the only provider key you need.
@@ -67,13 +67,13 @@ If you keep the default `openai-responses:*` models, `OPENAI_API_KEY` is the onl
 ### Validate the local setup
 
 ```bash
-deepmatch doctor
+seektalent doctor
 ```
 
 ### Run one workflow
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
   --real-cts
 ```
@@ -81,7 +81,7 @@ deepmatch run \
 Add `notes` when you want to inject sourcing preferences or exclusions:
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
   --notes "Shanghai preferred, avoid pure frontend profiles" \
   --real-cts
@@ -90,7 +90,7 @@ deepmatch run \
 Canonical output is human-readable. For wrappers and scripts, use machine output:
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \
@@ -104,21 +104,21 @@ deepmatch run \
 Recommended:
 
 ```bash
-pipx install dist/deepmatch-0.2.0-py3-none-any.whl
+pipx install dist/seektalent-0.2.0-py3-none-any.whl
 ```
 
-This gives you the `deepmatch` command directly.
+This gives you the `seektalent` command directly.
 
 ### Python integrators
 
 ```bash
-pip install dist/deepmatch-0.2.0-py3-none-any.whl
+pip install dist/seektalent-0.2.0-py3-none-any.whl
 ```
 
 Then:
 
 ```python
-from deepmatch import run_match
+from seektalent import run_match
 
 result = run_match(
     jd="Python agent engineer",
@@ -133,20 +133,20 @@ print(result.run_dir)
 The canonical entrypoint is:
 
 ```bash
-deepmatch run --help
+seektalent run --help
 ```
 
 Available commands:
 
-- `deepmatch run`
-- `deepmatch init`
-- `deepmatch doctor`
-- `deepmatch version`
+- `seektalent run`
+- `seektalent init`
+- `seektalent doctor`
+- `seektalent version`
 
 For one compatibility cycle, the legacy alias still works:
 
 ```bash
-deepmatch --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
+seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
 ```
 
 Key options on `run`:
@@ -161,7 +161,7 @@ Key options on `run`:
 The default output root is `./runs` relative to the current working directory. Override it per run with:
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \
@@ -172,7 +172,7 @@ Full CLI reference:
 
 - [docs/cli.md](docs/cli.md)
 
-## Wrapping `deepmatch`
+## Wrapping `SeekTalent`
 
 Two supported wrapper patterns are intentionally stable:
 
@@ -181,7 +181,7 @@ Two supported wrapper patterns are intentionally stable:
 Run:
 
 ```bash
-deepmatch run --jd "..." --json
+seektalent run --jd "..." --json
 ```
 
 Then read the single JSON object from stdout.
@@ -189,7 +189,7 @@ Then read the single JSON object from stdout.
 ### Wrap the library
 
 ```python
-from deepmatch import run_match
+from seektalent import run_match
 
 result = run_match(jd="...", notes="...")
 payload = result.final_result.model_dump(mode="json")
@@ -204,7 +204,7 @@ Use this path when you want to build your own API server, desktop shell, or work
 Environment variables are read from `.env` by default. You will usually configure:
 
 - provider credentials such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_API_KEY`
-- CTS settings such as `DEEPMATCH_CTS_BASE_URL`, `DEEPMATCH_CTS_TENANT_KEY`, and `DEEPMATCH_CTS_TENANT_SECRET`
+- CTS settings such as `SEEKTALENT_CTS_BASE_URL`, `SEEKTALENT_CTS_TENANT_KEY`, and `SEEKTALENT_CTS_TENANT_SECRET`
 - runtime settings such as round limits, concurrency, and output directory
 
 Full configuration reference:
@@ -222,7 +222,7 @@ Important rules:
 
 The repository still includes a minimal local web UI:
 
-- backend API: `deepmatch-ui-api`
+- backend API: `seektalent-ui-api`
 - frontend app: `apps/web-user-lite`
 - default backend port: `8011`
 - default frontend port: `5176`
@@ -230,7 +230,7 @@ The repository still includes a minimal local web UI:
 Start the backend:
 
 ```bash
-uv run deepmatch-ui-api
+uv run seektalent-ui-api
 ```
 
 Start the frontend in another terminal:

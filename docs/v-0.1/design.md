@@ -1,4 +1,4 @@
-# deepmatch v0.1 设计文档
+# SeekTalent v0.1 设计文档
 
 ## 0. 文档信息
 
@@ -33,7 +33,7 @@
 
 一句话概括：
 
-> `deepmatch v0.1` 是一个 **single-controller ReAct workflow**。  
+> `SeekTalent v0.1` 是一个 **single-controller ReAct workflow**。  
 > `Controller` 负责“下一步搜什么 / 是否停止”，`Runtime` 负责“怎么执行和怎么审计”。
 
 ---
@@ -914,7 +914,7 @@ class RunState(BaseModel):
 建议在未来重构后使用以下 prompt 文件：
 
 ```text
-src/deepmatch/prompts/
+src/seektalent/prompts/
 ├── controller.md
 ├── reflection.md
 ├── scoring.md
@@ -1361,7 +1361,7 @@ def search_cts(ctx: RunContext, query: CTSQuery) -> SearchObservation:
 ### 21.1 目标目录建议
 
 ```text
-src/deepmatch/
+src/seektalent/
 ├── controller/
 │   └── react_controller.py
 ├── runtime/
@@ -1449,7 +1449,7 @@ src/deepmatch/
 
 ## 24. 一句话总结
 
-`deepmatch v0.1` 应被定义为：
+`SeekTalent v0.1` 应被定义为：
 
 > 一个 **single-controller, one-tool, deterministic-runtime** 的 `ReAct + self-reflection` 工作流系统。  
 > `Controller` 只负责搜索决策；`Runtime` 负责执行、评分、排序与审计；  

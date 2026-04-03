@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 from pydantic_ai.models.test import TestModel
 
-from deepmatch.config import AppSettings
-from deepmatch.controller.react_controller import ReActController
-from deepmatch.finalize.finalizer import Finalizer
-from deepmatch.llm import build_model
-from deepmatch.models import (
+from seektalent.config import AppSettings
+from seektalent.controller.react_controller import ReActController
+from seektalent.finalize.finalizer import Finalizer
+from seektalent.llm import build_model
+from seektalent.models import (
     ControllerContext,
     HardConstraintSlots,
     InputTruth,
@@ -24,10 +24,10 @@ from deepmatch.models import (
     ScoringPolicy,
     SearchObservation,
 )
-from deepmatch.prompting import LoadedPrompt
-from deepmatch.requirements import RequirementExtractor
-from deepmatch.reflection.critic import ReflectionCritic
-from deepmatch.scoring.scorer import ResumeScorer
+from seektalent.prompting import LoadedPrompt
+from seektalent.requirements import RequirementExtractor
+from seektalent.reflection.critic import ReflectionCritic
+from seektalent.scoring.scorer import ResumeScorer
 
 
 def _prompt(name: str) -> LoadedPrompt:
@@ -212,7 +212,7 @@ def test_finalizer_uses_live_path_and_raises_for_empty_ranked_list(monkeypatch: 
 
 def test_requirement_extractor_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     extractor = RequirementExtractor(_settings(monkeypatch), _prompt("requirements"))
-    monkeypatch.setattr("deepmatch.requirements.extractor.build_model", lambda model_id: _test_model("{}"))
+    monkeypatch.setattr("seektalent.requirements.extractor.build_model", lambda model_id: _test_model("{}"))
 
     with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
         asyncio.run(
@@ -230,7 +230,7 @@ def test_requirement_extractor_fails_after_one_output_retry(monkeypatch: pytest.
 def test_controller_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     controller = ReActController(_settings(monkeypatch), _prompt("controller"))
     monkeypatch.setattr(
-        "deepmatch.controller.react_controller.build_model",
+        "seektalent.controller.react_controller.build_model",
         lambda model_id: _test_model('{"action":"search_cts"}'),
     )
 
@@ -240,7 +240,7 @@ def test_controller_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch
 
 def test_reflection_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     critic = ReflectionCritic(_settings(monkeypatch), _prompt("reflection"))
-    monkeypatch.setattr("deepmatch.reflection.critic.build_model", lambda model_id: _test_model("{}"))
+    monkeypatch.setattr("seektalent.reflection.critic.build_model", lambda model_id: _test_model("{}"))
 
     with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
         asyncio.run(critic.reflect(context=_reflection_context()))
@@ -248,7 +248,7 @@ def test_reflection_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch
 
 def test_finalizer_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     finalizer = Finalizer(_settings(monkeypatch), _prompt("finalize"))
-    monkeypatch.setattr("deepmatch.finalize.finalizer.build_model", lambda model_id: _test_model("{}"))
+    monkeypatch.setattr("seektalent.finalize.finalizer.build_model", lambda model_id: _test_model("{}"))
 
     with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
         asyncio.run(
@@ -264,7 +264,7 @@ def test_finalizer_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch)
 
 def test_scorer_returns_failure_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     scorer = ResumeScorer(_settings(monkeypatch), _prompt("scoring"))
-    monkeypatch.setattr("deepmatch.scoring.scorer.build_model", lambda model_id: _test_model("{}"))
+    monkeypatch.setattr("seektalent.scoring.scorer.build_model", lambda model_id: _test_model("{}"))
 
     class StubTracer:
         def emit(self, *args, **kwargs):  # noqa: ANN002, ANN003

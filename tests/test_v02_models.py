@@ -1,4 +1,4 @@
-from deepmatch.models import (
+from seektalent.models import (
     CTSQuery,
     AgeRequirement,
     CitySearchSummary,

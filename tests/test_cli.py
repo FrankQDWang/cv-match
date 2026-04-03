@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from deepmatch.api import MatchRunResult
-from deepmatch.cli import main
-from deepmatch.models import FinalResult
+from seektalent.api import MatchRunResult
+from seektalent.cli import main
+from seektalent.models import FinalResult
 
 
 def _result(tmp_path: Path) -> MatchRunResult:
@@ -33,7 +33,7 @@ def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--help"])
     assert exc.value.code == 0
-    assert "deepmatch" in capsys.readouterr().out
+    assert "seektalent" in capsys.readouterr().out
 
 
 def test_version_command_prints_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -62,7 +62,7 @@ def test_init_refuses_to_overwrite_without_force(tmp_path: Path, capsys: pytest.
 
 def test_doctor_json_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     env_file = tmp_path / ".env"
-    env_file.write_text("OPENAI_API_KEY=test-key\nDEEPMATCH_MOCK_CTS=true\n", encoding="utf-8")
+    env_file.write_text("OPENAI_API_KEY=test-key\nSEEKTALENT_MOCK_CTS=true\n", encoding="utf-8")
 
     assert main(
         [
@@ -92,7 +92,7 @@ def test_doctor_fails_for_missing_real_cts_credentials(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     env_file = tmp_path / ".env"
-    env_file.write_text("OPENAI_API_KEY=test-key\nDEEPMATCH_MOCK_CTS=false\n", encoding="utf-8")
+    env_file.write_text("OPENAI_API_KEY=test-key\nSEEKTALENT_MOCK_CTS=false\n", encoding="utf-8")
 
     assert main(["doctor", "--env-file", str(env_file), "--real-cts"]) == 1
 
@@ -104,7 +104,7 @@ def test_run_supports_legacy_alias_and_json_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr("deepmatch.cli.run_match", lambda **kwargs: _result(tmp_path))
+    monkeypatch.setattr("seektalent.cli.run_match", lambda **kwargs: _result(tmp_path))
 
     assert main(["--jd", "JD", "--notes", "Notes", "--mock-cts", "--json"]) == 0
 
@@ -120,7 +120,7 @@ def test_run_json_errors_emit_single_object(
     def _boom(**kwargs):
         raise ValueError("boom")
 
-    monkeypatch.setattr("deepmatch.cli.run_match", _boom)
+    monkeypatch.setattr("seektalent.cli.run_match", _boom)
 
     assert main(["run", "--jd", "JD", "--notes", "Notes", "--json"]) == 1
 
@@ -139,7 +139,7 @@ def test_run_allows_missing_notes_and_defaults_empty_string(
         captured["notes"] = kwargs["notes"]
         return _result(tmp_path)
 
-    monkeypatch.setattr("deepmatch.cli.run_match", _fake_run_match)
+    monkeypatch.setattr("seektalent.cli.run_match", _fake_run_match)
 
     assert main(["run", "--jd", "JD"]) == 0
     assert captured["notes"] == ""
@@ -159,7 +159,7 @@ def test_run_reads_notes_file_without_inline_notes(
         captured["notes"] = kwargs["notes"]
         return _result(tmp_path)
 
-    monkeypatch.setattr("deepmatch.cli.run_match", _fake_run_match)
+    monkeypatch.setattr("seektalent.cli.run_match", _fake_run_match)
 
     assert main(["run", "--jd", "JD", "--notes-file", str(notes_file)]) == 0
     assert captured["notes"] == "Notes from file"
@@ -180,7 +180,7 @@ def test_output_dir_flag_overrides_env_file(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     env_file = tmp_path / "custom.env"
-    env_file.write_text("DEEPMATCH_RUNS_DIR=from-env\n", encoding="utf-8")
+    env_file.write_text("SEEKTALENT_RUNS_DIR=from-env\n", encoding="utf-8")
     captured = {}
 
     def _fake_run_match(**kwargs):
@@ -188,7 +188,7 @@ def test_output_dir_flag_overrides_env_file(
         captured["runs_dir"] = kwargs["settings"].runs_dir
         return _result(tmp_path)
 
-    monkeypatch.setattr("deepmatch.cli.run_match", _fake_run_match)
+    monkeypatch.setattr("seektalent.cli.run_match", _fake_run_match)
 
     assert main(
         [

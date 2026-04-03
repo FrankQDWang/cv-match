@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 from pydantic_ai.exceptions import ModelRetry
 
-from deepmatch.config import AppSettings
-from deepmatch.finalize.finalizer import Finalizer
-from deepmatch.models import FinalCandidate, FinalResult, FinalizeContext, ScoredCandidate
-from deepmatch.prompting import LoadedPrompt
+from seektalent.config import AppSettings
+from seektalent.finalize.finalizer import Finalizer
+from seektalent.models import FinalCandidate, FinalResult, FinalizeContext, ScoredCandidate
+from seektalent.prompting import LoadedPrompt
 
 
 def _scored_candidate(resume_id: str, *, source_round: int, score: int) -> ScoredCandidate:

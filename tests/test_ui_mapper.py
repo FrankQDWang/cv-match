@@ -1,7 +1,7 @@
-from deepmatch.mock_data import load_mock_resume_corpus
-from deepmatch.models import FinalCandidate, FinalResult
-from deepmatch.normalization import normalize_resume
-from deepmatch_ui.mapper import build_ui_payloads
+from seektalent.mock_data import load_mock_resume_corpus
+from seektalent.models import FinalCandidate, FinalResult
+from seektalent.normalization import normalize_resume
+from seektalent_ui.mapper import build_ui_payloads
 
 
 def test_build_ui_payloads_maps_shortlist_and_detail() -> None:

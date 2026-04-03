@@ -528,7 +528,7 @@ wheels = [
 ]
 
 [[package]]
-name = "deepmatch"
+name = "seektalent"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [

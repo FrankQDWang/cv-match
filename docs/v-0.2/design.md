@@ -1,4 +1,4 @@
-# deepmatch v0.2 设计文档
+# SeekTalent v0.2 设计文档
 
 ## 0. 文档信息
 
@@ -145,7 +145,7 @@ python "Pydantic AI" "resume matching"
 
 一句话概括：
 
-> `deepmatch v0.2` 是一个以 `RequirementSheet` 为业务真相、以 `Controller-owned query decisions + Reflection-as-critic` 为决策机制、以 `Runtime-enforced query budget` 为执行边界的单控制器系统。
+> `SeekTalent v0.2` 是一个以 `RequirementSheet` 为业务真相、以 `Controller-owned query decisions + Reflection-as-critic` 为决策机制、以 `Runtime-enforced query budget` 为执行边界的单控制器系统。
 
 ---
 
@@ -812,7 +812,7 @@ class RuntimeConstraint(BaseModel):
 因此 `v0.2` 改为：
 
 1. `design.md` 只保留枚举字段的建模规则、投影规则和 ownership。
-2. 当前已观察到的客户端枚举值，统一维护在 [cts-enum-observations.md](/Users/frankqdwang/Agents/deepmatch/docs/v-0.2/cts-enum-observations.md)。
+2. 当前已观察到的客户端枚举值，统一维护在 [cts-enum-observations.md](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.2/cts-enum-observations.md)。
 3. 后续若开始实现稳定的 `canonical label -> CTS payload value` 映射表，应再新增一份专门的 mapping source-of-truth 文档或代码表，而不是继续把列表堆回设计文档。
 
 说明：

@@ -1,4 +1,4 @@
-from deepmatch.models import (
+from seektalent.models import (
     CTSQuery,
     CitySearchSummary,
     HardConstraintSlots,
@@ -22,7 +22,7 @@ from deepmatch.models import (
     SearchObservation,
     SentQueryRecord,
 )
-from deepmatch.runtime.context_builder import (
+from seektalent.runtime.context_builder import (
     build_controller_context,
     build_finalize_context,
     build_reflection_context,

@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from deepmatch.config import AppSettings
-from deepmatch.controller.react_controller import ReActController
-from deepmatch.finalize.finalizer import Finalizer
-from deepmatch.models import (
+from seektalent.config import AppSettings
+from seektalent.controller.react_controller import ReActController
+from seektalent.finalize.finalizer import Finalizer
+from seektalent.models import (
     ControllerContext,
     FinalCandidate,
     FinalResult,
@@ -29,10 +29,10 @@ from deepmatch.models import (
     ScoredCandidate,
     ScoringContext,
 )
-from deepmatch.prompting import LoadedPrompt
-from deepmatch.reflection.critic import ReflectionCritic
-from deepmatch.requirements.extractor import RequirementExtractor
-from deepmatch.scoring.scorer import ResumeScorer
+from seektalent.prompting import LoadedPrompt
+from seektalent.reflection.critic import ReflectionCritic
+from seektalent.requirements.extractor import RequirementExtractor
+from seektalent.scoring.scorer import ResumeScorer
 
 
 def _prompt(name: str) -> LoadedPrompt:

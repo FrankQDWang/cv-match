@@ -1,4 +1,4 @@
-# deepmatch v0.2 LLM Context Maps
+# SeekTalent v0.2 LLM Context Maps
 
 > 本文档说明 `v0.2` 中 5 个 LLM 调用点的 context 分层方式：总 memory 是什么，runtime 如何从 memory 投影出各阶段 context，以及哪些信息是刻意不暴露给某个 LLM 的。
 

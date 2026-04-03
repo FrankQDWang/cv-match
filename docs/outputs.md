@@ -11,7 +11,7 @@ The exact path is printed by the CLI on success.
 By default, `runs/` is resolved relative to the current working directory. Override it for one run with:
 
 ```bash
-deepmatch run --jd "..." --output-dir ./outputs
+seektalent run --jd "..." --output-dir ./outputs
 ```
 
 ## Top-level files

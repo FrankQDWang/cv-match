@@ -5,60 +5,60 @@
 规范 CLI 入口是：
 
 ```bash
-deepmatch run --help
+seektalent run --help
 ```
 
 为兼容现有用法，当前一个发布周期内仍保留旧别名：
 
 ```bash
-deepmatch --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
+seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
 ```
 
 ## 命令
 
-### `deepmatch init`
+### `seektalent init`
 
 在当前目录写入一个启动用 env 文件：
 
 ```bash
-deepmatch init
+seektalent init
 ```
 
 写入自定义路径：
 
 ```bash
-deepmatch init --env-file ./local.env
+seektalent init --env-file ./local.env
 ```
 
 覆盖已存在文件：
 
 ```bash
-deepmatch init --force
+seektalent init --force
 ```
 
-### `deepmatch doctor`
+### `seektalent doctor`
 
 运行本地检查，不发网络请求：
 
 ```bash
-deepmatch doctor
+seektalent doctor
 ```
 
 机器可读输出：
 
 ```bash
-deepmatch doctor --json
+seektalent doctor --json
 ```
 
-### `deepmatch version`
+### `seektalent version`
 
 打印当前安装包版本：
 
 ```bash
-deepmatch version
+seektalent version
 ```
 
-## `deepmatch run`
+## `seektalent run`
 
 每次运行都需要一个必填输入和一个可选补充输入：
 
@@ -76,7 +76,7 @@ JD 必须且只能提供一种来源：
 ### 只用 JD 运行
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
   --real-cts
 ```
@@ -84,7 +84,7 @@ deepmatch run \
 ### 直接传文本运行
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
   --notes "Shanghai preferred, avoid pure frontend profiles" \
   --real-cts
@@ -93,7 +93,7 @@ deepmatch run \
 ### 从文件运行
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd-file ./jd.md \
   --notes-file ./notes.md \
   --real-cts
@@ -102,7 +102,7 @@ deepmatch run \
 ### 覆盖输出目录
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \
@@ -112,7 +112,7 @@ deepmatch run \
 ### 使用自定义 env 文件
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \
@@ -122,7 +122,7 @@ deepmatch run \
 ### 机器可读输出
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \

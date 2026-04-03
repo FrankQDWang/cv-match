@@ -1,4 +1,4 @@
-# deepmatch
+# SeekTalent
 
 <p>
   <a href="./README.md"><img src="https://img.shields.io/badge/Language-English-0A66C2" alt="English"></a>
@@ -7,7 +7,7 @@
 
 ## 简体中文
 
-`deepmatch` 是一个本地优先的简历匹配引擎。它会把 `JD` 和可选的寻访须知转成一个可审计的多轮 shortlist，包含需求抽取、受控 CTS 检索、单简历评分、反思和最终结果生成。
+`SeekTalent` 是一个本地优先的简历匹配引擎。它会把 `JD` 和可选的寻访须知转成一个可审计的多轮 shortlist，包含需求抽取、受控 CTS 检索、单简历评分、反思和最终结果生成。
 
 当前产品形态是刻意收紧的：
 
@@ -37,19 +37,19 @@
 
 ```bash
 uv build
-pipx install dist/deepmatch-0.2.0-py3-none-any.whl
+pipx install dist/seektalent-0.2.0-py3-none-any.whl
 ```
 
 如果你更希望装进现有 Python 环境：
 
 ```bash
-pip install dist/deepmatch-0.2.0-py3-none-any.whl
+pip install dist/seektalent-0.2.0-py3-none-any.whl
 ```
 
 ### 生成启动配置
 
 ```bash
-deepmatch init
+seektalent init
 ```
 
 ### 填写 `.env` 里的必填值
@@ -58,8 +58,8 @@ deepmatch init
 
 ```dotenv
 OPENAI_API_KEY=your-openai-key
-DEEPMATCH_CTS_TENANT_KEY=your-cts-tenant-key
-DEEPMATCH_CTS_TENANT_SECRET=your-cts-tenant-secret
+SEEKTALENT_CTS_TENANT_KEY=your-cts-tenant-key
+SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
 如果保留默认的 `openai-responses:*` 模型，只需要 `OPENAI_API_KEY` 这一组 provider 凭证。
@@ -67,13 +67,13 @@ DEEPMATCH_CTS_TENANT_SECRET=your-cts-tenant-secret
 ### 检查本地环境
 
 ```bash
-deepmatch doctor
+seektalent doctor
 ```
 
 ### 运行一次工作流
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
   --real-cts
 ```
@@ -81,7 +81,7 @@ deepmatch run \
 如果你需要补充寻访偏好或排除条件，再加 `notes`：
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer with retrieval and ranking experience" \
   --notes "Shanghai preferred, avoid pure frontend profiles" \
   --real-cts
@@ -90,7 +90,7 @@ deepmatch run \
 默认输出是人类可读文本。给包壳程序或脚本时，使用机器输出：
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \
@@ -104,21 +104,21 @@ deepmatch run \
 推荐：
 
 ```bash
-pipx install dist/deepmatch-0.2.0-py3-none-any.whl
+pipx install dist/seektalent-0.2.0-py3-none-any.whl
 ```
 
-这样会直接得到 `deepmatch` 命令。
+这样会直接得到 `seektalent` 命令。
 
 ### 给 Python 集成方
 
 ```bash
-pip install dist/deepmatch-0.2.0-py3-none-any.whl
+pip install dist/seektalent-0.2.0-py3-none-any.whl
 ```
 
 然后：
 
 ```python
-from deepmatch import run_match
+from seektalent import run_match
 
 result = run_match(
     jd="Python agent engineer",
@@ -133,20 +133,20 @@ print(result.run_dir)
 规范入口是：
 
 ```bash
-deepmatch run --help
+seektalent run --help
 ```
 
 可用命令：
 
-- `deepmatch run`
-- `deepmatch init`
-- `deepmatch doctor`
-- `deepmatch version`
+- `seektalent run`
+- `seektalent init`
+- `seektalent doctor`
+- `seektalent version`
 
 为兼容现有用法，当前一个发布周期内仍保留旧别名：
 
 ```bash
-deepmatch --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
+seektalent --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
 ```
 
 `run` 的关键参数：
@@ -161,7 +161,7 @@ deepmatch --jd "Python agent engineer" --notes "Shanghai preferred" --mock-cts
 默认输出根目录是当前工作目录下的 `./runs`。如果要单次覆盖：
 
 ```bash
-deepmatch run \
+seektalent run \
   --jd "Python agent engineer" \
   --notes "Shanghai preferred" \
   --mock-cts \
@@ -172,7 +172,7 @@ deepmatch run \
 
 - [docs/cli.zh-CN.md](docs/cli.zh-CN.md)
 
-## 如何包壳 `deepmatch`
+## 如何包壳 `SeekTalent`
 
 目前明确稳定的包壳方式有两种：
 
@@ -181,7 +181,7 @@ deepmatch run \
 运行：
 
 ```bash
-deepmatch run --jd "..." --json
+seektalent run --jd "..." --json
 ```
 
 然后读取 stdout 的单个 JSON 对象。
@@ -189,7 +189,7 @@ deepmatch run --jd "..." --json
 ### 包 Python 库
 
 ```python
-from deepmatch import run_match
+from seektalent import run_match
 
 result = run_match(jd="...", notes="...")
 payload = result.final_result.model_dump(mode="json")
@@ -204,7 +204,7 @@ payload = result.final_result.model_dump(mode="json")
 默认会从 `.env` 读取环境变量。通常需要配置：
 
 - provider 凭证，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GOOGLE_API_KEY`
-- CTS 配置，例如 `DEEPMATCH_CTS_BASE_URL`、`DEEPMATCH_CTS_TENANT_KEY`、`DEEPMATCH_CTS_TENANT_SECRET`
+- CTS 配置，例如 `SEEKTALENT_CTS_BASE_URL`、`SEEKTALENT_CTS_TENANT_KEY`、`SEEKTALENT_CTS_TENANT_SECRET`
 - runtime 配置，例如轮次上限、并发和输出目录
 
 完整配置说明见：
@@ -222,7 +222,7 @@ payload = result.final_result.model_dump(mode="json")
 
 仓库里仍然包含一个最小本地 Web UI：
 
-- 后端 API：`deepmatch-ui-api`
+- 后端 API：`seektalent-ui-api`
 - 前端目录：`apps/web-user-lite`
 - 默认后端端口：`8011`
 - 默认前端端口：`5176`
@@ -230,7 +230,7 @@ payload = result.final_result.model_dump(mode="json")
 启动后端：
 
 ```bash
-uv run deepmatch-ui-api
+uv run seektalent-ui-api
 ```
 
 在另一个终端启动前端：

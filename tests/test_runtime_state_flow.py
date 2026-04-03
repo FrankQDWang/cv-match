@@ -2,8 +2,8 @@ import asyncio
 import json
 from pathlib import Path
 
-from deepmatch.config import AppSettings
-from deepmatch.models import (
+from seektalent.config import AppSettings
+from seektalent.models import (
     CTSQuery,
     FinalCandidate,
     FinalResult,
@@ -20,8 +20,8 @@ from deepmatch.models import (
     SearchControllerDecision,
     StopControllerDecision,
 )
-from deepmatch.runtime import WorkflowRuntime
-from deepmatch.tracing import RunTracer
+from seektalent.runtime import WorkflowRuntime
+from seektalent.tracing import RunTracer
 
 
 def _sample_inputs() -> tuple[str, str]:

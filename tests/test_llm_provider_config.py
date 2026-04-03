@@ -6,20 +6,20 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from deepmatch.config import AppSettings, load_process_env
-from deepmatch.controller.react_controller import ReActController
-from deepmatch.finalize.finalizer import Finalizer
-from deepmatch.llm import (
+from seektalent.config import AppSettings, load_process_env
+from seektalent.controller.react_controller import ReActController
+from seektalent.finalize.finalizer import Finalizer
+from seektalent.llm import (
     build_model,
     build_model_settings,
     build_output_spec,
     model_provider,
     preflight_models,
 )
-from deepmatch.prompting import LoadedPrompt
-from deepmatch.reflection.critic import ReflectionCritic
-from deepmatch.requirements.extractor import RequirementExtractor
-from deepmatch.scoring.scorer import ResumeScorer
+from seektalent.prompting import LoadedPrompt
+from seektalent.reflection.critic import ReflectionCritic
+from seektalent.requirements.extractor import RequirementExtractor
+from seektalent.scoring.scorer import ResumeScorer
 
 
 def _prompt(name: str) -> LoadedPrompt:
@@ -57,7 +57,7 @@ def test_build_model_routes_through_infer_model(monkeypatch: pytest.MonkeyPatch)
     loaded: list[bool] = []
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setattr("deepmatch.llm.load_process_env", lambda: loaded.append(True))
+    monkeypatch.setattr("seektalent.llm.load_process_env", lambda: loaded.append(True))
 
     def fake_infer_model(model_id: str, provider_factory) -> object:  # noqa: ANN001
         calls.append(model_id)
@@ -65,7 +65,7 @@ def test_build_model_routes_through_infer_model(monkeypatch: pytest.MonkeyPatch)
         assert provider.name == "openai"
         return object()
 
-    monkeypatch.setattr("deepmatch.llm.infer_model", fake_infer_model)
+    monkeypatch.setattr("seektalent.llm.infer_model", fake_infer_model)
 
     build_model("openai-responses:gpt-5.4-mini")
 
@@ -81,7 +81,7 @@ def test_build_model_uses_fresh_openai_provider_clients(monkeypatch: pytest.Monk
         providers.append(provider_factory("openai-responses"))
         return object()
 
-    monkeypatch.setattr("deepmatch.llm.infer_model", fake_infer_model)
+    monkeypatch.setattr("seektalent.llm.infer_model", fake_infer_model)
 
     build_model("openai-responses:gpt-5.4-mini")
     build_model("openai-responses:gpt-5.4-mini")
@@ -153,7 +153,7 @@ def test_preflight_models_fails_when_native_structured_output_is_unsupported(
     class FakeModel:
         profile = FakeProfile()
 
-    monkeypatch.setattr("deepmatch.llm.build_model", lambda model_id: FakeModel())
+    monkeypatch.setattr("seektalent.llm.build_model", lambda model_id: FakeModel())
     settings = AppSettings(_env_file=None)
 
     with pytest.raises(ValueError, match="native structured output"):
@@ -173,7 +173,7 @@ def test_preflight_models_surfaces_provider_credential_errors(
     model_id: str,
     env_var: str,
 ) -> None:
-    monkeypatch.setattr("deepmatch.llm.load_process_env", lambda: None)
+    monkeypatch.setattr("seektalent.llm.load_process_env", lambda: None)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
