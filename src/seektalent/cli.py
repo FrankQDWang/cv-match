@@ -111,6 +111,45 @@ def _emit_error(exc: Exception, *, json_output: bool) -> None:
     print(f"Error: {exc}", file=sys.stderr)
 
 
+def _required_provider_env_vars(settings: AppSettings) -> list[str]:
+    return sorted(
+        {
+            env_var
+            for model_id in (
+                settings.requirements_model,
+                settings.controller_model,
+                settings.scoring_model,
+                settings.reflection_model,
+                settings.finalize_model,
+            )
+            if (env_var := _provider_env_var(model_id)) is not None
+        }
+    )
+
+
+def _missing_provider_env_vars(settings: AppSettings) -> list[str]:
+    return [name for name in _required_provider_env_vars(settings) if not os.environ.get(name)]
+
+
+def _missing_cts_env_vars(settings: AppSettings) -> list[str]:
+    return [
+        name
+        for name, value in (
+            ("SEEKTALENT_CTS_TENANT_KEY", settings.cts_tenant_key),
+            ("SEEKTALENT_CTS_TENANT_SECRET", settings.cts_tenant_secret),
+        )
+        if not value
+    ]
+
+
+def _missing_credentials_message(*, missing_provider: list[str], missing_cts: list[str]) -> str:
+    missing = [*missing_provider, *missing_cts]
+    return (
+        f"Missing required environment variables: {', '.join(missing)}. "
+        "Set them in your shell and rerun seektalent, or pass --env-file to load them from a file."
+    )
+
+
 def _write_human_result(result: MatchRunResult) -> None:
     if result.final_markdown:
         print(result.final_markdown.rstrip())
@@ -120,7 +159,17 @@ def _write_human_result(result: MatchRunResult) -> None:
 
 
 def _run_command(args: argparse.Namespace) -> int:
+    load_process_env(args.env_file)
     settings = _build_settings(args)
+    missing_provider = _missing_provider_env_vars(settings)
+    missing_cts = _missing_cts_env_vars(settings)
+    if missing_provider or missing_cts:
+        raise ValueError(
+            _missing_credentials_message(
+                missing_provider=missing_provider,
+                missing_cts=missing_cts,
+            )
+        )
     result = run_match(
         jd=_read_text(inline_value=args.jd, file_value=args.jd_file, label="jd"),
         notes=_read_optional_text(inline_value=args.notes, file_value=args.notes_file, label="notes"),
@@ -185,22 +234,14 @@ def _output_dir_check(settings: AppSettings | None) -> DoctorCheck:
 
 def _provider_credentials_check(settings: AppSettings | None) -> DoctorCheck:
     assert settings is not None
-    required_vars = sorted(
-        {
-            env_var
-            for model_id in (
-                settings.requirements_model,
-                settings.controller_model,
-                settings.scoring_model,
-                settings.reflection_model,
-                settings.finalize_model,
-            )
-            if (env_var := _provider_env_var(model_id)) is not None
-        }
-    )
-    missing = [name for name in required_vars if not os.environ.get(name)]
+    required_vars = _required_provider_env_vars(settings)
+    missing = _missing_provider_env_vars(settings)
     if missing:
-        return DoctorCheck("provider_credentials", False, f"Missing credentials: {', '.join(missing)}")
+        return DoctorCheck(
+            "provider_credentials",
+            False,
+            _missing_credentials_message(missing_provider=missing, missing_cts=[]),
+        )
     if required_vars:
         return DoctorCheck("provider_credentials", True, f"Found credentials: {', '.join(required_vars)}")
     return DoctorCheck("provider_credentials", True, "No provider credentials required by current models.")
@@ -208,18 +249,13 @@ def _provider_credentials_check(settings: AppSettings | None) -> DoctorCheck:
 
 def _cts_credentials_check(settings: AppSettings | None) -> DoctorCheck:
     assert settings is not None
-    if settings.mock_cts:
-        return DoctorCheck("cts_credentials", True, "Mock CTS enabled; CTS credentials not required.")
-    missing = [
-        name
-        for name, value in (
-            ("SEEKTALENT_CTS_TENANT_KEY", settings.cts_tenant_key),
-            ("SEEKTALENT_CTS_TENANT_SECRET", settings.cts_tenant_secret),
-        )
-        if not value
-    ]
+    missing = _missing_cts_env_vars(settings)
     if missing:
-        return DoctorCheck("cts_credentials", False, f"Missing CTS credentials: {', '.join(missing)}")
+        return DoctorCheck(
+            "cts_credentials",
+            False,
+            _missing_credentials_message(missing_provider=[], missing_cts=missing),
+        )
     return DoctorCheck("cts_credentials", True, "CTS credentials are configured.")
 
 
@@ -270,8 +306,6 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--env-file", default=".env", help="Path to the env file for this run.")
     run_parser.add_argument("--output-dir", help="Directory where run artifacts should be written.")
     run_parser.add_argument("--json", dest="json_output", action="store_true", help="Emit a single JSON object.")
-    run_parser.add_argument("--mock-cts", dest="mock_cts", action="store_true", default=None, help="Use mock CTS.")
-    run_parser.add_argument("--real-cts", dest="mock_cts", action="store_false", help="Use real CTS.")
     run_parser.add_argument("--max-rounds", type=int, help="Override the max retrieval rounds.")
     run_parser.add_argument("--min-rounds", type=int, help="Override the min retrieval rounds.")
     run_parser.add_argument(
@@ -318,8 +352,6 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--env-file", default=".env", help="Path to the env file to inspect.")
     doctor_parser.add_argument("--output-dir", help="Directory to validate as the artifact root.")
     doctor_parser.add_argument("--json", dest="json_output", action="store_true", help="Emit a single JSON object.")
-    doctor_parser.add_argument("--mock-cts", dest="mock_cts", action="store_true", default=None, help="Force mock CTS checks.")
-    doctor_parser.add_argument("--real-cts", dest="mock_cts", action="store_false", help="Force real CTS checks.")
     doctor_parser.set_defaults(handler=_doctor_command)
 
     version_parser = subparsers.add_parser("version", help="Print the installed seektalent version.")

@@ -10,6 +10,12 @@ from seektalent.cli import main
 from seektalent.models import FinalResult
 
 
+def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("SEEKTALENT_CTS_TENANT_KEY", "cts-key")
+    monkeypatch.setenv("SEEKTALENT_CTS_TENANT_SECRET", "cts-secret")
+
+
 def _result(tmp_path: Path) -> MatchRunResult:
     trace_log = tmp_path / "trace.log"
     trace_log.write_text("", encoding="utf-8")
@@ -62,7 +68,10 @@ def test_init_refuses_to_overwrite_without_force(tmp_path: Path, capsys: pytest.
 
 def test_doctor_json_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     env_file = tmp_path / ".env"
-    env_file.write_text("OPENAI_API_KEY=test-key\nSEEKTALENT_MOCK_CTS=true\n", encoding="utf-8")
+    env_file.write_text(
+        "OPENAI_API_KEY=test-key\nSEEKTALENT_CTS_TENANT_KEY=cts-key\nSEEKTALENT_CTS_TENANT_SECRET=cts-secret\n",
+        encoding="utf-8",
+    )
 
     assert main(
         [
@@ -92,11 +101,23 @@ def test_doctor_fails_for_missing_real_cts_credentials(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     env_file = tmp_path / ".env"
-    env_file.write_text("OPENAI_API_KEY=test-key\nSEEKTALENT_MOCK_CTS=false\n", encoding="utf-8")
+    env_file.write_text("OPENAI_API_KEY=test-key\n", encoding="utf-8")
 
-    assert main(["doctor", "--env-file", str(env_file), "--real-cts"]) == 1
+    assert main(["doctor", "--env-file", str(env_file)]) == 1
 
     assert "FAIL cts_credentials" in capsys.readouterr().out
+
+
+def test_doctor_rejects_mock_cts_from_env_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("SEEKTALENT_MOCK_CTS=true\n", encoding="utf-8")
+
+    assert main(["doctor", "--env-file", str(env_file)]) == 1
+
+    assert "mock_cts is not available in the published package" in capsys.readouterr().out
 
 
 def test_run_supports_legacy_alias_and_json_output(
@@ -104,9 +125,10 @@ def test_run_supports_legacy_alias_and_json_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _set_required_env(monkeypatch)
     monkeypatch.setattr("seektalent.cli.run_match", lambda **kwargs: _result(tmp_path))
 
-    assert main(["--jd", "JD", "--notes", "Notes", "--mock-cts", "--json"]) == 0
+    assert main(["--jd", "JD", "--notes", "Notes", "--json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["run_id"] == "run-1"
@@ -117,6 +139,8 @@ def test_run_json_errors_emit_single_object(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _set_required_env(monkeypatch)
+
     def _boom(**kwargs):
         raise ValueError("boom")
 
@@ -133,6 +157,7 @@ def test_run_allows_missing_notes_and_defaults_empty_string(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _set_required_env(monkeypatch)
     captured = {}
 
     def _fake_run_match(**kwargs):
@@ -151,6 +176,7 @@ def test_run_reads_notes_file_without_inline_notes(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _set_required_env(monkeypatch)
     captured = {}
     notes_file = tmp_path / "notes.md"
     notes_file.write_text("Notes from file", encoding="utf-8")
@@ -166,7 +192,12 @@ def test_run_reads_notes_file_without_inline_notes(
     assert "run_id: run-1" in capsys.readouterr().out
 
 
-def test_run_rejects_duplicate_input_sources(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+def test_run_rejects_duplicate_input_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    _set_required_env(monkeypatch)
     jd_file = tmp_path / "jd.md"
     jd_file.write_text("JD", encoding="utf-8")
 
@@ -174,11 +205,38 @@ def test_run_rejects_duplicate_input_sources(capsys: pytest.CaptureFixture[str],
     assert "Use only one of --jd or --jd-file." in capsys.readouterr().err
 
 
+def test_run_fails_fast_with_missing_environment_variables(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("SEEKTALENT_CTS_TENANT_KEY", raising=False)
+    monkeypatch.delenv("SEEKTALENT_CTS_TENANT_SECRET", raising=False)
+
+    assert main(["run", "--jd", "JD", "--env-file", str(tmp_path / "missing.env")]) == 1
+
+    error = capsys.readouterr().err
+    assert "Missing required environment variables" in error
+    assert "OPENAI_API_KEY" in error
+    assert "SEEKTALENT_CTS_TENANT_KEY" in error
+    assert "SEEKTALENT_CTS_TENANT_SECRET" in error
+
+
+def test_run_rejects_mock_cts_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["run", "--jd", "JD", "--mock-cts"])
+
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --mock-cts" in capsys.readouterr().err
+
+
 def test_output_dir_flag_overrides_env_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _set_required_env(monkeypatch)
     env_file = tmp_path / "custom.env"
     env_file.write_text("SEEKTALENT_RUNS_DIR=from-env\n", encoding="utf-8")
     captured = {}

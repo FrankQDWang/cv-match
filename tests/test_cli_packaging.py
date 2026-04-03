@@ -63,7 +63,10 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     assert (work_dir / ".env").exists()
 
     doctor_env = work_dir / "doctor.env"
-    doctor_env.write_text("OPENAI_API_KEY=test-key\nSEEKTALENT_MOCK_CTS=true\n", encoding="utf-8")
+    doctor_env.write_text(
+        "OPENAI_API_KEY=test-key\nSEEKTALENT_CTS_TENANT_KEY=cts-key\nSEEKTALENT_CTS_TENANT_SECRET=cts-secret\n",
+        encoding="utf-8",
+    )
     doctor_result = subprocess.run(
         [str(cli), "doctor", "--env-file", str(doctor_env), "--json"],
         cwd=work_dir,

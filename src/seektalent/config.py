@@ -82,7 +82,7 @@ class AppSettings(BaseSettings):
     search_max_pages_per_round: int = 3
     search_max_attempts_per_round: int = 3
     search_no_progress_limit: int = 2
-    mock_cts: bool = True
+    mock_cts: bool = False
     enable_reflection: bool = True
 
     runs_dir: str = "runs"
@@ -98,6 +98,8 @@ class AppSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_ranges(self) -> "AppSettings":
+        if self.mock_cts:
+            raise ValueError("mock_cts is not available in the published package")
         if self.min_rounds < 1:
             raise ValueError("min_rounds must be >= 1")
         if self.max_rounds < self.min_rounds:
@@ -131,8 +133,6 @@ class AppSettings(BaseSettings):
         return resolve_user_path(self.runs_dir)
 
     def require_cts_credentials(self) -> None:
-        if self.mock_cts:
-            return
         if not self.cts_tenant_key or not self.cts_tenant_secret:
             raise ValueError(
                 "Real CTS mode requires SEEKTALENT_CTS_TENANT_KEY and SEEKTALENT_CTS_TENANT_SECRET."
