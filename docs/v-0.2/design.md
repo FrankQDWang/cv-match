@@ -3,9 +3,11 @@
 ## 0. 文档信息
 
 - 版本：`v0.2`
-- 状态：`design / proposed`
-- 文档目标：在保留 `single-controller ReAct workflow` 主骨架的前提下，把检索侧从“全量关键词拼接 + 模糊 filter 投影”升级为“固定业务真相 + 轮次预算驱动的 query planning + 结构化 constraint projection”。
+- 状态：`current baseline / implemented`
+- 文档目标：在保留 `single-controller runtime loop` 主骨架（当前实现类名仍为 `ReActController`）的前提下，把检索侧从“全量关键词拼接 + 模糊 filter 投影”升级为“固定业务真相 + 轮次预算驱动的 query planning + 结构化 constraint projection”。
 - 文档语言约定：正文使用中文，关键术语保留英文，例如 `Controller`、`Reflection`、`RequirementSheet`、`RunState`、`Context Builder`、`Round Retrieval Plan`、`Audit Store`。
+- 现状声明：本文描述的是当前 `HEAD` 的 `v0.2` 实现基线，不是待实现提案。
+- 职责说明：本页是 `v0.2` 的规范性主契约；流程解释见 `workflow-explained.md`，LLM context 可见性与 actual payload 缩口见 `llm-context-maps.md`，评分语义见 `scoring-rules-map.md`，CTS 外部枚举观察见 `cts-enum-observations.md`。
 
 ---
 
@@ -123,7 +125,7 @@ python "Pydantic AI" "resume matching"
 
 本版本的核心结论如下：
 
-1. 保留 `single-controller ReAct workflow` 的总架构，不引入 `multi-agent`。
+1. 保留单控制器总架构，不引入 `multi-agent`；当前实现类名仍是 `ReActController`，但执行方式是“每轮一次结构化决策”，不是多步工具循环式 `ReAct`。
 2. 引入 `RequirementSheet`，作为从完整 `JD + notes` 中抽取出的结构化业务真相。
 3. 检索侧不再把“完整关键词池”直接等价为“本轮 CTS query”。
 4. 引入 `Round Retrieval Plan`，每轮 CTS 检索都必须由 runtime 按轮次预算构建。
@@ -159,7 +161,7 @@ python "Pydantic AI" "resume matching"
 | `Runtime` | workflow controller | 否 | 执行全流程、控制预算、写审计 |
 | `Requirement Extractor` | structured processor | 是 | 从完整输入抽取 `RequirementExtractionDraft`，再经 deterministic normalization 生成 `RequirementSheet` |
 | `Query Plan Canonicalizer` | deterministic planner | 否 | 对 `Controller` 提议的 query terms 与 filter plan 做预算校验、规范化，并构建 `Round Retrieval Plan` |
-| `ReAct Controller` | agent | 是 | 决定执行 `search_cts` 或停止，并决定本轮 query terms |
+| `Controller` | agent | 是 | 决定执行 `search_cts` 或停止，并决定本轮 query terms；当前实现类名为 `ReActController` |
 | `search_cts` | tool | 否 | 调用 CTS 检索 |
 | `CTS Adapter` | adapter | 否 | 把 `Round Retrieval Plan` 投影为 `CTSQuery`，并做协议级字段映射 |
 | `Resume Normalizer` | processor | 否 | 统一简历结构 |
@@ -896,6 +898,8 @@ class AgeRequirement(BaseModel):
 
 所有 prompt context 都必须通过 `Context Builder` 自动组装。
 
+本章只给出主契约层的 context 形状与设计意图；当前实现里 actual prompt payload 的缩口、字段裁切和“谁真正看到什么”，以 `llm-context-maps.md` 为准。
+
 设计要求：
 
 1. 每个阶段有明确的 context schema
@@ -923,8 +927,8 @@ class AgeRequirement(BaseModel):
 | `Controller` | 完整 `JD`、完整 `notes`、`RequirementSheet`、当前 round budget、运行态 `query_term_pool`、top pool 摘要、search/reflection 摘要、上一轮 keyword/filter advice | 完整简历、全量 events |
 | `search_cts` | 结构化 `CTSQuery` | 任意自由文本 prompt |
 | `Scorer` | 冻结的 `ScoringPolicy`、一份 `NormalizedResume` | 其他候选人、检索历史 |
-| `Reflection` | 完整 `JD`、完整 `notes`、`RequirementSheet`、本轮 query/filter 计划、search outcome、scoring gap、top pool、dropped pattern | 全量原始简历全文、全量历史 event log |
-| `Finalizer` | 最终 top candidates、运行摘要、停止原因；当前实际 LLM payload 为 narrowed finalization payload | 全量中间态 |
+| `Reflection` | 完整 `JD`、完整 `notes`、`RequirementSheet`、本轮 query/filter 计划、search outcome、top pool、dropped pattern、sent query history；`scoring_failures` 在 schema 中保留，但当前主路径默认为空 | 全量原始简历全文、全量历史 event log |
+| `Finalizer` | 内部 `FinalizeContext`、运行摘要、停止原因；actual prompt payload 缩口以 `llm-context-maps.md` 为准 | 全量中间态 |
 
 ### 8.4 `ControllerContext`
 
@@ -970,6 +974,12 @@ class ReflectionContext(BaseModel):
     scoring_failures: list[ScoringFailure]
     sent_query_history: list[SentQueryRecord]
 ```
+
+补充一个当前实现边界：
+
+- `ReflectionContext` 模型比当前主路径 live critic 输入略宽。
+- 如果 scoring 失败，runtime 会先 fail-fast，因此不会带着 non-empty `scoring_failures` 继续进入 reflection。
+- 这个字段当前主要是保留位，用于契约完整性与后续扩展，主路径默认为空。
 
 这回答两个关键业务问题：
 
@@ -1088,14 +1098,14 @@ class FinalizeContext(BaseModel): ...
 
 补充说明：
 
-1. `FinalizeContext` 仍然是正式 context projection，并会落盘到 `finalizer_context.json`。
-2. 但当前实际发给 finalizer 模型的 user payload 更窄，只包含：
+1. `FinalizeContext` 仍然是正式的内部 context projection，并会落盘到 `finalizer_context.json`。
+2. 但当前 actual prompt payload 的 owner 在 `llm-context-maps.md`；runtime 真正发给 finalizer 模型的 user payload 是更窄的 `FINALIZATION_CONTEXT`，只包含：
    - `run_id`
    - `run_dir`
    - `rounds_executed`
    - `stop_reason`
    - `ranked_candidates`
-3. `FinalizeContext.top_candidates` 当前还被用于 finalizer output validation，而不是全部透传到 prompt payload。
+3. `FinalizeContext.top_candidates` 与 `FINALIZATION_CONTEXT.ranked_candidates` 当前承载的是同一批 runtime-supplied candidates：前者用于内部 projection / 落盘 / output validation，后者用于实际 prompt payload。
 
 ### 9.5 `Audit Store`
 
@@ -1241,7 +1251,7 @@ sequenceDiagram
         Runtime->>Runtime: update RetrievalState + round history
         Runtime->>Controller: next ControllerContext + latest advice
     end
-    Runtime->>Finalizer: FinalizeContext(top candidates, stop reason, rounds)
+    Runtime->>Finalizer: FinalizeContext(internal) / FINALIZATION_CONTEXT(actual payload)
     Finalizer-->>Runtime: FinalResult
 ```
 
@@ -1302,8 +1312,8 @@ class RoundState(BaseModel):
 4. 当前轮 `Round Retrieval Plan`
 5. 当前轮搜索结果
 6. top pool / dropped pool 结果
-7. scoring gap
-8. 已发送过的 query term history
+7. `search_attempts` 与已发送过的 query term history
+8. 当前主路径里不把 `scoring_failures` 作为正常 live 输入；scoring 失败会先 fail-fast
 
 ### 11.3 输出要求
 
@@ -1417,7 +1427,7 @@ class ProposedFilterPlan(BaseModel):
 
 不仅没有移除 `Controller`，反而在 `v0.2` 中进一步明确它的 query ownership，原因如下：
 
-1. ReAct 主架构不变
+1. 单控制器主架构不变；`ReActController` 仍是当前实现类名，但执行方式是每轮一次结构化决策，不是多步工具循环 `ReAct`
 2. 首轮与后续轮次都需要一个统一 query owner
 3. stop/go 决策仍然适合由单控制器承担
 4. reflection 更适合扮演 `critic` 而不是 `actor`

@@ -4,6 +4,7 @@ Last verified: `2026-04-02`
 Method: live black-box probes against `/thirdCooperate/search/candidate/cts`
 
 This file records only observed behavior. It is not an official CTS contract.
+Its role in the doc set is evidence only: it informs runtime-safe enum mapping, but does not define business truth or prompt contracts.
 
 ## Confirmed
 

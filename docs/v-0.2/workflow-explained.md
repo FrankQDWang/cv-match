@@ -2,6 +2,7 @@
 
 > 本文档面向未参与 agent 开发的业务人员，用通俗语言解释 v0.2 系统从启动到结束的完整工作流程。
 > 时序图原文来自 `design.md` §10.2。
+> 职责说明：本页只解释运行流程；这里出现的字段名只作为流程解释里的摘要视图，不作为 actual payload owner。字段级契约、组件边界和 prompt payload 缩口以 `design.md` 与 `llm-context-maps.md` 为准。
 
 ---
 
@@ -52,7 +53,7 @@ sequenceDiagram
         Runtime->>Runtime: update RetrievalState + round history
         Runtime->>Controller: next ControllerContext + latest advice
     end
-    Runtime->>Finalizer: FinalizeContext(top candidates, stop reason, rounds)
+    Runtime->>Finalizer: FinalizeContext(internal) / FINALIZATION_CONTEXT(actual payload)
     Finalizer-->>Runtime: FinalResult
 ```
 
@@ -208,14 +209,14 @@ Controller 看完这些信息后，做出决策 `ControllerDecision`：
 
 这里补一个实现细节：
 
-- `Controller` 当前代码里是“每轮一次结构化输出”
-- 它不是在内部自己循环调用工具的那种多步 `ReAct`
+- 当前实现类名仍叫 `ReActController`
+- 但它的执行方式是“每轮一次结构化输出”，不是在内部自己循环调用工具的那种多步 `ReAct`
 
 ### 分支 A：如果 Controller 决定停止
 
 ```
 Runtime ->> Runtime: exit round loop with terminal controller decision
-Runtime ->> Finalizer: FinalizeContext
+Runtime ->> Finalizer: FinalizeContext (internal) / FINALIZATION_CONTEXT (actual payload)
 Finalizer -->> Runtime: FinalResult
 ```
 
@@ -224,8 +225,10 @@ Finalizer -->> Runtime: FinalResult
 代码里的真实顺序不是“当场 finalize”，而是：
 
 1. 先退出 round loop
-2. 再构建 `FinalizeContext`
-3. 最后单独调用 `Finalizer`
+2. 再构建内部 `FinalizeContext` 并落盘
+3. runtime 只把更窄的 `FINALIZATION_CONTEXT` user payload 发给 `Finalizer`
+
+实际 payload 缩口与字段名以 `llm-context-maps.md` 为准；本页不再重复定义 finalizer 的 prompt contract。
 
 ---
 
@@ -322,6 +325,12 @@ Runtime 把新拿到的简历做标准化处理后，连同冻结的评分标准
 评分结果（scorecard）包括：是否匹配（fit/not_fit）、综合分、必备项匹配分、偏好匹配分、风险分、匹配证据、风险标记等。
 
 当前实现里，评分阶段还会额外写 `scoring_calls.jsonl`，逐行保存每个 scoring branch 的真实输入 payload 与结构化输出，供离线 judge 和回放使用。
+
+补充一个当前实现边界：
+
+- 如果 scoring 分支失败，runtime 会先 fail-fast。
+- 因此当前主路径不会带着 non-empty `scoring_failures` 继续进入 reflection。
+- `ReflectionContext` 模型里保留该字段，是为了契约完整性与后续扩展，不表示它是当前 live critic 的常态输入。
 
 #### B5. 反思评审
 

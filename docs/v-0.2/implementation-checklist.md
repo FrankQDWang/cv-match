@@ -1,15 +1,20 @@
-# SeekTalent v0.2 实施清单
+# SeekTalent v0.2 实施清单（归档）
+
+> 本页职责：记录 `v0.2` 从 `v0.1` 迁移到当前实现基线时采用的实施切片，保留为归档，不是当前待实施任务。
+> 补充说明：本页也不是当前 live payload / context visibility 的 owner；actual prompt payload 缩口与字段可见性以 `llm-context-maps.md` 为准。
 
 ## 0. 文档目的
 
-这份清单把 `design.md` 的设计结论压缩成一份可执行的实施路线。
+这份清单把 `design.md` 的设计结论压缩成一份当时使用的实施路线记录。
 
-目标不是重复设计，而是回答下面几个实现问题：
+目标不是重复设计，而是保留当时回答下面几个实现问题的方式：
 
 1. 先改什么，后改什么
 2. 每一阶段具体动哪些文件
 3. 哪些旧概念要保留过渡，哪些要尽快下线
 4. 每一阶段完成后，怎样判断可以进入下一阶段
+
+下文中的“推荐顺序”“下一阶段”“完成标志”等措辞，都对应当时的迁移语境，不表示当前仓库仍有相同待办；其中涉及 context 或 payload 的表述，也不覆盖当前实现的 live 可见性边界。
 
 ---
 
@@ -122,7 +127,7 @@
 - 新增 `src/seektalent/requirements/extractor.py`
 - 新增 `src/seektalent/requirements/normalization.py`
 - 新增 `src/seektalent/prompts/requirements.md`
-- 旧 `src/seektalent/controller/strategy_bootstrap.py`
+- 历史旧 bootstrap 模块（已删除，不再存在于当前仓库）
 - `src/seektalent/models.py`
 - `src/seektalent/config.py`
 

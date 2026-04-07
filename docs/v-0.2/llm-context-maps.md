@@ -1,6 +1,7 @@
 # SeekTalent v0.2 LLM Context Maps
 
 > 本文档说明 `v0.2` 中 5 个 LLM 调用点的 context 分层方式：总 memory 是什么，runtime 如何从 memory 投影出各阶段 context，以及哪些信息是刻意不暴露给某个 LLM 的。
+> 职责说明：本页只解释 `v0.2` 当前实现中的 context projection、可见性边界和 actual prompt payload 缩口；如果其他文档只做流程解释或主契约说明，本页对“谁真正看到什么”拥有最终解释权。
 
 ---
 
@@ -198,6 +199,11 @@ mindmap
 - `Reflection` 看得最宽，因为它负责复盘
 - `Finalizer` 当前实际看到的是排序后的候选结果，不是全量 `RunState`
 
+补充两个当前实现边界：
+
+- `ReflectionContext` 模型比主路径 live critic 输入略宽：`scoring_failures` 字段保留在 schema 中，但当前 scoring 失败会 fail-fast，因此主路径里默认为空。
+- `FinalizeContext` 模型也比 actual payload 略宽：internal projection 里保留 `top_candidates`，actual prompt payload 则使用字段名 `ranked_candidates`。
+
 ---
 
 ## 3. 对照图：哪些信息被刻意不给某个 LLM 看
@@ -276,7 +282,7 @@ mindmap
 
 ## 4. 当前实现上的一个细节
 
-`FinalizeContext` 这个模型本身比 finalizer 实际看到的 payload 更宽。
+`FinalizeContext` 这个模型本身比 finalizer 实际看到的 payload 更宽；本节就是这条缩口规则的 owner。
 
 当前 runtime 会构造 `FinalizeContext`，但真正发送给 finalizer LLM 的内容是更窄的 `FINALIZATION_CONTEXT`：
 
@@ -288,6 +294,9 @@ mindmap
 
 补充：
 
+- `FinalizeContext.top_candidates` 与 `FINALIZATION_CONTEXT.ranked_candidates` 当前承载的是同一批 runtime-supplied candidates，只是用途不同：
+  - 前者用于内部 projection、落盘和 output validation
+  - 后者用于实际 prompt payload
 - 当前 run 目录里已经会把这 5 个调用点的真实 user payload 和结构化输出分别落盘成 call snapshot
 - 因此这份 context 图现在不只是概念图，也对应可回放的 run artifacts
 

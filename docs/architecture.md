@@ -4,6 +4,13 @@
 
 The design goal is controlled behavior and auditability rather than open-ended agent autonomy.
 
+## How To Read The Docs
+
+- This page is the current public-facing overview. It describes the stable system shape, not field-level contracts.
+- `docs/v-0.2/` is the current implementation baseline for `HEAD`, including workflow, context, scoring, and CTS enum notes.
+- `docs/v-0.3/` is the next-version target design. It defines intended contracts and does not imply that `HEAD` already implements them.
+- `docs/v-0.1/` is a historical snapshot kept for older design context only.
+
 ## High-level flow
 
 1. Read `JD + notes`
@@ -60,12 +67,3 @@ The design goal is controlled behavior and auditability rather than open-ended a
 - Tool execution is explicit and limited.
 - Audit files are first-class outputs.
 - The repository includes a minimal web UI, but the CLI remains the primary interface.
-
-## Historical notes
-
-Versioned design documents remain under `docs/v-*` and are kept as historical references:
-
-- `docs/v-0.1/`
-- `docs/v-0.2/`
-
-This document is intentionally shorter and only describes the current public-facing shape.

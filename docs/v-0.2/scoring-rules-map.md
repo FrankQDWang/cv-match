@@ -6,6 +6,8 @@
 2. 一次评分是怎么来的
 3. 四个分数分别表示什么
 
+职责说明：本页只解释 `v0.2` 的评分语义，不负责检索流程、context 投影或 CTS 协议映射。
+
 事实来源：
 
 - Prompt: [scoring.md](/Users/frankqdwang/Agents/SeekTalent/src/seektalent/prompts/scoring.md)
