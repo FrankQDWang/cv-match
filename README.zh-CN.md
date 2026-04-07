@@ -220,6 +220,20 @@ payload = result.final_result.model_dump(mode="json")
 
 如果你要做自己的 API 服务、桌面端或工作流壳子，优先走这两条稳定入口，不要直接绑内部模块细节。
 
+## 本地 Rerank 服务
+
+仓库里还包含一个面向 Apple Silicon 的本地 `Qwen3-Reranker-8B` API：
+
+- 后端 API：`seektalent-rerank-api`
+- 默认地址：`http://127.0.0.1:8012`
+- 根目录说明文档：[RERANK_SERVICE.md](RERANK_SERVICE.md)
+
+启动方式：
+
+```bash
+uv run --group rerank seektalent-rerank-api
+```
+
 ## 配置
 
 默认会从 `.env` 读取环境变量。通常需要配置：
@@ -300,6 +314,7 @@ http://127.0.0.1:5176
 - [Outputs](docs/outputs.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
+- [Rerank Service](RERANK_SERVICE.md)
 
 历史版本设计文档保留在 `docs/v-*` 下。
 

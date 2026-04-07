@@ -268,6 +268,20 @@ Then open:
 http://127.0.0.1:5176
 ```
 
+## Local Rerank Service
+
+The repository also includes a local `Qwen3-Reranker-8B` API for Apple Silicon:
+
+- backend API: `seektalent-rerank-api`
+- default backend address: `http://127.0.0.1:8012`
+- root usage doc: [RERANK_SERVICE.md](RERANK_SERVICE.md)
+
+Start it with:
+
+```bash
+uv run --group rerank seektalent-rerank-api
+```
+
 ## Outputs
 
 Each run creates a timestamped directory under `runs/` by default, including files such as:
@@ -300,6 +314,7 @@ Current boundaries are intentional:
 - [Outputs](docs/outputs.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
+- [Rerank Service](RERANK_SERVICE.md)
 
 Historical versioned design notes remain under `docs/v-*`.
 

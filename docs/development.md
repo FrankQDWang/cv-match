@@ -40,6 +40,12 @@ Run the UI API help:
 uv run seektalent-ui-api --help
 ```
 
+Run the rerank API help:
+
+```bash
+uv run --group rerank seektalent-rerank-api --help
+```
+
 Run frontend tests:
 
 ```bash
@@ -77,6 +83,7 @@ Key directories:
 
 - `src/seektalent/` for the main Agent implementation and CLI
 - `src/seektalent_ui/` for the minimal backend API used by the web UI
+- `src/seektalent_rerank/` for the local Qwen rerank service
 - `apps/web-user-lite/` for the frontend
 - `tests/` for Python tests
 - `docs/v-*` for versioned historical design notes

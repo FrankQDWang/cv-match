@@ -20,10 +20,15 @@ dependencies = [
 dev = [
     "pytest>=8.4.2",
 ]
+rerank = [
+    "mlx>=0.31.1",
+    "mlx-lm>=0.31.1",
+]
 
 [project.scripts]
 seektalent = "seektalent.cli:main"
 seektalent-ui-api = "seektalent_ui.server:main"
+seektalent-rerank-api = "seektalent_rerank.server:main"
 
 [build-system]
 requires = ["uv_build>=0.11.2,<0.12.0"]
