@@ -7,17 +7,18 @@
 
 ## English
 
-`SeekTalent` is currently a destructive `v0.3 phase 1` cutover. `HEAD` only ships the stable contracts in `docs/v-0.3`, deterministic requirement normalization, the CTS bridge, real/mock CTS clients, and a thin CLI/API skeleton.
+`SeekTalent` is currently in a destructive `v0.3 phase 2 bootstrap` cutover. `HEAD` ships the stable contracts in `docs/v-0.3`, deterministic requirement normalization, the bootstrap core, the CTS bridge, real/mock CTS clients, and a thin gated CLI/API surface.
 
 What exists today:
 
 - `docs/v-0.3` is the only active spec surface
-- `src/seektalent/models.py` holds the phase 1 contracts
+- `src/seektalent/models.py` holds the stable runtime contracts
 - `src/seektalent/requirements/normalization.py` builds `SearchInputTruth` and normalized `RequirementSheet`
+- `src/seektalent/bootstrap.py` runs the internal round-0 bootstrap flow
 - `src/seektalent/retrieval/filter_projection.py` projects `SearchExecutionPlan_t` into CTS-safe native filters
 - `src/seektalent/clients/cts_client.py` returns `RetrievedCandidate_t`
 - `src/seektalent/retrieval/candidate_projection.py` builds `SearchExecutionResult_t`
-- `seektalent run` and `run_match(...)` are intentionally phase-gated until phase 2+
+- `seektalent run` and `run_match(...)` are intentionally gated until the full runtime loop lands
 
 What does not exist anymore:
 
@@ -56,7 +57,7 @@ SEEKTALENT_CTS_TENANT_KEY=your-cts-tenant-key
 SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
-Check the local phase 1 surface:
+Check the local bootstrap-era surface:
 
 ```bash
 seektalent doctor
@@ -69,14 +70,14 @@ seektalent inspect --json
 seektalent run --jd-file ./jd.md
 ```
 
-Expected result today: the command fails fast with a `Phase1RuntimeGateError` explaining that the runtime will arrive in phase 2+.
+Expected result today: the command fails fast with a `RuntimePhaseGateError` explaining that the full runtime loop is not available yet.
 
 ## Python API
 
-The package still exports `run_match(...)` and `run_match_async(...)`, but they now raise the same phase gate:
+The package still exports `run_match(...)` and `run_match_async(...)`, but they now raise the same runtime phase gate:
 
 ```python
-from seektalent import AppSettings, Phase1RuntimeGateError, run_match
+from seektalent import AppSettings, RuntimePhaseGateError, run_match
 
 try:
     run_match(
@@ -85,7 +86,7 @@ try:
         settings=AppSettings(mock_cts=True),
         env_file=None,
     )
-except Phase1RuntimeGateError as exc:
+except RuntimePhaseGateError as exc:
     print(exc)
 ```
 

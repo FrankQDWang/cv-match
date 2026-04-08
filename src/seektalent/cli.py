@@ -12,11 +12,11 @@ from seektalent import __version__
 from seektalent.api import run_match
 from seektalent.config import AppSettings
 from seektalent.resources import read_default_env_template, resolve_user_path
-from seektalent.runtime import PHASE1_RUNTIME_GATE_MESSAGE
+from seektalent.runtime import RUNTIME_PHASE_GATE_MESSAGE
 
 SUBCOMMANDS = {"run", "doctor", "init", "version", "update", "inspect"}
-ROOT_HELP_EPILOG = """Phase 1 status:
-  `run` is intentionally gated. This release only ships the v0.3 contracts and CTS bridge skeleton.
+ROOT_HELP_EPILOG = """Phase 2 status:
+  `run` is intentionally gated. This release ships the v0.3 bootstrap core, contracts, and CTS bridge.
 
 Recommended workflow:
   1. seektalent doctor
@@ -147,7 +147,7 @@ def _doctor_checks(settings: AppSettings) -> list[DoctorCheck]:
         DoctorCheck(
             name="phase",
             ok=True,
-            message="Phase 1 skeleton active. `run` remains gated until Phase 2+.",
+            message="Phase 2 bootstrap core active. `run` remains gated until search execution and ranking land.",
         )
     )
     return checks
@@ -156,7 +156,7 @@ def _doctor_checks(settings: AppSettings) -> list[DoctorCheck]:
 def _inspect_payload() -> dict[str, object]:
     commands = {
         "run": {
-            "description": "Validate inputs and then fail fast with the Phase 1 runtime gate.",
+            "description": "Validate inputs and then fail fast with the runtime phase gate.",
             "machine_readable": False,
             "arguments": [
                 _arg_spec("--jd", "string", "Inline job description text.", mutually_exclusive_with=["--jd-file"]),
@@ -178,7 +178,7 @@ def _inspect_payload() -> dict[str, object]:
             ],
         },
         "init": {
-            "description": "Write the minimal phase 1 starter env file.",
+            "description": "Write the minimal starter env file.",
             "machine_readable": False,
             "arguments": [
                 _arg_spec("--env-file", "path", "Where to write the env file.", default=".env"),
@@ -188,7 +188,7 @@ def _inspect_payload() -> dict[str, object]:
         "version": {"description": "Print the installed package version.", "machine_readable": False, "arguments": []},
         "update": {"description": "Print upgrade instructions.", "machine_readable": False, "arguments": []},
         "inspect": {
-            "description": "Describe the current phase 1 CLI surface.",
+            "description": "Describe the current bootstrap-era CLI surface.",
             "machine_readable": False,
             "arguments": [_arg_spec("--json", "flag", "Emit one JSON object describing the CLI.")],
         },
@@ -196,8 +196,8 @@ def _inspect_payload() -> dict[str, object]:
     return {
         "tool": "seektalent",
         "version": __version__,
-        "phase": "phase1",
-        "summary": "v0.3 phase 1 skeleton with contracts, CTS bridge, and gated runtime.",
+        "phase": "phase2_bootstrap",
+        "summary": "v0.3 phase 2 bootstrap core with contracts, CTS bridge, and a gated runtime.",
         "recommended_workflow": [
             "seektalent doctor",
             "seektalent run --jd-file ./jd.md",
@@ -222,7 +222,7 @@ def _inspect_payload() -> dict[str, object]:
             "run": {
                 "stdout_success_fields": [],
                 "stderr_json_fields": ["error", "error_type"],
-                "current_behavior": "Always fails with the Phase 1 runtime gate.",
+                "current_behavior": "Always fails with the runtime phase gate.",
             },
             "doctor": {"stdout_success_fields": ["ok", "checks"]},
         },
@@ -298,10 +298,10 @@ def _handle_inspect(args: argparse.Namespace) -> int:
     if args.json:
         _emit_json(sys.stdout, payload)
         return 0
-    print("SeekTalent phase 1 CLI inspection summary")
+    print("SeekTalent phase 2 bootstrap CLI inspection summary")
     print("Use `seektalent inspect --json` for the machine-readable contract.")
     print(f"Current phase: {payload['phase']}")
-    print(f"Run behavior: {PHASE1_RUNTIME_GATE_MESSAGE}")
+    print(f"Run behavior: {RUNTIME_PHASE_GATE_MESSAGE}")
     return 0
 
 
@@ -310,7 +310,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command")
 
-    run_parser = subparsers.add_parser("run", help="Phase 1 gated run entrypoint.")
+    run_parser = subparsers.add_parser("run", help="Gated run entrypoint.")
     run_parser.add_argument("--jd")
     run_parser.add_argument("--jd-file")
     run_parser.add_argument("--notes")
@@ -320,7 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--json", action="store_true")
     run_parser.set_defaults(handler=_handle_run)
 
-    doctor_parser = subparsers.add_parser("doctor", help="Validate local phase 1 setup.")
+    doctor_parser = subparsers.add_parser("doctor", help="Validate local bootstrap-era setup.")
     doctor_parser.add_argument("--env-file", default=".env")
     doctor_parser.add_argument("--output-dir")
     doctor_parser.add_argument("--json", action="store_true")

@@ -42,7 +42,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert "Phase 1 status" in help_result.stdout
+    assert "Phase 2 status" in help_result.stdout
     assert not ui_cli.exists()
 
     version_result = subprocess.run(
@@ -64,7 +64,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         text=True,
     )
     inspect_payload = json.loads(inspect_result.stdout)
-    assert inspect_payload["phase"] == "phase1"
+    assert inspect_payload["phase"] == "phase2_bootstrap"
 
     subprocess.run(
         [str(cli), "init"],
@@ -99,4 +99,4 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     )
     assert run_result.returncode == 1
     error_payload = json.loads(run_result.stderr)
-    assert error_payload["error_type"] == "Phase1RuntimeGateError"
+    assert error_payload["error_type"] == "RuntimePhaseGateError"

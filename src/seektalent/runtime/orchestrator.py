@@ -4,13 +4,13 @@ from typing import Never
 
 from seektalent.config import AppSettings
 
-PHASE1_RUNTIME_GATE_MESSAGE = (
-    "SeekTalent v0.3 Phase 1 only ships contracts and the CTS bridge. "
-    "run is gated until Phase 2+ runtime implementation lands."
+RUNTIME_PHASE_GATE_MESSAGE = (
+    "SeekTalent v0.3 ships a bootstrap core, but the full runtime loop is not available yet. "
+    "run remains gated until search execution and ranking land."
 )
 
 
-class Phase1RuntimeGateError(RuntimeError):
+class RuntimePhaseGateError(RuntimeError):
     pass
 
 
@@ -20,8 +20,8 @@ class WorkflowRuntime:
 
     def run(self, *, job_description: str, hiring_notes: str = "") -> Never:
         del job_description, hiring_notes
-        raise Phase1RuntimeGateError(PHASE1_RUNTIME_GATE_MESSAGE)
+        raise RuntimePhaseGateError(RUNTIME_PHASE_GATE_MESSAGE)
 
     async def run_async(self, *, job_description: str, hiring_notes: str = "") -> Never:
         del job_description, hiring_notes
-        raise Phase1RuntimeGateError(PHASE1_RUNTIME_GATE_MESSAGE)
+        raise RuntimePhaseGateError(RUNTIME_PHASE_GATE_MESSAGE)

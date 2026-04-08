@@ -10,10 +10,10 @@ seektalent --help
 
 ## 当前阶段
 
-这个 CLI 现在只是 `v0.3 phase 1` skeleton。
+这个 CLI 现在是 `v0.3 phase 2 bootstrap` 表面。
 
 - `doctor`、`init`、`version`、`update`、`inspect` 可用
-- `run` 会故意 fail fast，并抛出 `Phase1RuntimeGateError`
+- `run` 会故意 fail fast，并抛出 `RuntimePhaseGateError`
 
 ## 命令
 
@@ -29,7 +29,7 @@ seektalent init --force
 
 ### `seektalent doctor`
 
-本地检查 phase 1 表面，不发网络请求：
+本地检查 bootstrap 阶段表面，不发网络请求：
 
 ```bash
 seektalent doctor
@@ -81,7 +81,7 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 
 - 先校验输入
 - 再加载设置
-- 随后立刻被 phase 1 runtime gate 拦下
+- 随后立刻被 runtime phase gate 拦下
 
 在 `--json` 模式下，失败会以一个 JSON 对象写到 stderr。
 

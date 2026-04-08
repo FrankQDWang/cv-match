@@ -10,10 +10,10 @@ seektalent --help
 
 ## Current phase
 
-This CLI is a `v0.3 phase 1` skeleton.
+This CLI is a `v0.3 phase 2 bootstrap` surface.
 
 - `doctor`, `init`, `version`, `update`, and `inspect` work
-- `run` is intentionally gated and always fails fast with `Phase1RuntimeGateError`
+- `run` is intentionally gated and always fails fast with `RuntimePhaseGateError`
 
 ## Commands
 
@@ -29,7 +29,7 @@ seektalent init --force
 
 ### `seektalent doctor`
 
-Validate the local phase 1 surface without making network calls:
+Validate the local bootstrap-era surface without making network calls:
 
 ```bash
 seektalent doctor
@@ -81,7 +81,7 @@ Current behavior:
 
 - validates input wiring
 - loads settings
-- then fails immediately with the phase 1 runtime gate
+- then fails immediately with the runtime phase gate
 
 In `--json` mode, the failure is emitted as one JSON object on stderr.
 

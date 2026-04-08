@@ -118,6 +118,39 @@
 1. [[FrontierState_t]] 可以由 bootstrap 主链稳定初始化。
 2. [[ScoringPolicy]]、[[GroundingOutput]]、[[KnowledgeRetrievalResult]] 已稳定可读。
 
+### 3.6 当前完成情况（截至当前 HEAD）
+
+- 总体状态：Phase 2 已按“round-0 bootstrap 内核先落地”的目标完成收口；`run` 入口仍保持 gated，这不视为 Phase 2 未完成，因为本阶段验收标准是“bootstrap 主链与稳定产物已可直接供后续阶段消费”，不是“用户侧完整 runtime loop 已开放”。
+
+对应 `3.2 主要工作`：
+
+1. `[[ExtractRequirements]]` 已落地为现有 deterministic requirements 归一化主链与 `RequirementExtractionLLM` wrapper 的组合；`SearchInputTruth -> RequirementSheet` 的 owner 已固定，不再另起第二套 requirements schema。
+2. `[[RetrieveGroundingKnowledge]]` 已落地为稳定纯函数，routing 固定为 `explicit_domain / inferred_domain / generic_fallback` 三选一；未知 explicit pack、显式 pack 超过 `2` 个等情况直接 fail-fast。bootstrap 所需的最小 domain packs 与 knowledge cards 已以内置 fixture 形式落地。
+3. `[[FreezeScoringPolicy]]` 已落地为 run 内评分口径冻结步骤；fit gate 只允许在 truth 基础上收紧，fusion weights 会规范化到总和 `1.0`，并与 rerank instruction / query 一起形成稳定的 `[[ScoringPolicy]]`。
+4. `[[GenerateGroundingOutput]]` 已落地为稳定纯函数；会强制 evidence whitelist、固定 generic fallback 的 seed 顺序，并把 seed branches 约束在 `3-5` 条、每条 `2-4` 个 terms；不足 `3` 条 seed 时直接 fail-fast。
+5. `[[InitializeFrontierState]]` 已落地为 runtime-owned frontier init；bootstrap seeds 会被收敛成稳定的 `[[FrontierState_t]]`，不允许 LLM draft 直接写入 frontier runtime state。
+
+对应 `3.3 交付物`：
+
+1. round-0 bootstrap 主链已可按 [[workflow-explained]] 执行；当前实现入口为 `bootstrap_round0_async(...)` 与同步薄包装 `bootstrap_round0(...)`。
+2. routing、knowledge retrieval、grounding、frontier init 的输入输出对象已能串通；`BootstrapArtifacts` 已稳定持有 `SearchInputTruth`、`RequirementSheet`、`KnowledgeRetrievalResult`、`ScoringPolicy`、`GroundingOutput`、`FrontierState_t`。
+3. run 内冻结评分口径对象 `[[ScoringPolicy]]` 已可供后续阶段直接消费，不再依赖运行中散落参数。
+4. `[[KnowledgeRetrievalResult]]` 已成为 routing fields 的唯一 owner；不存在独立 routing metadata payload。
+
+对应 `3.4 可开工验收`：
+
+1. 已满足。round-0 顺序已固定为 `requirements -> routing/retrieval -> scoring freeze -> grounding -> frontier init`，bootstrap orchestration 不再留白。
+2. 已满足。routing 只有 `explicit_domain / inferred_domain / generic_fallback` 三种模式；当前测试已覆盖 explicit、inferred、generic 三条路径以及相关 fail-fast 边界。
+3. 已满足。seed branches 固定 `3-5` 条、每条 `2-4` 个 terms；generic fallback 也遵守同一约束。
+4. 已满足。`[[ScoringPolicy]]` 已作为 run 内冻结对象存在，而不是运行中散落参数。
+5. 已满足。知识库当前只服务 bootstrap 关键词初始化；不参与评分冻结、reward、stop 或 finalize。
+6. 已满足。`RequirementExtractionLLM` 与 `GroundingGenerationLLM` 已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput`、禁用 tools、禁用跨 operator history、`retries=0`、`output_retries=1`。
+
+对应 `3.5 下一阶段前提`：
+
+1. 已满足。`[[FrontierState_t]]` 现已可由 bootstrap 主链稳定初始化；seed id、初始 node status、remaining budget、run term catalog 等关键字段已有确定行为。
+2. 已满足。`[[ScoringPolicy]]`、`[[GroundingOutput]]`、`[[KnowledgeRetrievalResult]]` 已稳定可读，可直接作为 Phase 3 / Phase 4 的输入基线继续推进。
+
 ## 4. Phase 3: Search Execution 与 Ranking
 
 ### 4.1 目标

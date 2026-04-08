@@ -1,13 +1,14 @@
 # Architecture
 
-`HEAD` is no longer the old `v0.2` agent runtime. It is a `v0.3 phase 1` skeleton.
+`HEAD` is no longer the old `v0.2` agent runtime. It is a `v0.3 phase 2 bootstrap` cutover.
 
 ## What the codebase contains now
 
 ### Contracts
 
 - `src/seektalent/models.py`
-- Stable phase 1 payloads such as `SearchInputTruth`, `RequirementSheet`, `SearchExecutionPlan_t`, `RetrievedCandidate_t`, `ScoringCandidate_t`, `SearchExecutionResult_t`, and `SearchRunResult`
+- Stable runtime payloads such as `SearchInputTruth`, `RequirementSheet`, `SearchExecutionPlan_t`, `RetrievedCandidate_t`, `ScoringCandidate_t`, `SearchExecutionResult_t`, and `SearchRunResult`
+- Bootstrap payloads and state such as `ScoringPolicy`, `KnowledgeRetrievalResult`, `GroundingOutput`, and `FrontierState_t`
 
 ### Deterministic requirement normalization
 
@@ -35,7 +36,7 @@
 ### Gated runtime surface
 
 - `src/seektalent/runtime/orchestrator.py`
-- `run` and `run_async` now raise a phase gate instead of pretending a full runtime exists
+- `run` and `run_async` now raise a runtime phase gate instead of pretending a full runtime loop exists
 
 ## What the codebase does not contain anymore
 

@@ -1,6 +1,6 @@
 # Configuration
 
-`SeekTalent v0.3 phase 1` only keeps CTS and local path settings. All old model, reflection, search-budget, and UI settings are gone.
+`SeekTalent v0.3 phase 2 bootstrap` keeps CTS and local path settings while the user-facing runtime remains gated. Old model, reflection, search-budget, and UI settings are still gone.
 
 ## Starter env
 
@@ -67,7 +67,7 @@ seektalent doctor
 - settings loading
 - the configured runs directory
 - CTS credentials, unless mock mode is enabled
-- that the repo is in phase 1 gated mode
+- that the repo is still in gated runtime mode
 
 ## Related docs
 
