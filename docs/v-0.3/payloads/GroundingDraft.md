@@ -26,6 +26,14 @@ GroundingDraft = {
 - 非 generic 模式下，证据卡与种子规格都必须可回溯到 `KnowledgeRetrievalResult.retrieved_cards`。
 - `generic_fallback` 下 LLM 草稿不得发明领域知识卡，也不得写出 `domain_company` 或 `crossover_compose` seed。
 
+## Implementation Surface
+
+- Phase 2+ 默认使用 `pydantic-ai` 实现 `GroundingGenerationLLM`，但它只作为 typed request/response wrapper。
+- 调用方式固定为 `fresh request`：使用 `instructions` 承载调用点级规则，`RequirementSheet + KnowledgeRetrievalResult` 作为当前 user content，默认不继承任何 message history。
+- 输出模式固定为 `NativeOutput` strict schema；`allow_text_output = false`、`allow_image_output = false`。
+- 禁用 `function_tools`、`builtin_tools`、任意 MCP/tool calling 与 fallback model chain。
+- 默认不额外加业务型 validator retry；`generic_fallback` 是否启用仍由 runtime 决定，不由模型自救。
+
 ## 最小示例
 
 ```yaml

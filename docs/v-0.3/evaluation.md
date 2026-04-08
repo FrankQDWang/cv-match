@@ -104,6 +104,10 @@
 - `validator_retry_count` 分布
 - 单次 `output_retries=1` 后仍失败的比例
 - 出现 prompted JSON / 自由文本 / fallback model chain 的违规次数
+- 非 `fresh` / `fresh+retry_prompt` history mode 的违规次数
+- `function_tools` / `builtin_tools` / MCP tool calling 被启用的违规次数
+- 非 `NativeOutput` 调用次数
+- 跨 operator history 污染次数
 
 ### 4.9 停止行为
 
@@ -128,6 +132,7 @@
 - judge 只读取 `Agent Trace`，不读取 `Business Trace`
 - `Business Trace` 只用于业务审查与复盘，不参与打分
 - 对应 LLM call 审计快照至少保留 `output_mode / retries / output_retries / validator_retry_count`
+- 对应 LLM call 审计快照还必须保留 `model_name / instruction_id_or_hash / message_history_mode / tools_enabled / model_settings_snapshot`
 - 9 个 `case_id` 必须全部存在 paired trace：
   - `case-bootstrap-explicit-domain`
   - `case-bootstrap-inferred-single-domain`

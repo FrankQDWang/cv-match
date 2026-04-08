@@ -77,6 +77,13 @@
 - `retries`
 - `output_retries`
 - `validator_retry_count`
+- `model_name`
+- `instruction_id_or_hash`
+- `message_history_mode`
+- `tools_enabled`
+- `model_settings_snapshot` 或稳定 hash
+
+其中 `message_history_mode` 在 `v0.3` 的默认 `pydantic-ai` 实现下应固定为 `fresh`；若发生结构化校验失败后的单次 retry，则记为 `fresh+retry_prompt`。`tools_enabled` 应固定为 `false`。
 
 ### 4.2 Judge Packet Schema
 

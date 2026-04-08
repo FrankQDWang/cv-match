@@ -18,10 +18,22 @@
 
 补充约束：
 
+- Phase 2+ 默认使用 `pydantic-ai` 作为 5 个 LLM 调用点的实现标准件，但它只负责 typed request/response wrapper，不接管 runtime loop。
 - 5 个 LLM 调用点都必须使用 provider-native structured output，且要求 strict schema。
 - 固定 `retries=0`、`output_retries=1`，不允许退回 prompted JSON、自由文本解析、tool fallback 或 fallback model chain。
 - 每个调用点都必须先写入一个 draft payload，再由对应 operator 做 deterministic normalization。
 - 只有 schema 无法表达的真实业务约束，才允许 bounded `output_validator + ModelRetry`。
+
+### 1.1 Pydantic AI Runtime Policy
+
+- 5 个调用点都使用 `fresh request per operator`；默认 `message_history = empty`。
+- 默认使用 `instructions` 承载调用点级规则，不依赖累积式 `system_prompt` 历史。
+- operator-owned local context packet 作为当前 user content；不额外拼接 run-global hidden memory。
+- `function_tools`、`builtin_tools`、任意 MCP/tool calling 全部禁用。
+- `allow_text_output = false`；不接受自由文本兜底。
+- `allow_image_output = false`；当前 `v0.3` 不定义多模态输入面。
+- 输出模式固定为 `NativeOutput`；`ToolOutput` 与 `PromptedOutput` 在 `v0.3` 中视为禁用能力。
+- 不允许跨 operator 共享对话历史；唯一允许进入下一轮输入的附加消息是结构化校验失败后的 `RetryPromptPart`，且只允许单次 bounded retry。
 
 ## 2. 总图
 
@@ -82,13 +94,13 @@ flowchart LR
 
 ## 3. 现有模型调用点
 
-| 调用点                           | 真正看到的 context                                                                                                                | 刻意不暴露的内容                                                   | 草稿 owner -> 收口 owner                                                                                | 额外 validator 边界                                                               |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `RequirementExtractionLLM`    | `SearchInputTruth` 原始 `JD + notes`                                                                                           | 检索历史、frontier、候选、评分结果                                      | `RequirementExtractionDraft -> ExtractRequirements -> RequirementSheet`                             | 默认不额外加 validator；主要靠 `ExtractRequirements` 做 deterministic normalization      |
-| `GroundingGenerationLLM`      | `RequirementSheet + KnowledgeRetrievalResult`                                                                                | run 内检索历史、候选、frontier、CTS 细节、业务排序偏好                        | `GroundingDraft -> GenerateGroundingOutput -> GroundingOutput`                                      | 默认不额外加 validator；主要靠 `GenerateGroundingOutput` 做 source-card / seed whitelist |
-| `SearchControllerDecisionLLM` | `SearchControllerContext_t`：active node 摘要、合法 donor、frontier 头部摘要、未满足需求权重、operator 统计、allowed operators、term budget、fit gate | 整份 frontier、原始候选文本、底层 CTS payload、任意 donor 自由发现            | `SearchControllerDecisionDraft_t -> GenerateSearchControllerDecision -> SearchControllerDecision_t` | 允许单次 bounded validator，只补充“能物化非空 query terms”与 runtime canonicalization 约束    |
-| `BranchOutcomeEvaluationLLM`  | `branch_evaluation_packet_t`：parent baseline、本轮 query、semantic hash、page stats、node shortlist、top-three fused stats          | 全量 round history、完整 candidate store、未来轮次状态、底层 tool control | `BranchEvaluationDraft_t -> EvaluateBranchOutcome -> BranchEvaluation_t`                            | 默认不额外加 validator；主要靠 clamp / whitelist / normalize                            |
-| `SearchRunFinalizationLLM`    | `finalization_context_t`：`role_title`、must-have、hard constraints、`ranked_shortlist_candidate_ids`、`stop_reason`              | 整份 frontier、候选明细评分卡、原始 CTS 观测、任意排序改写权                      | `SearchRunSummaryDraft_t -> FinalizeSearchRun -> SearchRunResult`                                   | 默认不额外加 validator；runtime 直接持有 shortlist 与 stop facts                          |
+| 调用点                           | 真正看到的 context                                                                                                                | 刻意不暴露的内容                                                   | 草稿 owner -> 收口 owner                                                                                | `pydantic-ai` 执行约束                                                                 | 额外 validator 边界                                                               |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `RequirementExtractionLLM`    | `SearchInputTruth` 原始 `JD + notes`                                                                                           | 检索历史、frontier、候选、评分结果                                      | `RequirementExtractionDraft -> ExtractRequirements -> RequirementSheet`                             | fresh request；`instructions + SearchInputTruth`；`NativeOutput`；no tools/history | 默认不额外加 validator；主要靠 `ExtractRequirements` 做 deterministic normalization      |
+| `GroundingGenerationLLM`      | `RequirementSheet + KnowledgeRetrievalResult`                                                                                | run 内检索历史、候选、frontier、CTS 细节、业务排序偏好                        | `GroundingDraft -> GenerateGroundingOutput -> GroundingOutput`                                      | fresh request；`instructions + local packet`；`NativeOutput`；no tools/history     | 默认不额外加 validator；主要靠 `GenerateGroundingOutput` 做 source-card / seed whitelist |
+| `SearchControllerDecisionLLM` | `SearchControllerContext_t`：active node 摘要、合法 donor、frontier 头部摘要、未满足需求权重、operator 统计、allowed operators、term budget、fit gate | 整份 frontier、原始候选文本、底层 CTS payload、任意 donor 自由发现            | `SearchControllerDecisionDraft_t -> GenerateSearchControllerDecision -> SearchControllerDecision_t` | fresh request；`instructions + local packet`；`NativeOutput`；no tools/history     | 允许单次 bounded validator，只补充“能物化非空 query terms”与 runtime canonicalization 约束    |
+| `BranchOutcomeEvaluationLLM`  | `branch_evaluation_packet_t`：parent baseline、本轮 query、semantic hash、page stats、node shortlist、top-three fused stats          | 全量 round history、完整 candidate store、未来轮次状态、底层 tool control | `BranchEvaluationDraft_t -> EvaluateBranchOutcome -> BranchEvaluation_t`                            | fresh request；`instructions + local packet`；`NativeOutput`；no tools/history     | 默认不额外加 validator；主要靠 clamp / whitelist / normalize                            |
+| `SearchRunFinalizationLLM`    | `finalization_context_t`：`role_title`、must-have、hard constraints、`ranked_shortlist_candidate_ids`、`stop_reason`              | 整份 frontier、候选明细评分卡、原始 CTS 观测、任意排序改写权                      | `SearchRunSummaryDraft_t -> FinalizeSearchRun -> SearchRunResult`                                   | fresh request；`instructions + local packet`；`NativeOutput`；no tools/history     | 默认不额外加 validator；runtime 直接持有 shortlist 与 stop facts                          |
 
 ## 4. 每个调用点到底在做什么
 

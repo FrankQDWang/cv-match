@@ -17,7 +17,9 @@
 3. CTS adapter / enum substrate 继续复用现有实现与测试；`v0.3` 文档只持边界，不复制第二份 code table。见 [[cts-projection-policy]]。
 4. 5 个 LLM 调用点的 structured output contract 已冻结为 provider-native strict schema + `retries=0` + `output_retries=1`。
 5. 5 个 LLM 调用点对应的 draft payload owner 已冻结，不允许边实现边发明匿名草稿 schema。
-6. 知识库 contract 已冻结为 reviewed synthesis reports + compiled cards；更底层原始研究稿只作为 provenance。
+6. Phase 2+ 默认使用 `pydantic-ai` 作为 5 个 LLM 调用点的 typed request/response wrapper；不允许把它扩成 runtime orchestrator、frontier state owner、CTS tool runner、rerank runner 或 reward / stop controller。
+7. `pydantic-ai` 调用风格已冻结为 `fresh request + instructions + NativeOutput + no tools + no cross-operator history`。
+8. 知识库 contract 已冻结为 reviewed synthesis reports + compiled cards；更底层原始研究稿只作为 provenance。
 
 ## 2. Phase 1: Runtime Contracts 与 CTS Bridge
 
@@ -109,6 +111,7 @@
 3. seed branches 固定 `3-5` 条，每条 `2-4` 个 terms。
 4. [[ScoringPolicy]] 已作为 run 内冻结对象存在，而不是运行中散落参数。
 5. 知识库只服务 bootstrap 关键词初始化，不参与评分冻结、reward、stop 或 finalize。
+6. `RequirementExtractionLLM` 与 `GroundingGenerationLLM` 的实现必须遵守统一 `pydantic-ai` 调用约束：fresh request、`NativeOutput`、禁用 tools、禁用跨 operator history。
 
 ### 3.5 下一阶段前提
 
@@ -175,6 +178,7 @@
 2. donor 必须满足 `open + reward_breakdown != null + reward 过线 + shared anchor 过线`。
 3. generic provenance 下不得放开 `domain_company`。
 4. direct-stop 路径与 search 路径使用统一状态对象，不再有旁路状态。
+5. `SearchControllerDecisionLLM` 必须遵守统一 `pydantic-ai` 调用约束；它是唯一允许单次业务型 validator retry 的调用点。
 
 ### 5.5 下一阶段前提
 
@@ -207,6 +211,7 @@
 2. run-global shortlist 由最佳已观测 `fusion_score` 决定。
 3. stop 统一由 runtime guard 裁决，控制器只能建议。
 4. finalizer 只能写总结，不能改 shortlist 事实。
+5. `BranchOutcomeEvaluationLLM` 与 `SearchRunFinalizationLLM` 必须遵守统一 `pydantic-ai` 调用约束，不允许 tools 或 cross-operator history。
 
 ### 6.5 下一阶段前提
 
@@ -234,7 +239,7 @@
 2. 关键场景可回放，且同一 case 可同时服务 replay/judge 与业务复盘
 3. reranker、routing、crossover、reward 的离线评估 artifacts 已可归因
 4. knowledge base compile loop 已有稳定输入、审核点和输出 snapshot
-5. LLM call 审计产物至少保留 `output_mode / retries / output_retries / validator_retry_count`
+5. LLM call 审计产物至少保留 `output_mode / retries / output_retries / validator_retry_count`，并补充 `model_name / instruction_id_or_hash / message_history_mode / tools_enabled / model_settings_snapshot`
 6. reviewed synthesis report 具备稳定 `report_id`；compiled cards 的 `source_report_ids` 已追溯到 synthesis report header
 
 ### 7.4 可开工验收

@@ -37,6 +37,14 @@ RequirementExtractionDraft = {
 - 必须经过 `ExtractRequirements` 的 deterministic normalization 才能进入主链。
 - 它不得直接写出 `domain_pack_ids` 或 routing 结果。
 
+## Implementation Surface
+
+- Phase 2+ 默认使用 `pydantic-ai` 实现 `RequirementExtractionLLM`，但它只作为 typed request/response wrapper。
+- 调用方式固定为 `fresh request`：使用 `instructions` 承载调用点级规则，`SearchInputTruth` 作为当前 user content，默认不继承任何 message history。
+- 输出模式固定为 `NativeOutput` strict schema；`allow_text_output = false`、`allow_image_output = false`。
+- 禁用 `function_tools`、`builtin_tools`、任意 MCP/tool calling 与 fallback model chain。
+- retry 只允许用于 schema / output parse failure；默认不额外加业务型 validator retry。
+
 ## 最小示例
 
 ```yaml

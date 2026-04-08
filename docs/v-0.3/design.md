@@ -74,12 +74,17 @@
 
 `v0.3` 沿用当前仓库 / `v0.2` 的结构化输出基线，不另起新机制。
 
+- Phase 2+ 默认使用 `pydantic-ai` 作为 5 个黑盒 LLM 调用点的 typed request/response wrapper，但它不是 runtime orchestrator，也不是 frontier / CTS / rerank / reward / stop 的 owner。
 - 5 个 LLM 调用点都必须使用 provider-native structured output，且要求 strict schema。
+- `pydantic-ai` 调用风格固定为 `fresh request per operator`：默认 `message_history = empty`，使用 `instructions` 承载调用点级规则，operator-owned local context packet 作为当前 user content。
+- 输出模式固定为 `NativeOutput`；不允许改成 `ToolOutput`、`PromptedOutput`、prompted JSON、自由文本解析、tool fallback 或 fallback model chain。
+- `function_tools`、`builtin_tools`、任意 MCP/tool calling 全部禁用；`allow_text_output = false`、`allow_image_output = false`。
 - 固定 `retries=0`、`output_retries=1`。
 - 不允许退回 prompted JSON、自由文本解析、tool fallback 或 fallback model chain。
 - 每个调用点都必须先写入一个 draft payload，再由对应 operator 做 deterministic normalization。
+- 不允许跨 operator 共享 message history；唯一允许进入下一轮输入的附加消息是结构化校验失败后的 `RetryPromptPart`，且只允许单次 bounded retry。
 - 只有 schema 之外的真实业务约束，才允许 bounded `output_validator + ModelRetry`。
-- 审计层必须至少保留 `output_mode / retries / output_retries / validator_retry_count`。
+- 审计层必须至少保留 `output_mode / retries / output_retries / validator_retry_count`，并补充 `model_name / instruction_id_or_hash / message_history_mode / tools_enabled / model_settings_snapshot`。
 
 ## 4. 运行时主链
 
