@@ -48,6 +48,7 @@ def test_search_execution_result_preserves_candidate_id_alignment() -> None:
     result = build_search_execution_result(
         raw_candidates,
         runtime_negative_keywords=[],
+        pages_fetched=7,
         target_new_candidate_count=2,
         latency_ms=18,
     )
@@ -55,7 +56,7 @@ def test_search_execution_result_preserves_candidate_id_alignment() -> None:
     assert [candidate.candidate_id for candidate in result.raw_candidates] == ["c-1", "c-1", "c-2"]
     assert [candidate.candidate_id for candidate in result.deduplicated_candidates] == ["c-1", "c-2"]
     assert [candidate.candidate_id for candidate in result.scoring_candidates] == ["c-1", "c-2"]
-    assert result.search_page_statistics.pages_fetched == 2
+    assert result.search_page_statistics.pages_fetched == 7
     assert result.search_page_statistics.duplicate_rate == pytest.approx(1 / 3)
     assert result.search_observation.unique_candidate_ids == ["c-1", "c-2"]
     assert result.search_observation.shortage_after_last_page is False
@@ -70,6 +71,7 @@ def test_search_execution_result_applies_runtime_negative_keywords() -> None:
     result = build_search_execution_result(
         raw_candidates,
         runtime_negative_keywords=["frontend"],
+        pages_fetched=1,
         target_new_candidate_count=3,
         latency_ms=9,
     )
@@ -93,11 +95,13 @@ def test_search_execution_sidecar_collects_runtime_audit_tags_after_negative_fil
         raw_candidates,
         runtime_negative_keywords=["frontend"],
         runtime_must_have_keywords=[" python ", "RANKING"],
+        pages_fetched=4,
         target_new_candidate_count=3,
         latency_ms=9,
     )
 
     assert [candidate.candidate_id for candidate in sidecar.execution_result.deduplicated_candidates] == ["keep-1", "keep-2"]
+    assert sidecar.execution_result.search_page_statistics.pages_fetched == 4
     assert sidecar.runtime_audit_tags == {
         "keep-1": ["python"],
         "keep-2": ["RANKING"],

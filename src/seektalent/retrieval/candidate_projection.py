@@ -40,6 +40,7 @@ def build_search_execution_result(
     *,
     runtime_negative_keywords: list[str],
     runtime_must_have_keywords: list[str] | None = None,
+    pages_fetched: int,
     target_new_candidate_count: int,
     latency_ms: int,
 ) -> SearchExecutionResult_t:
@@ -47,6 +48,7 @@ def build_search_execution_result(
         raw_candidates,
         runtime_negative_keywords=runtime_negative_keywords,
         runtime_must_have_keywords=runtime_must_have_keywords,
+        pages_fetched=pages_fetched,
         target_new_candidate_count=target_new_candidate_count,
         latency_ms=latency_ms,
     ).execution_result
@@ -57,6 +59,7 @@ def build_search_execution_sidecar(
     *,
     runtime_negative_keywords: list[str],
     runtime_must_have_keywords: list[str] | None = None,
+    pages_fetched: int,
     target_new_candidate_count: int,
     latency_ms: int,
 ) -> SearchExecutionSidecar:
@@ -75,10 +78,7 @@ def build_search_execution_sidecar(
             deduplicated_candidates=deduplicated_candidates,
             scoring_candidates=scoring_candidates,
             search_page_statistics=SearchPageStatistics(
-                pages_fetched=max(
-                    1,
-                    (len(raw_candidates) + max(1, target_new_candidate_count) - 1) // max(1, target_new_candidate_count),
-                ),
+                pages_fetched=pages_fetched,
                 duplicate_rate=0.0 if not raw_candidates else 1 - len(deduplicated_candidates) / len(raw_candidates),
                 latency_ms=latency_ms,
             ),

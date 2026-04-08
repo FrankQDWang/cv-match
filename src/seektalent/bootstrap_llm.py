@@ -27,7 +27,7 @@ Do not invent domain packs, cards, or unsupported operators.
 """.strip()
 
 
-def build_requirement_extraction_agent(model: Any | None = None) -> Agent:
+def _build_requirement_extraction_agent(model: Any | None = None) -> Agent:
     return Agent(
         model,
         output_type=RequirementExtractionDraft,
@@ -39,7 +39,7 @@ def build_requirement_extraction_agent(model: Any | None = None) -> Agent:
     )
 
 
-def build_grounding_generation_agent(model: Any | None = None) -> Agent:
+def _build_grounding_generation_agent(model: Any | None = None) -> Agent:
     return Agent(
         model,
         output_type=GroundingDraft,
@@ -54,16 +54,14 @@ def build_grounding_generation_agent(model: Any | None = None) -> Agent:
 async def request_requirement_extraction_draft(
     input_truth: SearchInputTruth,
     *,
-    agent: Agent | None = None,
     model: Any | None = None,
-    instructions: str = REQUIREMENT_EXTRACTION_INSTRUCTIONS,
 ) -> RequirementExtractionDraft:
-    active_agent = agent or build_requirement_extraction_agent(model=model)
+    active_agent = _build_requirement_extraction_agent(model=model)
     result = await active_agent.run(
         input_truth.model_dump_json(),
         output_type=RequirementExtractionDraft,
         message_history=None,
-        instructions=instructions,
+        instructions=REQUIREMENT_EXTRACTION_INSTRUCTIONS,
         builtin_tools=(),
         toolsets=(),
         infer_name=False,
@@ -75,11 +73,9 @@ async def request_grounding_draft(
     requirement_sheet: RequirementSheet,
     knowledge_retrieval_result: KnowledgeRetrievalResult,
     *,
-    agent: Agent | None = None,
     model: Any | None = None,
-    instructions: str = GROUNDING_GENERATION_INSTRUCTIONS,
 ) -> GroundingDraft:
-    active_agent = agent or build_grounding_generation_agent(model=model)
+    active_agent = _build_grounding_generation_agent(model=model)
     packet = json.dumps(
         {
             "requirement_sheet": requirement_sheet.model_dump(mode="json"),
@@ -92,7 +88,7 @@ async def request_grounding_draft(
         packet,
         output_type=GroundingDraft,
         message_history=None,
-        instructions=instructions,
+        instructions=GROUNDING_GENERATION_INSTRUCTIONS,
         builtin_tools=(),
         toolsets=(),
         infer_name=False,
@@ -103,8 +99,6 @@ async def request_grounding_draft(
 __all__ = [
     "GROUNDING_GENERATION_INSTRUCTIONS",
     "REQUIREMENT_EXTRACTION_INSTRUCTIONS",
-    "build_grounding_generation_agent",
-    "build_requirement_extraction_agent",
     "request_grounding_draft",
     "request_requirement_extraction_draft",
 ]

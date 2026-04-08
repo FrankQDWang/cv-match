@@ -65,3 +65,44 @@ def test_normalize_requirement_draft_flattens_hard_constraints() -> None:
     assert sheet.hard_constraints.gender_requirement == "男"
     assert sheet.hard_constraints.min_age == 28
     assert sheet.hard_constraints.max_age == 35
+
+
+def test_normalize_requirement_draft_drops_negative_ranges_to_none() -> None:
+    truth = build_input_truth(
+        job_description="Python agent engineer",
+        hiring_notes="Shanghai preferred",
+    )
+    draft = RequirementExtractionDraft(
+        role_title_candidate="Python agent engineer",
+        role_summary_candidate="Build agent systems.",
+        hard_constraint_candidates=HardConstraints(
+            min_years=-3,
+            max_years=5,
+            min_age=-1,
+            max_age=35,
+        ),
+        scoring_rationale_candidate="Prioritize Python fit.",
+    )
+
+    sheet = normalize_requirement_draft(draft, input_truth=truth)
+
+    assert sheet.hard_constraints.min_years is None
+    assert sheet.hard_constraints.max_years == 5
+    assert sheet.hard_constraints.min_age is None
+    assert sheet.hard_constraints.max_age == 35
+
+
+def test_normalize_requirement_draft_summary_fallback_appends_hiring_notes() -> None:
+    truth = build_input_truth(
+        job_description="负责 Agent 检索系统。第二句无关。",
+        hiring_notes="必须上海 onsite",
+    )
+    draft = RequirementExtractionDraft(
+        role_title_candidate="Agent Engineer",
+        role_summary_candidate="",
+        scoring_rationale_candidate="Prioritize retrieval fit.",
+    )
+
+    sheet = normalize_requirement_draft(draft, input_truth=truth)
+
+    assert sheet.role_summary == "负责 Agent 检索系统 必须上海 onsite"

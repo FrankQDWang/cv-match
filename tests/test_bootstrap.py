@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 
 from pydantic_ai.models.test import TestModel
 
@@ -201,3 +202,13 @@ def test_bootstrap_round0_sync_wrapper_works_with_test_models() -> None:
 
     assert artifacts.requirement_sheet.role_title == "Senior Python / LLM Engineer"
     assert artifacts.frontier_state.open_frontier_node_ids
+
+
+def test_bootstrap_public_api_no_longer_accepts_agent_injection() -> None:
+    async_params = inspect.signature(bootstrap_round0_async).parameters
+    sync_params = inspect.signature(bootstrap_round0).parameters
+
+    assert "requirement_extraction_agent" not in async_params
+    assert "grounding_generation_agent" not in async_params
+    assert "requirement_extraction_agent" not in sync_params
+    assert "grounding_generation_agent" not in sync_params

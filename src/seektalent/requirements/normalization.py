@@ -50,8 +50,14 @@ def normalize_requirement_draft(draft: RequirementExtractionDraft, *, input_trut
         raise ValueError("scoring_rationale must not be empty after normalization")
 
     hard_constraints = draft.hard_constraint_candidates
-    min_years, max_years = _ordered_range(hard_constraints.min_years, hard_constraints.max_years)
-    min_age, max_age = _ordered_range(hard_constraints.min_age, hard_constraints.max_age)
+    min_years, max_years = _ordered_range(
+        _non_negative_int_or_none(hard_constraints.min_years),
+        _non_negative_int_or_none(hard_constraints.max_years),
+    )
+    min_age, max_age = _ordered_range(
+        _non_negative_int_or_none(hard_constraints.min_age),
+        _non_negative_int_or_none(hard_constraints.max_age),
+    )
 
     return RequirementSheet(
         role_title=role_title,
@@ -113,12 +119,13 @@ def _coalesce_summary(candidate: str, job_description: str, hiring_notes: str) -
     summary = _normalize_text(candidate)
     if summary:
         return summary[:240]
-    segments = re.split(r"[。！？.!?\n]+", f"{job_description} {hiring_notes}")
-    for segment in segments:
+    first_sentence = ""
+    for segment in re.split(r"[。！？.!?\n]+", job_description):
         clean = _normalize_text(segment)
         if clean:
-            return clean[:240]
-    return ""
+            first_sentence = clean
+            break
+    return _normalize_text(f"{first_sentence} {_normalize_text(hiring_notes)}")[:240]
 
 
 def _canonical_degree(value: str | None) -> str | None:
@@ -146,6 +153,12 @@ def _ordered_range(lower: int | None, upper: int | None) -> tuple[int | None, in
     if lower is None or upper is None or lower <= upper:
         return lower, upper
     return upper, lower
+
+
+def _non_negative_int_or_none(value: int | None) -> int | None:
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
 
 
 __all__ = ["build_input_truth", "normalize_requirement_draft"]

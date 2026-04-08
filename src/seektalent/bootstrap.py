@@ -4,8 +4,6 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic_ai import Agent
-
 from seektalent.bootstrap_assets import BootstrapAssets, default_bootstrap_assets
 from seektalent.bootstrap_llm import request_grounding_draft, request_requirement_extraction_draft
 from seektalent.bootstrap_ops import (
@@ -40,8 +38,6 @@ async def bootstrap_round0_async(
     job_description: str,
     hiring_notes: str = "",
     assets: BootstrapAssets | None = None,
-    requirement_extraction_agent: Agent | None = None,
-    grounding_generation_agent: Agent | None = None,
     requirement_extraction_model: Any | None = None,
     grounding_generation_model: Any | None = None,
 ) -> BootstrapArtifacts:
@@ -49,7 +45,6 @@ async def bootstrap_round0_async(
     input_truth = build_input_truth(job_description=job_description, hiring_notes=hiring_notes)
     requirement_draft = await request_requirement_extraction_draft(
         input_truth,
-        agent=requirement_extraction_agent,
         model=requirement_extraction_model,
     )
     requirement_sheet = normalize_requirement_draft(requirement_draft, input_truth=input_truth)
@@ -68,7 +63,6 @@ async def bootstrap_round0_async(
     grounding_draft = await request_grounding_draft(
         requirement_sheet,
         knowledge_retrieval_result,
-        agent=grounding_generation_agent,
         model=grounding_generation_model,
     )
     grounding_output = generate_grounding_output(
@@ -96,8 +90,6 @@ def bootstrap_round0(
     job_description: str,
     hiring_notes: str = "",
     assets: BootstrapAssets | None = None,
-    requirement_extraction_agent: Agent | None = None,
-    grounding_generation_agent: Agent | None = None,
     requirement_extraction_model: Any | None = None,
     grounding_generation_model: Any | None = None,
 ) -> BootstrapArtifacts:
@@ -106,8 +98,6 @@ def bootstrap_round0(
             job_description=job_description,
             hiring_notes=hiring_notes,
             assets=assets,
-            requirement_extraction_agent=requirement_extraction_agent,
-            grounding_generation_agent=grounding_generation_agent,
             requirement_extraction_model=requirement_extraction_model,
             grounding_generation_model=grounding_generation_model,
         )
