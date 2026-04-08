@@ -1,54 +1,273 @@
 # FreezeScoringPolicy
 
-从 `RequirementSheet` 冻结出本次 run 的评分口径。
+从 `RequirementSheet + BusinessPolicyPack + RerankerCalibration` 冻结出本次 run 的评分口径。
 
-## 公式
+## Signature
 
 ```text
-fit_gate_constraints_t = copy(R.hard_constraints)
-must_have_weight_t = dominant_weight_from(R.must_have_capabilities, R.scoring_rationale)
-overall_weight_t = secondary_weight_from(R.scoring_rationale)
-risk_weight_t = 1.0 - must_have_weight_t - overall_weight_t
-
-P = {
-  fit_gate_constraints: fit_gate_constraints_t,
-  scoring_weights: {
-    must_have: must_have_weight_t,
-    overall: overall_weight_t,
-    risk: risk_weight_t
-  },
-  ranking_notes: R.scoring_rationale
-}
+FreezeScoringPolicy : (RequirementSheet, BusinessPolicyPack, RerankerCalibration) -> ScoringPolicy
 ```
 
 ## Notation Legend
 
 ```text
+B := BusinessPolicyPack
+C := RerankerCalibration
 R := RequirementSheet
 P := ScoringPolicy
 ```
 
+## Input Projection
+
+```text
+truth_gate_t = R.hard_constraints
+override_gate_t = B.fit_gate_overrides
+weight_pref_t = B.fusion_weight_preferences
+stability_policy_t = B.stability_policy
+explanation_pref_t = B.explanation_preferences
+calibration_t = C
+```
+
+## Primitive Predicates / Matching Rules
+
+```text
+normalized(text) = trim(compress_whitespace(text))
+```
+
+```text
+degree_rank("大专及以上") = 1
+degree_rank("本科及以上") = 2
+degree_rank("硕士及以上") = 3
+degree_rank("博士及以上") = 4
+degree_rank(null) = null
+```
+
+```text
+normalized_weight(value, fallback) =
+  value if value != null and value >= 0
+  else fallback
+```
+
+```text
+merged_allowlist_t(truth_values, override_values) =
+  stable_deduplicate(override_values)
+  if |truth_values| = 0
+  else stable_deduplicate(truth_values)
+  if |override_values| = 0
+  else stable_deduplicate(truth_values ∩ override_values)
+  if |truth_values ∩ override_values| > 0
+  else stable_deduplicate(truth_values)
+```
+
+## Transformation
+
+### Phase 1 — Fit Gate Merge
+
+```text
+fit_gate_locations_t =
+  merged_allowlist_t(truth_gate_t.locations, override_gate_t.locations)
+
+fit_gate_min_years_t =
+  max(truth_gate_t.min_years, override_gate_t.min_years)
+  if truth_gate_t.min_years != null and override_gate_t.min_years != null
+  else coalesce(override_gate_t.min_years, truth_gate_t.min_years)
+
+fit_gate_max_years_t =
+  min(truth_gate_t.max_years, override_gate_t.max_years)
+  if truth_gate_t.max_years != null and override_gate_t.max_years != null
+  else coalesce(override_gate_t.max_years, truth_gate_t.max_years)
+
+fit_gate_company_names_t =
+  merged_allowlist_t(truth_gate_t.company_names, override_gate_t.company_names)
+
+fit_gate_school_names_t =
+  merged_allowlist_t(truth_gate_t.school_names, override_gate_t.school_names)
+
+fit_gate_degree_requirement_t =
+  truth_gate_t.degree_requirement
+  if override_gate_t.degree_requirement = null
+  else override_gate_t.degree_requirement
+  if truth_gate_t.degree_requirement = null
+  else
+    truth_gate_t.degree_requirement
+    if degree_rank(truth_gate_t.degree_requirement) >= degree_rank(override_gate_t.degree_requirement)
+    else override_gate_t.degree_requirement
+
+fit_gate_gender_requirement_t =
+  truth_gate_t.gender_requirement
+  if override_gate_t.gender_requirement = null
+  else override_gate_t.gender_requirement
+  if truth_gate_t.gender_requirement = null
+  else truth_gate_t.gender_requirement
+  if truth_gate_t.gender_requirement = override_gate_t.gender_requirement
+  else truth_gate_t.gender_requirement
+
+fit_gate_min_age_t =
+  max(truth_gate_t.min_age, override_gate_t.min_age)
+  if truth_gate_t.min_age != null and override_gate_t.min_age != null
+  else coalesce(override_gate_t.min_age, truth_gate_t.min_age)
+
+fit_gate_max_age_t =
+  min(truth_gate_t.max_age, override_gate_t.max_age)
+  if truth_gate_t.max_age != null and override_gate_t.max_age != null
+  else coalesce(override_gate_t.max_age, truth_gate_t.max_age)
+```
+
+### Phase 2 — Weight Freeze
+
+```text
+raw_rerank_weight_t = normalized_weight(weight_pref_t.rerank, 0.55)
+raw_must_weight_t = normalized_weight(weight_pref_t.must_have, 0.25)
+raw_pref_weight_t = normalized_weight(weight_pref_t.preferred, 0.10)
+raw_risk_weight_t = normalized_weight(weight_pref_t.risk_penalty, 0.10)
+
+raw_weight_sum_t =
+  raw_rerank_weight_t + raw_must_weight_t + raw_pref_weight_t + raw_risk_weight_t
+
+fusion_weights_t = {
+  rerank: raw_rerank_weight_t / raw_weight_sum_t,
+  must_have: raw_must_weight_t / raw_weight_sum_t,
+  preferred: raw_pref_weight_t / raw_weight_sum_t,
+  risk_penalty: raw_risk_weight_t / raw_weight_sum_t
+}
+
+penalty_weights_t = {
+  job_hop: coalesce(stability_policy_t.penalty_weight, 1.0),
+  job_hop_confidence_floor: coalesce(stability_policy_t.confidence_floor, 0.6)
+}
+
+top_n_for_explanation_t =
+  coalesce(explanation_pref_t.top_n_for_explanation, 5)
+```
+
+### Phase 3 — Rerank Surface Freeze
+
+```text
+must_have_phrase_t =
+  join(", ", R.must_have_capabilities)
+
+preferred_phrase_t =
+  join(", ", R.preferred_capabilities)
+
+hard_constraint_phrase_t =
+  join(
+    "; ",
+    drop_empty([
+      "location: " + join(", ", truth_gate_t.locations) if |truth_gate_t.locations| > 0 else "",
+      "min " + truth_gate_t.min_years + " years" if truth_gate_t.min_years != null else "",
+      "max " + truth_gate_t.max_years + " years" if truth_gate_t.max_years != null else ""
+    ])
+  )
+
+rerank_instruction_t =
+  normalized(
+    "Rank candidate resumes for hiring relevance. "
+    + "Prioritize must-have capabilities first, use preferred capabilities as secondary evidence, "
+    + "and do not hard-reject on soft risk signals."
+  )
+
+rerank_query_text_t =
+  normalized(
+    R.role_title
+    + "; must-have: " + must_have_phrase_t
+    + ("; " + hard_constraint_phrase_t if hard_constraint_phrase_t != "" else "")
+    + ("; preferred: " + preferred_phrase_t if preferred_phrase_t != "" else "")
+  )
+
+ranking_audit_notes_t =
+  normalized(
+    coalesce(R.scoring_rationale, "")
+    + " "
+    + "must-have 优先于 preferred；低置信度稳定性风险不处罚。"
+  )
+```
+
+### Field-Level Output Assembly
+
+```text
+P.fit_gate_constraints = {
+  locations: fit_gate_locations_t,
+  min_years: fit_gate_min_years_t,
+  max_years: fit_gate_max_years_t,
+  company_names: fit_gate_company_names_t,
+  school_names: fit_gate_school_names_t,
+  degree_requirement: fit_gate_degree_requirement_t,
+  gender_requirement: fit_gate_gender_requirement_t,
+  min_age: fit_gate_min_age_t,
+  max_age: fit_gate_max_age_t
+}
+P.must_have_capabilities_snapshot = R.must_have_capabilities
+P.preferred_capabilities_snapshot = R.preferred_capabilities
+P.fusion_weights = fusion_weights_t
+P.penalty_weights = penalty_weights_t
+P.top_n_for_explanation = top_n_for_explanation_t
+P.rerank_instruction = rerank_instruction_t
+P.rerank_query_text = rerank_query_text_t
+P.reranker_calibration_snapshot = {
+  model_id: calibration_t.model_id,
+  normalization: calibration_t.normalization,
+  temperature: calibration_t.temperature,
+  offset: calibration_t.offset,
+  clip_min: calibration_t.clip_min,
+  clip_max: calibration_t.clip_max,
+  calibration_version: calibration_t.calibration_version
+}
+P.ranking_audit_notes = ranking_audit_notes_t
+```
+
+## Defaults / Thresholds Used Here
+
+```text
+default fusion weights = {
+  rerank: 0.55,
+  must_have: 0.25,
+  preferred: 0.10,
+  risk_penalty: 0.10
+}
+```
+
+```text
+default stability penalty = {
+  job_hop: 1.0,
+  job_hop_confidence_floor: 0.6
+}
+```
+
+```text
+default top_n_for_explanation = 5
+```
+
 ## Read Set
 
-- `RequirementSheet.must_have_capabilities`
 - `RequirementSheet.hard_constraints`
+- `RequirementSheet.must_have_capabilities`
+- `RequirementSheet.preferred_capabilities`
 - `RequirementSheet.scoring_rationale`
-
-## Derived / Intermediate
-
-- `fit_gate_constraints_t` 是 `R.hard_constraints` 的 run 内冻结拷贝，后续不允许再漂移。
-- `dominant_weight_from(...)` 与 `secondary_weight_from(...)` 只负责把需求真相压缩成稳定权重，不读取轮次结果。
-- `risk_weight_t` 是剩余权重，不再单独由下游自由改写。
+- `RequirementSheet.role_title`
+- `BusinessPolicyPack.fusion_weight_preferences`
+- `BusinessPolicyPack.fit_gate_overrides`
+- `BusinessPolicyPack.stability_policy`
+- `BusinessPolicyPack.explanation_preferences`
+- `RerankerCalibration.*`
 
 ## Write Set
 
 - `ScoringPolicy.fit_gate_constraints`
-- `ScoringPolicy.scoring_weights`
-- `ScoringPolicy.ranking_notes`
+- `ScoringPolicy.must_have_capabilities_snapshot`
+- `ScoringPolicy.preferred_capabilities_snapshot`
+- `ScoringPolicy.fusion_weights`
+- `ScoringPolicy.penalty_weights`
+- `ScoringPolicy.top_n_for_explanation`
+- `ScoringPolicy.rerank_instruction`
+- `ScoringPolicy.rerank_query_text`
+- `ScoringPolicy.reranker_calibration_snapshot`
+- `ScoringPolicy.ranking_audit_notes`
 
 ## 输入 payload
 
 - [[RequirementSheet]]
+- [[BusinessPolicyPack]]
+- [[RerankerCalibration]]
 
 ## 输出 payload
 
@@ -56,11 +275,16 @@ P := ScoringPolicy
 
 ## 不确定性边界 / 说明
 
-- 评分口径一旦冻结，就不允许随着 branch 扩展或 query 调整而改变。
+- 本页冻结 run 内唯一评分口径；下游 branch 扩展不能再改权重、gate 或 rerank surface。
+- `fit_gate_overrides` 只能收紧 truth gate；allowlist 类字段按交集收缩，冲突的 `gender_requirement` 保留 truth。
+- 本页不读取知识卡或 routing 结果；知识库只参与 bootstrap 关键词初始化，不参与评分口径冻结。
 
 ## 相关
 
-- [[operator-map]]
-- [[expansion-trace]]
+- [[operator-spec-style]]
 - [[RequirementSheet]]
+- [[BusinessPolicyPack]]
+- [[RerankerCalibration]]
 - [[ScoringPolicy]]
+- [[FitGateConstraints]]
+- [[scoring-semantics]]

@@ -37,6 +37,7 @@ evaluation_notes: "ranking 背景补强有效"
 ## 相关
 
 - [[operator-map]]
+- [[BranchEvaluationDraft_t]]
 - [[EvaluateBranchOutcome]]
 - [[NodeRewardBreakdown_t]]
 - [[EvaluateStopCondition]]

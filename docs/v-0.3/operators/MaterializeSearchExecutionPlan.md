@@ -2,46 +2,10 @@
 
 把控制器决策物化成可执行 child 检索计划。
 
-## 公式
+## Signature
 
 ```text
-parent_node_t = F_t.frontier_nodes[d_t.target_frontier_node_id]
-base_query_terms_t = parent_node_t.node_query_term_pool
-additional_terms_t = deduplicate(drop_empty(d_t.operator_args.additional_terms))
-requested_target_new_t =
-  coalesce(d_t.operator_args.target_new_candidate_count, runtime_search_budget.default_target_new_candidate_count)
-
-query_terms_t =
-  clamp_term_budget(
-    deduplicate(base_query_terms_t ∪ additional_terms_t),
-    runtime_term_budget_range
-  )
-
-projected_filters_t = R.hard_constraints
-
-runtime_only_constraints_t = {
-  must_have_keywords:
-    deduplicate(R.must_have_capabilities ∪ additional_terms_t)
-}
-
-target_new_t =
-  min(requested_target_new_t, runtime_search_budget.max_target_new_candidate_count)
-
-semantic_hash_t =
-  hash(d_t.selected_operator_name, query_terms_t, projected_filters_t, runtime_only_constraints_t)
-
-p_t = {
-  query_terms: query_terms_t,
-  projected_filters: projected_filters_t,
-  runtime_only_constraints: runtime_only_constraints_t,
-  target_new_candidate_count: target_new_t,
-  semantic_hash: semantic_hash_t,
-  child_frontier_node_stub: {
-    frontier_node_id: derive_child_id(parent_node_t.frontier_node_id, semantic_hash_t),
-    parent_frontier_node_id: parent_node_t.frontier_node_id,
-    selected_operator_name: d_t.selected_operator_name
-  }
-}
+MaterializeSearchExecutionPlan : (FrontierState_t, RequirementSheet, SearchControllerDecision_t, RuntimeTermBudgetPolicy, RuntimeSearchBudget, CrossoverGuardThresholds) -> SearchExecutionPlan_t
 ```
 
 ## Notation Legend
@@ -53,26 +17,155 @@ d_t := SearchControllerDecision_t
 p_t := SearchExecutionPlan_t
 ```
 
+## Input Projection
+
+```text
+parent_node_t = F_t.frontier_nodes[d_t.target_frontier_node_id]
+remaining_budget_t = F_t.remaining_budget
+selected_operator_name_t = d_t.selected_operator_name
+operator_args_t = d_t.operator_args
+```
+
+## Primitive Predicates / Matching Rules
+
+```text
+term_budget_range_t =
+  RuntimeTermBudgetPolicy.high_budget_range
+  if remaining_budget_t >= 4
+  else RuntimeTermBudgetPolicy.medium_budget_range
+  if remaining_budget_t >= 2
+  else RuntimeTermBudgetPolicy.low_budget_range
+```
+
+```text
+clamped_terms_t(terms_t) =
+  stable_deduplicate(terms_t)[0 : term_budget_range_t[1]]
+```
+
+```text
+child_id_t(parent_id_t, semantic_hash_t) =
+  "child_" + parent_id_t + "_" + semantic_hash_t[0 : 8]
+```
+
+## Transformation
+
+### Phase 1 — Query Term Materialization
+
+```text
+if selected_operator_name_t != "crossover_compose":
+  base_query_terms_t = parent_node_t.node_query_term_pool
+  additional_terms_t = stable_deduplicate(drop_empty(operator_args_t.additional_terms))
+  query_terms_t = clamped_terms_t(base_query_terms_t + additional_terms_t)
+  donor_frontier_node_id_t = null
+  source_card_ids_t = parent_node_t.source_card_ids
+  donor_negative_terms_t = []
+else:
+  donor_node_t = F_t.frontier_nodes[operator_args_t.donor_frontier_node_id]
+  shared_anchor_terms_t =
+    [
+      term_t
+      for term_t in stable_deduplicate(operator_args_t.shared_anchor_terms)
+      if term_t in intersect(parent_node_t.node_query_term_pool, donor_node_t.node_query_term_pool)
+    ]
+  donor_terms_t =
+    [
+      term_t
+      for term_t in stable_deduplicate(operator_args_t.donor_terms_used)
+      if term_t in (set(donor_node_t.node_query_term_pool) - set(parent_node_t.node_query_term_pool))
+    ]
+  if |shared_anchor_terms_t| < CrossoverGuardThresholds.min_shared_anchor_terms:
+    fail("crossover_requires_shared_anchor")
+  query_terms_t = clamped_terms_t(shared_anchor_terms_t + donor_terms_t)
+  donor_frontier_node_id_t = donor_node_t.frontier_node_id
+  source_card_ids_t = stable_deduplicate(parent_node_t.source_card_ids + donor_node_t.source_card_ids)
+  donor_negative_terms_t = donor_node_t.negative_terms
+```
+
+### Phase 2 — Constraint Projection
+
+```text
+projected_filters_t = R.hard_constraints
+
+runtime_only_constraints_t = {
+  must_have_keywords: stable_deduplicate(R.must_have_capabilities + query_terms_t),
+  negative_keywords:
+    stable_deduplicate(parent_node_t.negative_terms + donor_negative_terms_t)
+}
+```
+
+### Phase 3 — Search Budget Freeze
+
+```text
+target_new_t =
+  min(
+    coalesce(
+      operator_args_t.target_new_candidate_count,
+      RuntimeSearchBudget.default_target_new_candidate_count
+    ),
+    RuntimeSearchBudget.max_target_new_candidate_count
+  )
+```
+
+### Phase 4 — Stable Child Identity
+
+```text
+semantic_hash_t =
+  sha1(
+    serialize(
+      selected_operator_name_t,
+      query_terms_t,
+      projected_filters_t,
+      runtime_only_constraints_t
+    )
+  )
+```
+
+### Field-Level Output Assembly
+
+```text
+p_t.query_terms = query_terms_t
+p_t.projected_filters = projected_filters_t
+p_t.runtime_only_constraints = runtime_only_constraints_t
+p_t.target_new_candidate_count = target_new_t
+p_t.semantic_hash = semantic_hash_t
+p_t.source_card_ids = source_card_ids_t
+p_t.child_frontier_node_stub = {
+  frontier_node_id: child_id_t(parent_node_t.frontier_node_id, semantic_hash_t),
+  parent_frontier_node_id: parent_node_t.frontier_node_id,
+  donor_frontier_node_id: donor_frontier_node_id_t,
+  selected_operator_name: selected_operator_name_t
+}
+```
+
+## Defaults / Thresholds Used Here
+
+```text
+RuntimeSearchBudget defaults = {
+  default_target_new_candidate_count: 10,
+  max_target_new_candidate_count: 20
+}
+```
+
+```text
+RuntimeTermBudgetPolicy defaults = {
+  high_budget_range: [2, 6],
+  medium_budget_range: [2, 5],
+  low_budget_range: [2, 4]
+}
+```
+
 ## Read Set
 
 - `FrontierState_t.frontier_nodes`
+- `FrontierState_t.remaining_budget`
 - `RequirementSheet.hard_constraints`
 - `RequirementSheet.must_have_capabilities`
 - `SearchControllerDecision_t.target_frontier_node_id`
 - `SearchControllerDecision_t.selected_operator_name`
 - `SearchControllerDecision_t.operator_args`
-- `runtime_term_budget_range`
-- `runtime_search_budget`
-
-## Derived / Intermediate
-
-- `base_query_terms_t` 来自 parent node，保证 child plan 不是凭空造 query。
-- `additional_terms_t` 只接受当前 operator patch 允许新增的词，不接受游离 term source。
-- `requested_target_new_t` 先读控制器 patch，如果草稿没给，再退回 runtime 默认值。
-- `clamp_term_budget(...)` 负责把 term 数量压回 runtime 允许范围。
-- `projected_filters_t` 只复制稳定硬约束；不把 runtime-only 约束直接塞进 CTS 可下推 filter。
-- `runtime_only_constraints_t.must_have_keywords` 明确由岗位 must-have 和新增 term 合并得到，只供 runtime 过滤与审计。
-- `semantic_hash_t` 是本次 child plan 的语义签名，后续 dedupe 与 frontier update 都围绕它展开。
+- `RuntimeTermBudgetPolicy`
+- `RuntimeSearchBudget`
+- `CrossoverGuardThresholds`
 
 ## Write Set
 
@@ -81,6 +174,7 @@ p_t := SearchExecutionPlan_t
 - `SearchExecutionPlan_t.runtime_only_constraints`
 - `SearchExecutionPlan_t.target_new_candidate_count`
 - `SearchExecutionPlan_t.semantic_hash`
+- `SearchExecutionPlan_t.source_card_ids`
 - `SearchExecutionPlan_t.child_frontier_node_stub`
 
 ## 输入 payload
@@ -95,13 +189,18 @@ p_t := SearchExecutionPlan_t
 
 ## 不确定性边界 / 说明
 
-- `target_new_candidate_count` 与 `semantic_hash` 在这里冻结，执行层不再读游离变量。
+- 这一步只处理 `d_t.action = "search_cts"` 的路径；`stop` 动作走 carry-forward / stop guard 支路。
+- `projected_filters_t` 是稳定业务约束，不等于真实 CTS payload；真实协议映射继续由 [[cts-projection-policy]] 持有。
 
 ## 相关
 
-- [[operator-map]]
-- [[expansion-trace]]
+- [[operator-spec-style]]
 - [[FrontierState_t]]
+- [[FrontierNode_t]]
 - [[RequirementSheet]]
 - [[SearchControllerDecision_t]]
 - [[SearchExecutionPlan_t]]
+- [[RuntimeSearchBudget]]
+- [[RuntimeTermBudgetPolicy]]
+- [[CrossoverGuardThresholds]]
+- [[cts-projection-policy]]
