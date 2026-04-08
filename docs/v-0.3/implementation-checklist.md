@@ -185,6 +185,38 @@
 1. [[SearchScoringResult_t]] 已可稳定产出 shortlist 和 fused score。
 2. `ExecuteSearchPlan` 和 `ScoreSearchResults` 的边界已不再含糊。
 
+### 4.6 当前完成情况（截至当前 HEAD）
+
+- 总体状态：Phase 3 已按“search execution 与 ranking 先收成稳定 deterministic 切片”的目标完成收口；`run` 入口仍保持 gated，这不视为 Phase 3 未完成，因为本阶段验收标准是“execution / scoring operator 已可直接串通并稳定产出评分结果”，不是“frontier loop、reward、stop、finalize 已开放”。
+
+对应 `4.2 主要工作`：
+
+1. `[[MaterializeSearchExecutionPlan]]` 已落地为稳定纯函数；当前实现会直接消费 `FrontierState_t`、`RequirementSheet`、`SearchControllerDecision_t`、`RuntimeTermBudgetPolicy`、`RuntimeSearchBudget` 与 `CrossoverGuardThresholds`，固定执行 query term materialization、runtime-only constraints 冻结、target-new clamp、semantic hash 与 stable child identity 生成，不再把这些规则散落在后续 runtime 中。
+2. `[[ExecuteSearchPlan]]` 已落地为“CTS 调用 + 现有候选投影 owner 复用”的薄执行层；它只读取 `SearchExecutionPlan_t` 并调用现有 `CTSClientProtocol.search(...)`，随后复用 `SearchExecutionResult_t.raw_candidates / deduplicated_candidates / scoring_candidates` 的既有投影逻辑，不再另起第二套候选转换 path。
+3. `[[ScoreSearchResults]]` 已落地为稳定纯排序层；当前实现固定执行 `rerank -> calibration -> deterministic signal scoring -> deterministic fusion -> shortlist`，并直接产出稳定的 `[[SearchScoringResult_t]]`。
+4. reranker text conversion 与 text-only contract 已落实；rerank request surface 现已固定为 `instruction / query / documents[*].text`，其中文档文本直接读取 `ScoringCandidate_t.scoring_text`，明确不做 JSON dump，也不把结构化 metadata 序列化进 rerank 面。
+5. `[[CareerStabilityProfile]]` 的评分侧接入已落实；跳槽风险现只作为 risk penalty 进入 deterministic fusion，不进入检索层硬过滤，也不绕过 `fit gate` 单独改写 shortlist 事实。
+
+对应 `4.3 交付物`：
+
+1. `SearchExecutionPlan_t -> SearchExecutionResult_t -> SearchScoringResult_t` 已可直接串通；当前实现入口分别为 `materialize_search_execution_plan(...)`、`execute_search_plan(...)` 与 `score_search_results(...)`。
+2. reranker request surface 已稳定为 `instruction / query / document-text`；当前实现通过显式注入的 async rerank callable 消费 `RerankRequest` / `RerankResponse`，未引入额外 runtime manager / wrapper / factory。
+3. 候选已先进入 `scoring_candidates` 再进入评分；评分层只读取 `SearchExecutionResult_t.scoring_candidates`，不再直接消费 CTS 原始候选或 `raw_payload`。
+
+对应 `4.4 可开工验收`：
+
+1. 已满足。reranker 输入 contract 已固定为 `instruction / query / document-text`。
+2. 已满足。`document` 当前明确是候选自然文本面，不是 JSON dump。
+3. 已满足。候选必须先进入 `scoring_candidates` 再进入评分；相关对齐行为已由测试覆盖。
+4. 已满足。`rerank -> calibration -> deterministic fusion -> shortlist` 已成为唯一主排序链；排序事实不再交给 LLM 或其他隐式分支决定。
+5. 已满足。跳槽风险只作为 risk penalty 生效；当前实现不会把 stability 信号提前下推到检索层硬过滤。
+6. 已满足。`degree_requirement` canonical 已继续复用 Phase 1 / Phase 2 既有上游归一化口径；评分层只读取 `null / 大专及以上 / 本科及以上 / 硕士及以上 / 博士及以上` 这组稳定值。
+
+对应 `4.5 下一阶段前提`：
+
+1. 已满足。`[[SearchScoringResult_t]]` 现已可稳定产出 shortlist 与 fused score；相关 calibration、risk penalty、fit gate 与排序稳定性已由新增测试覆盖。
+2. 已满足。`ExecuteSearchPlan` 与 `ScoreSearchResults` 的边界已不再含糊：前者只负责 CTS 调用和候选投影，后者只负责 rerank、校准、deterministic fusion 与 shortlist 组装。
+
 ## 5. Phase 4: Frontier Decision Loop
 
 ### 5.1 目标
