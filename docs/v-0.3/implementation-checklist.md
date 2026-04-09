@@ -250,6 +250,42 @@
 1. [[SearchControllerDecision_t]]、[[SearchExecutionPlan_t]]、[[FrontierState_t1]] 已能形成闭环。
 2. crossover 的合法性和 lineage 已可审计。
 
+### 5.6 当前完成情况（截至当前 HEAD）
+
+- 总体状态：Phase 4 的 operator contract、controller draft 收口与局部 search / direct-stop slice 已完成；`run` 入口仍保持 gated，且 `semantic dedupe` 的真正状态写入仍留在 Phase 5 的 `UpdateFrontierState`，因此本阶段当前应理解为“frontier decision 面已落稳，但公开 runtime loop 尚未接通”。
+
+对应 `5.2 主要工作`：
+
+1. `[[SelectActiveFrontierNode]]` 已落地为稳定纯函数；当前实现固定执行 active node priority scoring、donor candidate packing、generic provenance 下 `domain_company` 禁用、term budget range 冻结与 unmet requirement weight 投影，不再把这些规则散落在 runtime 其他位置。
+2. `[[GenerateSearchControllerDecision]]` 已落地为 deterministic normalization 层；当前实现固定把控制器草稿收口为 `search_cts / stop`、operator 白名单回退、non-crossover `additional_terms` 裁剪与 crossover donor whitelist，不允许 LLM 自由改写 `target_frontier_node_id` 或旁路 donor。
+3. `[[CarryForwardFrontierState]]` 已落地为 identity carry-forward；direct-stop 路径当前会直接把 `FrontierState_t` 原样投影为 `FrontierState_t1`，不新增 child node、不消耗 budget、不写旁路状态。
+4. `crossover_compose` 已在 Phase 4 / Phase 3 接缝上落地：controller 侧会限制合法 donor id 与 crossover args，plan materialization 侧继续负责 shared-anchor guard、donor lineage 与 source card 合并，不再有第二套 crossover path。
+5. donor legality 与 shared-anchor guard 已落地并由新增测试覆盖；`semantic dedupe` 当前仍只冻结在 `SearchExecutionPlan_t.semantic_hash` 与 stable child identity 上，`semantic_hashes_seen` 的真正写入仍保留给 Phase 5 `[[UpdateFrontierState]]`。
+
+对应 `5.3 交付物`：
+
+1. 部分满足。active-node selection、controller patch、search path、direct-stop path 已能通过 `select_active_frontier_node(...) -> generate_search_controller_decision(...) -> materialize_search_execution_plan(...)` / `carry_forward_frontier_state(...)` 的函数组合与集成测试形成统一 slice；但 `WorkflowRuntime.run*` 仍保持 gated，尚未接成公开 runtime loop。
+2. 已满足。crossover 已有清晰 donor 和 guard 边界；donor legality、shared-anchor、donor lineage 与 `source_card_ids` 合并路径都已固定。
+3. 已满足。runtime 选点与 controller 局部决策职责已分离；当前 frontier 选点是 deterministic 纯函数，控制器只看到 `SearchControllerContext_t` 局部快照。
+
+对应 `5.4 可开工验收`：
+
+1. 已满足。runtime 先选 active node，控制器只做 branch-level patch；当前测试已覆盖 search path 与 direct-stop path。
+2. 已满足。donor 必须满足 `open + reward_breakdown != null + reward 过线 + shared anchor 过线`，且还必须补 active node 未覆盖的 must-have。
+3. 已满足。generic provenance 下不会放开 `domain_company`；当前实现继续以 `source_card_ids == []` 作为唯一 generic provenance 判据。
+4. 已满足到 operator slice 层面。direct-stop 路径与 search 路径当前都使用统一的 `SearchControllerDecision_t` / `FrontierState_t` / `FrontierState_t1` 对象，不再新开旁路状态；但 stop guard 与 finalize 仍属 Phase 5。
+5. 已满足。`SearchControllerDecisionLLM` 当前已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput` strict schema、禁用 tools、禁用 cross-operator history、`retries=0`、`output_retries=1`；它也是当前唯一启用单次业务型 validator retry 的调用点。
+
+对应 `5.5 下一阶段前提`：
+
+1. 已满足到 operator slice 层面。`[[SearchControllerDecision_t]]`、`[[SearchExecutionPlan_t]]`、`[[FrontierState_t1]]` 现已可通过函数组合闭合 search / direct-stop 分支；后续只需把它们接入 Phase 5 的 reward / stop / finalize 即可。
+2. 已满足到 plan / lineage 层面。crossover 的 donor 合法性、shared-anchor 与 lineage 当前都可审计；`semantic_hashes_seen` 的 run-state 去重推进仍留给 Phase 5。
+
+补充说明：
+
+- 本轮同时补齐了 `SearchControllerContext_t`、`SearchControllerDecisionDraft_t`、`BranchEvaluation_t`、`NodeRewardBreakdown_t` 的代码侧 typed payload，frontier node 上不再继续使用裸 dict 挂载 branch evaluation / reward。
+- 当前新增测试集中覆盖在 `tests/test_frontier_ops.py` 与 `tests/test_controller_llm.py`；截至当前 HEAD，全量测试为 `85 passed`。
+
 ## 6. Phase 5: Reward / Frontier Update / Stop / Finalize
 
 ### 6.1 目标
