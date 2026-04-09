@@ -12,6 +12,7 @@ from seektalent.models import (
     LLMCallAuditSnapshot,
     SearchControllerContext_t,
     SearchControllerDecisionDraft_t,
+    stable_deduplicate,
 )
 
 
@@ -83,21 +84,38 @@ def _validate_controller_draft(
     normalized = generate_search_controller_decision(context, draft)
     if normalized.action == "stop":
         return draft
+    active_query_pool = context.active_frontier_node_summary.node_query_term_pool
     if normalized.selected_operator_name != "crossover_compose":
         additional_terms = normalized.operator_args.get("additional_terms")
-        if isinstance(additional_terms, list) and additional_terms:
+        query_terms = stable_deduplicate(
+            list(active_query_pool)
+            + (
+                [term for term in additional_terms if isinstance(term, str)]
+                if isinstance(additional_terms, list)
+                else []
+            )
+        )
+        if query_terms:
             return draft
-        raise ModelRetry("search_cts requires non-empty additional_terms after normalization")
+        raise ModelRetry("search_cts requires materializable non-empty query terms")
     donor_frontier_node_id = normalized.operator_args.get("donor_frontier_node_id")
     shared_anchor_terms = normalized.operator_args.get("shared_anchor_terms")
     donor_terms_used = normalized.operator_args.get("donor_terms_used")
     if donor_frontier_node_id is None:
         raise ModelRetry("crossover_compose requires a legal donor_frontier_node_id")
-    if isinstance(shared_anchor_terms, list) and shared_anchor_terms:
+    if not isinstance(shared_anchor_terms, list) or not shared_anchor_terms:
+        raise ModelRetry("crossover_compose requires materializable shared_anchor_terms")
+    query_terms = stable_deduplicate(
+        [term for term in shared_anchor_terms if isinstance(term, str)]
+        + (
+            [term for term in donor_terms_used if isinstance(term, str)]
+            if isinstance(donor_terms_used, list)
+            else []
+        )
+    )
+    if query_terms:
         return draft
-    if isinstance(donor_terms_used, list) and donor_terms_used:
-        return draft
-    raise ModelRetry("crossover_compose requires materializable shared_anchor_terms or donor_terms_used")
+    raise ModelRetry("crossover_compose requires materializable non-empty query terms")
 
 
 async def request_search_controller_decision_draft(

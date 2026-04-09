@@ -168,7 +168,9 @@ async def execute_search_plan_sidecar(
     if cts_result.latency_ms is None:
         raise ValueError("cts_result.latency_ms must not be null.")
     raw_count = len(cts_result.candidates)
-    pages_fetched = max(1, math.ceil(raw_count / plan.target_new_candidate_count))
+    # pages_fetched is a cost fact consumed by Phase 5 reward semantics, so an
+    # empty CTS result must stay at 0 instead of being coerced to 1.
+    pages_fetched = math.ceil(raw_count / max(1, plan.target_new_candidate_count))
     school_type_code, _ = project_school_type_requirement_to_cts(plan.projected_filters.school_type_requirement)
     return build_search_execution_sidecar(
         cts_result.candidates,

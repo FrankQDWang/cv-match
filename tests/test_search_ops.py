@@ -311,7 +311,7 @@ def test_execute_search_plan_sidecar_preserves_runtime_audit_and_school_type_fal
     assert sidecar.execution_result.search_page_statistics.pages_fetched == 2
 
 
-def test_execute_search_plan_sidecar_counts_empty_cts_request_as_one_page() -> None:
+def test_execute_search_plan_sidecar_counts_empty_cts_request_as_zero_pages() -> None:
     client = FakeCTSClient(
         result=CTSFetchResult(
             request_payload={},
@@ -331,7 +331,7 @@ def test_execute_search_plan_sidecar_counts_empty_cts_request_as_one_page() -> N
 
     sidecar = asyncio.run(execute_search_plan_sidecar(plan, client))
 
-    assert sidecar.execution_result.search_page_statistics.pages_fetched == 1
+    assert sidecar.execution_result.search_page_statistics.pages_fetched == 0
 
 
 def _scoring_policy() -> ScoringPolicy:

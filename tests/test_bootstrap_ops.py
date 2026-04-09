@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from seektalent.bootstrap_assets import default_bootstrap_assets
 from seektalent.bootstrap_ops import (
@@ -400,6 +401,24 @@ def test_generate_grounding_output_uses_fixed_generic_seed_order() -> None:
         "strict_core",
     ]
     assert all(seed.operator_name != "domain_company" for seed in output.frontier_seed_specifications)
+
+
+@pytest.mark.parametrize("operator_name", ["crossover_compose", "unsupported_operator"])
+def test_grounding_draft_rejects_invalid_seed_operator_at_schema_boundary(operator_name: str) -> None:
+    with pytest.raises(ValidationError, match="operator_name"):
+        GroundingDraft(
+            frontier_seed_specifications=[
+                FrontierSeedSpecification(
+                    operator_name=operator_name,
+                    seed_terms=["agent engineer", "python"],
+                    seed_rationale="invalid operator",
+                    source_card_ids=[],
+                    expected_coverage=[],
+                    negative_terms=[],
+                    target_location=None,
+                )
+            ]
+        )
 
 
 def test_generate_grounding_output_fails_when_seed_count_is_below_three() -> None:

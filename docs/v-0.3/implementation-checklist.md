@@ -127,7 +127,7 @@
 1. `[[ExtractRequirements]]` 已落地为现有 deterministic requirements 归一化主链与 `RequirementExtractionLLM` wrapper 的组合；`SearchInputTruth -> RequirementSheet` 的 owner 已固定，不再另起第二套 requirements schema。
 2. `[[RetrieveGroundingKnowledge]]` 已落地为稳定纯函数，routing 固定为 `explicit_domain / inferred_domain / generic_fallback` 三选一；未知 explicit pack、显式 pack 超过 `2` 个等情况直接 fail-fast。bootstrap 所需的最小 domain packs 与 knowledge cards 已以内置 fixture 形式落地。
 3. `[[FreezeScoringPolicy]]` 已落地为 run 内评分口径冻结步骤；fit gate 只允许在 truth 基础上收紧，fusion weights 会规范化到总和 `1.0`，并与 rerank instruction / query 一起形成稳定的 `[[ScoringPolicy]]`。
-4. `[[GenerateGroundingOutput]]` 已落地为稳定纯函数；会强制 evidence whitelist、固定 generic fallback 的 seed 顺序，并把 seed branches 约束在 `3-5` 条、每条 `2-4` 个 terms；不足 `3` 条 seed 时直接 fail-fast。
+4. `[[GenerateGroundingOutput]]` 已落地为稳定纯函数；会强制 evidence whitelist、固定 generic fallback 的 seed 顺序，并把 seed branches 约束在 `3-5` 条、每条 `2-4` 个 terms；不足 `3` 条 seed 时直接 fail-fast。补充说明：`GroundingGenerationLLM` 的 round-0 `operator_name` 现已在 structured-output schema 层收紧到 `must_have_alias / strict_core / domain_company`，非法 operator 会在解析阶段直接失败，而不是等到后续归一化再兜底。
 5. `[[InitializeFrontierState]]` 已落地为 runtime-owned frontier init；bootstrap seeds 会被收敛成稳定的 `[[FrontierState_t]]`，不允许 LLM draft 直接写入 frontier runtime state。
 
 对应 `3.3 交付物`：
@@ -144,7 +144,7 @@
 3. 已满足。seed branches 固定 `3-5` 条、每条 `2-4` 个 terms；generic fallback 也遵守同一约束。
 4. 已满足。`[[ScoringPolicy]]` 已作为 run 内冻结对象存在，而不是运行中散落参数。
 5. 已满足。知识库当前只服务 bootstrap 关键词初始化；不参与评分冻结、reward、stop 或 finalize。
-6. 已满足。`RequirementExtractionLLM` 与 `GroundingGenerationLLM` 已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput`、禁用 tools、禁用跨 operator history、`retries=0`、`output_retries=1`。
+6. 已满足。`RequirementExtractionLLM` 与 `GroundingGenerationLLM` 已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput`、禁用 tools、禁用跨 operator history、`retries=0`、`output_retries=1`；其中 grounding draft 的 round-0 seed operator 现已由 strict schema 直接约束，不再接受自由字符串。
 
 对应 `3.5 下一阶段前提`：
 
@@ -192,7 +192,7 @@
 对应 `4.2 主要工作`：
 
 1. `[[MaterializeSearchExecutionPlan]]` 已落地为稳定纯函数；当前实现会直接消费 `FrontierState_t`、`RequirementSheet`、`SearchControllerDecision_t`、`RuntimeTermBudgetPolicy`、`RuntimeSearchBudget` 与 `CrossoverGuardThresholds`，固定执行 query term materialization、runtime-only constraints 冻结、target-new clamp、semantic hash 与 stable child identity 生成，不再把这些规则散落在后续 runtime 中。
-2. `[[ExecuteSearchPlan]]` 已落地为“CTS 调用 + 现有候选投影 owner 复用”的薄执行层；它只读取 `SearchExecutionPlan_t` 并调用现有 `CTSClientProtocol.search(...)`，随后复用 `SearchExecutionResult_t.raw_candidates / deduplicated_candidates / scoring_candidates` 的既有投影逻辑，不再另起第二套候选转换 path。
+2. `[[ExecuteSearchPlan]]` 已落地为“CTS 调用 + 现有候选投影 owner 复用”的薄执行层；它只读取 `SearchExecutionPlan_t` 并调用现有 `CTSClientProtocol.search(...)`，随后复用 `SearchExecutionResult_t.raw_candidates / deduplicated_candidates / scoring_candidates` 的既有投影逻辑，不再另起第二套候选转换 path。补充说明：`search_page_statistics.pages_fetched` 现已严格按 owner 语义 `ceil(|raw_candidates| / max(1, target_new_candidate_count))` 计算，空结果保持 `0`，作为后续 reward 成本事实的直接输入。
 3. `[[ScoreSearchResults]]` 已落地为稳定纯排序层；当前实现固定执行 `rerank -> calibration -> deterministic signal scoring -> deterministic fusion -> shortlist`，并直接产出稳定的 `[[SearchScoringResult_t]]`。
 4. reranker text conversion 与 text-only contract 已落实；rerank request surface 现已固定为 `instruction / query / documents[*].text`，其中文档文本直接读取 `ScoringCandidate_t.scoring_text`，明确不做 JSON dump，也不把结构化 metadata 序列化进 rerank 面。
 5. `[[CareerStabilityProfile]]` 的评分侧接入已落实；跳槽风险现只作为 risk penalty 进入 deterministic fusion，不进入检索层硬过滤，也不绕过 `fit gate` 单独改写 shortlist 事实。
@@ -252,12 +252,12 @@
 
 ### 5.6 当前完成情况（截至当前 HEAD）
 
-- 总体状态：Phase 4 的 operator contract、controller draft 收口与局部 search / direct-stop slice 已完成；`run` 入口仍保持 gated，且 `semantic dedupe` 的真正状态写入仍留在 Phase 5 的 `UpdateFrontierState`，因此本阶段当前应理解为“frontier decision 面已落稳，但公开 runtime loop 尚未接通”。
+- 总体状态：Phase 4 的 operator contract、controller draft 收口与局部 search / direct-stop slice 已完成；CLI / API / package metadata 现已同步对外表述为“phase 4 operator slice 已完成、但 `run` 仍 gated 等待 Phase 5”；`semantic dedupe` 的真正状态写入仍留在 Phase 5 的 `UpdateFrontierState`，因此本阶段当前应理解为“frontier decision 面已落稳，但公开 runtime loop 尚未接通”。
 
 对应 `5.2 主要工作`：
 
 1. `[[SelectActiveFrontierNode]]` 已落地为稳定纯函数；当前实现固定执行 active node priority scoring、donor candidate packing、generic provenance 下 `domain_company` 禁用、term budget range 冻结与 unmet requirement weight 投影，不再把这些规则散落在 runtime 其他位置。
-2. `[[GenerateSearchControllerDecision]]` 已落地为 deterministic normalization 层；当前实现固定把控制器草稿收口为 `search_cts / stop`、operator 白名单回退、non-crossover `additional_terms` 裁剪与 crossover donor whitelist，不允许 LLM 自由改写 `target_frontier_node_id` 或旁路 donor。
+2. `[[GenerateSearchControllerDecision]]` 已落地为 deterministic normalization 层；当前实现固定把控制器草稿收口为 `search_cts / stop`、operator 白名单回退、non-crossover `additional_terms` 裁剪与 crossover donor whitelist，不允许 LLM 自由改写 `target_frontier_node_id` 或旁路 donor。补充说明：controller validator 当前只校验“归一化后是否仍可物化出合法且非空的 query terms”以及 crossover donor / shared-anchor 合法性，不再额外要求 non-crossover `additional_terms` 在裁剪后仍保持非空。
 3. `[[CarryForwardFrontierState]]` 已落地为 identity carry-forward；direct-stop 路径当前会直接把 `FrontierState_t` 原样投影为 `FrontierState_t1`，不新增 child node、不消耗 budget、不写旁路状态。
 4. `crossover_compose` 已在 Phase 4 / Phase 3 接缝上落地：controller 侧会限制合法 donor id 与 crossover args，plan materialization 侧继续负责 shared-anchor guard、donor lineage 与 source card 合并，不再有第二套 crossover path。
 5. donor legality 与 shared-anchor guard 已落地并由新增测试覆盖；`semantic dedupe` 当前仍只冻结在 `SearchExecutionPlan_t.semantic_hash` 与 stable child identity 上，`semantic_hashes_seen` 的真正写入仍保留给 Phase 5 `[[UpdateFrontierState]]`。
@@ -274,7 +274,7 @@
 2. 已满足。donor 必须满足 `open + reward_breakdown != null + reward 过线 + shared anchor 过线`，且还必须补 active node 未覆盖的 must-have。
 3. 已满足。generic provenance 下不会放开 `domain_company`；当前实现继续以 `source_card_ids == []` 作为唯一 generic provenance 判据。
 4. 已满足到 operator slice 层面。direct-stop 路径与 search 路径当前都使用统一的 `SearchControllerDecision_t` / `FrontierState_t` / `FrontierState_t1` 对象，不再新开旁路状态；但 stop guard 与 finalize 仍属 Phase 5。
-5. 已满足。`SearchControllerDecisionLLM` 当前已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput` strict schema、禁用 tools、禁用 cross-operator history、`retries=0`、`output_retries=1`；它也是当前唯一启用单次业务型 validator retry 的调用点。
+5. 已满足。`SearchControllerDecisionLLM` 当前已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput` strict schema、禁用 tools、禁用 cross-operator history、`retries=0`、`output_retries=1`；它也是当前唯一启用单次业务型 validator retry 的调用点，且该 retry 现已收窄到 owner 允许的边界：只处理“最终 query 不可物化/为空”与 crossover donor legality 问题，不再附加更强的草稿字段形状约束。
 
 对应 `5.5 下一阶段前提`：
 
@@ -284,7 +284,8 @@
 补充说明：
 
 - 本轮同时补齐了 `SearchControllerContext_t`、`SearchControllerDecisionDraft_t`、`BranchEvaluation_t`、`NodeRewardBreakdown_t` 的代码侧 typed payload，frontier node 上不再继续使用裸 dict 挂载 branch evaluation / reward。
-- 当前新增测试集中覆盖在 `tests/test_frontier_ops.py` 与 `tests/test_controller_llm.py`；截至当前 HEAD，全量测试为 `85 passed`。
+- 公共 phase 口径现已同步到代码事实：`inspect` / `doctor` / runtime gate / package description 都明确表述为“phase 4 operator slice 已完成，但公开 runtime loop 仍等待 Phase 5 接通”，不再继续对外宣称 phase 3。
+- 当前新增测试已覆盖 `tests/test_bootstrap_ops.py`、`tests/test_controller_llm.py`、`tests/test_search_ops.py`、`tests/test_cli.py`、`tests/test_cli_packaging.py` 与 `tests/test_api.py`；截至当前 HEAD，全量测试为 `88 passed`。
 
 ## 6. Phase 5: Reward / Frontier Update / Stop / Finalize
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 ConstraintValue = str | int | list[str]
 RoutingMode = Literal["explicit_domain", "inferred_domain", "generic_fallback"]
 ConfidenceLevel = Literal["high", "medium", "low"]
+Round0OperatorName = Literal["must_have_alias", "strict_core", "domain_company"]
 OperatorName = Literal["must_have_alias", "strict_core", "domain_company", "crossover_compose"]
 SearchControllerAction = Literal["search_cts", "stop"]
 GroundingEvidenceType = Literal[
@@ -258,7 +259,7 @@ class GroundingEvidenceCard(BaseModel):
 class FrontierSeedSpecification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    operator_name: str
+    operator_name: Round0OperatorName
     seed_terms: list[str] = Field(default_factory=list)
     seed_rationale: str
     source_card_ids: list[str] = Field(default_factory=list)

@@ -6,17 +6,26 @@ import pytest
 from pydantic_ai import ModelRetry
 from pydantic_ai.models.test import TestModel
 
+from seektalent.frontier_ops import generate_search_controller_decision
 from seektalent.controller_llm import request_search_controller_decision_draft
 from seektalent.models import FitGateConstraints, SearchControllerContext_t
 
 
-def _context() -> SearchControllerContext_t:
+def _context(
+    *,
+    node_query_term_pool: list[str] | None = None,
+    term_budget_range: tuple[int, int] = (2, 5),
+) -> SearchControllerContext_t:
     return SearchControllerContext_t.model_validate(
         {
             "active_frontier_node_summary": {
                 "frontier_node_id": "seed_agent_core",
                 "selected_operator_name": "must_have_alias",
-                "node_query_term_pool": ["agent engineer", "python", "workflow", "backend"],
+                "node_query_term_pool": (
+                    ["agent engineer", "python", "workflow", "backend"]
+                    if node_query_term_pool is None
+                    else node_query_term_pool
+                ),
                 "node_shortlist_candidate_ids": ["c1"],
             },
             "donor_candidate_node_summaries": [
@@ -44,7 +53,7 @@ def _context() -> SearchControllerContext_t:
                 "strict_core",
                 "crossover_compose",
             ],
-            "term_budget_range": [2, 5],
+            "term_budget_range": list(term_budget_range),
             "fit_gate_constraints": FitGateConstraints().model_dump(mode="python"),
         }
     )
@@ -83,7 +92,7 @@ def test_request_search_controller_decision_draft_records_strict_audit() -> None
 def test_request_search_controller_decision_draft_retries_once_for_empty_non_crossover_patch() -> None:
     draft, audit = asyncio.run(
         request_search_controller_decision_draft(
-            _context(),
+            _context(node_query_term_pool=[]),
             model=TestModel(
                 custom_output_args=[
                     {
@@ -108,10 +117,10 @@ def test_request_search_controller_decision_draft_retries_once_for_empty_non_cro
 
 
 def test_request_search_controller_decision_draft_fails_after_single_validator_retry() -> None:
-    with pytest.raises(ModelRetry, match="requires non-empty additional_terms"):
+    with pytest.raises(ModelRetry, match="requires materializable non-empty query terms"):
         asyncio.run(
             request_search_controller_decision_draft(
-                _context(),
+                _context(node_query_term_pool=[]),
                 model=TestModel(
                     custom_output_args=[
                         {
@@ -130,3 +139,28 @@ def test_request_search_controller_decision_draft_fails_after_single_validator_r
                 ),
             )
         )
+
+
+def test_request_search_controller_decision_draft_accepts_budget_clamped_non_crossover_query() -> None:
+    context = _context(
+        node_query_term_pool=["agent engineer", "python", "workflow", "backend"],
+        term_budget_range=(2, 4),
+    )
+    draft, audit = asyncio.run(
+        request_search_controller_decision_draft(
+            context,
+            model=TestModel(
+                custom_output_args={
+                    "action": "search_cts",
+                    "selected_operator_name": "strict_core",
+                    "operator_args": {"additional_terms": ["ranking"]},
+                    "expected_gain_hypothesis": "Keep the current core query intact.",
+                }
+            ),
+        )
+    )
+
+    normalized = generate_search_controller_decision(context, draft)
+
+    assert normalized.operator_args == {"additional_terms": []}
+    assert audit.validator_retry_count == 0
