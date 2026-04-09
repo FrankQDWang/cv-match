@@ -74,7 +74,7 @@ def materialize_search_execution_plan(
         _, max_terms = term_budget_policy.low_budget_range
 
     donor_frontier_node_id: str | None = None
-    source_card_ids = list(parent_node.source_card_ids)
+    knowledge_pack_id = parent_node.knowledge_pack_id
     donor_negative_terms: list[str] = []
     if decision.selected_operator_name == "crossover_compose":
         donor_frontier_node_id = _required_text(decision.operator_args.get("donor_frontier_node_id"), "donor_frontier_node_id")
@@ -94,7 +94,6 @@ def materialize_search_execution_plan(
         if len(shared_anchor_terms) < crossover_thresholds.min_shared_anchor_terms:
             raise ValueError("crossover_requires_shared_anchor")
         query_terms = stable_deduplicate(shared_anchor_terms + donor_terms)[:max_terms]
-        source_card_ids = stable_deduplicate(parent_node.source_card_ids + donor_node.source_card_ids)
         donor_negative_terms = donor_node.negative_terms
     else:
         query_terms = stable_deduplicate(
@@ -134,7 +133,7 @@ def materialize_search_execution_plan(
         runtime_only_constraints=runtime_only_constraints,
         target_new_candidate_count=target_new_candidate_count,
         semantic_hash=semantic_hash,
-        source_card_ids=source_card_ids,
+        knowledge_pack_id=knowledge_pack_id,
         child_frontier_node_stub={
             "frontier_node_id": f"child_{parent_node.frontier_node_id}_{semantic_hash[:8]}",
             "parent_frontier_node_id": parent_node.frontier_node_id,
@@ -168,7 +167,7 @@ async def execute_search_plan_sidecar(
     if cts_result.latency_ms is None:
         raise ValueError("cts_result.latency_ms must not be null.")
     raw_count = len(cts_result.candidates)
-    # pages_fetched is a cost fact consumed by Phase 5 reward semantics, so an
+    # pages_fetched is a cost fact consumed by runtime reward semantics, so an
     # empty CTS result must stay at 0 instead of being coerced to 1.
     pages_fetched = math.ceil(raw_count / max(1, plan.target_new_candidate_count))
     school_type_code, _ = project_school_type_requirement_to_cts(plan.projected_filters.school_type_requirement)

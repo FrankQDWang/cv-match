@@ -1,59 +1,59 @@
 # Architecture
 
-`HEAD` is no longer the old `v0.2` agent runtime. It is a `v0.3 phase 5 runtime loop` baseline.
+`HEAD` 是当前有效的 `v0.3 phase 6 offline artifacts` 基线，不再是旧的 card-retrieval bootstrap 设计。
 
-## What the codebase contains now
+## 当前代码主结构
 
 ### Contracts
 
 - `src/seektalent/models.py`
-- Stable runtime payloads such as `SearchInputTruth`, `RequirementSheet`, `SearchExecutionPlan_t`, `RetrievedCandidate_t`, `ScoringCandidate_t`, `SearchExecutionResult_t`, and `SearchRunResult`
-- Bootstrap payloads and state such as `ScoringPolicy`, `KnowledgeRetrievalResult`, `GroundingOutput`, and `FrontierState_t`
+- 稳定 runtime payload：`SearchInputTruth`、`RequirementSheet`、`DomainKnowledgePack`、`BootstrapRoutingResult`、`BootstrapOutput`、`SearchExecutionPlan_t`、`SearchExecutionResult_t`、`SearchScoringResult_t`、`SearchRunResult`、`SearchRunBundle`
+- frontier runtime state：`FrontierSeedSpecification`、`FrontierNode_t`、`FrontierState_t`
 
-### Deterministic requirement normalization
+### Bootstrap
 
-- `src/seektalent/requirements/normalization.py`
-- Builds `SearchInputTruth`
-- Normalizes a `RequirementExtractionDraft` into a flat `RequirementSheet`
+- `src/seektalent/bootstrap.py`
+- `src/seektalent/bootstrap_ops.py`
+- round-0 固定顺序是：
+  1. `ExtractRequirements`
+  2. `RouteDomainKnowledgePack`
+  3. `FreezeScoringPolicy`
+  4. `GenerateBootstrapOutput`
+  5. `InitializeFrontierState`
 
-### CTS bridge
+### Search / Ranking
 
-- `src/seektalent/retrieval/filter_projection.py`
-- Maps `SearchExecutionPlan_t` into CTS-safe native filters
-- Keeps unsupported fields outside native CTS payloads
+- `src/seektalent/search_ops.py`
+- `SearchExecutionPlan_t -> SearchExecutionResult_t -> SearchScoringResult_t`
+- reranker 只消费 `instruction / query / document-text`
 
-### CTS clients
-
-- `src/seektalent/clients/cts_client.py`
-- Real CTS client and local mock CTS client
-- Both return `RetrievedCandidate_t`
-
-### Candidate projection
-
-- `src/seektalent/retrieval/candidate_projection.py`
-- Builds the fixed `raw_candidates -> deduplicated_candidates -> scoring_candidates` sequence
-
-### Runtime surface
+### Runtime loop
 
 - `src/seektalent/runtime/orchestrator.py`
-- `run` and `run_async` execute the full Phase 5 runtime loop and return `SearchRunResult`
+- `run()` / `run_async()` 执行完整 loop，写盘 `bundle.json / final_result.json / eval.json`，返回 `SearchRunBundle`
 
-## What the codebase does not contain anymore
+### Runtime assets
 
-- controller loop
-- reflection loop
-- finalizer
-- old scoring orchestration
-- prompt registry and LLM model wiring
-- web UI and UI API
+- `artifacts/runtime/active.json`
+- `artifacts/knowledge/packs/*.json`
+- `artifacts/runtime/policies/*.json`
+- `artifacts/runtime/calibrations/*.json`
+
+## 当前明确不再存在的旧层
+
+- runtime card retrieval
+- reviewed reports / compiled snapshot 作为运行时输入
+- dual-domain bootstrap
+- `source_card_ids` provenance
+- `KnowledgeRetrievalResult / GroundingDraft / GroundingOutput` 这套旧 bootstrap payload
 
 ## Spec ownership
 
-- `docs/v-0.3/` is the only active spec
-- `docs/v-0.2/` and `docs/v-0.1/` are archival only
+- `docs/v-0.3/` 是唯一有效 spec
+- `docs/v-0.2/` 和 `docs/v-0.1/` 只保留归档价值
 
 ## Related docs
 
-- [Configuration](configuration.md)
-- [CLI](cli.md)
-- [docs/v-0.3/implementation-checklist.md](v-0.3/implementation-checklist.md)
+- [Configuration](/Users/frankqdwang/Agents/SeekTalent/docs/configuration.md)
+- [CLI](/Users/frankqdwang/Agents/SeekTalent/docs/cli.md)
+- [Implementation Checklist](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3/implementation-checklist.md)

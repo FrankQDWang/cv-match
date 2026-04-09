@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import inspect
 
+import pytest
 from pydantic_ai.models.test import TestModel
 
 from seektalent.bootstrap import bootstrap_round0, bootstrap_round0_async
 from seektalent.bootstrap_assets import default_bootstrap_assets
+from seektalent_rerank.models import RerankResponse, RerankResult
 
 
 def _requirement_draft_payload(
@@ -16,7 +19,6 @@ def _requirement_draft_payload(
     must_have: list[str],
     preferred: list[str],
     exclusion: list[str],
-    preferred_backgrounds: list[str] | None = None,
 ) -> dict[str, object]:
     return {
         "role_title_candidate": role_title,
@@ -26,7 +28,7 @@ def _requirement_draft_payload(
         "exclusion_signal_candidates": exclusion,
         "preference_candidates": {
             "preferred_domains": [],
-            "preferred_backgrounds": preferred_backgrounds or [],
+            "preferred_backgrounds": [],
         },
         "hard_constraint_candidates": {
             "locations": ["Shanghai"],
@@ -37,67 +39,43 @@ def _requirement_draft_payload(
     }
 
 
-def _grounding_draft_payload(*, primary_card_id: str, secondary_card_id: str | None = None) -> dict[str, object]:
-    source_card_ids = [primary_card_id]
-    second_source_ids = [secondary_card_id] if secondary_card_id is not None else [primary_card_id]
+def _bootstrap_keyword_draft_payload(
+    *,
+    expansion: list[str] | None = None,
+    negative: list[str] | None = None,
+) -> dict[str, object]:
     return {
-        "grounding_evidence_cards": [
-            {
-                "source_card_id": primary_card_id,
-                "label": "agent engineer",
-                "rationale": "title alias match",
-                "evidence_type": "title_alias",
-                "confidence": "high",
-            }
-        ],
-        "frontier_seed_specifications": [
-            {
-                "operator_name": "must_have_alias",
-                "seed_terms": ["agent engineer", "rag", "python"],
-                "seed_rationale": "cover role anchor",
-                "source_card_ids": [primary_card_id],
-                "expected_coverage": ["Python backend", "LLM application"],
-                "negative_terms": ["frontend"],
-                "target_location": None,
-            },
-            {
-                "operator_name": "strict_core",
-                "seed_terms": ["retrieval engineer", "ranking", "python"],
-                "seed_rationale": "cover retrieval branch",
-                "source_card_ids": second_source_ids,
-                "expected_coverage": ["retrieval or ranking experience"],
-                "negative_terms": [],
-                "target_location": None,
-            },
-            {
-                "operator_name": "domain_company",
-                "seed_terms": ["workflow orchestration", "to-b", "python"],
-                "seed_rationale": "cover business delivery",
-                "source_card_ids": [primary_card_id],
-                "expected_coverage": ["workflow orchestration"],
-                "negative_terms": [],
-                "target_location": None,
-            },
-        ],
+        "core_keywords": ["agent engineer", "rag", "python backend"],
+        "must_have_keywords": ["llm application", "retrieval pipeline"],
+        "expansion_keywords": expansion or ["workflow orchestration", "tool calling"],
+        "negative_keywords": negative or ["prompt operation"],
     }
 
 
-def test_bootstrap_round0_async_supports_explicit_domain() -> None:
-    assets = default_bootstrap_assets()
-    assets = assets.__class__(
-        business_policy_pack=assets.business_policy_pack.model_copy(update={"domain_pack_ids": ["llm_agent_rag_engineering"]}),
-        knowledge_base_snapshot=assets.knowledge_base_snapshot,
-        knowledge_cards=assets.knowledge_cards,
-        reranker_calibration=assets.reranker_calibration,
-        knowledge_retrieval_budget=assets.knowledge_retrieval_budget,
-        runtime_search_budget=assets.runtime_search_budget,
-        runtime_term_budget_policy=assets.runtime_term_budget_policy,
-        crossover_guard_thresholds=assets.crossover_guard_thresholds,
-        stop_guard_thresholds=assets.stop_guard_thresholds,
-        operator_catalog=assets.operator_catalog,
-    )
-    primary_card_id = "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
+class FakeRerankRequest:
+    def __init__(self, scores: dict[str, float]) -> None:
+        self.scores = scores
+        self.seen_requests: list[object] = []
 
+    async def __call__(self, request):
+        self.seen_requests.append(request)
+        ranked = sorted(self.scores.items(), key=lambda item: item[1], reverse=True)
+        return RerankResponse(
+            model="test-reranker",
+            results=[
+                RerankResult(id=item_id, index=index, score=score, rank=index + 1)
+                for index, (item_id, score) in enumerate(ranked)
+            ],
+        )
+
+
+def test_bootstrap_round0_async_supports_explicit_domain_override() -> None:
+    assets = replace(
+        default_bootstrap_assets(),
+        business_policy_pack=default_bootstrap_assets().business_policy_pack.model_copy(
+            update={"domain_id_override": "llm_agent_rag_engineering"}
+        ),
+    )
     artifacts = asyncio.run(
         bootstrap_round0_async(
             job_description="Senior Python / LLM Engineer",
@@ -107,60 +85,84 @@ def test_bootstrap_round0_async_supports_explicit_domain() -> None:
                 custom_output_args=_requirement_draft_payload(
                     role_title="Senior Python / LLM Engineer",
                     role_summary="Build Python, LLM, and retrieval systems.",
-                    must_have=["Python backend", "LLM application", "retrieval or ranking experience"],
+                    must_have=["Python backend", "LLM application", "retrieval pipeline"],
                     preferred=["workflow orchestration"],
-                    exclusion=["data analyst"],
+                    exclusion=["frontend"],
                 )
             ),
-            grounding_generation_model=TestModel(
-                custom_output_args=_grounding_draft_payload(primary_card_id=primary_card_id)
+            bootstrap_keyword_generation_model=TestModel(
+                custom_output_args=_bootstrap_keyword_draft_payload()
             ),
         )
     )
 
-    assert artifacts.knowledge_retrieval_result.routing_mode == "explicit_domain"
-    assert artifacts.knowledge_retrieval_result.selected_domain_pack_ids == ["llm_agent_rag_engineering"]
-    assert artifacts.requirement_extraction_audit.output_mode == "NativeOutput(strict=True)"
-    assert artifacts.requirement_extraction_audit.model_name == "test"
-    assert artifacts.requirement_extraction_audit.message_history_mode == "fresh"
-    assert artifacts.requirement_extraction_audit.tools_enabled is False
-    assert artifacts.requirement_extraction_audit.model_settings_snapshot == {
-        "allow_text_output": False,
-        "allow_image_output": False,
-        "native_output_strict": True,
-    }
-    assert artifacts.grounding_generation_audit.model_name == "test"
-    assert artifacts.scoring_policy.top_n_for_explanation == 5
-    assert len(artifacts.grounding_output.frontier_seed_specifications) == 3
-    assert len(artifacts.frontier_state.open_frontier_node_ids) == 3
+    assert artifacts.routing_result.routing_mode == "explicit_domain"
+    assert artifacts.routing_result.selected_knowledge_pack_id == "llm_agent_rag_engineering-2026-04-09-v1"
+    assert artifacts.bootstrap_keyword_generation_audit.model_name == "test"
+    assert [seed.operator_name for seed in artifacts.bootstrap_output.frontier_seed_specifications] == [
+        "strict_core",
+        "must_have_alias",
+        "domain_company",
+    ]
+
+
+def test_bootstrap_round0_async_requires_rerank_when_no_override() -> None:
+    with pytest.raises(ValueError, match="requires rerank_request"):
+        asyncio.run(
+            bootstrap_round0_async(
+                job_description="Senior Python / LLM Engineer",
+                hiring_notes="Shanghai preferred",
+                requirement_extraction_model=TestModel(
+                    custom_output_args=_requirement_draft_payload(
+                        role_title="Senior Python / LLM Engineer",
+                        role_summary="Build Python and LLM systems.",
+                        must_have=["Python backend", "LLM application"],
+                        preferred=["workflow orchestration"],
+                        exclusion=["frontend"],
+                    )
+                ),
+                bootstrap_keyword_generation_model=TestModel(
+                    custom_output_args=_bootstrap_keyword_draft_payload()
+                ),
+            )
+        )
 
 
 def test_bootstrap_round0_async_supports_inferred_domain() -> None:
-    primary_card_id = "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
-
+    rerank = FakeRerankRequest(
+        {
+            "llm_agent_rag_engineering-2026-04-09-v1": 1.2,
+            "search_ranking_retrieval_engineering-2026-04-09-v1": 0.2,
+            "finance_risk_control_ai-2026-04-09-v1": 0.1,
+        }
+    )
     artifacts = asyncio.run(
         bootstrap_round0_async(
             job_description="Senior Python / LLM Engineer",
             hiring_notes="Shanghai preferred",
+            rerank_request=rerank,
             requirement_extraction_model=TestModel(
                 custom_output_args=_requirement_draft_payload(
                     role_title="Senior Python / LLM Engineer",
                     role_summary="Build Python and LLM systems.",
                     must_have=["Python backend", "LLM application"],
                     preferred=["workflow orchestration"],
-                    exclusion=["data analyst"],
+                    exclusion=["frontend"],
                 )
             ),
-            grounding_generation_model=TestModel(
-                custom_output_args=_grounding_draft_payload(primary_card_id=primary_card_id)
+            bootstrap_keyword_generation_model=TestModel(
+                custom_output_args=_bootstrap_keyword_draft_payload()
             ),
         )
     )
 
-    assert artifacts.knowledge_retrieval_result.routing_mode == "inferred_domain"
-    assert artifacts.knowledge_retrieval_result.selected_domain_pack_ids == ["llm_agent_rag_engineering"]
+    assert artifacts.routing_result.routing_mode == "inferred_domain"
+    assert artifacts.routing_result.selected_domain_id == "llm_agent_rag_engineering"
+    assert rerank.seen_requests
+    assert artifacts.bootstrap_output.frontier_seed_specifications[0].knowledge_pack_id == (
+        "llm_agent_rag_engineering-2026-04-09-v1"
+    )
     assert artifacts.frontier_state.remaining_budget == 5
-    assert artifacts.frontier_state.run_term_catalog[:3] == ["agent engineer", "rag", "python"]
 
 
 def test_bootstrap_round0_async_supports_generic_fallback() -> None:
@@ -168,48 +170,62 @@ def test_bootstrap_round0_async_supports_generic_fallback() -> None:
         bootstrap_round0_async(
             job_description="People Operations Manager",
             hiring_notes="Shanghai preferred",
+            rerank_request=FakeRerankRequest(
+                {
+                    "llm_agent_rag_engineering-2026-04-09-v1": 0.2,
+                    "search_ranking_retrieval_engineering-2026-04-09-v1": 0.1,
+                    "finance_risk_control_ai-2026-04-09-v1": 0.0,
+                }
+            ),
             requirement_extraction_model=TestModel(
                 custom_output_args=_requirement_draft_payload(
                     role_title="People Operations Manager",
                     role_summary="Lead hiring operations and stakeholder management.",
-                    must_have=["stakeholder management", "process design", "cross-functional collaboration"],
+                    must_have=["stakeholder management", "process design"],
                     preferred=["hiring operations"],
                     exclusion=["sales"],
-                    preferred_backgrounds=[],
                 )
             ),
-            grounding_generation_model=TestModel(
-                custom_output_args={"grounding_evidence_cards": [], "frontier_seed_specifications": []}
+            bootstrap_keyword_generation_model=TestModel(
+                custom_output_args=_bootstrap_keyword_draft_payload(
+                    expansion=["should be ignored"],
+                    negative=["sales"],
+                )
             ),
         )
     )
 
-    assert artifacts.knowledge_retrieval_result.routing_mode == "generic_fallback"
-    assert artifacts.knowledge_retrieval_result.retrieved_cards == []
-    assert len(artifacts.grounding_output.frontier_seed_specifications) == 3
-    assert all(
-        seed.operator_name in {"must_have_alias", "strict_core"}
-        for seed in artifacts.grounding_output.frontier_seed_specifications
-    )
+    assert artifacts.routing_result.routing_mode == "generic_fallback"
+    assert artifacts.routing_result.selected_knowledge_pack_id is None
+    assert [seed.operator_name for seed in artifacts.bootstrap_output.frontier_seed_specifications] == [
+        "strict_core",
+        "must_have_alias",
+    ]
+    assert all(seed.knowledge_pack_id is None for seed in artifacts.bootstrap_output.frontier_seed_specifications)
 
 
 def test_bootstrap_round0_sync_wrapper_works_with_test_models() -> None:
-    primary_card_id = "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
-
     artifacts = bootstrap_round0(
         job_description="Senior Python / LLM Engineer",
         hiring_notes="Shanghai preferred",
+        rerank_request=FakeRerankRequest(
+            {
+                "llm_agent_rag_engineering-2026-04-09-v1": 1.2,
+                "search_ranking_retrieval_engineering-2026-04-09-v1": 0.2,
+                "finance_risk_control_ai-2026-04-09-v1": 0.1,
+            }
+        ),
         requirement_extraction_model=TestModel(
             custom_output_args=_requirement_draft_payload(
                 role_title="Senior Python / LLM Engineer",
                 role_summary="Build Python and LLM systems.",
                 must_have=["Python backend", "LLM application"],
                 preferred=["workflow orchestration"],
-                exclusion=["data analyst"],
+                exclusion=["frontend"],
             )
         ),
-        grounding_generation_model=TestModel(
-            custom_output_args=_grounding_draft_payload(primary_card_id=primary_card_id)
+        bootstrap_keyword_generation_model=TestModel(
+            custom_output_args=_bootstrap_keyword_draft_payload()
         ),
     )
 

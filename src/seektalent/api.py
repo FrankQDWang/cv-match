@@ -6,7 +6,7 @@ from typing import Any
 from seektalent.bootstrap_assets import BootstrapAssets
 from seektalent.clients.cts_client import CTSClientProtocol
 from seektalent.config import AppSettings
-from seektalent.models import SearchRunResult
+from seektalent.models import SearchRunBundle
 from seektalent.runtime import WorkflowRuntime
 from seektalent.search_ops import AsyncRerankRequest
 
@@ -31,18 +31,18 @@ def run_match(
     cts_client: CTSClientProtocol | None = None,
     rerank_request: AsyncRerankRequest | None = None,
     requirement_extraction_model: Any | None = None,
-    grounding_generation_model: Any | None = None,
+    bootstrap_keyword_generation_model: Any | None = None,
     search_controller_decision_model: Any | None = None,
     branch_outcome_evaluation_model: Any | None = None,
     search_run_finalization_model: Any | None = None,
-) -> SearchRunResult:
+) -> SearchRunBundle:
     runtime = WorkflowRuntime(
         _effective_settings(settings=settings, env_file=env_file),
         assets=assets,
         cts_client=cts_client,
         rerank_request=rerank_request,
         requirement_extraction_model=requirement_extraction_model,
-        grounding_generation_model=grounding_generation_model,
+        bootstrap_keyword_generation_model=bootstrap_keyword_generation_model,
         search_controller_decision_model=search_controller_decision_model,
         branch_outcome_evaluation_model=branch_outcome_evaluation_model,
         search_run_finalization_model=search_run_finalization_model,
@@ -60,18 +60,18 @@ async def run_match_async(
     cts_client: CTSClientProtocol | None = None,
     rerank_request: AsyncRerankRequest | None = None,
     requirement_extraction_model: Any | None = None,
-    grounding_generation_model: Any | None = None,
+    bootstrap_keyword_generation_model: Any | None = None,
     search_controller_decision_model: Any | None = None,
     branch_outcome_evaluation_model: Any | None = None,
     search_run_finalization_model: Any | None = None,
-) -> SearchRunResult:
+) -> SearchRunBundle:
     runtime = WorkflowRuntime(
         _effective_settings(settings=settings, env_file=env_file),
         assets=assets,
         cts_client=cts_client,
         rerank_request=rerank_request,
         requirement_extraction_model=requirement_extraction_model,
-        grounding_generation_model=grounding_generation_model,
+        bootstrap_keyword_generation_model=bootstrap_keyword_generation_model,
         search_controller_decision_model=search_controller_decision_model,
         branch_outcome_evaluation_model=branch_outcome_evaluation_model,
         search_run_finalization_model=search_run_finalization_model,

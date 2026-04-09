@@ -74,7 +74,7 @@ child_frontier_node_t = {
   donor_frontier_node_id: child_stub_t.donor_frontier_node_id,
   selected_operator_name: child_stub_t.selected_operator_name,
   node_query_term_pool: stable_deduplicate(parent_node_t.node_query_term_pool + p_t.query_terms),
-  source_card_ids: p_t.source_card_ids,
+  knowledge_pack_id: p_t.knowledge_pack_id,
   seed_rationale: null,
   negative_terms: p_t.runtime_only_constraints.negative_keywords,
   parent_shortlist_candidate_ids: parent_node_t.node_shortlist_candidate_ids,
@@ -97,7 +97,7 @@ updated_frontier_nodes_t =
           donor_frontier_node_id: F_t.frontier_nodes[node_id_t].donor_frontier_node_id,
           selected_operator_name: F_t.frontier_nodes[node_id_t].selected_operator_name,
           node_query_term_pool: F_t.frontier_nodes[node_id_t].node_query_term_pool,
-          source_card_ids: F_t.frontier_nodes[node_id_t].source_card_ids,
+          knowledge_pack_id: F_t.frontier_nodes[node_id_t].knowledge_pack_id,
           seed_rationale: F_t.frontier_nodes[node_id_t].seed_rationale,
           negative_terms: F_t.frontier_nodes[node_id_t].negative_terms,
           parent_shortlist_candidate_ids: F_t.frontier_nodes[node_id_t].parent_shortlist_candidate_ids,
@@ -175,7 +175,7 @@ with first-seen order as the stable tie-breaker.
 - `FrontierState_t.remaining_budget`
 - `SearchExecutionPlan_t.query_terms`
 - `SearchExecutionPlan_t.semantic_hash`
-- `SearchExecutionPlan_t.source_card_ids`
+- `SearchExecutionPlan_t.knowledge_pack_id`
 - `SearchExecutionPlan_t.runtime_only_constraints`
 - `SearchExecutionPlan_t.child_frontier_node_stub`
 - `SearchScoringResult_t.scored_candidates`

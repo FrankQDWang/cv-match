@@ -1,6 +1,6 @@
 # Development
 
-This repository is now optimized around the `v0.3 phase 5 runtime loop` baseline: small Python code, destructive cleanup, and zero compatibility layers.
+This repository is now optimized around the `v0.3 phase 6 offline artifacts` baseline: small Python code, destructive cleanup, and zero compatibility layers.
 
 ## Prerequisites
 

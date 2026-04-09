@@ -7,7 +7,7 @@
 
 ## English
 
-`SeekTalent` is currently on the `v0.3 phase 5 runtime loop` baseline. `HEAD` ships the stable contracts in `docs/v-0.3`, deterministic requirement normalization, the bootstrap core, execution/ranking, frontier control, and a live CLI/API runtime surface.
+`SeekTalent` is currently on the `v0.3 phase 6 offline artifacts` baseline. `HEAD` ships the stable contracts in `docs/v-0.3`, deterministic requirement normalization, the bootstrap core, execution/ranking, frontier control, a live CLI/API runtime surface, and checked-in offline artifacts.
 
 What exists today:
 
@@ -18,8 +18,8 @@ What exists today:
 - `src/seektalent/retrieval/filter_projection.py` projects `SearchExecutionPlan_t` into CTS-safe native filters
 - `src/seektalent/clients/cts_client.py` returns `RetrievedCandidate_t`
 - `src/seektalent/retrieval/candidate_projection.py` builds `SearchExecutionResult_t`
-- `src/seektalent/runtime/orchestrator.py` runs the full Phase 5 runtime loop
-- `seektalent run` and `run_match(...)` return `SearchRunResult`
+- `src/seektalent/runtime/orchestrator.py` runs the full runtime loop and writes run artifacts
+- `seektalent run` and `run_match(...)` return `SearchRunBundle`
 
 What does not exist anymore:
 
@@ -77,11 +77,11 @@ Run a case:
 seektalent run --jd-file ./jd.md
 ```
 
-Default stdout is three lines: `stop_reason`, comma-joined shortlist ids, and `run_summary`.
+Default stdout is four lines: `run_dir`, `stop_reason`, comma-joined shortlist ids, and `run_summary`.
 
 ## Python API
 
-The package exports `run_match(...)` and `run_match_async(...)` and returns `SearchRunResult`:
+The package exports `run_match(...)` and `run_match_async(...)` and returns `SearchRunBundle`:
 
 ```python
 from seektalent import AppSettings, run_match
@@ -92,7 +92,8 @@ result = run_match(
     settings=AppSettings(mock_cts=True),
     env_file=None,
 )
-print(result.stop_reason)
+print(result.final_result.stop_reason)
+print(result.run_dir)
 ```
 
 ## Commands

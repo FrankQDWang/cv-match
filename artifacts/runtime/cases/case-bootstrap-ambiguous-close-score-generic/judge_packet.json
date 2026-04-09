@@ -1,0 +1,21 @@
+{
+  "case_id": "case-bootstrap-ambiguous-close-score-generic",
+  "expected_route": "generic_fallback",
+  "observed_route": "generic_fallback",
+  "expected_knowledge_pack_id": null,
+  "observed_knowledge_pack_id": null,
+  "expected_fallback_reason": "top1_top2_gap_below_floor",
+  "observed_fallback_reason": "top1_top2_gap_below_floor",
+  "expected_stop_reason": "controller_stop",
+  "observed_stop_reason": "controller_stop",
+  "must_hold": [
+    "fallback_reason is top1_top2_gap_below_floor",
+    "selected_knowledge_pack_id is null"
+  ],
+  "must_not_hold": [
+    "domain_company appears in bootstrap seeds"
+  ],
+  "route_match": true,
+  "selected_pack_match": true,
+  "stop_reason_match": true
+}

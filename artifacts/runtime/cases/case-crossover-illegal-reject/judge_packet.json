@@ -1,0 +1,20 @@
+{
+  "case_id": "case-crossover-illegal-reject",
+  "expected_route": "inferred_domain",
+  "observed_route": "inferred_domain",
+  "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "expected_fallback_reason": null,
+  "observed_fallback_reason": null,
+  "expected_stop_reason": "controller_stop",
+  "observed_stop_reason": "controller_stop",
+  "must_hold": [
+    "controller validator retry count equals 1"
+  ],
+  "must_not_hold": [
+    "illegal crossover reaches execution_plan"
+  ],
+  "route_match": true,
+  "selected_pack_match": true,
+  "stop_reason_match": true
+}

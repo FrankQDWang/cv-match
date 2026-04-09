@@ -16,37 +16,47 @@ def _copy_artifacts(tmp_path: Path) -> Path:
     return target
 
 
-def test_default_bootstrap_assets_loads_shared_artifacts() -> None:
+def test_default_bootstrap_assets_loads_active_knowledge_packs() -> None:
     assets = default_bootstrap_assets()
 
-    assert assets.knowledge_base_snapshot.snapshot_id == "kb-2026-04-07-v1"
-    assert len(assets.knowledge_cards) == 5
-    finance_card = next(card for card in assets.knowledge_cards if card.domain_id == "finance_risk_control_ai")
-    assert finance_card.source_report_ids == [
-        "report.business_vertical.finance_risk_control_ai.codex_synthesis_2026_04_07"
+    assert assets.policy_id == "business-default-2026-04-09-v1"
+    assert assets.knowledge_pack_ids == (
+        "llm_agent_rag_engineering-2026-04-09-v1",
+        "search_ranking_retrieval_engineering-2026-04-09-v1",
+        "finance_risk_control_ai-2026-04-09-v1",
+    )
+    assert assets.calibration_id == "qwen3-reranker-8b-mxfp8-2026-04-07-v1"
+    assert [pack.domain_id for pack in assets.knowledge_packs] == [
+        "llm_agent_rag_engineering",
+        "search_ranking_retrieval_engineering",
+        "finance_risk_control_ai",
     ]
-    assert finance_card.source_report_ids[0] in assets.knowledge_base_snapshot.compiled_report_ids
 
 
-def test_default_bootstrap_assets_fails_when_reviewed_report_is_missing(tmp_path: Path) -> None:
+def test_default_bootstrap_assets_fails_when_pack_file_is_missing(tmp_path: Path) -> None:
     copied = _copy_artifacts(tmp_path)
     (
         copied
         / "knowledge"
-        / "reviewed_reports"
-        / "BusinessVertical_LLM与Agent企业交付_整合版.md"
+        / "packs"
+        / "llm_agent_rag_engineering-2026-04-09-v1.json"
     ).unlink()
 
-    with pytest.raises(ValueError, match="missing_reviewed_reports"):
+    with pytest.raises(FileNotFoundError):
         default_bootstrap_assets(artifacts_root=copied)
 
 
-def test_default_bootstrap_assets_fails_when_snapshot_card_ids_drift(tmp_path: Path) -> None:
+def test_default_bootstrap_assets_fails_when_domain_ids_duplicate(tmp_path: Path) -> None:
     copied = _copy_artifacts(tmp_path)
-    snapshot_path = copied / "knowledge" / "compiled" / "snapshots" / "kb-2026-04-07-v1.json"
-    payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    payload["card_ids"] = payload["card_ids"][:-1]
-    snapshot_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    duplicate_path = (
+        copied
+        / "knowledge"
+        / "packs"
+        / "search_ranking_retrieval_engineering-2026-04-09-v1.json"
+    )
+    payload = json.loads(duplicate_path.read_text(encoding="utf-8"))
+    payload["domain_id"] = "llm_agent_rag_engineering"
+    duplicate_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="knowledge_card_id_mismatch"):
+    with pytest.raises(ValueError, match="duplicate_domain_id"):
         default_bootstrap_assets(artifacts_root=copied)

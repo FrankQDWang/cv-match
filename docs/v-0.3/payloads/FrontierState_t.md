@@ -37,7 +37,7 @@ FrontierState_t = {
 - `run_shortlist_candidate_ids` 的顺序是 run 内最佳已观测 `fusion_score` 的稳定排序事实。
 - `semantic_hashes_seen` 只增不减。
 - 只有 runtime 路径能消费 `remaining_budget`。
-- frontier node 必须持有足够的 provenance，以支持 `source_card_ids` 与可选 donor lineage 回溯。
+- frontier node 必须持有足够的 provenance，以支持 `knowledge_pack_id` 与可选 donor lineage 回溯。
 - `operator_statistics` 的 value shape 由 [[OperatorStatistics]] 唯一持有。
 - `FrontierState_t(next round) := FrontierState_t1(previous round)` after runtime round shift。
 
@@ -51,8 +51,7 @@ frontier_nodes:
     donor_frontier_node_id: null
     selected_operator_name: "must_have_alias"
     node_query_term_pool: ["agent engineer", "rag", "python"]
-    source_card_ids:
-      - "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
+    knowledge_pack_id: "llm_agent_rag_engineering-2026-04-09-v1"
     seed_rationale: null
     negative_terms: ["data analyst"]
     parent_shortlist_candidate_ids: ["c17", "c32"]
@@ -70,8 +69,7 @@ frontier_nodes:
     donor_frontier_node_id: null
     selected_operator_name: "strict_core"
     node_query_term_pool: ["retrieval engineer", "ranking"]
-    source_card_ids:
-      - "role_alias.search_ranking_retrieval_engineering.retrieval_engineer"
+    knowledge_pack_id: "search_ranking_retrieval_engineering-2026-04-09-v1"
     seed_rationale: "补 retrieval/ranking 方向。"
     negative_terms: ["data analyst"]
     parent_shortlist_candidate_ids: []

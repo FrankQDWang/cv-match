@@ -135,7 +135,7 @@ donor_candidate_nodes_t =
 ```text
 allowed_operator_names_t =
   ["must_have_alias", "strict_core", "crossover_compose"]
-  if |n_t.source_card_ids| = 0
+  if n_t.knowledge_pack_id = null
   else
     ["must_have_alias", "strict_core", "domain_company", "crossover_compose"]
 ```
@@ -218,6 +218,20 @@ CrossoverGuardThresholds defaults = {
 - `RuntimeTermBudgetPolicy`
 
 ## Write Set
+
+- `SearchControllerContext_t.active_frontier_node_summary`
+- `SearchControllerContext_t.donor_candidate_node_summaries`
+- `SearchControllerContext_t.frontier_head_summary`
+- `SearchControllerContext_t.unmet_requirement_weights`
+- `SearchControllerContext_t.operator_statistics_summary`
+- `SearchControllerContext_t.allowed_operator_names`
+- `SearchControllerContext_t.term_budget_range`
+- `SearchControllerContext_t.fit_gate_constraints`
+
+## 不确定性边界 / 说明
+
+- `domain_company` 是否允许，只取决于 active node 是否带 `knowledge_pack_id`。
+- 这里不会读取知识包正文，也不会重新做领域路由。
 
 - `SearchControllerContext_t.active_frontier_node_summary`
 - `SearchControllerContext_t.donor_candidate_node_summaries`

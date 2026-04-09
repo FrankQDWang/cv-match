@@ -1,0 +1,447 @@
+[
+  {
+    "case_id": "case-bootstrap-explicit-domain",
+    "scenario": "显式领域 bootstrap",
+    "experiment_id": "E5",
+    "expected_route": "explicit_domain",
+    "observed_route": "explicit_domain",
+    "expected_stop_reason": "controller_stop",
+    "observed_stop_reason": "controller_stop",
+    "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "expected_fallback_reason": null,
+    "observed_fallback_reason": null,
+    "must_hold": [
+      "selected_knowledge_pack_id is llm_agent_rag_engineering-2026-04-09-v1",
+      "domain_company remains legal in bootstrap"
+    ],
+    "must_not_hold": [
+      "routing_mode = generic_fallback"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 1.0
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "case_id": "case-bootstrap-inferred-top1",
+    "scenario": "单领域 top1 路由",
+    "experiment_id": "E5",
+    "expected_route": "inferred_domain",
+    "observed_route": "inferred_domain",
+    "expected_stop_reason": "controller_stop",
+    "observed_stop_reason": "controller_stop",
+    "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "expected_fallback_reason": null,
+    "observed_fallback_reason": null,
+    "must_hold": [
+      "selected_knowledge_pack_id is llm_agent_rag_engineering-2026-04-09-v1"
+    ],
+    "must_not_hold": [
+      "routing_mode = generic_fallback"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 1.0
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "case_id": "case-bootstrap-ambiguous-close-score-generic",
+    "scenario": "接近分数触发 generic",
+    "experiment_id": "E5",
+    "expected_route": "generic_fallback",
+    "observed_route": "generic_fallback",
+    "expected_stop_reason": "controller_stop",
+    "observed_stop_reason": "controller_stop",
+    "expected_knowledge_pack_id": null,
+    "observed_knowledge_pack_id": null,
+    "expected_fallback_reason": "top1_top2_gap_below_floor",
+    "observed_fallback_reason": "top1_top2_gap_below_floor",
+    "must_hold": [
+      "fallback_reason is top1_top2_gap_below_floor",
+      "selected_knowledge_pack_id is null"
+    ],
+    "must_not_hold": [
+      "domain_company appears in bootstrap seeds"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 0.0
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "case_id": "case-bootstrap-out-of-domain-generic",
+    "scenario": "低分 out-of-domain generic",
+    "experiment_id": "E5",
+    "expected_route": "generic_fallback",
+    "observed_route": "generic_fallback",
+    "expected_stop_reason": "controller_stop",
+    "observed_stop_reason": "controller_stop",
+    "expected_knowledge_pack_id": null,
+    "observed_knowledge_pack_id": null,
+    "expected_fallback_reason": "top1_confidence_below_floor",
+    "observed_fallback_reason": "top1_confidence_below_floor",
+    "must_hold": [
+      "fallback_reason is top1_confidence_below_floor",
+      "selected_knowledge_pack_id is null"
+    ],
+    "must_not_hold": [
+      "routing_mode = inferred_domain"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 0.0
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "case_id": "case-crossover-legal",
+    "scenario": "合法 crossover",
+    "experiment_id": "E5",
+    "expected_route": "inferred_domain",
+    "observed_route": "inferred_domain",
+    "expected_stop_reason": "controller_stop",
+    "observed_stop_reason": "controller_stop",
+    "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "expected_fallback_reason": null,
+    "observed_fallback_reason": null,
+    "must_hold": [
+      "round 1 uses crossover_compose with donor_frontier_node_id"
+    ],
+    "must_not_hold": [
+      "missing donor candidate list"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 0.5
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "case_id": "case-crossover-illegal-reject",
+    "scenario": "非法 crossover 拒绝",
+    "experiment_id": "E5",
+    "expected_route": "inferred_domain",
+    "observed_route": "inferred_domain",
+    "expected_stop_reason": "controller_stop",
+    "observed_stop_reason": "controller_stop",
+    "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "expected_fallback_reason": null,
+    "observed_fallback_reason": null,
+    "must_hold": [
+      "controller validator retry count equals 1"
+    ],
+    "must_not_hold": [
+      "illegal crossover reaches execution_plan"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 0.5
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "case_id": "case-stop-controller-direct-accepted",
+    "scenario": "controller stop 直接接受",
+    "experiment_id": "E5",
+    "expected_route": "inferred_domain",
+    "observed_route": "inferred_domain",
+    "expected_stop_reason": "controller_stop",
+    "observed_stop_reason": "controller_stop",
+    "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "expected_fallback_reason": null,
+    "observed_fallback_reason": null,
+    "must_hold": [
+      "round 0 stop_reason is controller_stop"
+    ],
+    "must_not_hold": [
+      "search_cts round exists"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 0.6666666666666666
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "case_id": "case-stop-controller-direct-rejected",
+    "scenario": "controller stop 先拒绝后接受",
+    "experiment_id": "E5",
+    "expected_route": "inferred_domain",
+    "observed_route": "inferred_domain",
+    "expected_stop_reason": "controller_stop",
+    "observed_stop_reason": "controller_stop",
+    "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "expected_fallback_reason": null,
+    "observed_fallback_reason": null,
+    "must_hold": [
+      "round 0 stop_reason is null",
+      "round 1 stop_reason is controller_stop"
+    ],
+    "must_not_hold": [
+      "round count equals 1"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 0.6666666666666666
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "case_id": "case-stop-exhausted-low-gain-and-finalize",
+    "scenario": "低增益 exhausted finalize",
+    "experiment_id": "E5",
+    "expected_route": "inferred_domain",
+    "observed_route": "inferred_domain",
+    "expected_stop_reason": "exhausted_low_gain",
+    "observed_stop_reason": "exhausted_low_gain",
+    "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+    "expected_fallback_reason": null,
+    "observed_fallback_reason": null,
+    "must_hold": [
+      "first search round has empty deduplicated candidates"
+    ],
+    "must_not_hold": [
+      "stop_reason = controller_stop"
+    ],
+    "metrics": [
+      {
+        "name": "route_match",
+        "value": true
+      },
+      {
+        "name": "selected_pack_match",
+        "value": true
+      },
+      {
+        "name": "generic_fallback_correctness",
+        "value": true
+      },
+      {
+        "name": "include_keyword_adoption",
+        "value": 0.6666666666666666
+      },
+      {
+        "name": "exclude_keyword_leak",
+        "value": false
+      },
+      {
+        "name": "stop_reason_match",
+        "value": true
+      },
+      {
+        "name": "round_count",
+        "value": 1
+      }
+    ]
+  }
+]

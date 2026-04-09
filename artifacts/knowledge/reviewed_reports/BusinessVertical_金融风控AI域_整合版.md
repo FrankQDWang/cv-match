@@ -163,3 +163,26 @@ source_reports:
 - `市场风险/量化工程` 是否另建一份独立 business vertical，而不是继续借用 `finance_risk_control_ai`
 - `AutoML/Feature Store/MLOps` 对某些大中台岗位可能是核心，但在默认金融风控主域里应保持次级权重
 - 对“小公司 title 虚高”的候选，后续是否要在 rerank 中显式降低 `title` 权重、提高“动作 + 指标 + 对象”权重
+
+## Compile Cards
+
+```yaml
+[
+  {
+    "card_id": "role_alias.finance_risk_control_ai.risk_control_engineer",
+    "card_type": "role_alias",
+    "title": "Risk Control AI Engineer",
+    "summary": "金融风控、策略引擎与 risk modeling 方向。",
+    "canonical_terms": ["risk control engineer", "risk modeling engineer"],
+    "aliases": ["fraud engineer", "risk strategy engineer"],
+    "positive_signals": ["risk modeling", "feature platform"],
+    "negative_signals": ["marketing analyst"],
+    "query_terms": ["risk control", "fraud", "strategy"],
+    "must_have_links": ["risk modeling", "Python backend"],
+    "preferred_links": ["finance domain"],
+    "confidence": "high",
+    "source_model_votes": 2,
+    "freshness_date": "2026-04-07"
+  }
+]
+```

@@ -2,141 +2,103 @@
 
 ## 0. 定位
 
-本页定义 `v0.3` 运行时知识库的输入格式、编译规则和使用边界。
+当前 `HEAD` 的运行时知识库已经收缩成非常简单的形态：
 
-`v0.3` 使用的是“本地只读知识库 + 结构化检索”，不是通用文档切块检索架构。
+- 每个领域一个 `DomainKnowledgePack`
+- 每个 knowledge pack 只服务 round-0 关键词生成
+- 运行时不再做 card retrieval
 
-## 1. 全链路边界与运行时两层制
+## 1. 当前运行时 contract
 
-对完整资料链路，`v0.3` 明确区分 3 层边界：
+runtime 只直接消费：
 
-1. 外部原始研究稿：只做研究输入，不是 `v0.3` runtime contract
-2. reviewed synthesis reports：保留为 Markdown，用于人工审核、冲突比对、追溯和编译输入冻结
-3. 编译后 knowledge cards / snapshot：保留为结构化对象，供 runtime 检索与 bootstrap 使用
+- `artifacts/runtime/active.json`
+- `artifacts/knowledge/packs/<knowledge_pack_id>.json`
 
-对运行时正式知识库 contract 而言，仍然只有“reviewed synthesis reports + compiled cards”两层；runtime 只直接消费第 3 层。
-reviewed synthesis reports 不能直接进入 runtime prompt。
-当前 reviewed synthesis reports 统一存放在 `artifacts/knowledge/reviewed_reports/*.md`。
-编译后的 cards / snapshot 统一存放在 `artifacts/knowledge/compiled/`。
-
-更底层的多模型原始研究稿只作为研究输入与 provenance，不再是当前 `v0.3` runtime contract 的正式层。
-
-## 2. Reviewed Synthesis Report 格式
-
-每份 reviewed synthesis report 一个 Markdown 文件。文件名可以使用描述性命名，runtime 不再依赖固定文件名契约，正式身份由 YAML 头决定。
-这些文件属于跨版本共享运行时资产，不再放在 `docs/v-0.3/` 下。
-
-YAML 头必须包含：
-
-```yaml
-report_id: string
-report_type: role_family | business_vertical | negative_confusion | company_background
-domain_id: string
-title: string
-source_model: string
-generated_on: YYYY-MM-DD
-language: zh-CN
-confidence_summary: high | medium | low
-source_reports: list[string]
-```
-
-正文必须包含 8 个 section：
-
-1. `Summary`
-2. `Canonical Terms`
-3. `Alias Map`
-4. `Positive Signals`
-5. `Negative/Confusion Signals`
-6. `Seed Branch Suggestions`
-7. `Rerank Cues`
-8. `Open Questions`
-
-补充边界：
-
-- `Rerank Cues` 属于 reviewed synthesis report 的审核/编译输入内容，不等于 runtime 直接读取的知识库字段。
-- 如果未来要把某类 `Rerank Cues` 真正下放到排序层，必须新增明确 owner；不能借 report section 隐式进入 runtime contract。
-
-## 3. 编译后 Knowledge Card 格式
-
-运行时使用的 `GroundingKnowledgeCard` 必须至少包含：
+每个 pack 必须包含：
 
 ```json
 {
-  "card_id": "role_alias.llm_agent_rag_engineering.backend_agent_engineer",
+  "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
   "domain_id": "llm_agent_rag_engineering",
-  "report_type": "role_family",
-  "card_type": "role_alias",
-  "title": "LLM/Agent 后端工程师",
-  "summary": "面向 Agent/RAG/LLM 应用的后端与平台研发角色。",
-  "canonical_terms": ["agent engineer", "rag engineer"],
-  "aliases": ["llm application engineer", "ai backend engineer"],
-  "positive_signals": ["tool calling", "workflow orchestration", "retrieval pipeline"],
-  "negative_signals": ["pure prompt运营", "纯算法论文研究"],
-  "query_terms": ["agent engineer", "rag", "python"],
-  "must_have_links": ["cap.tool_orchestration", "cap.retrieval_pipeline"],
-  "preferred_links": ["bg.to_b_delivery"],
-  "confidence": "high",
-  "source_report_ids": ["report.role_family.llm_agent_rag_engineering.codex_synthesis_2026_04_07"],
-  "source_model_votes": 2,
-  "freshness_date": "2026-04-07"
+  "label": "LLM / Agent 应用研发",
+  "routing_text": "agent backend, rag, tool calling, workflow orchestration, retrieval pipeline",
+  "include_keywords": ["agent engineer", "rag", "tool calling", "python"],
+  "exclude_keywords": ["pure prompt operation", "algorithm research only"]
 }
 ```
 
-## 4. 编译规则
+## 2. 运行时怎么使用它
 
-多模型研究报告编译为 knowledge cards 时，固定遵循以下规则：
+### 2.1 路由
 
-1. 同一 claim 至少 2 份报告一致才标 `high`
-2. 只有 1 份报告支持则标 `medium`
-3. 报告间明显冲突则标 `low`
-4. `low` confidence claim 不能进入 must-have gate
-5. `negative_signals` 与 `query_terms` 必须都可追溯到 `source_report_ids`；更深一层原始来源继续保留在 synthesis report 的 `source_reports`
-6. 编译时必须保留 `source_model_votes`
+bootstrap 固定走三选一：
 
-## 5. 必须准备的报告类型
+1. `explicit_domain`
+2. `inferred_domain`
+3. `generic_fallback`
 
-- `role_family`：角色家族、title 别名、能力锚点、典型职责边界
-- `business_vertical`：垂直业务域、行业术语、业务问题、常见公司与背景信号
-- `negative_confusion`：可选扩展；只有当混淆面明显超出主报告承载能力时才单独拆出
-- `company_background`：可选，只有当业务明确把公司背景当作强偏好时才需要
+规则如下：
 
-首版硬要求不是“每个 domain pack 都有独立 `negative_confusion` 文件”，而是“每份 active reviewed synthesis report 都必须包含 `Negative/Confusion Signals` section”。
+- 如果 `BusinessPolicyPack.domain_id_override` 非空，直接命中对应 pack
+- 否则用 reranker 对所有 active packs 的 `routing_text` 打分，取 top1
+- top1 分数太低，或 top1 / top2 太接近时，走 `generic_fallback`
 
-## 6. 初始 Domain Packs
+### 2.2 关键词生成
 
-知识库第一版默认准备 3 个 domain packs：
+选中的 knowledge pack 只会进入 round-0 的关键词生成 prompt。
+
+- `include_keywords` 用来帮助模型补全更像该领域的关键词
+- `exclude_keywords` 会直接投影到 seed 的 `negative_terms`
+
+generic fallback 下不选任何 pack，也不允许模型发明领域背景。
+
+## 3. active manifest
+
+`artifacts/runtime/active.json` 现在至少要绑定：
+
+- `phase`
+- `knowledge_pack_ids`
+- `policy_id`
+- `calibration_id`
+
+它决定当前 runtime 真正使用哪一组知识包。
+
+## 4. 强约束
+
+- active manifest 中的每个 `knowledge_pack_id` 都必须能找到文件
+- active knowledge packs 的 `domain_id` 不能重复
+- `routing_text` 不能为空
+- `include_keywords` 不能为空
+- `exclude_keywords` 不能为空
+
+## 5. 已移除的旧层
+
+以下对象已经退出当前运行时主链：
+
+- reviewed synthesis reports
+- compiled cards
+- compiled snapshots
+- `GroundingKnowledgeCard`
+- `GroundingKnowledgeBaseSnapshot`
+- `KnowledgeRetrievalResult`
+
+这些历史资产如果还保留在仓库里，也只用于归档，不再作为 runtime contract。
+
+## 6. 当前领域包
+
+当前 active 运行时默认准备 3 个领域：
 
 - `llm_agent_rag_engineering`
 - `search_ranking_retrieval_engineering`
 - `finance_risk_control_ai`
 
-如果当前业务不招聘金融风控方向，则第三个 pack 替换成当前最高优先级垂类。
+## 7. 非职责
 
-首版验收口径改为 section coverage，而不是按文件数量计数：
+知识库当前不负责：
 
-- 每个 active domain pack 至少有一份 reviewed synthesis report
-- 该报告必须包含 8 个必备 section
-- 其中 `Negative/Confusion Signals` section 不得缺失
-- 编译后 card 的 `source_report_ids` 必须能回溯到 report header 的 `report_id`
-- `GroundingKnowledgeBaseSnapshot.compiled_report_ids` 必须全部能解析到 `artifacts/knowledge/reviewed_reports/` 下的 report header
-
-## 6.1 Artifact 位置
-
-- reviewed reports: `artifacts/knowledge/reviewed_reports/`
-- compiled cards: `artifacts/knowledge/compiled/cards.json`
-- compiled snapshots: `artifacts/knowledge/compiled/snapshots/<snapshot_id>.json`
-
-## 7. 运行时使用边界
-
-运行时知识库只直接服务一件事：
-
-1. 在 bootstrap 阶段为关键词初始化提供受限上下文，帮助 `GroundingGenerationLLM` 与 `GenerateGroundingOutput` 产出更稳的 round-0 seed branches
-
-以下事情不属于运行时知识库职责：
-
-- repair 阶段的额外策略控制
-- 直接作为排序层 runtime 输入去驱动 signal expansion / confusion suppression
+- 后续轮次 repair / crossover 决策
+- 排序层信号扩展
+- 直接生成最终 shortlist
 - 在线联网检索
-- generic long-context RAG
-- 直接生成最终排序结论
 - 替代 `RequirementSheet`

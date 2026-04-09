@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     wheel = max((repo_root / "dist").glob("seektalent-*.whl"))
 
     venv_dir = tmp_path / "venv"
-    subprocess.run(["python3", "-m", "venv", str(venv_dir)], check=True)
+    subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
     bin_dir = _bin_dir(venv_dir)
     python = bin_dir / ("python.exe" if os.name == "nt" else "python")
     cli = bin_dir / ("seektalent.exe" if os.name == "nt" else "seektalent")
@@ -42,7 +43,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert "Phase 5 status" in help_result.stdout
+    assert "Phase 6 status" in help_result.stdout
     assert not ui_cli.exists()
 
     version_result = subprocess.run(
@@ -64,7 +65,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         text=True,
     )
     inspect_payload = json.loads(inspect_result.stdout)
-    assert inspect_payload["phase"] == "phase5_runtime_loop_active"
+    assert inspect_payload["phase"] == "phase6_offline_artifacts_active"
 
     subprocess.run(
         [str(cli), "init"],

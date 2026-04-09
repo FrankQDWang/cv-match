@@ -2,12 +2,38 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from seektalent import __version__
 from seektalent.cli import main
-from seektalent.models import SearchRunResult
+
+
+def _fake_bundle() -> object:
+    payload = {
+        "phase": "phase6_offline_artifacts_active",
+        "run_id": "20260409T120000Z_deadbeef",
+        "run_dir": "/tmp/runs/20260409T120000Z_deadbeef",
+        "bootstrap": {"input_truth": {"job_description": "JD"}},
+        "rounds": [],
+        "finalization_audit": {"model_name": "test"},
+        "final_result": {
+            "final_shortlist_candidate_ids": ["c-1", "c-2"],
+            "run_summary": "Ready for review.",
+            "stop_reason": "controller_stop",
+        },
+        "eval": {"experiment_id": "E5", "metrics": []},
+    }
+    return SimpleNamespace(
+        run_dir=payload["run_dir"],
+        final_result=SimpleNamespace(
+            final_shortlist_candidate_ids=payload["final_result"]["final_shortlist_candidate_ids"],
+            run_summary=payload["final_result"]["run_summary"],
+            stop_reason=payload["final_result"]["stop_reason"],
+        ),
+        model_dump=lambda mode="json": payload,
+    )
 
 
 def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
@@ -15,7 +41,7 @@ def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
         main(["--help"])
     assert exc.value.code == 0
     help_text = capsys.readouterr().out
-    assert "Phase 5 status" in help_text
+    assert "Phase 6 status" in help_text
     assert "inspect" in help_text
     assert "doctor" in help_text
 
@@ -36,7 +62,7 @@ def test_update_command_prints_upgrade_instructions(capsys: pytest.CaptureFixtur
 def test_inspect_command_points_to_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["inspect"]) == 0
     output = capsys.readouterr().out
-    assert "phase 5 CLI inspection summary" in output
+    assert "phase 6 CLI inspection summary" in output
     assert "inspect --json" in output
 
 
@@ -45,7 +71,7 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     payload = json.loads(capsys.readouterr().out)
     assert payload["tool"] == "seektalent"
     assert payload["version"] == __version__
-    assert payload["phase"] == "phase5_runtime_loop_active"
+    assert payload["phase"] == "phase6_offline_artifacts_active"
     assert payload["recommended_workflow"][-1] == "seektalent run --jd-file ./jd.md"
     assert "seektalent-rerank-api" in payload["recommended_workflow"]
     assert "run" in payload["commands"]
@@ -93,6 +119,7 @@ def test_doctor_json_success_in_mock_mode(tmp_path: Path, capsys: pytest.Capture
     assert {item["name"] for item in payload["checks"]} == {
         "packaged_spec",
         "output_dir",
+        "runtime_manifest",
         "cts_credentials",
         "phase",
     }
@@ -109,43 +136,34 @@ def test_doctor_fails_for_missing_real_cts_credentials(
     assert "FAIL cts_credentials" in capsys.readouterr().out
 
 
-def test_run_json_success_emits_search_run_result(
+def test_run_json_success_emits_search_run_bundle(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
         "seektalent.cli.run_match",
-        lambda **kwargs: SearchRunResult(
-            final_shortlist_candidate_ids=["c-1", "c-2"],
-            run_summary="Ready for review.",
-            stop_reason="controller_stop",
-        ),
+        lambda **kwargs: _fake_bundle(),
     )
 
     assert main(["run", "--jd", "JD", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {
-        "final_shortlist_candidate_ids": ["c-1", "c-2"],
-        "run_summary": "Ready for review.",
-        "stop_reason": "controller_stop",
-    }
+    assert payload["phase"] == "phase6_offline_artifacts_active"
+    assert payload["final_result"]["final_shortlist_candidate_ids"] == ["c-1", "c-2"]
+    assert payload["eval"]["experiment_id"] == "E5"
 
 
-def test_run_human_success_prints_three_lines(
+def test_run_human_success_prints_four_lines(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
         "seektalent.cli.run_match",
-        lambda **kwargs: SearchRunResult(
-            final_shortlist_candidate_ids=["c-1", "c-2"],
-            run_summary="Ready for review.",
-            stop_reason="controller_stop",
-        ),
+        lambda **kwargs: _fake_bundle(),
     )
 
     assert main(["run", "--jd", "JD"]) == 0
     assert capsys.readouterr().out.splitlines() == [
+        "/tmp/runs/20260409T120000Z_deadbeef",
         "controller_stop",
         "c-1, c-2",
         "Ready for review.",

@@ -19,7 +19,7 @@
 5. 5 个 LLM 调用点对应的 draft payload owner 已冻结，不允许边实现边发明匿名草稿 schema。
 6. Phase 2+ 默认使用 `pydantic-ai` 作为 5 个 LLM 调用点的 typed request/response wrapper；不允许把它扩成 runtime orchestrator、frontier state owner、CTS tool runner、rerank runner 或 reward / stop controller。
 7. `pydantic-ai` 调用风格已冻结为 `fresh request + instructions + NativeOutput + no tools + no cross-operator history`。
-8. 知识库 contract 已冻结为 reviewed synthesis reports + compiled cards；更底层原始研究稿只作为 provenance。
+8. 知识库 contract 已冻结为 active knowledge packs；更底层研究稿和旧 compiled assets 不再进入 runtime 主链。
 
 ## 2. Phase 1: Runtime Contracts 与 CTS Bridge
 
@@ -92,31 +92,31 @@
 ### 3.2 主要工作
 
 1. 实现 [[ExtractRequirements]]
-2. 实现 [[RetrieveGroundingKnowledge]]
+2. 实现 [[RouteDomainKnowledgePack]]
 3. 实现 [[FreezeScoringPolicy]]
-4. 实现 [[GenerateGroundingOutput]]
+4. 实现 [[GenerateBootstrapOutput]]
 5. 实现 [[InitializeFrontierState]]
 
 ### 3.3 交付物
 
 1. round-0 bootstrap 主链已可按 [[workflow-explained]] 执行
-2. routing、knowledge retrieval、grounding、frontier init 的输入输出对象已能串通
+2. routing、bootstrap keyword generation、frontier init 的输入输出对象已能串通
 3. run 内冻结评分口径对象 [[ScoringPolicy]] 已可供后续阶段直接消费
-4. [[KnowledgeRetrievalResult]] 已作为 routing fields 的唯一 owner，不再存在独立 routing metadata payload
+4. [[BootstrapRoutingResult]] 已作为 routing fields 的唯一 owner
 
 ### 3.4 可开工验收
 
-1. round-0 固定为 `requirements -> routing/retrieval -> scoring freeze -> grounding -> frontier init`。
+1. round-0 固定为 `requirements -> route knowledge pack -> scoring freeze -> generate bootstrap output -> frontier init`。
 2. routing 只有 `explicit_domain / inferred_domain / generic_fallback`。
-3. seed branches 固定 `3-5` 条，每条 `2-4` 个 terms。
+3. routed path 最多生成 `3` 条 seeds；generic fallback 固定为 `2` 条。
 4. [[ScoringPolicy]] 已作为 run 内冻结对象存在，而不是运行中散落参数。
 5. 知识库只服务 bootstrap 关键词初始化，不参与评分冻结、reward、stop 或 finalize。
-6. `RequirementExtractionLLM` 与 `GroundingGenerationLLM` 的实现必须遵守统一 `pydantic-ai` 调用约束：fresh request、`NativeOutput`、禁用 tools、禁用跨 operator history。
+6. `RequirementExtractionLLM` 与 `BootstrapKeywordGenerationLLM` 的实现必须遵守统一 `pydantic-ai` 调用约束：fresh request、`NativeOutput`、禁用 tools、禁用跨 operator history。
 
 ### 3.5 下一阶段前提
 
 1. [[FrontierState_t]] 可以由 bootstrap 主链稳定初始化。
-2. [[ScoringPolicy]]、[[GroundingOutput]]、[[KnowledgeRetrievalResult]] 已稳定可读。
+2. [[ScoringPolicy]]、[[BootstrapOutput]]、[[BootstrapRoutingResult]] 已稳定可读。
 
 ### 3.6 当前完成情况（截至当前 HEAD）
 
@@ -125,31 +125,31 @@
 对应 `3.2 主要工作`：
 
 1. `[[ExtractRequirements]]` 已落地为现有 deterministic requirements 归一化主链与 `RequirementExtractionLLM` wrapper 的组合；`SearchInputTruth -> RequirementSheet` 的 owner 已固定，不再另起第二套 requirements schema。
-2. `[[RetrieveGroundingKnowledge]]` 已落地为稳定纯函数，routing 固定为 `explicit_domain / inferred_domain / generic_fallback` 三选一；未知 explicit pack、显式 pack 超过 `2` 个等情况直接 fail-fast。bootstrap 所需的最小 domain packs 与 knowledge cards 已以内置 fixture 形式落地。
+2. `[[RouteDomainKnowledgePack]]` 已落地为稳定纯函数，routing 固定为 `explicit_domain / inferred_domain / generic_fallback` 三选一；未知 explicit `domain_id_override` 直接 fail-fast。bootstrap 所需的最小 domain knowledge packs 已以内置 fixture 形式落地。
 3. `[[FreezeScoringPolicy]]` 已落地为 run 内评分口径冻结步骤；fit gate 只允许在 truth 基础上收紧，fusion weights 会规范化到总和 `1.0`，并与 rerank instruction / query 一起形成稳定的 `[[ScoringPolicy]]`。
-4. `[[GenerateGroundingOutput]]` 已落地为稳定纯函数；会强制 evidence whitelist、固定 generic fallback 的 seed 顺序，并把 seed branches 约束在 `3-5` 条、每条 `2-4` 个 terms；不足 `3` 条 seed 时直接 fail-fast。补充说明：`GroundingGenerationLLM` 的 round-0 `operator_name` 现已在 structured-output schema 层收紧到 `must_have_alias / strict_core / domain_company`，非法 operator 会在解析阶段直接失败，而不是等到后续归一化再兜底。
+4. `[[GenerateBootstrapOutput]]` 已落地为稳定纯函数；当前 routed path 产出 `strict_core / must_have_alias / domain_company` 三条以内 seeds，generic fallback 只产出 `strict_core / must_have_alias` 两条 seeds。补充说明：`BootstrapKeywordGenerationLLM` 的 round-0 输出已收窄到 `BootstrapKeywordDraft`，不再让 LLM 直接写 operator patch。
 5. `[[InitializeFrontierState]]` 已落地为 runtime-owned frontier init；bootstrap seeds 会被收敛成稳定的 `[[FrontierState_t]]`，不允许 LLM draft 直接写入 frontier runtime state。
 
 对应 `3.3 交付物`：
 
 1. round-0 bootstrap 主链已可按 [[workflow-explained]] 执行；当前实现入口为 `bootstrap_round0_async(...)` 与同步薄包装 `bootstrap_round0(...)`。
-2. routing、knowledge retrieval、grounding、frontier init 的输入输出对象已能串通；`BootstrapArtifacts` 已稳定持有 `SearchInputTruth`、`RequirementSheet`、`KnowledgeRetrievalResult`、`ScoringPolicy`、`GroundingOutput`、`FrontierState_t`。
+2. routing、bootstrap keyword generation、frontier init 的输入输出对象已能串通；`BootstrapArtifacts` 已稳定持有 `SearchInputTruth`、`RequirementSheet`、`BootstrapRoutingResult`、`ScoringPolicy`、`BootstrapOutput`、`FrontierState_t`。
 3. run 内冻结评分口径对象 `[[ScoringPolicy]]` 已可供后续阶段直接消费，不再依赖运行中散落参数。
-4. `[[KnowledgeRetrievalResult]]` 已成为 routing fields 的唯一 owner；不存在独立 routing metadata payload。
+4. `[[BootstrapRoutingResult]]` 已成为 routing fields 的唯一 owner；不存在独立 routing metadata payload。
 
 对应 `3.4 可开工验收`：
 
-1. 已满足。round-0 顺序已固定为 `requirements -> routing/retrieval -> scoring freeze -> grounding -> frontier init`，bootstrap orchestration 不再留白。
+1. 已满足。round-0 顺序已固定为 `requirements -> route knowledge pack -> scoring freeze -> generate bootstrap output -> frontier init`，bootstrap orchestration 不再留白。
 2. 已满足。routing 只有 `explicit_domain / inferred_domain / generic_fallback` 三种模式；当前测试已覆盖 explicit、inferred、generic 三条路径以及相关 fail-fast 边界。
-3. 已满足。seed branches 固定 `3-5` 条、每条 `2-4` 个 terms；generic fallback 也遵守同一约束。
+3. 已满足。routed path 最多生成 `3` 条 seeds；generic fallback 固定为 `2` 条。
 4. 已满足。`[[ScoringPolicy]]` 已作为 run 内冻结对象存在，而不是运行中散落参数。
 5. 已满足。知识库当前只服务 bootstrap 关键词初始化；不参与评分冻结、reward、stop 或 finalize。
-6. 已满足。`RequirementExtractionLLM` 与 `GroundingGenerationLLM` 已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput`、禁用 tools、禁用跨 operator history、`retries=0`、`output_retries=1`；其中 grounding draft 的 round-0 seed operator 现已由 strict schema 直接约束，不再接受自由字符串。
+6. 已满足。`RequirementExtractionLLM` 与 `BootstrapKeywordGenerationLLM` 已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput`、禁用 tools、禁用跨 operator history、`retries=0`、`output_retries=1`。
 
 对应 `3.5 下一阶段前提`：
 
 1. 已满足。`[[FrontierState_t]]` 现已可由 bootstrap 主链稳定初始化；seed id、初始 node status、remaining budget、run term catalog 等关键字段已有确定行为。
-2. 已满足。`[[ScoringPolicy]]`、`[[GroundingOutput]]`、`[[KnowledgeRetrievalResult]]` 已稳定可读，可直接作为 Phase 3 / Phase 4 的输入基线继续推进。
+2. 已满足。`[[ScoringPolicy]]`、`[[BootstrapOutput]]`、`[[BootstrapRoutingResult]]` 已稳定可读，可直接作为 Phase 3 / Phase 4 的输入基线继续推进。
 
 ## 4. Phase 3: Search Execution 与 Ranking
 
@@ -259,20 +259,20 @@
 1. `[[SelectActiveFrontierNode]]` 已落地为稳定纯函数；当前实现固定执行 active node priority scoring、donor candidate packing、generic provenance 下 `domain_company` 禁用、term budget range 冻结与 unmet requirement weight 投影，不再把这些规则散落在 runtime 其他位置。
 2. `[[GenerateSearchControllerDecision]]` 已落地为 deterministic normalization 层；当前实现固定把控制器草稿收口为 `search_cts / stop`、operator 白名单回退、non-crossover `additional_terms` 裁剪与 crossover donor whitelist，不允许 LLM 自由改写 `target_frontier_node_id` 或旁路 donor。补充说明：controller validator 当前只校验“归一化后是否仍可物化出合法且非空的 query terms”以及 crossover donor / shared-anchor 合法性，不再额外要求 non-crossover `additional_terms` 在裁剪后仍保持非空。
 3. `[[CarryForwardFrontierState]]` 已落地为 identity carry-forward；direct-stop 路径当前会直接把 `FrontierState_t` 原样投影为 `FrontierState_t1`，不新增 child node、不消耗 budget、不写旁路状态。
-4. `crossover_compose` 已在 Phase 4 / Phase 3 接缝上落地：controller 侧会限制合法 donor id 与 crossover args，plan materialization 侧继续负责 shared-anchor guard、donor lineage 与 source card 合并，不再有第二套 crossover path。
+4. `crossover_compose` 已在 Phase 4 / Phase 3 接缝上落地：controller 侧会限制合法 donor id 与 crossover args，plan materialization 侧继续负责 shared-anchor guard、donor lineage 与 `knowledge_pack_id` provenance 传递，不再有第二套 crossover path。
 5. donor legality 与 shared-anchor guard 已落地并由新增测试覆盖；Phase 4 自身冻结了 `SearchExecutionPlan_t.semantic_hash` 与 stable child identity，随后由当前 HEAD 的 Phase 5 `[[UpdateFrontierState]]` 继续把 `semantic_hashes_seen` 推进成真实 run-state。
 
 对应 `5.3 交付物`：
 
 1. 已满足。active-node selection、controller patch、search path、direct-stop path 已能通过 `select_active_frontier_node(...) -> generate_search_controller_decision(...) -> materialize_search_execution_plan(...)` / `carry_forward_frontier_state(...)` 的函数组合与集成测试形成统一 slice；`WorkflowRuntime.run*` 现已在 Phase 5 中接成公开 runtime loop。
-2. 已满足。crossover 已有清晰 donor 和 guard 边界；donor legality、shared-anchor、donor lineage 与 `source_card_ids` 合并路径都已固定。
+2. 已满足。crossover 已有清晰 donor 和 guard 边界；donor legality、shared-anchor、donor lineage 与 `knowledge_pack_id` provenance 都已固定。
 3. 已满足。runtime 选点与 controller 局部决策职责已分离；当前 frontier 选点是 deterministic 纯函数，控制器只看到 `SearchControllerContext_t` 局部快照。
 
 对应 `5.4 可开工验收`：
 
 1. 已满足。runtime 先选 active node，控制器只做 branch-level patch；当前测试已覆盖 search path 与 direct-stop path。
 2. 已满足。donor 必须满足 `open + reward_breakdown != null + reward 过线 + shared anchor 过线`，且还必须补 active node 未覆盖的 must-have。
-3. 已满足。generic provenance 下不会放开 `domain_company`；当前实现继续以 `source_card_ids == []` 作为唯一 generic provenance 判据。
+3. 已满足。generic provenance 下不会放开 `domain_company`；当前实现继续以 `knowledge_pack_id is null` 作为唯一 generic provenance 判据。
 4. 已满足。direct-stop 路径与 search 路径当前都使用统一的 `SearchControllerDecision_t` / `FrontierState_t` / `FrontierState_t1` 对象，不再新开旁路状态；当前 HEAD 中 stop guard 与 finalize 也已由 Phase 5 接通，但这不改变 Phase 4 自身的 owner 边界。
 5. 已满足。`SearchControllerDecisionLLM` 当前已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput` strict schema、禁用 tools、禁用 cross-operator history、`retries=0`、`output_retries=1`；它也是当前唯一启用单次业务型 validator retry 的调用点，且该 retry 现已收窄到 owner 允许的边界：只处理“最终 query 不可物化/为空”与 crossover donor legality 问题，不再附加更强的草稿字段形状约束。
 
@@ -285,7 +285,7 @@
 
 - 本轮同时补齐了 `SearchControllerContext_t`、`SearchControllerDecisionDraft_t`、`BranchEvaluation_t`、`NodeRewardBreakdown_t` 的代码侧 typed payload，frontier node 上不再继续使用裸 dict 挂载 branch evaluation / reward。
 - 公共 phase 口径现已同步到代码事实：`inspect` / `doctor` / package description 都以 Phase 5 runtime loop 为当前公开状态，Phase 4 不再对外单独作为独立公开阶段暴露。
-- 当前新增测试已覆盖 `tests/test_bootstrap_ops.py`、`tests/test_controller_llm.py`、`tests/test_search_ops.py`、`tests/test_runtime_llm.py`、`tests/test_runtime_ops.py`、`tests/test_runtime_orchestrator.py`、`tests/test_cli.py`、`tests/test_cli_packaging.py` 与 `tests/test_api.py`；截至当前 HEAD，全量测试为 `101 passed`。
+- 当前新增测试已覆盖 `tests/test_bootstrap_ops.py`、`tests/test_controller_llm.py`、`tests/test_search_ops.py`、`tests/test_runtime_llm.py`、`tests/test_runtime_ops.py`、`tests/test_runtime_orchestrator.py`、`tests/test_cli.py`、`tests/test_cli_packaging.py` 与 `tests/test_api.py`；截至当前 HEAD，全量测试状态以 `./.venv/bin/python -m pytest -q` 的实际结果为准，不在此处硬编码通过数。
 
 ## 6. Phase 5: Reward / Frontier Update / Stop / Finalize
 

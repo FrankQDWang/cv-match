@@ -26,7 +26,7 @@ a_t := BranchEvaluation_t
 parent_node_t = F_t.frontier_nodes[p_t.child_frontier_node_stub.parent_frontier_node_id]
 allowed_repair_operator_names_t =
   ["must_have_alias", "strict_core", "crossover_compose"]
-  if |p_t.source_card_ids| = 0
+  if p_t.knowledge_pack_id = null
   else
     ["must_have_alias", "strict_core", "domain_company", "crossover_compose"]
 ```
@@ -53,7 +53,7 @@ branch_evaluation_packet_t = {
   parent_frontier_node_id: parent_node_t.frontier_node_id,
   previous_node_shortlist_candidate_ids: parent_node_t.node_shortlist_candidate_ids,
   donor_frontier_node_id: p_t.child_frontier_node_stub.donor_frontier_node_id,
-  source_card_ids: p_t.source_card_ids,
+  knowledge_pack_id: p_t.knowledge_pack_id,
   query_terms: p_t.query_terms,
   semantic_hash: p_t.semantic_hash,
   search_page_statistics: x_t.search_page_statistics,
@@ -113,7 +113,7 @@ even if the LLM draft does not request exhaustion.
 - `FrontierState_t.frontier_nodes`
 - `SearchExecutionPlan_t.query_terms`
 - `SearchExecutionPlan_t.semantic_hash`
-- `SearchExecutionPlan_t.source_card_ids`
+- `SearchExecutionPlan_t.knowledge_pack_id`
 - `SearchExecutionPlan_t.child_frontier_node_stub`
 - `SearchExecutionResult_t.search_page_statistics`
 - `SearchScoringResult_t.node_shortlist_candidate_ids`
@@ -145,6 +145,7 @@ even if the LLM draft does not request exhaustion.
 - `BranchOutcomeEvaluationLLM` 必须使用 provider-native strict structured output，固定 `retries=0`、`output_retries=1`。
 - 默认不额外要求 `output_validator`；若未来引入，只允许补充 schema 无法表达且不会改写 runtime fact 的 branch-level business 约束。
 - 它判断 branch 价值，但不直接修改 frontier，也不直接决定 stop。
+- `domain_company` 是否允许修复，只取决于 `knowledge_pack_id` 是否存在。
 
 ## 相关
 

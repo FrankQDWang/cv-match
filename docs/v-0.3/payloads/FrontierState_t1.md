@@ -35,7 +35,7 @@ FrontierState_t1 = {
 
 - `FrontierState_t1` 的对象形状与 `FrontierState_t` 相同，但字段值不同。
 - 当前轮里它服务于 stop / finalize；进入下一轮前会经 runtime round shift 重绑定为 `FrontierState_t`。
-- child node 的 provenance、`source_card_ids` 与 `donor_frontier_node_id` 必须在这里完整保留。
+- child node 的 provenance、`knowledge_pack_id` 与 `donor_frontier_node_id` 必须在这里完整保留。
 - `operator_statistics` 的 value shape 由 [[OperatorStatistics]] 唯一持有。
 - `run_shortlist_candidate_ids` 的顺序已经在 `UpdateFrontierState` 中冻结，不允许 `FinalizeSearchRun` 再重排。
 
@@ -49,8 +49,7 @@ frontier_nodes:
     donor_frontier_node_id: null
     selected_operator_name: "strict_core"
     node_query_term_pool: ["retrieval engineer", "ranking"]
-    source_card_ids:
-      - "role_alias.search_ranking_retrieval_engineering.retrieval_engineer"
+    knowledge_pack_id: "search_ranking_retrieval_engineering-2026-04-09-v1"
     seed_rationale: null
     negative_terms: ["data analyst"]
     parent_shortlist_candidate_ids: ["c11", "c44"]
@@ -67,9 +66,7 @@ frontier_nodes:
     donor_frontier_node_id: "child_search_domain_01"
     selected_operator_name: "crossover_compose"
     node_query_term_pool: ["agent engineer", "rag", "python", "retrieval engineer", "ranking"]
-    source_card_ids:
-      - "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
-      - "role_alias.search_ranking_retrieval_engineering.retrieval_engineer"
+    knowledge_pack_id: "llm_agent_rag_engineering-2026-04-09-v1"
     seed_rationale: null
     negative_terms: ["data analyst", "pure algorithm research"]
     parent_shortlist_candidate_ids: ["c32", "c44"]

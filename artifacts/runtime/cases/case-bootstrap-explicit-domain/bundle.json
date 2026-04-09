@@ -1,0 +1,773 @@
+{
+  "phase": "phase6_offline_artifacts_active",
+  "run_id": "case-bootstrap-explicit-domain",
+  "run_dir": "/Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-bootstrap-explicit-domain",
+  "created_at_utc": "2026-04-09T00:00:00Z",
+  "bootstrap": {
+    "input_truth": {
+      "job_description": "Senior Python / LLM Engineer",
+      "hiring_notes": "canonical case",
+      "job_description_sha256": "286bf3c0d98871a8437c1ae078420a70170411e73d213e7252c68d837d1cd01d",
+      "hiring_notes_sha256": "06024dbeaeeb6959673a544857a69677f079940640e362ac77d8f9f7477f15b5"
+    },
+    "requirement_extraction_audit": {
+      "output_mode": "NativeOutput(strict=True)",
+      "retries": 0,
+      "output_retries": 1,
+      "validator_retry_count": 0,
+      "model_name": "test",
+      "instruction_id_or_hash": "a73aae6224c595b05ce965f5d906407be0d8cd15",
+      "message_history_mode": "fresh",
+      "tools_enabled": false,
+      "model_settings_snapshot": {
+        "allow_text_output": false,
+        "allow_image_output": false,
+        "native_output_strict": true
+      }
+    },
+    "requirement_sheet": {
+      "role_title": "Senior Python / LLM Engineer",
+      "role_summary": "Build Python, LLM, and retrieval systems.",
+      "must_have_capabilities": [
+        "Python backend",
+        "LLM application",
+        "retrieval pipeline"
+      ],
+      "preferred_capabilities": [
+        "workflow orchestration",
+        "tool calling"
+      ],
+      "exclusion_signals": [
+        "frontend"
+      ],
+      "hard_constraints": {
+        "locations": [
+          "Shanghai"
+        ],
+        "min_years": 5,
+        "max_years": 10,
+        "company_names": [],
+        "school_names": [],
+        "degree_requirement": null,
+        "school_type_requirement": [],
+        "gender_requirement": null,
+        "min_age": null,
+        "max_age": null
+      },
+      "preferences": {
+        "preferred_domains": [],
+        "preferred_backgrounds": []
+      },
+      "scoring_rationale": "Prioritize core must-have fit."
+    },
+    "business_policy_snapshot": {
+      "policy_id": "business-default-2026-04-09-v1",
+      "policy_pack": {
+        "domain_id_override": "llm_agent_rag_engineering",
+        "fusion_weight_preferences": {
+          "rerank": 0.55,
+          "must_have": 0.25,
+          "preferred": 0.1,
+          "risk_penalty": 0.1
+        },
+        "fit_gate_overrides": {
+          "locations": [],
+          "min_years": null,
+          "max_years": null,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        },
+        "stability_policy": {
+          "mode": "soft_penalty",
+          "penalty_weight": 1.0,
+          "confidence_floor": 0.6,
+          "allow_hard_gate": false
+        },
+        "explanation_preferences": {
+          "top_n_for_explanation": 5,
+          "emphasize_business_delivery": true
+        }
+      }
+    },
+    "routing_result": {
+      "routing_mode": "explicit_domain",
+      "selected_domain_id": "llm_agent_rag_engineering",
+      "selected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+      "routing_confidence": 1.0,
+      "fallback_reason": null,
+      "pack_scores": {
+        "llm_agent_rag_engineering-2026-04-09-v1": 1.0
+      }
+    },
+    "scoring_policy": {
+      "fit_gate_constraints": {
+        "locations": [
+          "Shanghai"
+        ],
+        "min_years": 5,
+        "max_years": 10,
+        "company_names": [],
+        "school_names": [],
+        "degree_requirement": null,
+        "gender_requirement": null,
+        "min_age": null,
+        "max_age": null
+      },
+      "must_have_capabilities_snapshot": [
+        "Python backend",
+        "LLM application",
+        "retrieval pipeline"
+      ],
+      "preferred_capabilities_snapshot": [
+        "workflow orchestration",
+        "tool calling"
+      ],
+      "fusion_weights": {
+        "rerank": 0.55,
+        "must_have": 0.25,
+        "preferred": 0.1,
+        "risk_penalty": 0.1
+      },
+      "penalty_weights": {
+        "job_hop": 1.0,
+        "job_hop_confidence_floor": 0.6
+      },
+      "top_n_for_explanation": 5,
+      "rerank_instruction": "Rank candidate resumes for hiring relevance. Prioritize must-have capabilities first, use preferred capabilities as secondary evidence, and do not hard-reject on soft risk signals.",
+      "rerank_query_text": "Senior Python / LLM Engineer; must-have: Python backend, LLM application, retrieval pipeline; location: Shanghai; min 5 years; max 10 years; preferred: workflow orchestration, tool calling",
+      "reranker_calibration_snapshot": {
+        "model_id": "mlx-community/Qwen3-Reranker-8B-mxfp8",
+        "normalization": "sigmoid",
+        "temperature": 2.4,
+        "offset": 0.0,
+        "clip_min": -12.0,
+        "clip_max": 12.0,
+        "calibration_version": "2026-04-07-v1"
+      },
+      "ranking_audit_notes": "Prioritize core must-have fit. must-have 优先于 preferred；低置信度稳定性风险不处罚。"
+    },
+    "bootstrap_keyword_generation_audit": {
+      "output_mode": "NativeOutput(strict=True)",
+      "retries": 0,
+      "output_retries": 1,
+      "validator_retry_count": 0,
+      "model_name": "test",
+      "instruction_id_or_hash": "fe8e7b2591f4b79b66fd9e6bb9b0a6bbc20a8bc3",
+      "message_history_mode": "fresh",
+      "tools_enabled": false,
+      "model_settings_snapshot": {
+        "allow_text_output": false,
+        "allow_image_output": false,
+        "native_output_strict": true
+      }
+    },
+    "bootstrap_output": {
+      "frontier_seed_specifications": [
+        {
+          "operator_name": "strict_core",
+          "seed_terms": [
+            "Senior Python / LLM Engineer",
+            "agent engineer",
+            "rag",
+            "python backend"
+          ],
+          "seed_rationale": "role_title_plus_core_keywords",
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "expected_coverage": [],
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "must_have_alias",
+          "seed_terms": [
+            "Python backend",
+            "LLM application",
+            "retrieval pipeline"
+          ],
+          "seed_rationale": "must_have_plus_keyword_hints",
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "expected_coverage": [
+            "Python backend",
+            "LLM application",
+            "retrieval pipeline"
+          ],
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "domain_company",
+          "seed_terms": [
+            "workflow orchestration",
+            "tool calling"
+          ],
+          "seed_rationale": "domain_expansion_keywords",
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "expected_coverage": [
+            "workflow orchestration",
+            "tool calling"
+          ],
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "target_location": "Shanghai"
+        }
+      ]
+    },
+    "frontier_state": {
+      "frontier_nodes": {
+        "seed_strict_core_c9cd9c88": {
+          "frontier_node_id": "seed_strict_core_c9cd9c88",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "Senior Python / LLM Engineer",
+            "agent engineer",
+            "rag",
+            "python backend"
+          ],
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "seed_rationale": "role_title_plus_core_keywords",
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_must_have_alias_e79396f2": {
+          "frontier_node_id": "seed_must_have_alias_e79396f2",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "must_have_alias",
+          "node_query_term_pool": [
+            "Python backend",
+            "LLM application",
+            "retrieval pipeline"
+          ],
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "seed_rationale": "must_have_plus_keyword_hints",
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_domain_company_1f980b9c": {
+          "frontier_node_id": "seed_domain_company_1f980b9c",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "domain_company",
+          "node_query_term_pool": [
+            "workflow orchestration",
+            "tool calling"
+          ],
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "seed_rationale": "domain_expansion_keywords",
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        }
+      },
+      "open_frontier_node_ids": [
+        "seed_strict_core_c9cd9c88",
+        "seed_must_have_alias_e79396f2",
+        "seed_domain_company_1f980b9c"
+      ],
+      "closed_frontier_node_ids": [],
+      "run_term_catalog": [
+        "Senior Python / LLM Engineer",
+        "agent engineer",
+        "rag",
+        "python backend",
+        "LLM application",
+        "retrieval pipeline",
+        "workflow orchestration",
+        "tool calling"
+      ],
+      "run_shortlist_candidate_ids": [],
+      "semantic_hashes_seen": [],
+      "operator_statistics": {
+        "must_have_alias": {
+          "average_reward": 0.0,
+          "times_selected": 0
+        },
+        "strict_core": {
+          "average_reward": 0.0,
+          "times_selected": 0
+        },
+        "domain_company": {
+          "average_reward": 0.0,
+          "times_selected": 0
+        },
+        "crossover_compose": {
+          "average_reward": 0.0,
+          "times_selected": 0
+        }
+      },
+      "remaining_budget": 5
+    }
+  },
+  "rounds": [
+    {
+      "runtime_round_index": 0,
+      "frontier_state_before": {
+        "frontier_nodes": {
+          "seed_strict_core_c9cd9c88": {
+            "frontier_node_id": "seed_strict_core_c9cd9c88",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Senior Python / LLM Engineer",
+              "agent engineer",
+              "rag",
+              "python backend"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "role_title_plus_core_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_must_have_alias_e79396f2": {
+            "frontier_node_id": "seed_must_have_alias_e79396f2",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM application",
+              "retrieval pipeline"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "must_have_plus_keyword_hints",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_domain_company_1f980b9c": {
+            "frontier_node_id": "seed_domain_company_1f980b9c",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "domain_company",
+            "node_query_term_pool": [
+              "workflow orchestration",
+              "tool calling"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "domain_expansion_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_strict_core_c9cd9c88",
+          "seed_must_have_alias_e79396f2",
+          "seed_domain_company_1f980b9c"
+        ],
+        "closed_frontier_node_ids": [],
+        "run_term_catalog": [
+          "Senior Python / LLM Engineer",
+          "agent engineer",
+          "rag",
+          "python backend",
+          "LLM application",
+          "retrieval pipeline",
+          "workflow orchestration",
+          "tool calling"
+        ],
+        "run_shortlist_candidate_ids": [],
+        "semantic_hashes_seen": [],
+        "operator_statistics": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 5
+      },
+      "controller_context": {
+        "active_frontier_node_summary": {
+          "frontier_node_id": "seed_strict_core_c9cd9c88",
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "Senior Python / LLM Engineer",
+            "agent engineer",
+            "rag",
+            "python backend"
+          ],
+          "node_shortlist_candidate_ids": []
+        },
+        "donor_candidate_node_summaries": [],
+        "frontier_head_summary": {
+          "open_node_count": 3,
+          "remaining_budget": 5,
+          "highest_priority_score": 3.6999999999999997
+        },
+        "unmet_requirement_weights": [
+          {
+            "capability": "Python backend",
+            "weight": 1.0
+          },
+          {
+            "capability": "LLM application",
+            "weight": 1.0
+          },
+          {
+            "capability": "retrieval pipeline",
+            "weight": 1.0
+          }
+        ],
+        "operator_statistics_summary": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "allowed_operator_names": [
+          "must_have_alias",
+          "strict_core",
+          "domain_company",
+          "crossover_compose"
+        ],
+        "term_budget_range": [
+          2,
+          6
+        ],
+        "fit_gate_constraints": {
+          "locations": [
+            "Shanghai"
+          ],
+          "min_years": 5,
+          "max_years": 10,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        }
+      },
+      "controller_draft": {
+        "action": "stop",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop."
+      },
+      "controller_audit": {
+        "output_mode": "NativeOutput(strict=True)",
+        "retries": 0,
+        "output_retries": 1,
+        "validator_retry_count": 0,
+        "model_name": "test",
+        "instruction_id_or_hash": "bbf2c909df1dc90ed7fe46d28195f3928be9d655",
+        "message_history_mode": "fresh",
+        "tools_enabled": false,
+        "model_settings_snapshot": {
+          "allow_text_output": false,
+          "allow_image_output": false,
+          "native_output_strict": true
+        }
+      },
+      "controller_decision": {
+        "action": "stop",
+        "target_frontier_node_id": "seed_strict_core_c9cd9c88",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop."
+      },
+      "execution_plan": null,
+      "execution_result": null,
+      "runtime_audit_tags": {},
+      "scoring_result": null,
+      "branch_evaluation_draft": null,
+      "branch_evaluation_audit": null,
+      "branch_evaluation": null,
+      "reward_breakdown": null,
+      "frontier_state_after": {
+        "frontier_nodes": {
+          "seed_strict_core_c9cd9c88": {
+            "frontier_node_id": "seed_strict_core_c9cd9c88",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Senior Python / LLM Engineer",
+              "agent engineer",
+              "rag",
+              "python backend"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "role_title_plus_core_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_must_have_alias_e79396f2": {
+            "frontier_node_id": "seed_must_have_alias_e79396f2",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM application",
+              "retrieval pipeline"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "must_have_plus_keyword_hints",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_domain_company_1f980b9c": {
+            "frontier_node_id": "seed_domain_company_1f980b9c",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "domain_company",
+            "node_query_term_pool": [
+              "workflow orchestration",
+              "tool calling"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "domain_expansion_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_strict_core_c9cd9c88",
+          "seed_must_have_alias_e79396f2",
+          "seed_domain_company_1f980b9c"
+        ],
+        "closed_frontier_node_ids": [],
+        "run_term_catalog": [
+          "Senior Python / LLM Engineer",
+          "agent engineer",
+          "rag",
+          "python backend",
+          "LLM application",
+          "retrieval pipeline",
+          "workflow orchestration",
+          "tool calling"
+        ],
+        "run_shortlist_candidate_ids": [],
+        "semantic_hashes_seen": [],
+        "operator_statistics": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 5
+      },
+      "stop_reason": "controller_stop",
+      "continue_flag": false
+    }
+  ],
+  "finalization_audit": {
+    "output_mode": "NativeOutput(strict=True)",
+    "retries": 0,
+    "output_retries": 1,
+    "validator_retry_count": 0,
+    "model_name": "test",
+    "instruction_id_or_hash": "3c753b2a7776b371828311b141f32d92d4da734f",
+    "message_history_mode": "fresh",
+    "tools_enabled": false,
+    "model_settings_snapshot": {
+      "allow_text_output": false,
+      "allow_image_output": false,
+      "native_output_strict": true
+    }
+  },
+  "final_result": {
+    "final_shortlist_candidate_ids": [],
+    "run_summary": "Explicit domain bootstrap stopped cleanly.",
+    "stop_reason": "controller_stop"
+  },
+  "eval": {
+    "experiment_id": "E5",
+    "run_id": "case-bootstrap-explicit-domain",
+    "metrics": [
+      {
+        "name": "routing_mode",
+        "value": "explicit_domain"
+      },
+      {
+        "name": "selected_knowledge_pack_id",
+        "value": "llm_agent_rag_engineering-2026-04-09-v1"
+      },
+      {
+        "name": "routing_confidence",
+        "value": 1.0
+      },
+      {
+        "name": "round_count",
+        "value": 1
+      },
+      {
+        "name": "search_round_count",
+        "value": 0
+      },
+      {
+        "name": "stop_reason",
+        "value": "controller_stop"
+      },
+      {
+        "name": "final_shortlist_count",
+        "value": 0
+      },
+      {
+        "name": "top_candidate_id",
+        "value": ""
+      },
+      {
+        "name": "total_pages_fetched",
+        "value": 0
+      },
+      {
+        "name": "deduplicated_candidate_count",
+        "value": 0
+      },
+      {
+        "name": "average_novelty",
+        "value": 0.0
+      },
+      {
+        "name": "average_usefulness",
+        "value": 0.0
+      },
+      {
+        "name": "average_stability_risk",
+        "value": 0.0
+      },
+      {
+        "name": "runtime_audit_tag_count",
+        "value": 0
+      },
+      {
+        "name": "llm_validator_retry_count",
+        "value": 0
+      }
+    ]
+  }
+}

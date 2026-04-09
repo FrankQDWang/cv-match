@@ -161,3 +161,26 @@ source_reports:
 - `RAG` 相关词在部分团队是否应视为相邻可迁移背景，而不是默认强混淆
 - `CTR/CVR` 候选人如果没有 `query/retrieval` 词，是否允许进候选池要看 JD 是否接受 ads-to-search 转岗
 - 对企业内网搜索背景，是否需要单独加一个“流量规模/延迟级别”校正项
+
+## Compile Cards
+
+```yaml
+[
+  {
+    "card_id": "role_alias.search_ranking_retrieval_engineering.retrieval_ranking_engineer",
+    "card_type": "role_alias",
+    "title": "Retrieval/Ranking Engineer",
+    "summary": "搜索、召回、排序、评估与 candidate ranking 相关工程角色。",
+    "canonical_terms": ["retrieval engineer", "ranking engineer"],
+    "aliases": ["search engineer", "relevance engineer"],
+    "positive_signals": ["retrieval pipeline", "ranking pipeline", "evaluation"],
+    "negative_signals": ["data analyst"],
+    "query_terms": ["retrieval engineer", "ranking", "search"],
+    "must_have_links": ["Python backend", "retrieval or ranking experience"],
+    "preferred_links": ["evaluation", "observability"],
+    "confidence": "high",
+    "source_model_votes": 2,
+    "freshness_date": "2026-04-07"
+  }
+]
+```

@@ -64,3 +64,26 @@ source_reports:
 
 - `广告平台` 是否应在某些 JD 下默认降权而不是加分
 - `recommendation platform` 在纯推荐业务里是否要单独拆背景桶
+
+## Compile Cards
+
+```yaml
+[
+  {
+    "card_id": "company_background.search_ranking_retrieval_engineering.search_platform_company",
+    "card_type": "company_background",
+    "title": "Search Platform Company Background",
+    "summary": "搜推平台、广告平台、招聘搜索等业务背景。",
+    "canonical_terms": ["search platform", "ranking platform"],
+    "aliases": ["relevance platform", "recommendation platform"],
+    "positive_signals": ["search platform", "ranking platform"],
+    "negative_signals": ["pure operation"],
+    "query_terms": ["search platform", "recommendation", "ranking"],
+    "must_have_links": ["retrieval or ranking experience"],
+    "preferred_links": ["to-b delivery", "observability"],
+    "confidence": "medium",
+    "source_model_votes": 1,
+    "freshness_date": "2026-04-07"
+  }
+]
+```

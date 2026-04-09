@@ -1,6 +1,6 @@
 # Configuration
 
-`SeekTalent v0.3 phase 5 runtime loop` keeps CTS, rerank API, and local path settings. Old model, reflection, search-budget, and UI settings are still gone.
+`SeekTalent v0.3 phase 6 offline artifacts active` keeps CTS, rerank API, local path settings, and an active runtime manifest. Old phase-5-only knobs are still gone.
 
 ## Starter env
 
@@ -36,7 +36,7 @@ SEEKTALENT_RUNS_DIR=runs
 | `SEEKTALENT_MOCK_CTS` | No | `false` | Enables the local mock CTS corpus. |
 | `SEEKTALENT_RERANK_BASE_URL` | No | `http://127.0.0.1:8012` | Base URL for the local rerank HTTP API. |
 | `SEEKTALENT_RERANK_TIMEOUT_SECONDS` | No | `20` | HTTP timeout for rerank requests. |
-| `SEEKTALENT_RUNS_DIR` | No | `runs` | Output root used by `doctor`. |
+| `SEEKTALENT_RUNS_DIR` | No | `runs` | Output root for `run` artifacts and `doctor`. |
 
 ## Modes
 
@@ -71,13 +71,20 @@ Use:
 seektalent doctor
 ```
 
-`doctor` only checks:
+`doctor` checks:
 
 - the packaged CTS spec path
 - settings loading
 - the configured runs directory
+- the active runtime manifest (`artifacts/runtime/active.json`)
 - CTS credentials, unless mock mode is enabled
 - rerank base URL and timeout settings
+
+## Runtime artifact owners
+
+- `artifacts/runtime/active.json` binds the active `knowledge_pack_ids`, `policy_id`, and `calibration_id`.
+- `artifacts/runtime/policies/<policy_id>.json` owns `BusinessPolicyPack`.
+- `artifacts/knowledge/packs/` owns the round-0 routing and keyword-injection context for each active domain.
 
 ## Related docs
 

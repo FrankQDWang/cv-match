@@ -1,7 +1,9 @@
-# Reviewed Reports Relocation
+# Knowledge Packs
 
-`v0.3` 的 reviewed synthesis reports 已迁到仓库共享目录：
+当前 `HEAD` 的运行时知识库入口已经改成：
 
-- `artifacts/knowledge/reviewed_reports/`
+- `artifacts/knowledge/packs/`
 
-`docs/v-0.3/` 现在只保留规范、trace 和解释文档，不再承载 runtime 共享资产正文。
+`docs/v-0.3/` 只保留规范、trace 和解释文档，不承载运行时数据文件。
+
+旧的 reviewed reports / compiled assets 已退出当前 runtime contract。

@@ -1,0 +1,49 @@
+{
+  "case_id": "case-bootstrap-inferred-top1",
+  "scenario": "单领域 top1 路由",
+  "experiment_id": "E5",
+  "expected_route": "inferred_domain",
+  "observed_route": "inferred_domain",
+  "expected_stop_reason": "controller_stop",
+  "observed_stop_reason": "controller_stop",
+  "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "expected_fallback_reason": null,
+  "observed_fallback_reason": null,
+  "must_hold": [
+    "selected_knowledge_pack_id is llm_agent_rag_engineering-2026-04-09-v1"
+  ],
+  "must_not_hold": [
+    "routing_mode = generic_fallback"
+  ],
+  "metrics": [
+    {
+      "name": "route_match",
+      "value": true
+    },
+    {
+      "name": "selected_pack_match",
+      "value": true
+    },
+    {
+      "name": "generic_fallback_correctness",
+      "value": true
+    },
+    {
+      "name": "include_keyword_adoption",
+      "value": 1.0
+    },
+    {
+      "name": "exclude_keyword_leak",
+      "value": false
+    },
+    {
+      "name": "stop_reason_match",
+      "value": true
+    },
+    {
+      "name": "round_count",
+      "value": 1
+    }
+  ]
+}

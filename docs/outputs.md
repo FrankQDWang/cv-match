@@ -1,15 +1,19 @@
 # Outputs
 
-`SeekTalent v0.3 phase 5 runtime loop` returns user-facing results, but still does not persist run artifacts.
+`SeekTalent v0.3 phase 6 offline artifacts active` returns a structured `SearchRunBundle` and persists run artifacts.
 
-`seektalent run` writes the final result to stdout:
+`seektalent run` writes:
 
-- human mode: `stop_reason`, comma-joined shortlist ids, `run_summary`
-- `--json` mode: `SearchRunResult.model_dump(mode="json")`
+- human mode: `run_dir`, `stop_reason`, comma-joined shortlist ids, `run_summary`
+- `--json` mode: `SearchRunBundle.model_dump(mode="json")`
 
-Python API returns the same facts as `SearchRunResult`.
+Python API returns the same bundle as `run_match(...)`.
 
 ## What currently writes files
+
+### `seektalent run`
+
+Writes `runs/<run_id>/bundle.json`, `final_result.json`, and `eval.json`.
 
 ### `seektalent init`
 
@@ -17,29 +21,23 @@ Writes one env file, `.env` by default.
 
 ### `seektalent doctor`
 
-Ensures the configured `runs` directory exists so path settings stay valid.
+Ensures the configured `runs` directory exists and validates the active runtime manifest.
 
-That is the only filesystem side effect kept in the CLI besides `init`.
+## What exists on disk now
 
-## What exists in memory now
+- `runs/<run_id>/bundle.json`
+- `runs/<run_id>/final_result.json`
+- `runs/<run_id>/eval.json`
+- `artifacts/runtime/active.json`
+- `artifacts/runtime/policies/*.json`
+- `artifacts/runtime/cases/<case_id>/...`
+- `artifacts/runtime/evals/e5-matrix.json`
 
-- bootstrap LLM audit snapshots
-- search execution runtime audit tags
-- scoring payloads and frontier/bootstrap state
-
-These facts are available as structured runtime objects, but are not yet persisted to `runs/<id>/`.
-
-## What is intentionally absent
+## What remains intentionally absent
 
 - `trace.log`
 - `events.jsonl`
-- `input_truth.json`
-- `requirement_sheet.json`
-- any round directory
-- any controller / reflection / scoring / finalizer artifact
-- any UI payload artifact
-
-These outputs stay absent until a later artifact-writing phase lands.
+- UI payload artifacts
 
 ## Related docs
 

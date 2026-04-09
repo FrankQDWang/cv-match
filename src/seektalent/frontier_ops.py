@@ -53,7 +53,7 @@ def select_active_frontier_node(
         "strict_core",
         "crossover_compose",
     ]
-    if active_node.source_card_ids:
+    if active_node.knowledge_pack_id is not None:
         allowed_operator_names.insert(2, "domain_company")
 
     return SearchControllerContext_t(

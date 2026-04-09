@@ -222,7 +222,7 @@ term_budget_range default comes from RuntimeTermBudgetPolicy:
 适合“draft payload -> deterministic normalization”格式的算子：
 
 - `ExtractRequirements`
-- `GenerateGroundingOutput`
+- `GenerateBootstrapOutput`
 
 ## 相关
 

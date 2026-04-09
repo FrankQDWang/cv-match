@@ -41,7 +41,7 @@ def evaluate_branch_outcome(
         "strict_core",
         "crossover_compose",
     }
-    if plan.source_card_ids:
+    if plan.knowledge_pack_id is not None:
         allowed_repair_operator_names.add("domain_company")
     repair_operator_hint = _normalized_text(draft.repair_operator_hint)
     return BranchEvaluation_t(
@@ -211,7 +211,7 @@ def update_frontier_state(
         node_query_term_pool=stable_deduplicate(
             parent_node.node_query_term_pool + plan.query_terms
         ),
-        source_card_ids=list(plan.source_card_ids),
+        knowledge_pack_id=plan.knowledge_pack_id,
         seed_rationale=None,
         negative_terms=list(plan.runtime_only_constraints.negative_keywords),
         parent_shortlist_candidate_ids=list(parent_node.node_shortlist_candidate_ids),

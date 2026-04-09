@@ -1,65 +1,7 @@
 # GroundingDraft
 
-`GroundingGenerationLLM` 输出的 grounding 草稿。
+已从当前 `HEAD` 移除。
 
-```text
-GroundingDraft = {
-  grounding_evidence_cards: list[GroundingEvidenceCard],
-  frontier_seed_specifications: list[FrontierSeedSpecification]
-}
-```
+当前 bootstrap 草稿 owner 是：
 
-## 稳定字段组
-
-- grounding 证据卡：`grounding_evidence_cards`
-- frontier 种子规格：`frontier_seed_specifications`
-
-## Direct Producer / Direct Consumers
-
-- Direct producer：GroundingGenerationLLM
-- Direct consumers：[[GenerateGroundingOutput]]
-
-## Invariants
-
-- 它描述的是首轮语义启动建议，不是运行期活体状态。
-- 种子规格必须经过 wrapper 归一化后才能进入 frontier 初始化。
-- 非 generic 模式下，证据卡与种子规格都必须可回溯到 `KnowledgeRetrievalResult.retrieved_cards`。
-- `generic_fallback` 下 LLM 草稿不得发明领域知识卡，也不得写出 `domain_company` 或 `crossover_compose` seed。
-
-## Implementation Surface
-
-- Phase 2+ 默认使用 `pydantic-ai` 实现 `GroundingGenerationLLM`，但它只作为 typed request/response wrapper。
-- 调用方式固定为 `fresh request`：使用 `instructions` 承载调用点级规则，`RequirementSheet + KnowledgeRetrievalResult` 作为当前 user content，默认不继承任何 message history。
-- 输出模式固定为 `NativeOutput` strict schema；`allow_text_output = false`、`allow_image_output = false`。
-- 禁用 `function_tools`、`builtin_tools`、任意 MCP/tool calling 与 fallback model chain。
-- 默认不额外加业务型 validator retry；`generic_fallback` 是否启用仍由 runtime 决定，不由模型自救。
-
-## 最小示例
-
-```yaml
-grounding_evidence_cards:
-  - source_card_id: "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
-    label: "agent engineer"
-    rationale: "role title 与 must-have 同时命中。"
-    evidence_type: "title_alias"
-    confidence: "high"
-frontier_seed_specifications:
-  - operator_name: "must_have_alias"
-    seed_terms: ["agent engineer", "rag", "python"]
-    seed_rationale: "先覆盖角色锚点与核心技术栈。"
-    source_card_ids:
-      - "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
-    expected_coverage:
-      - "Python backend"
-      - "LLM application"
-    negative_terms:
-      - "data analyst"
-    target_location: "Shanghai"
-```
-
-## 相关
-
-- [[GroundingEvidenceCard]]
-- [[FrontierSeedSpecification]]
-- [[KnowledgeRetrievalResult]]
-- [[GenerateGroundingOutput]]
+- [[BootstrapKeywordDraft]]

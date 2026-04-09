@@ -24,20 +24,12 @@ def artifacts_root() -> Path:
     return repo_root() / ARTIFACTS_ROOT_NAME
 
 
-def reviewed_reports_dir() -> Path:
-    return artifacts_root() / KNOWLEDGE_ROOT / "reviewed_reports"
+def knowledge_pack_dir() -> Path:
+    return artifacts_root() / KNOWLEDGE_ROOT / "packs"
 
 
-def compiled_knowledge_dir() -> Path:
-    return artifacts_root() / KNOWLEDGE_ROOT / "compiled"
-
-
-def compiled_cards_file() -> Path:
-    return compiled_knowledge_dir() / "cards.json"
-
-
-def compiled_snapshot_file(snapshot_id: str) -> Path:
-    return compiled_knowledge_dir() / "snapshots" / f"{snapshot_id}.json"
+def knowledge_pack_file(knowledge_pack_id: str) -> Path:
+    return knowledge_pack_dir() / f"{knowledge_pack_id}.json"
 
 
 def runtime_registry_dir() -> Path:
@@ -64,6 +56,30 @@ def runtime_calibration_dir() -> Path:
 
 def calibration_file(calibration_id: str) -> Path:
     return runtime_calibration_dir() / f"{calibration_id}.json"
+
+
+def runtime_policy_dir() -> Path:
+    return artifacts_root() / RUNTIME_ROOT / "policies"
+
+
+def policy_file(policy_id: str) -> Path:
+    return runtime_policy_dir() / f"{policy_id}.json"
+
+
+def runtime_active_file() -> Path:
+    return artifacts_root() / RUNTIME_ROOT / "active.json"
+
+
+def runtime_case_dir(case_id: str) -> Path:
+    return artifacts_root() / RUNTIME_ROOT / "cases" / case_id
+
+
+def runtime_eval_dir() -> Path:
+    return artifacts_root() / RUNTIME_ROOT / "evals"
+
+
+def runtime_eval_matrix_file(experiment_id: str) -> Path:
+    return runtime_eval_dir() / f"{experiment_id.lower()}-matrix.json"
 
 
 def package_spec_file() -> Path:

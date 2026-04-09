@@ -20,7 +20,7 @@ RequirementSheet = { role_title, role_summary, must_have_capabilities, preferred
 ## Direct Producer / Direct Consumers
 
 - Direct producer：[[ExtractRequirements]]
-- Direct consumers：[[RetrieveGroundingKnowledge]]、[[FreezeScoringPolicy]]、[[GenerateGroundingOutput]]、[[SelectActiveFrontierNode]]、[[MaterializeSearchExecutionPlan]]、[[EvaluateBranchOutcome]]、[[FinalizeSearchRun]]
+- Direct consumers：[[RouteDomainKnowledgePack]]、[[FreezeScoringPolicy]]、[[GenerateBootstrapOutput]]、[[SelectActiveFrontierNode]]、[[MaterializeSearchExecutionPlan]]、[[EvaluateBranchOutcome]]、[[FinalizeSearchRun]]
 
 ## Invariants
 

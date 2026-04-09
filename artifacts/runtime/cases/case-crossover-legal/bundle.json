@@ -1,0 +1,2238 @@
+{
+  "phase": "phase6_offline_artifacts_active",
+  "run_id": "case-crossover-legal",
+  "run_dir": "/Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-crossover-legal",
+  "created_at_utc": "2026-04-09T00:00:00Z",
+  "bootstrap": {
+    "input_truth": {
+      "job_description": "Workflow Search Engineer",
+      "hiring_notes": "canonical case",
+      "job_description_sha256": "d828c94d15b1466cc95d224657322018b60454089db50cafa171e2432133ce5b",
+      "hiring_notes_sha256": "06024dbeaeeb6959673a544857a69677f079940640e362ac77d8f9f7477f15b5"
+    },
+    "requirement_extraction_audit": {
+      "output_mode": "NativeOutput(strict=True)",
+      "retries": 0,
+      "output_retries": 1,
+      "validator_retry_count": 0,
+      "model_name": "test",
+      "instruction_id_or_hash": "a73aae6224c595b05ce965f5d906407be0d8cd15",
+      "message_history_mode": "fresh",
+      "tools_enabled": false,
+      "model_settings_snapshot": {
+        "allow_text_output": false,
+        "allow_image_output": false,
+        "native_output_strict": true
+      }
+    },
+    "requirement_sheet": {
+      "role_title": "Workflow Search Engineer",
+      "role_summary": "Build workflow-aware search systems.",
+      "must_have_capabilities": [
+        "Python backend",
+        "LLM",
+        "retrieval",
+        "workflow",
+        "ranking",
+        "agent"
+      ],
+      "preferred_capabilities": [],
+      "exclusion_signals": [
+        "frontend"
+      ],
+      "hard_constraints": {
+        "locations": [
+          "Shanghai"
+        ],
+        "min_years": 5,
+        "max_years": 10,
+        "company_names": [],
+        "school_names": [],
+        "degree_requirement": null,
+        "school_type_requirement": [],
+        "gender_requirement": null,
+        "min_age": null,
+        "max_age": null
+      },
+      "preferences": {
+        "preferred_domains": [],
+        "preferred_backgrounds": []
+      },
+      "scoring_rationale": "Keep crossover provenance explicit."
+    },
+    "business_policy_snapshot": {
+      "policy_id": "business-default-2026-04-09-v1",
+      "policy_pack": {
+        "domain_id_override": null,
+        "fusion_weight_preferences": {
+          "rerank": 0.55,
+          "must_have": 0.25,
+          "preferred": 0.1,
+          "risk_penalty": 0.1
+        },
+        "fit_gate_overrides": {
+          "locations": [],
+          "min_years": null,
+          "max_years": null,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        },
+        "stability_policy": {
+          "mode": "soft_penalty",
+          "penalty_weight": 1.0,
+          "confidence_floor": 0.6,
+          "allow_hard_gate": false
+        },
+        "explanation_preferences": {
+          "top_n_for_explanation": 5,
+          "emphasize_business_delivery": true
+        }
+      }
+    },
+    "routing_result": {
+      "routing_mode": "inferred_domain",
+      "selected_domain_id": "llm_agent_rag_engineering",
+      "selected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+      "routing_confidence": 0.6224593312018546,
+      "fallback_reason": null,
+      "pack_scores": {
+        "llm_agent_rag_engineering-2026-04-09-v1": 0.6224593312018546,
+        "search_ranking_retrieval_engineering-2026-04-09-v1": 0.520821285372743,
+        "finance_risk_control_ai-2026-04-09-v1": 0.5104151598873647
+      }
+    },
+    "scoring_policy": {
+      "fit_gate_constraints": {
+        "locations": [
+          "Shanghai"
+        ],
+        "min_years": 5,
+        "max_years": 10,
+        "company_names": [],
+        "school_names": [],
+        "degree_requirement": null,
+        "gender_requirement": null,
+        "min_age": null,
+        "max_age": null
+      },
+      "must_have_capabilities_snapshot": [
+        "Python backend",
+        "LLM",
+        "retrieval",
+        "workflow",
+        "ranking",
+        "agent"
+      ],
+      "preferred_capabilities_snapshot": [],
+      "fusion_weights": {
+        "rerank": 0.55,
+        "must_have": 0.25,
+        "preferred": 0.1,
+        "risk_penalty": 0.1
+      },
+      "penalty_weights": {
+        "job_hop": 1.0,
+        "job_hop_confidence_floor": 0.6
+      },
+      "top_n_for_explanation": 5,
+      "rerank_instruction": "Rank candidate resumes for hiring relevance. Prioritize must-have capabilities first, use preferred capabilities as secondary evidence, and do not hard-reject on soft risk signals.",
+      "rerank_query_text": "Workflow Search Engineer; must-have: Python backend, LLM, retrieval, workflow, ranking, agent; location: Shanghai; min 5 years; max 10 years",
+      "reranker_calibration_snapshot": {
+        "model_id": "mlx-community/Qwen3-Reranker-8B-mxfp8",
+        "normalization": "sigmoid",
+        "temperature": 2.4,
+        "offset": 0.0,
+        "clip_min": -12.0,
+        "clip_max": 12.0,
+        "calibration_version": "2026-04-07-v1"
+      },
+      "ranking_audit_notes": "Keep crossover provenance explicit. must-have 优先于 preferred；低置信度稳定性风险不处罚。"
+    },
+    "bootstrap_keyword_generation_audit": {
+      "output_mode": "NativeOutput(strict=True)",
+      "retries": 0,
+      "output_retries": 1,
+      "validator_retry_count": 0,
+      "model_name": "test",
+      "instruction_id_or_hash": "fe8e7b2591f4b79b66fd9e6bb9b0a6bbc20a8bc3",
+      "message_history_mode": "fresh",
+      "tools_enabled": false,
+      "model_settings_snapshot": {
+        "allow_text_output": false,
+        "allow_image_output": false,
+        "native_output_strict": true
+      }
+    },
+    "bootstrap_output": {
+      "frontier_seed_specifications": [
+        {
+          "operator_name": "strict_core",
+          "seed_terms": [
+            "Workflow Search Engineer",
+            "Python backend",
+            "LLM",
+            "retrieval"
+          ],
+          "seed_rationale": "role_title_plus_core_keywords",
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "expected_coverage": [],
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "must_have_alias",
+          "seed_terms": [
+            "Python backend",
+            "LLM",
+            "retrieval",
+            "workflow"
+          ],
+          "seed_rationale": "must_have_plus_keyword_hints",
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "expected_coverage": [
+            "Python backend",
+            "LLM",
+            "retrieval",
+            "workflow",
+            "ranking",
+            "agent"
+          ],
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "target_location": "Shanghai"
+        }
+      ]
+    },
+    "frontier_state": {
+      "frontier_nodes": {
+        "seed_strict_core_aae53983": {
+          "frontier_node_id": "seed_strict_core_aae53983",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "Workflow Search Engineer",
+            "Python backend",
+            "LLM",
+            "retrieval"
+          ],
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "seed_rationale": "role_title_plus_core_keywords",
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_must_have_alias_5858b31f": {
+          "frontier_node_id": "seed_must_have_alias_5858b31f",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "must_have_alias",
+          "node_query_term_pool": [
+            "Python backend",
+            "LLM",
+            "retrieval",
+            "workflow"
+          ],
+          "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+          "seed_rationale": "must_have_plus_keyword_hints",
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        }
+      },
+      "open_frontier_node_ids": [
+        "seed_strict_core_aae53983",
+        "seed_must_have_alias_5858b31f"
+      ],
+      "closed_frontier_node_ids": [],
+      "run_term_catalog": [
+        "Workflow Search Engineer",
+        "Python backend",
+        "LLM",
+        "retrieval",
+        "workflow"
+      ],
+      "run_shortlist_candidate_ids": [],
+      "semantic_hashes_seen": [],
+      "operator_statistics": {
+        "must_have_alias": {
+          "average_reward": 0.0,
+          "times_selected": 0
+        },
+        "strict_core": {
+          "average_reward": 0.0,
+          "times_selected": 0
+        },
+        "domain_company": {
+          "average_reward": 0.0,
+          "times_selected": 0
+        },
+        "crossover_compose": {
+          "average_reward": 0.0,
+          "times_selected": 0
+        }
+      },
+      "remaining_budget": 5
+    }
+  },
+  "rounds": [
+    {
+      "runtime_round_index": 0,
+      "frontier_state_before": {
+        "frontier_nodes": {
+          "seed_strict_core_aae53983": {
+            "frontier_node_id": "seed_strict_core_aae53983",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "role_title_plus_core_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_must_have_alias_5858b31f": {
+            "frontier_node_id": "seed_must_have_alias_5858b31f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "must_have_plus_keyword_hints",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_strict_core_aae53983",
+          "seed_must_have_alias_5858b31f"
+        ],
+        "closed_frontier_node_ids": [],
+        "run_term_catalog": [
+          "Workflow Search Engineer",
+          "Python backend",
+          "LLM",
+          "retrieval",
+          "workflow"
+        ],
+        "run_shortlist_candidate_ids": [],
+        "semantic_hashes_seen": [],
+        "operator_statistics": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 5
+      },
+      "controller_context": {
+        "active_frontier_node_summary": {
+          "frontier_node_id": "seed_strict_core_aae53983",
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "Workflow Search Engineer",
+            "Python backend",
+            "LLM",
+            "retrieval"
+          ],
+          "node_shortlist_candidate_ids": []
+        },
+        "donor_candidate_node_summaries": [],
+        "frontier_head_summary": {
+          "open_node_count": 2,
+          "remaining_budget": 5,
+          "highest_priority_score": 3.6999999999999997
+        },
+        "unmet_requirement_weights": [
+          {
+            "capability": "Python backend",
+            "weight": 0.3
+          },
+          {
+            "capability": "LLM",
+            "weight": 0.3
+          },
+          {
+            "capability": "retrieval",
+            "weight": 0.3
+          },
+          {
+            "capability": "workflow",
+            "weight": 1.0
+          },
+          {
+            "capability": "ranking",
+            "weight": 1.0
+          },
+          {
+            "capability": "agent",
+            "weight": 1.0
+          }
+        ],
+        "operator_statistics_summary": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "allowed_operator_names": [
+          "must_have_alias",
+          "strict_core",
+          "domain_company",
+          "crossover_compose"
+        ],
+        "term_budget_range": [
+          2,
+          6
+        ],
+        "fit_gate_constraints": {
+          "locations": [
+            "Shanghai"
+          ],
+          "min_years": 5,
+          "max_years": 10,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        }
+      },
+      "controller_draft": {
+        "action": "search_cts",
+        "selected_operator_name": "strict_core",
+        "operator_args": {
+          "additional_terms": [
+            "ranking",
+            "agent"
+          ]
+        },
+        "expected_gain_hypothesis": "Expand coverage."
+      },
+      "controller_audit": {
+        "output_mode": "NativeOutput(strict=True)",
+        "retries": 0,
+        "output_retries": 1,
+        "validator_retry_count": 0,
+        "model_name": "test",
+        "instruction_id_or_hash": "bbf2c909df1dc90ed7fe46d28195f3928be9d655",
+        "message_history_mode": "fresh",
+        "tools_enabled": false,
+        "model_settings_snapshot": {
+          "allow_text_output": false,
+          "allow_image_output": false,
+          "native_output_strict": true
+        }
+      },
+      "controller_decision": {
+        "action": "search_cts",
+        "target_frontier_node_id": "seed_strict_core_aae53983",
+        "selected_operator_name": "strict_core",
+        "operator_args": {
+          "additional_terms": [
+            "ranking",
+            "agent"
+          ]
+        },
+        "expected_gain_hypothesis": "Expand coverage."
+      },
+      "execution_plan": {
+        "query_terms": [
+          "Workflow Search Engineer",
+          "Python backend",
+          "LLM",
+          "retrieval",
+          "ranking",
+          "agent"
+        ],
+        "projected_filters": {
+          "locations": [
+            "Shanghai"
+          ],
+          "min_years": 5,
+          "max_years": 10,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "school_type_requirement": [],
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        },
+        "runtime_only_constraints": {
+          "must_have_keywords": [
+            "Python backend",
+            "LLM",
+            "retrieval",
+            "workflow",
+            "ranking",
+            "agent",
+            "Workflow Search Engineer"
+          ],
+          "negative_keywords": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ]
+        },
+        "target_new_candidate_count": 10,
+        "semantic_hash": "f9c592376a8a6e815df354829003ee83431151f7",
+        "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+        "child_frontier_node_stub": {
+          "frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+          "parent_frontier_node_id": "seed_strict_core_aae53983",
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "strict_core"
+        },
+        "derived_position": "Workflow Search Engineer",
+        "derived_work_content": "Python backend | LLM | retrieval | workflow"
+      },
+      "execution_result": {
+        "raw_candidates": [
+          {
+            "candidate_id": "candidate-crossover-1",
+            "age": null,
+            "gender": null,
+            "now_location": "Shanghai",
+            "expected_location": "Shanghai",
+            "years_of_experience_raw": 6,
+            "education_summaries": [
+              "复旦大学 计算机 本科"
+            ],
+            "work_experience_summaries": [
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
+              "python",
+              "ranking"
+            ],
+            "search_text": "python backend rag ranking",
+            "raw_payload": {
+              "title": "Python Engineer",
+              "workExperienceList": []
+            }
+          }
+        ],
+        "deduplicated_candidates": [
+          {
+            "candidate_id": "candidate-crossover-1",
+            "age": null,
+            "gender": null,
+            "now_location": "Shanghai",
+            "expected_location": "Shanghai",
+            "years_of_experience_raw": 6,
+            "education_summaries": [
+              "复旦大学 计算机 本科"
+            ],
+            "work_experience_summaries": [
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
+              "python",
+              "ranking"
+            ],
+            "search_text": "python backend rag ranking",
+            "raw_payload": {
+              "title": "Python Engineer",
+              "workExperienceList": []
+            }
+          }
+        ],
+        "scoring_candidates": [
+          {
+            "candidate_id": "candidate-crossover-1",
+            "scoring_text": "python backend rag ranking",
+            "capability_signals": [
+              "retrieval platform",
+              "python",
+              "ranking"
+            ],
+            "years_of_experience": 6,
+            "age": null,
+            "gender": null,
+            "location_signals": [
+              "Shanghai"
+            ],
+            "work_experience_summaries": [
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "education_summaries": [
+              "复旦大学 计算机 本科"
+            ],
+            "career_stability_profile": {
+              "job_count_last_5y": 1,
+              "short_tenure_count": 0,
+              "median_tenure_months": 0,
+              "current_tenure_months": 0,
+              "parsed_experience_count": 0,
+              "confidence_score": 0.2
+            }
+          }
+        ],
+        "search_page_statistics": {
+          "pages_fetched": 1,
+          "duplicate_rate": 0.0,
+          "latency_ms": 5
+        },
+        "search_observation": {
+          "unique_candidate_ids": [
+            "candidate-crossover-1"
+          ],
+          "shortage_after_last_page": true
+        }
+      },
+      "runtime_audit_tags": {
+        "candidate-crossover-1": [
+          "Python backend",
+          "retrieval",
+          "ranking"
+        ]
+      },
+      "scoring_result": {
+        "scored_candidates": [
+          {
+            "candidate_id": "candidate-crossover-1",
+            "fit": 1,
+            "rerank_raw": 2.0,
+            "rerank_normalized": 0.6970592839654074,
+            "must_have_match_score_raw": 50,
+            "must_have_match_score": 0.5,
+            "preferred_match_score_raw": 0,
+            "preferred_match_score": 0.0,
+            "risk_score_raw": 0,
+            "risk_score": 0.0,
+            "risk_flags": [],
+            "fusion_score": 0.5083826061809741
+          }
+        ],
+        "node_shortlist_candidate_ids": [
+          "candidate-crossover-1"
+        ],
+        "explanation_candidate_ids": [
+          "candidate-crossover-1"
+        ],
+        "top_three_statistics": {
+          "average_fusion_score_top_three": 0.5083826061809741
+        }
+      },
+      "branch_evaluation_draft": {
+        "novelty_score": 0.8,
+        "usefulness_score": 0.7,
+        "branch_exhausted": false,
+        "repair_operator_hint": "strict_core",
+        "evaluation_notes": "Canonical branch evaluation."
+      },
+      "branch_evaluation_audit": {
+        "output_mode": "NativeOutput(strict=True)",
+        "retries": 0,
+        "output_retries": 1,
+        "validator_retry_count": 0,
+        "model_name": "test",
+        "instruction_id_or_hash": "0a11fb35ee3a2139b4c8eaa14f343230762d0788",
+        "message_history_mode": "fresh",
+        "tools_enabled": false,
+        "model_settings_snapshot": {
+          "allow_text_output": false,
+          "allow_image_output": false,
+          "native_output_strict": true
+        }
+      },
+      "branch_evaluation": {
+        "novelty_score": 0.8,
+        "usefulness_score": 0.7,
+        "branch_exhausted": false,
+        "repair_operator_hint": "strict_core",
+        "evaluation_notes": "Canonical branch evaluation."
+      },
+      "reward_breakdown": {
+        "delta_top_three": 0.5083826061809741,
+        "must_have_gain": 0.5,
+        "new_fit_yield": 1.0,
+        "novelty": 0.8,
+        "usefulness": 0.7,
+        "diversity": 1.0,
+        "stability_risk_penalty": 0.0,
+        "hard_constraint_violation": 0.0,
+        "duplicate_penalty": 0.0,
+        "cost_penalty": 0.15,
+        "reward_score": 3.456765212361948
+      },
+      "frontier_state_after": {
+        "frontier_nodes": {
+          "seed_strict_core_aae53983": {
+            "frontier_node_id": "seed_strict_core_aae53983",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "role_title_plus_core_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "closed"
+          },
+          "seed_must_have_alias_5858b31f": {
+            "frontier_node_id": "seed_must_have_alias_5858b31f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "must_have_plus_keyword_hints",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "child_seed_strict_core_aae53983_f9c59237": {
+            "frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "parent_frontier_node_id": "seed_strict_core_aae53983",
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "ranking",
+              "agent"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": null,
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "strict_core",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_must_have_alias_5858b31f",
+          "child_seed_strict_core_aae53983_f9c59237"
+        ],
+        "closed_frontier_node_ids": [
+          "seed_strict_core_aae53983"
+        ],
+        "run_term_catalog": [
+          "Workflow Search Engineer",
+          "Python backend",
+          "LLM",
+          "retrieval",
+          "workflow",
+          "ranking",
+          "agent"
+        ],
+        "run_shortlist_candidate_ids": [
+          "candidate-crossover-1"
+        ],
+        "semantic_hashes_seen": [
+          "f9c592376a8a6e815df354829003ee83431151f7"
+        ],
+        "operator_statistics": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 3.456765212361948,
+            "times_selected": 1
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 4
+      },
+      "stop_reason": null,
+      "continue_flag": true
+    },
+    {
+      "runtime_round_index": 1,
+      "frontier_state_before": {
+        "frontier_nodes": {
+          "seed_strict_core_aae53983": {
+            "frontier_node_id": "seed_strict_core_aae53983",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "role_title_plus_core_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "closed"
+          },
+          "seed_must_have_alias_5858b31f": {
+            "frontier_node_id": "seed_must_have_alias_5858b31f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "must_have_plus_keyword_hints",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "child_seed_strict_core_aae53983_f9c59237": {
+            "frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "parent_frontier_node_id": "seed_strict_core_aae53983",
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "ranking",
+              "agent"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": null,
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "strict_core",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_must_have_alias_5858b31f",
+          "child_seed_strict_core_aae53983_f9c59237"
+        ],
+        "closed_frontier_node_ids": [
+          "seed_strict_core_aae53983"
+        ],
+        "run_term_catalog": [
+          "Workflow Search Engineer",
+          "Python backend",
+          "LLM",
+          "retrieval",
+          "workflow",
+          "ranking",
+          "agent"
+        ],
+        "run_shortlist_candidate_ids": [
+          "candidate-crossover-1"
+        ],
+        "semantic_hashes_seen": [
+          "f9c592376a8a6e815df354829003ee83431151f7"
+        ],
+        "operator_statistics": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 3.456765212361948,
+            "times_selected": 1
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 4
+      },
+      "controller_context": {
+        "active_frontier_node_summary": {
+          "frontier_node_id": "seed_must_have_alias_5858b31f",
+          "selected_operator_name": "must_have_alias",
+          "node_query_term_pool": [
+            "Python backend",
+            "LLM",
+            "retrieval",
+            "workflow"
+          ],
+          "node_shortlist_candidate_ids": []
+        },
+        "donor_candidate_node_summaries": [
+          {
+            "frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "shared_anchor_terms": [
+              "Python backend",
+              "LLM",
+              "retrieval"
+            ],
+            "expected_incremental_coverage": [
+              "ranking",
+              "agent"
+            ],
+            "reward_score": 3.456765212361948
+          }
+        ],
+        "frontier_head_summary": {
+          "open_node_count": 2,
+          "remaining_budget": 4,
+          "highest_priority_score": 3.0999999999999996
+        },
+        "unmet_requirement_weights": [
+          {
+            "capability": "Python backend",
+            "weight": 0.3
+          },
+          {
+            "capability": "LLM",
+            "weight": 0.3
+          },
+          {
+            "capability": "retrieval",
+            "weight": 0.3
+          },
+          {
+            "capability": "workflow",
+            "weight": 0.3
+          },
+          {
+            "capability": "ranking",
+            "weight": 1.0
+          },
+          {
+            "capability": "agent",
+            "weight": 1.0
+          }
+        ],
+        "operator_statistics_summary": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 3.456765212361948,
+            "times_selected": 1
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "allowed_operator_names": [
+          "must_have_alias",
+          "strict_core",
+          "domain_company",
+          "crossover_compose"
+        ],
+        "term_budget_range": [
+          2,
+          6
+        ],
+        "fit_gate_constraints": {
+          "locations": [
+            "Shanghai"
+          ],
+          "min_years": 5,
+          "max_years": 10,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        }
+      },
+      "controller_draft": {
+        "action": "search_cts",
+        "selected_operator_name": "crossover_compose",
+        "operator_args": {
+          "donor_frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+          "shared_anchor_terms": [
+            "Python backend"
+          ],
+          "donor_terms_used": [
+            "ranking",
+            "agent"
+          ],
+          "crossover_rationale": "reuse donor ranking signal"
+        },
+        "expected_gain_hypothesis": "Fuse donor coverage."
+      },
+      "controller_audit": {
+        "output_mode": "NativeOutput(strict=True)",
+        "retries": 0,
+        "output_retries": 1,
+        "validator_retry_count": 0,
+        "model_name": "test",
+        "instruction_id_or_hash": "bbf2c909df1dc90ed7fe46d28195f3928be9d655",
+        "message_history_mode": "fresh",
+        "tools_enabled": false,
+        "model_settings_snapshot": {
+          "allow_text_output": false,
+          "allow_image_output": false,
+          "native_output_strict": true
+        }
+      },
+      "controller_decision": {
+        "action": "search_cts",
+        "target_frontier_node_id": "seed_must_have_alias_5858b31f",
+        "selected_operator_name": "crossover_compose",
+        "operator_args": {
+          "donor_frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+          "crossover_rationale": "reuse donor ranking signal",
+          "shared_anchor_terms": [
+            "Python backend"
+          ],
+          "donor_terms_used": [
+            "ranking",
+            "agent"
+          ]
+        },
+        "expected_gain_hypothesis": "Fuse donor coverage."
+      },
+      "execution_plan": {
+        "query_terms": [
+          "Python backend",
+          "ranking",
+          "agent"
+        ],
+        "projected_filters": {
+          "locations": [
+            "Shanghai"
+          ],
+          "min_years": 5,
+          "max_years": 10,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "school_type_requirement": [],
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        },
+        "runtime_only_constraints": {
+          "must_have_keywords": [
+            "Python backend",
+            "LLM",
+            "retrieval",
+            "workflow",
+            "ranking",
+            "agent"
+          ],
+          "negative_keywords": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ]
+        },
+        "target_new_candidate_count": 10,
+        "semantic_hash": "76c7df47aa34fa3ed8dd7d7fa197a67b35423d91",
+        "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+        "child_frontier_node_stub": {
+          "frontier_node_id": "child_seed_must_have_alias_5858b31f_76c7df47",
+          "parent_frontier_node_id": "seed_must_have_alias_5858b31f",
+          "donor_frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+          "selected_operator_name": "crossover_compose"
+        },
+        "derived_position": "Workflow Search Engineer",
+        "derived_work_content": "Python backend | LLM | retrieval | workflow"
+      },
+      "execution_result": {
+        "raw_candidates": [
+          {
+            "candidate_id": "candidate-crossover-2",
+            "age": null,
+            "gender": null,
+            "now_location": "Shanghai",
+            "expected_location": "Shanghai",
+            "years_of_experience_raw": 6,
+            "education_summaries": [
+              "复旦大学 计算机 本科"
+            ],
+            "work_experience_summaries": [
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
+              "python",
+              "ranking"
+            ],
+            "search_text": "python backend ranking workflow",
+            "raw_payload": {
+              "title": "Python Engineer",
+              "workExperienceList": []
+            }
+          }
+        ],
+        "deduplicated_candidates": [
+          {
+            "candidate_id": "candidate-crossover-2",
+            "age": null,
+            "gender": null,
+            "now_location": "Shanghai",
+            "expected_location": "Shanghai",
+            "years_of_experience_raw": 6,
+            "education_summaries": [
+              "复旦大学 计算机 本科"
+            ],
+            "work_experience_summaries": [
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
+              "python",
+              "ranking"
+            ],
+            "search_text": "python backend ranking workflow",
+            "raw_payload": {
+              "title": "Python Engineer",
+              "workExperienceList": []
+            }
+          }
+        ],
+        "scoring_candidates": [
+          {
+            "candidate_id": "candidate-crossover-2",
+            "scoring_text": "python backend ranking workflow",
+            "capability_signals": [
+              "retrieval platform",
+              "python",
+              "ranking"
+            ],
+            "years_of_experience": 6,
+            "age": null,
+            "gender": null,
+            "location_signals": [
+              "Shanghai"
+            ],
+            "work_experience_summaries": [
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "education_summaries": [
+              "复旦大学 计算机 本科"
+            ],
+            "career_stability_profile": {
+              "job_count_last_5y": 1,
+              "short_tenure_count": 0,
+              "median_tenure_months": 0,
+              "current_tenure_months": 0,
+              "parsed_experience_count": 0,
+              "confidence_score": 0.2
+            }
+          }
+        ],
+        "search_page_statistics": {
+          "pages_fetched": 1,
+          "duplicate_rate": 0.0,
+          "latency_ms": 5
+        },
+        "search_observation": {
+          "unique_candidate_ids": [
+            "candidate-crossover-2"
+          ],
+          "shortage_after_last_page": true
+        }
+      },
+      "runtime_audit_tags": {
+        "candidate-crossover-2": [
+          "Python backend",
+          "retrieval",
+          "workflow",
+          "ranking"
+        ]
+      },
+      "scoring_result": {
+        "scored_candidates": [
+          {
+            "candidate_id": "candidate-crossover-2",
+            "fit": 1,
+            "rerank_raw": 1.7,
+            "rerank_normalized": 0.6700327828664843,
+            "must_have_match_score_raw": 67,
+            "must_have_match_score": 0.67,
+            "preferred_match_score_raw": 0,
+            "preferred_match_score": 0.0,
+            "risk_score_raw": 0,
+            "risk_score": 0.0,
+            "risk_flags": [],
+            "fusion_score": 0.5360180305765664
+          }
+        ],
+        "node_shortlist_candidate_ids": [
+          "candidate-crossover-2"
+        ],
+        "explanation_candidate_ids": [
+          "candidate-crossover-2"
+        ],
+        "top_three_statistics": {
+          "average_fusion_score_top_three": 0.5360180305765664
+        }
+      },
+      "branch_evaluation_draft": {
+        "novelty_score": 0.7,
+        "usefulness_score": 0.6,
+        "branch_exhausted": false,
+        "repair_operator_hint": "crossover_compose",
+        "evaluation_notes": "Canonical branch evaluation."
+      },
+      "branch_evaluation_audit": {
+        "output_mode": "NativeOutput(strict=True)",
+        "retries": 0,
+        "output_retries": 1,
+        "validator_retry_count": 0,
+        "model_name": "test",
+        "instruction_id_or_hash": "0a11fb35ee3a2139b4c8eaa14f343230762d0788",
+        "message_history_mode": "fresh",
+        "tools_enabled": false,
+        "model_settings_snapshot": {
+          "allow_text_output": false,
+          "allow_image_output": false,
+          "native_output_strict": true
+        }
+      },
+      "branch_evaluation": {
+        "novelty_score": 0.7,
+        "usefulness_score": 0.6,
+        "branch_exhausted": false,
+        "repair_operator_hint": "crossover_compose",
+        "evaluation_notes": "Canonical branch evaluation."
+      },
+      "reward_breakdown": {
+        "delta_top_three": 0.5360180305765664,
+        "must_have_gain": 0.67,
+        "new_fit_yield": 1.0,
+        "novelty": 0.7,
+        "usefulness": 0.6,
+        "diversity": 1.0,
+        "stability_risk_penalty": 0.0,
+        "hard_constraint_violation": 0.0,
+        "duplicate_penalty": 0.0,
+        "cost_penalty": 0.15,
+        "reward_score": 3.6670360611531327
+      },
+      "frontier_state_after": {
+        "frontier_nodes": {
+          "seed_strict_core_aae53983": {
+            "frontier_node_id": "seed_strict_core_aae53983",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "role_title_plus_core_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "closed"
+          },
+          "seed_must_have_alias_5858b31f": {
+            "frontier_node_id": "seed_must_have_alias_5858b31f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "must_have_plus_keyword_hints",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "closed"
+          },
+          "child_seed_strict_core_aae53983_f9c59237": {
+            "frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "parent_frontier_node_id": "seed_strict_core_aae53983",
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "ranking",
+              "agent"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": null,
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "strict_core",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
+          },
+          "child_seed_must_have_alias_5858b31f_76c7df47": {
+            "frontier_node_id": "child_seed_must_have_alias_5858b31f_76c7df47",
+            "parent_frontier_node_id": "seed_must_have_alias_5858b31f",
+            "donor_frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "selected_operator_name": "crossover_compose",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow",
+              "ranking",
+              "agent"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": null,
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-2": 0.5360180305765664
+            },
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "crossover_compose",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5360180305765664,
+              "must_have_gain": 0.67,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.6670360611531327
+            },
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "child_seed_strict_core_aae53983_f9c59237",
+          "child_seed_must_have_alias_5858b31f_76c7df47"
+        ],
+        "closed_frontier_node_ids": [
+          "seed_strict_core_aae53983",
+          "seed_must_have_alias_5858b31f"
+        ],
+        "run_term_catalog": [
+          "Workflow Search Engineer",
+          "Python backend",
+          "LLM",
+          "retrieval",
+          "workflow",
+          "ranking",
+          "agent"
+        ],
+        "run_shortlist_candidate_ids": [
+          "candidate-crossover-2",
+          "candidate-crossover-1"
+        ],
+        "semantic_hashes_seen": [
+          "f9c592376a8a6e815df354829003ee83431151f7",
+          "76c7df47aa34fa3ed8dd7d7fa197a67b35423d91"
+        ],
+        "operator_statistics": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 3.456765212361948,
+            "times_selected": 1
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 3.6670360611531327,
+            "times_selected": 1
+          }
+        },
+        "remaining_budget": 3
+      },
+      "stop_reason": null,
+      "continue_flag": true
+    },
+    {
+      "runtime_round_index": 2,
+      "frontier_state_before": {
+        "frontier_nodes": {
+          "seed_strict_core_aae53983": {
+            "frontier_node_id": "seed_strict_core_aae53983",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "role_title_plus_core_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "closed"
+          },
+          "seed_must_have_alias_5858b31f": {
+            "frontier_node_id": "seed_must_have_alias_5858b31f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "must_have_plus_keyword_hints",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "closed"
+          },
+          "child_seed_strict_core_aae53983_f9c59237": {
+            "frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "parent_frontier_node_id": "seed_strict_core_aae53983",
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "ranking",
+              "agent"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": null,
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "strict_core",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
+          },
+          "child_seed_must_have_alias_5858b31f_76c7df47": {
+            "frontier_node_id": "child_seed_must_have_alias_5858b31f_76c7df47",
+            "parent_frontier_node_id": "seed_must_have_alias_5858b31f",
+            "donor_frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "selected_operator_name": "crossover_compose",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow",
+              "ranking",
+              "agent"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": null,
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-2": 0.5360180305765664
+            },
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "crossover_compose",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5360180305765664,
+              "must_have_gain": 0.67,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.6670360611531327
+            },
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "child_seed_strict_core_aae53983_f9c59237",
+          "child_seed_must_have_alias_5858b31f_76c7df47"
+        ],
+        "closed_frontier_node_ids": [
+          "seed_strict_core_aae53983",
+          "seed_must_have_alias_5858b31f"
+        ],
+        "run_term_catalog": [
+          "Workflow Search Engineer",
+          "Python backend",
+          "LLM",
+          "retrieval",
+          "workflow",
+          "ranking",
+          "agent"
+        ],
+        "run_shortlist_candidate_ids": [
+          "candidate-crossover-2",
+          "candidate-crossover-1"
+        ],
+        "semantic_hashes_seen": [
+          "f9c592376a8a6e815df354829003ee83431151f7",
+          "76c7df47aa34fa3ed8dd7d7fa197a67b35423d91"
+        ],
+        "operator_statistics": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 3.456765212361948,
+            "times_selected": 1
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 3.6670360611531327,
+            "times_selected": 1
+          }
+        },
+        "remaining_budget": 3
+      },
+      "controller_context": {
+        "active_frontier_node_summary": {
+          "frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "Workflow Search Engineer",
+            "Python backend",
+            "LLM",
+            "retrieval",
+            "ranking",
+            "agent"
+          ],
+          "node_shortlist_candidate_ids": [
+            "candidate-crossover-1"
+          ]
+        },
+        "donor_candidate_node_summaries": [
+          {
+            "frontier_node_id": "child_seed_must_have_alias_5858b31f_76c7df47",
+            "shared_anchor_terms": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "ranking",
+              "agent"
+            ],
+            "expected_incremental_coverage": [
+              "workflow"
+            ],
+            "reward_score": 3.6670360611531327
+          }
+        ],
+        "frontier_head_summary": {
+          "open_node_count": 2,
+          "remaining_budget": 3,
+          "highest_priority_score": 2.1654121698895583
+        },
+        "unmet_requirement_weights": [
+          {
+            "capability": "Python backend",
+            "weight": 0.3
+          },
+          {
+            "capability": "LLM",
+            "weight": 0.3
+          },
+          {
+            "capability": "retrieval",
+            "weight": 0.3
+          },
+          {
+            "capability": "workflow",
+            "weight": 1.0
+          },
+          {
+            "capability": "ranking",
+            "weight": 0.3
+          },
+          {
+            "capability": "agent",
+            "weight": 0.3
+          }
+        ],
+        "operator_statistics_summary": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 3.456765212361948,
+            "times_selected": 1
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 3.6670360611531327,
+            "times_selected": 1
+          }
+        },
+        "allowed_operator_names": [
+          "must_have_alias",
+          "strict_core",
+          "domain_company",
+          "crossover_compose"
+        ],
+        "term_budget_range": [
+          2,
+          5
+        ],
+        "fit_gate_constraints": {
+          "locations": [
+            "Shanghai"
+          ],
+          "min_years": 5,
+          "max_years": 10,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        }
+      },
+      "controller_draft": {
+        "action": "stop",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop."
+      },
+      "controller_audit": {
+        "output_mode": "NativeOutput(strict=True)",
+        "retries": 0,
+        "output_retries": 1,
+        "validator_retry_count": 0,
+        "model_name": "test",
+        "instruction_id_or_hash": "bbf2c909df1dc90ed7fe46d28195f3928be9d655",
+        "message_history_mode": "fresh",
+        "tools_enabled": false,
+        "model_settings_snapshot": {
+          "allow_text_output": false,
+          "allow_image_output": false,
+          "native_output_strict": true
+        }
+      },
+      "controller_decision": {
+        "action": "stop",
+        "target_frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop."
+      },
+      "execution_plan": null,
+      "execution_result": null,
+      "runtime_audit_tags": {},
+      "scoring_result": null,
+      "branch_evaluation_draft": null,
+      "branch_evaluation_audit": null,
+      "branch_evaluation": null,
+      "reward_breakdown": null,
+      "frontier_state_after": {
+        "frontier_nodes": {
+          "seed_strict_core_aae53983": {
+            "frontier_node_id": "seed_strict_core_aae53983",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "role_title_plus_core_keywords",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "closed"
+          },
+          "seed_must_have_alias_5858b31f": {
+            "frontier_node_id": "seed_must_have_alias_5858b31f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": "must_have_plus_keyword_hints",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "closed"
+          },
+          "child_seed_strict_core_aae53983_f9c59237": {
+            "frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "parent_frontier_node_id": "seed_strict_core_aae53983",
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "Workflow Search Engineer",
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "ranking",
+              "agent"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": null,
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "strict_core",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
+          },
+          "child_seed_must_have_alias_5858b31f_76c7df47": {
+            "frontier_node_id": "child_seed_must_have_alias_5858b31f_76c7df47",
+            "parent_frontier_node_id": "seed_must_have_alias_5858b31f",
+            "donor_frontier_node_id": "child_seed_strict_core_aae53983_f9c59237",
+            "selected_operator_name": "crossover_compose",
+            "node_query_term_pool": [
+              "Python backend",
+              "LLM",
+              "retrieval",
+              "workflow",
+              "ranking",
+              "agent"
+            ],
+            "knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+            "seed_rationale": null,
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-2": 0.5360180305765664
+            },
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "crossover_compose",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5360180305765664,
+              "must_have_gain": 0.67,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.6670360611531327
+            },
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "child_seed_strict_core_aae53983_f9c59237",
+          "child_seed_must_have_alias_5858b31f_76c7df47"
+        ],
+        "closed_frontier_node_ids": [
+          "seed_strict_core_aae53983",
+          "seed_must_have_alias_5858b31f"
+        ],
+        "run_term_catalog": [
+          "Workflow Search Engineer",
+          "Python backend",
+          "LLM",
+          "retrieval",
+          "workflow",
+          "ranking",
+          "agent"
+        ],
+        "run_shortlist_candidate_ids": [
+          "candidate-crossover-2",
+          "candidate-crossover-1"
+        ],
+        "semantic_hashes_seen": [
+          "f9c592376a8a6e815df354829003ee83431151f7",
+          "76c7df47aa34fa3ed8dd7d7fa197a67b35423d91"
+        ],
+        "operator_statistics": {
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "strict_core": {
+            "average_reward": 3.456765212361948,
+            "times_selected": 1
+          },
+          "domain_company": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 3.6670360611531327,
+            "times_selected": 1
+          }
+        },
+        "remaining_budget": 3
+      },
+      "stop_reason": "controller_stop",
+      "continue_flag": false
+    }
+  ],
+  "finalization_audit": {
+    "output_mode": "NativeOutput(strict=True)",
+    "retries": 0,
+    "output_retries": 1,
+    "validator_retry_count": 0,
+    "model_name": "test",
+    "instruction_id_or_hash": "3c753b2a7776b371828311b141f32d92d4da734f",
+    "message_history_mode": "fresh",
+    "tools_enabled": false,
+    "model_settings_snapshot": {
+      "allow_text_output": false,
+      "allow_image_output": false,
+      "native_output_strict": true
+    }
+  },
+  "final_result": {
+    "final_shortlist_candidate_ids": [
+      "candidate-crossover-2",
+      "candidate-crossover-1"
+    ],
+    "run_summary": "Legal crossover produced an expanded shortlist.",
+    "stop_reason": "controller_stop"
+  },
+  "eval": {
+    "experiment_id": "E5",
+    "run_id": "case-crossover-legal",
+    "metrics": [
+      {
+        "name": "routing_mode",
+        "value": "inferred_domain"
+      },
+      {
+        "name": "selected_knowledge_pack_id",
+        "value": "llm_agent_rag_engineering-2026-04-09-v1"
+      },
+      {
+        "name": "routing_confidence",
+        "value": 0.6224593312018546
+      },
+      {
+        "name": "round_count",
+        "value": 3
+      },
+      {
+        "name": "search_round_count",
+        "value": 2
+      },
+      {
+        "name": "stop_reason",
+        "value": "controller_stop"
+      },
+      {
+        "name": "final_shortlist_count",
+        "value": 2
+      },
+      {
+        "name": "top_candidate_id",
+        "value": "candidate-crossover-2"
+      },
+      {
+        "name": "total_pages_fetched",
+        "value": 2
+      },
+      {
+        "name": "deduplicated_candidate_count",
+        "value": 2
+      },
+      {
+        "name": "average_novelty",
+        "value": 0.75
+      },
+      {
+        "name": "average_usefulness",
+        "value": 0.6499999999999999
+      },
+      {
+        "name": "average_stability_risk",
+        "value": 0.0
+      },
+      {
+        "name": "runtime_audit_tag_count",
+        "value": 7
+      },
+      {
+        "name": "llm_validator_retry_count",
+        "value": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "case_id": "case-stop-exhausted-low-gain-and-finalize",
+  "scenario": "低增益 exhausted finalize",
+  "experiment_id": "E5",
+  "expected_route": "inferred_domain",
+  "observed_route": "inferred_domain",
+  "expected_stop_reason": "exhausted_low_gain",
+  "observed_stop_reason": "exhausted_low_gain",
+  "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "expected_fallback_reason": null,
+  "observed_fallback_reason": null,
+  "must_hold": [
+    "first search round has empty deduplicated candidates"
+  ],
+  "must_not_hold": [
+    "stop_reason = controller_stop"
+  ],
+  "metrics": [
+    {
+      "name": "route_match",
+      "value": true
+    },
+    {
+      "name": "selected_pack_match",
+      "value": true
+    },
+    {
+      "name": "generic_fallback_correctness",
+      "value": true
+    },
+    {
+      "name": "include_keyword_adoption",
+      "value": 0.6666666666666666
+    },
+    {
+      "name": "exclude_keyword_leak",
+      "value": false
+    },
+    {
+      "name": "stop_reason_match",
+      "value": true
+    },
+    {
+      "name": "round_count",
+      "value": 1
+    }
+  ]
+}

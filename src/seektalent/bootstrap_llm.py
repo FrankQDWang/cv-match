@@ -7,14 +7,14 @@ from typing import Any
 from pydantic_ai import Agent, NativeOutput
 
 from seektalent.models import (
-    GroundingDraft,
-    KnowledgeRetrievalResult,
+    BootstrapKeywordDraft,
+    BootstrapRoutingResult,
+    DomainKnowledgePack,
     LLMCallAuditSnapshot,
     RequirementExtractionDraft,
     RequirementSheet,
     SearchInputTruth,
 )
-
 
 REQUIREMENT_EXTRACTION_INSTRUCTIONS = """
 Extract a strict structured requirement draft from the hiring input.
@@ -22,10 +22,10 @@ Only use evidence from the provided job description and hiring notes.
 Return structured fields only.
 """.strip()
 
-GROUNDING_GENERATION_INSTRUCTIONS = """
-Generate a strict structured grounding draft for round-0 bootstrap.
-Use only the provided requirement sheet and retrieved knowledge cards.
-Do not invent domain packs, cards, or unsupported operators.
+BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS = """
+Generate a strict structured bootstrap keyword draft for round-0 search startup.
+Use only the provided requirement sheet, routing result, and selected knowledge pack.
+Do not invent unsupported domain context.
 """.strip()
 
 RETRIES = 0
@@ -36,7 +36,11 @@ STRICT_MODEL_SETTINGS = {
 }
 
 
-def _build_agent(output_type: type[RequirementExtractionDraft] | type[GroundingDraft], *, model: Any | None) -> Agent:
+def _build_agent(
+    output_type: type[RequirementExtractionDraft] | type[BootstrapKeywordDraft],
+    *,
+    model: Any | None,
+) -> Agent:
     return Agent(
         model,
         output_type=NativeOutput(output_type, strict=True),
@@ -50,10 +54,10 @@ def _build_agent(output_type: type[RequirementExtractionDraft] | type[GroundingD
 
 
 def _test_model_output(
-    output_type: type[RequirementExtractionDraft] | type[GroundingDraft],
+    output_type: type[RequirementExtractionDraft] | type[BootstrapKeywordDraft],
     *,
     model: Any | None,
-) -> RequirementExtractionDraft | GroundingDraft | None:
+) -> RequirementExtractionDraft | BootstrapKeywordDraft | None:
     if getattr(model, "model_name", None) != "test":
         return None
     payload = getattr(model, "custom_output_args", None)
@@ -112,23 +116,27 @@ async def request_requirement_extraction_draft(
     )
 
 
-async def request_grounding_draft(
+async def request_bootstrap_keyword_draft(
     requirement_sheet: RequirementSheet,
-    knowledge_retrieval_result: KnowledgeRetrievalResult,
+    routing_result: BootstrapRoutingResult,
+    selected_knowledge_pack: DomainKnowledgePack | None,
     *,
     model: Any | None = None,
-) -> tuple[GroundingDraft, LLMCallAuditSnapshot]:
-    test_output = _test_model_output(GroundingDraft, model=model)
+) -> tuple[BootstrapKeywordDraft, LLMCallAuditSnapshot]:
+    test_output = _test_model_output(BootstrapKeywordDraft, model=model)
     if test_output is not None:
         return test_output, _audit_snapshot(
             model=model,
-            instructions=GROUNDING_GENERATION_INSTRUCTIONS,
+            instructions=BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS,
         )
-    active_agent = _build_agent(GroundingDraft, model=model)
+    active_agent = _build_agent(BootstrapKeywordDraft, model=model)
     packet = json.dumps(
         {
             "requirement_sheet": requirement_sheet.model_dump(mode="json"),
-            "knowledge_retrieval_result": knowledge_retrieval_result.model_dump(mode="json"),
+            "routing_result": routing_result.model_dump(mode="json"),
+            "selected_knowledge_pack": (
+                None if selected_knowledge_pack is None else selected_knowledge_pack.model_dump(mode="json")
+            ),
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -136,20 +144,20 @@ async def request_grounding_draft(
     result = await active_agent.run(
         packet,
         message_history=None,
-        instructions=GROUNDING_GENERATION_INSTRUCTIONS,
+        instructions=BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS,
         builtin_tools=(),
         toolsets=(),
         infer_name=False,
     )
-    return GroundingDraft.model_validate(result.output), _audit_snapshot(
+    return BootstrapKeywordDraft.model_validate(result.output), _audit_snapshot(
         model=model,
-        instructions=GROUNDING_GENERATION_INSTRUCTIONS,
+        instructions=BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS,
     )
 
 
 __all__ = [
-    "GROUNDING_GENERATION_INSTRUCTIONS",
+    "BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS",
     "REQUIREMENT_EXTRACTION_INSTRUCTIONS",
-    "request_grounding_draft",
+    "request_bootstrap_keyword_draft",
     "request_requirement_extraction_draft",
 ]

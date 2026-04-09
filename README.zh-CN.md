@@ -7,7 +7,7 @@
 
 ## 简体中文
 
-`SeekTalent` 现在以 `v0.3 phase 5 runtime loop` 为当前基线。当前 `HEAD` 提供 `docs/v-0.3` 里的稳定 contract、deterministic requirement normalization、bootstrap 内核、execution/ranking、frontier control，以及已经接通的 CLI/API runtime 表面。
+`SeekTalent` 现在以 `v0.3 phase 6 offline artifacts` 为当前基线。当前 `HEAD` 提供 `docs/v-0.3` 里的稳定 contract、deterministic requirement normalization、bootstrap 内核、execution/ranking、frontier control、已经接通的 CLI/API runtime 表面，以及 checked-in offline artifacts。
 
 现在仓库里真正存在的东西：
 
@@ -18,8 +18,8 @@
 - `src/seektalent/retrieval/filter_projection.py` 负责把 `SearchExecutionPlan_t` 安全投影到 CTS
 - `src/seektalent/clients/cts_client.py` 直接返回 `RetrievedCandidate_t`
 - `src/seektalent/retrieval/candidate_projection.py` 负责构造 `SearchExecutionResult_t`
-- `src/seektalent/runtime/orchestrator.py` 负责完整 Phase 5 runtime loop
-- `seektalent run` 和 `run_match(...)` 会直接返回 `SearchRunResult`
+- `src/seektalent/runtime/orchestrator.py` 负责完整 runtime loop，并写出 run artifacts
+- `seektalent run` 和 `run_match(...)` 会直接返回 `SearchRunBundle`
 
 已经删除的东西：
 
@@ -77,11 +77,11 @@ seektalent inspect --json
 seektalent run --jd-file ./jd.md
 ```
 
-默认 stdout 会打印三行：`stop_reason`、逗号拼接的 shortlist ids、以及 `run_summary`。
+默认 stdout 会打印四行：`run_dir`、`stop_reason`、逗号拼接的 shortlist ids、以及 `run_summary`。
 
 ## Python API
 
-包导出 `run_match(...)` 和 `run_match_async(...)`，并直接返回 `SearchRunResult`：
+包导出 `run_match(...)` 和 `run_match_async(...)`，并直接返回 `SearchRunBundle`：
 
 ```python
 from seektalent import AppSettings, run_match
@@ -92,7 +92,8 @@ result = run_match(
     settings=AppSettings(mock_cts=True),
     env_file=None,
 )
-print(result.stop_reason)
+print(result.final_result.stop_reason)
+print(result.run_dir)
 ```
 
 ## 命令

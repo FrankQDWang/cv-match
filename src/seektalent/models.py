@@ -9,17 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 ConstraintValue = str | int | list[str]
 RoutingMode = Literal["explicit_domain", "inferred_domain", "generic_fallback"]
-ConfidenceLevel = Literal["high", "medium", "low"]
 Round0OperatorName = Literal["must_have_alias", "strict_core", "domain_company"]
 OperatorName = Literal["must_have_alias", "strict_core", "domain_company", "crossover_compose"]
 SearchControllerAction = Literal["search_cts", "stop"]
-GroundingEvidenceType = Literal[
-    "title_alias",
-    "query_term",
-    "must_have_link",
-    "preferred_link",
-    "generic_requirement",
-]
 
 
 def stable_deduplicate(values: list[str]) -> list[str]:
@@ -173,7 +165,7 @@ class ExplanationPreferences(BaseModel):
 class BusinessPolicyPack(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    domain_pack_ids: list[str] = Field(default_factory=list)
+    domain_id_override: str | None = None
     fusion_weight_preferences: FusionWeightPreferences = Field(default_factory=FusionWeightPreferences)
     fit_gate_overrides: FitGateConstraints = Field(default_factory=FitGateConstraints)
     stability_policy: StabilityPolicy = Field(default_factory=StabilityPolicy)
@@ -207,53 +199,15 @@ class ScoringPolicy(BaseModel):
     ranking_audit_notes: str
 
 
-class GroundingKnowledgeCard(BaseModel):
+class DomainKnowledgePack(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    card_id: str
+    knowledge_pack_id: str
     domain_id: str
-    report_type: str
-    card_type: str
-    title: str
-    summary: str
-    canonical_terms: list[str] = Field(default_factory=list)
-    aliases: list[str] = Field(default_factory=list)
-    positive_signals: list[str] = Field(default_factory=list)
-    negative_signals: list[str] = Field(default_factory=list)
-    query_terms: list[str] = Field(default_factory=list)
-    must_have_links: list[str] = Field(default_factory=list)
-    preferred_links: list[str] = Field(default_factory=list)
-    confidence: ConfidenceLevel
-    source_report_ids: list[str] = Field(default_factory=list)
-    source_model_votes: int = Field(ge=0)
-    freshness_date: str
-
-
-class GroundingKnowledgeBaseSnapshot(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    snapshot_id: str
-    domain_pack_ids: list[str] = Field(default_factory=list)
-    compiled_report_ids: list[str] = Field(default_factory=list)
-    card_ids: list[str] = Field(default_factory=list)
-    compiled_at: str
-
-
-class KnowledgeRetrievalBudget(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    max_cards: int = Field(default=8, ge=1)
-    max_inferred_domain_packs: int = Field(default=2, ge=1)
-
-
-class GroundingEvidenceCard(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    source_card_id: str
     label: str
-    rationale: str
-    evidence_type: GroundingEvidenceType
-    confidence: ConfidenceLevel
+    routing_text: str
+    include_keywords: list[str] = Field(default_factory=list)
+    exclude_keywords: list[str] = Field(default_factory=list)
 
 
 class FrontierSeedSpecification(BaseModel):
@@ -262,35 +216,35 @@ class FrontierSeedSpecification(BaseModel):
     operator_name: Round0OperatorName
     seed_terms: list[str] = Field(default_factory=list)
     seed_rationale: str
-    source_card_ids: list[str] = Field(default_factory=list)
+    knowledge_pack_id: str | None = None
     expected_coverage: list[str] = Field(default_factory=list)
     negative_terms: list[str] = Field(default_factory=list)
     target_location: str | None = None
 
 
-class GroundingDraft(BaseModel):
+class BootstrapKeywordDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    grounding_evidence_cards: list[GroundingEvidenceCard] = Field(default_factory=list)
-    frontier_seed_specifications: list[FrontierSeedSpecification] = Field(default_factory=list)
+    core_keywords: list[str] = Field(default_factory=list)
+    must_have_keywords: list[str] = Field(default_factory=list)
+    expansion_keywords: list[str] = Field(default_factory=list)
+    negative_keywords: list[str] = Field(default_factory=list)
 
 
-class KnowledgeRetrievalResult(BaseModel):
+class BootstrapRoutingResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    knowledge_base_snapshot_id: str
     routing_mode: RoutingMode
-    selected_domain_pack_ids: list[str] = Field(default_factory=list)
+    selected_domain_id: str | None = None
+    selected_knowledge_pack_id: str | None = None
     routing_confidence: float = Field(ge=0.0, le=1.0)
     fallback_reason: str | None = None
-    retrieved_cards: list[GroundingKnowledgeCard] = Field(default_factory=list)
-    negative_signal_terms: list[str] = Field(default_factory=list)
+    pack_scores: dict[str, float] = Field(default_factory=dict)
 
 
-class GroundingOutput(BaseModel):
+class BootstrapOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    grounding_evidence_cards: list[GroundingEvidenceCard] = Field(default_factory=list)
     frontier_seed_specifications: list[FrontierSeedSpecification] = Field(default_factory=list)
 
 
@@ -345,7 +299,7 @@ class FrontierNode_t(BaseModel):
     donor_frontier_node_id: str | None = None
     selected_operator_name: OperatorName
     node_query_term_pool: list[str] = Field(default_factory=list)
-    source_card_ids: list[str] = Field(default_factory=list)
+    knowledge_pack_id: str | None = None
     seed_rationale: str | None = None
     negative_terms: list[str] = Field(default_factory=list)
     parent_shortlist_candidate_ids: list[str] = Field(default_factory=list)
@@ -501,7 +455,7 @@ class SearchExecutionPlan_t(BaseModel):
     runtime_only_constraints: RuntimeOnlyConstraints = Field(default_factory=RuntimeOnlyConstraints)
     target_new_candidate_count: int
     semantic_hash: str
-    source_card_ids: list[str] = Field(default_factory=list)
+    knowledge_pack_id: str | None = None
     child_frontier_node_stub: ChildFrontierNodeStub
     derived_position: str | None = None
     derived_work_content: str | None = None
@@ -630,3 +584,84 @@ class SearchRunSummaryDraft_t(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     run_summary: str
+
+
+class RuntimeActiveManifest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    phase: Literal["phase6_offline_artifacts_active"]
+    knowledge_pack_ids: list[str] = Field(default_factory=list)
+    policy_id: str
+    calibration_id: str
+
+
+class BusinessPolicySnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    policy_id: str
+    policy_pack: BusinessPolicyPack
+
+
+class SearchRunBootstrapArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input_truth: SearchInputTruth
+    requirement_extraction_audit: LLMCallAuditSnapshot
+    requirement_sheet: RequirementSheet
+    business_policy_snapshot: BusinessPolicySnapshot
+    routing_result: BootstrapRoutingResult
+    scoring_policy: ScoringPolicy
+    bootstrap_keyword_generation_audit: LLMCallAuditSnapshot
+    bootstrap_output: BootstrapOutput
+    frontier_state: FrontierState_t
+
+
+class SearchRoundArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runtime_round_index: int = Field(ge=0)
+    frontier_state_before: FrontierState_t
+    controller_context: SearchControllerContext_t
+    controller_draft: SearchControllerDecisionDraft_t
+    controller_audit: LLMCallAuditSnapshot
+    controller_decision: SearchControllerDecision_t
+    execution_plan: SearchExecutionPlan_t | None = None
+    execution_result: SearchExecutionResult_t | None = None
+    runtime_audit_tags: dict[str, list[str]] = Field(default_factory=dict)
+    scoring_result: SearchScoringResult_t | None = None
+    branch_evaluation_draft: BranchEvaluationDraft_t | None = None
+    branch_evaluation_audit: LLMCallAuditSnapshot | None = None
+    branch_evaluation: BranchEvaluation_t | None = None
+    reward_breakdown: NodeRewardBreakdown_t | None = None
+    frontier_state_after: FrontierState_t1
+    stop_reason: str | None = None
+    continue_flag: bool
+
+
+class SearchRunEvalMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    value: bool | int | float | str | list[str]
+
+
+class SearchRunEval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_id: str
+    run_id: str
+    metrics: list[SearchRunEvalMetric] = Field(default_factory=list)
+
+
+class SearchRunBundle(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    phase: Literal["phase6_offline_artifacts_active"]
+    run_id: str
+    run_dir: str
+    created_at_utc: str
+    bootstrap: SearchRunBootstrapArtifact
+    rounds: list[SearchRoundArtifact] = Field(default_factory=list)
+    finalization_audit: LLMCallAuditSnapshot
+    final_result: SearchRunResult
+    eval: SearchRunEval | None = None

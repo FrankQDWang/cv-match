@@ -1,0 +1,49 @@
+{
+  "case_id": "case-crossover-illegal-reject",
+  "scenario": "非法 crossover 拒绝",
+  "experiment_id": "E5",
+  "expected_route": "inferred_domain",
+  "observed_route": "inferred_domain",
+  "expected_stop_reason": "controller_stop",
+  "observed_stop_reason": "controller_stop",
+  "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "expected_fallback_reason": null,
+  "observed_fallback_reason": null,
+  "must_hold": [
+    "controller validator retry count equals 1"
+  ],
+  "must_not_hold": [
+    "illegal crossover reaches execution_plan"
+  ],
+  "metrics": [
+    {
+      "name": "route_match",
+      "value": true
+    },
+    {
+      "name": "selected_pack_match",
+      "value": true
+    },
+    {
+      "name": "generic_fallback_correctness",
+      "value": true
+    },
+    {
+      "name": "include_keyword_adoption",
+      "value": 0.5
+    },
+    {
+      "name": "exclude_keyword_leak",
+      "value": false
+    },
+    {
+      "name": "stop_reason_match",
+      "value": true
+    },
+    {
+      "name": "round_count",
+      "value": 2
+    }
+  ]
+}

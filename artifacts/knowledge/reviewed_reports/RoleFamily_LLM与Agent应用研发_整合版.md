@@ -160,3 +160,26 @@ source_reports:
 - `RAGAS/LangSmith` 这类评估与观测框架，是否必须与“评测集/实验流程”共现才做强加分
 - 企业权限与安全信号在简历里常被省略，是否需要面试 notes 模板补采
 - `fine-tuning` 何时算加分而不是混淆项，建议只在同时命中 RAG/Agent 主链路时加分
+
+## Compile Cards
+
+```yaml
+[
+  {
+    "card_id": "role_alias.llm_agent_rag_engineering.backend_agent_engineer",
+    "card_type": "role_alias",
+    "title": "LLM/Agent Backend Engineer",
+    "summary": "Agent、RAG、LLM application 的后端与平台研发角色。",
+    "canonical_terms": ["agent engineer", "rag engineer"],
+    "aliases": ["llm application engineer", "ai backend engineer"],
+    "positive_signals": ["tool calling", "workflow orchestration", "retrieval pipeline"],
+    "negative_signals": ["data analyst", "pure prompt operations"],
+    "query_terms": ["agent engineer", "rag", "python"],
+    "must_have_links": ["Python backend", "LLM application"],
+    "preferred_links": ["workflow orchestration", "to-b delivery"],
+    "confidence": "high",
+    "source_model_votes": 2,
+    "freshness_date": "2026-04-07"
+  }
+]
+```

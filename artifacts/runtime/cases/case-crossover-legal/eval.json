@@ -1,0 +1,49 @@
+{
+  "case_id": "case-crossover-legal",
+  "scenario": "合法 crossover",
+  "experiment_id": "E5",
+  "expected_route": "inferred_domain",
+  "observed_route": "inferred_domain",
+  "expected_stop_reason": "controller_stop",
+  "observed_stop_reason": "controller_stop",
+  "expected_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "observed_knowledge_pack_id": "llm_agent_rag_engineering-2026-04-09-v1",
+  "expected_fallback_reason": null,
+  "observed_fallback_reason": null,
+  "must_hold": [
+    "round 1 uses crossover_compose with donor_frontier_node_id"
+  ],
+  "must_not_hold": [
+    "missing donor candidate list"
+  ],
+  "metrics": [
+    {
+      "name": "route_match",
+      "value": true
+    },
+    {
+      "name": "selected_pack_match",
+      "value": true
+    },
+    {
+      "name": "generic_fallback_correctness",
+      "value": true
+    },
+    {
+      "name": "include_keyword_adoption",
+      "value": 0.5
+    },
+    {
+      "name": "exclude_keyword_leak",
+      "value": false
+    },
+    {
+      "name": "stop_reason_match",
+      "value": true
+    },
+    {
+      "name": "round_count",
+      "value": 3
+    }
+  ]
+}

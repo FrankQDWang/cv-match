@@ -10,7 +10,7 @@ seektalent --help
 
 ## Current phase
 
-This CLI is a `v0.3 phase 5 runtime loop active` surface.
+This CLI is a `v0.3 phase 6 offline artifacts active` surface.
 
 - `doctor`, `init`, `version`, `update`, `inspect`, and `run` work
 
@@ -28,7 +28,7 @@ seektalent init --force
 
 ### `seektalent doctor`
 
-Validate the local Phase 5 surface without making network calls:
+Validate the local Phase 6 surface without making network calls:
 
 ```bash
 seektalent doctor
@@ -77,9 +77,9 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 
 Current behavior:
 
-- runs the full runtime loop
-- prints `stop_reason`, comma-joined shortlist ids, and `run_summary` in human mode
-- prints `SearchRunResult.model_dump(mode="json")` to stdout in `--json` mode
+- runs the full runtime loop and writes run artifacts
+- prints `run_dir`, `stop_reason`, comma-joined shortlist ids, and `run_summary` in human mode
+- prints `SearchRunBundle.model_dump(mode="json")` to stdout in `--json` mode
 
 Failures still emit one JSON object on stderr.
 

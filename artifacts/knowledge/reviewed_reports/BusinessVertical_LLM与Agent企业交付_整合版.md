@@ -66,3 +66,26 @@ source_reports:
 
 - 是否要把 `POC -> production cutover` 单独提升为强信号
 - `客户成功` 文本在什么条件下能算工程交付证据
+
+## Compile Cards
+
+```yaml
+[
+  {
+    "card_id": "business_vertical.llm_agent_rag_engineering.enterprise_agent_delivery",
+    "card_type": "business_vertical",
+    "title": "Enterprise Agent Delivery",
+    "summary": "面向 to-b agent 产品交付、workflow orchestration 和上线治理。",
+    "canonical_terms": ["enterprise agent", "to-b ai delivery"],
+    "aliases": ["b2b ai delivery", "enterprise llm"],
+    "positive_signals": ["customer delivery", "workflow orchestration"],
+    "negative_signals": ["pure research"],
+    "query_terms": ["enterprise agent", "workflow orchestration", "to-b"],
+    "must_have_links": ["LLM application"],
+    "preferred_links": ["to-b delivery", "workflow orchestration"],
+    "confidence": "medium",
+    "source_model_votes": 1,
+    "freshness_date": "2026-04-07"
+  }
+]
+```

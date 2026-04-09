@@ -1,0 +1,19 @@
+{
+  "knowledge_pack_id": "finance_risk_control_ai-2026-04-09-v1",
+  "domain_id": "finance_risk_control_ai",
+  "label": "金融风控 AI",
+  "routing_text": "risk control engineer, anti-fraud model, credit risk, fraud detection, decision engine, feature engineering, machine learning for financial risk.",
+  "include_keywords": [
+    "risk control",
+    "anti-fraud",
+    "credit risk",
+    "decision engine",
+    "feature engineering",
+    "financial risk"
+  ],
+  "exclude_keywords": [
+    "marketing growth",
+    "content operations",
+    "sales"
+  ]
+}

@@ -15,7 +15,22 @@ from seektalent.frontier_ops import (
     generate_search_controller_decision,
     select_active_frontier_node,
 )
-from seektalent.models import FrontierState_t, RuntimeRoundState, SearchRunResult
+from seektalent.models import (
+    BusinessPolicySnapshot,
+    FrontierState_t,
+    RuntimeRoundState,
+    SearchRoundArtifact,
+    SearchRunBootstrapArtifact,
+    SearchRunBundle,
+)
+from seektalent.run_artifacts import (
+    PHASE6_STATUS,
+    build_run_id,
+    build_search_run_eval,
+    utc_isoformat,
+    utc_now,
+    write_run_bundle,
+)
 from seektalent.runtime_llm import (
     request_branch_evaluation_draft,
     request_search_run_summary_draft,
@@ -29,7 +44,7 @@ from seektalent.runtime_ops import (
 )
 from seektalent.search_ops import (
     AsyncRerankRequest,
-    execute_search_plan,
+    execute_search_plan_sidecar,
     materialize_search_execution_plan,
     score_search_results,
 )
@@ -45,7 +60,7 @@ class WorkflowRuntime:
         cts_client: CTSClientProtocol | None = None,
         rerank_request: AsyncRerankRequest | None = None,
         requirement_extraction_model: Any | None = None,
-        grounding_generation_model: Any | None = None,
+        bootstrap_keyword_generation_model: Any | None = None,
         search_controller_decision_model: Any | None = None,
         branch_outcome_evaluation_model: Any | None = None,
         search_run_finalization_model: Any | None = None,
@@ -55,12 +70,12 @@ class WorkflowRuntime:
         self.cts_client = cts_client
         self.rerank_request = rerank_request
         self.requirement_extraction_model = requirement_extraction_model
-        self.grounding_generation_model = grounding_generation_model
+        self.bootstrap_keyword_generation_model = bootstrap_keyword_generation_model
         self.search_controller_decision_model = search_controller_decision_model
         self.branch_outcome_evaluation_model = branch_outcome_evaluation_model
         self.search_run_finalization_model = search_run_finalization_model
 
-    def run(self, *, job_description: str, hiring_notes: str = "") -> SearchRunResult:
+    def run(self, *, job_description: str, hiring_notes: str = "") -> SearchRunBundle:
         return asyncio.run(
             self.run_async(
                 job_description=job_description,
@@ -73,7 +88,8 @@ class WorkflowRuntime:
         *,
         job_description: str,
         hiring_notes: str = "",
-    ) -> SearchRunResult:
+    ) -> SearchRunBundle:
+        created_at_utc = utc_now()
         active_assets = self.assets or default_bootstrap_assets()
         active_cts_client = self.cts_client or _default_cts_client(self.settings)
         active_rerank_request = self.rerank_request or _build_http_rerank_request(
@@ -83,13 +99,36 @@ class WorkflowRuntime:
             job_description=job_description,
             hiring_notes=hiring_notes,
             assets=active_assets,
+            rerank_request=active_rerank_request,
             requirement_extraction_model=self.requirement_extraction_model,
-            grounding_generation_model=self.grounding_generation_model,
+            bootstrap_keyword_generation_model=self.bootstrap_keyword_generation_model,
+        )
+        run_id = build_run_id(
+            job_description_sha256=bootstrap_artifacts.input_truth.job_description_sha256,
+            created_at_utc=created_at_utc,
+        )
+        bootstrap = SearchRunBootstrapArtifact(
+            input_truth=bootstrap_artifacts.input_truth,
+            requirement_extraction_audit=bootstrap_artifacts.requirement_extraction_audit,
+            requirement_sheet=bootstrap_artifacts.requirement_sheet,
+            business_policy_snapshot=BusinessPolicySnapshot(
+                policy_id=active_assets.policy_id,
+                policy_pack=active_assets.business_policy_pack,
+            ),
+            routing_result=bootstrap_artifacts.routing_result,
+            scoring_policy=bootstrap_artifacts.scoring_policy,
+            bootstrap_keyword_generation_audit=bootstrap_artifacts.bootstrap_keyword_generation_audit,
+            bootstrap_output=bootstrap_artifacts.bootstrap_output,
+            frontier_state=bootstrap_artifacts.frontier_state,
         )
         frontier_state = bootstrap_artifacts.frontier_state
         runtime_round_state = RuntimeRoundState(runtime_round_index=0)
+        rounds: list[SearchRoundArtifact] = []
 
         while True:
+            frontier_state_before = FrontierState_t.model_validate(
+                frontier_state.model_dump(mode="python")
+            )
             controller_context = select_active_frontier_node(
                 frontier_state,
                 bootstrap_artifacts.requirement_sheet,
@@ -97,7 +136,7 @@ class WorkflowRuntime:
                 active_assets.crossover_guard_thresholds,
                 active_assets.runtime_term_budget_policy,
             )
-            controller_draft, _ = await request_search_controller_decision_draft(
+            controller_draft, controller_audit = await request_search_controller_decision_draft(
                 controller_context,
                 model=self.search_controller_decision_model,
             )
@@ -115,6 +154,19 @@ class WorkflowRuntime:
                     active_assets.stop_guard_thresholds,
                     runtime_round_state,
                 )
+                rounds.append(
+                    SearchRoundArtifact(
+                        runtime_round_index=runtime_round_state.runtime_round_index,
+                        frontier_state_before=frontier_state_before,
+                        controller_context=controller_context,
+                        controller_draft=controller_draft,
+                        controller_audit=controller_audit,
+                        controller_decision=controller_decision,
+                        frontier_state_after=frontier_state_t1,
+                        stop_reason=stop_reason,
+                        continue_flag=continue_flag,
+                    )
+                )
             else:
                 execution_plan = materialize_search_execution_plan(
                     frontier_state,
@@ -124,16 +176,17 @@ class WorkflowRuntime:
                     active_assets.runtime_search_budget,
                     active_assets.crossover_guard_thresholds,
                 )
-                execution_result = await execute_search_plan(
+                execution_sidecar = await execute_search_plan_sidecar(
                     execution_plan,
                     active_cts_client,
                 )
+                execution_result = execution_sidecar.execution_result
                 scoring_result = await score_search_results(
                     execution_result,
                     bootstrap_artifacts.scoring_policy,
                     active_rerank_request,
                 )
-                branch_evaluation_draft, _ = await request_branch_evaluation_draft(
+                branch_evaluation_draft, branch_evaluation_audit = await request_branch_evaluation_draft(
                     bootstrap_artifacts.requirement_sheet,
                     frontier_state,
                     execution_plan,
@@ -171,6 +224,27 @@ class WorkflowRuntime:
                     active_assets.stop_guard_thresholds,
                     runtime_round_state,
                 )
+                rounds.append(
+                    SearchRoundArtifact(
+                        runtime_round_index=runtime_round_state.runtime_round_index,
+                        frontier_state_before=frontier_state_before,
+                        controller_context=controller_context,
+                        controller_draft=controller_draft,
+                        controller_audit=controller_audit,
+                        controller_decision=controller_decision,
+                        execution_plan=execution_plan,
+                        execution_result=execution_result,
+                        runtime_audit_tags=execution_sidecar.runtime_audit_tags,
+                        scoring_result=scoring_result,
+                        branch_evaluation_draft=branch_evaluation_draft,
+                        branch_evaluation_audit=branch_evaluation_audit,
+                        branch_evaluation=branch_evaluation,
+                        reward_breakdown=reward_breakdown,
+                        frontier_state_after=frontier_state_t1,
+                        stop_reason=stop_reason,
+                        continue_flag=continue_flag,
+                    )
+                )
             if continue_flag:
                 frontier_state = FrontierState_t.model_validate(
                     frontier_state_t1.model_dump(mode="python")
@@ -181,18 +255,31 @@ class WorkflowRuntime:
                 continue
             if stop_reason is None:
                 raise ValueError("stop_reason must not be null when continue_flag is false")
-            run_summary_draft, _ = await request_search_run_summary_draft(
+            run_summary_draft, finalization_audit = await request_search_run_summary_draft(
                 bootstrap_artifacts.requirement_sheet,
                 frontier_state_t1,
                 stop_reason,
                 model=self.search_run_finalization_model,
             )
-            return finalize_search_run(
+            final_result = finalize_search_run(
                 bootstrap_artifacts.requirement_sheet,
                 frontier_state_t1,
                 stop_reason,
                 run_summary_draft,
             )
+            bundle = SearchRunBundle(
+                phase=PHASE6_STATUS,
+                run_id=run_id,
+                run_dir=str(self.settings.runs_path / run_id),
+                created_at_utc=utc_isoformat(created_at_utc),
+                bootstrap=bootstrap,
+                rounds=rounds,
+                finalization_audit=finalization_audit,
+                final_result=final_result,
+            )
+            bundle = bundle.model_copy(update={"eval": build_search_run_eval(bundle)})
+            write_run_bundle(bundle, runs_root=self.settings.runs_path)
+            return bundle
 
 
 def _default_cts_client(settings: AppSettings) -> CTSClientProtocol:

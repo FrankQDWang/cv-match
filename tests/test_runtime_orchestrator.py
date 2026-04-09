@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 
 from pydantic_ai.models.test import TestModel
 
@@ -20,10 +21,10 @@ def _requirement_draft_payload() -> dict[str, object]:
         "must_have_capability_candidates": [
             "Python backend",
             "LLM application",
-            "retrieval or ranking experience",
+            "retrieval pipeline",
         ],
         "preferred_capability_candidates": ["workflow orchestration"],
-        "exclusion_signal_candidates": ["data analyst"],
+        "exclusion_signal_candidates": ["frontend"],
         "preference_candidates": {
             "preferred_domains": [],
             "preferred_backgrounds": [],
@@ -37,52 +38,12 @@ def _requirement_draft_payload() -> dict[str, object]:
     }
 
 
-def _grounding_draft_payload() -> dict[str, object]:
+def _bootstrap_keyword_draft_payload() -> dict[str, object]:
     return {
-        "grounding_evidence_cards": [
-            {
-                "source_card_id": "role_alias.llm_agent_rag_engineering.backend_agent_engineer",
-                "label": "agent engineer",
-                "rationale": "title alias match",
-                "evidence_type": "title_alias",
-                "confidence": "high",
-            }
-        ],
-        "frontier_seed_specifications": [
-            {
-                "operator_name": "must_have_alias",
-                "seed_terms": ["agent engineer", "rag", "python"],
-                "seed_rationale": "cover role anchor",
-                "source_card_ids": [
-                    "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
-                ],
-                "expected_coverage": ["Python backend", "LLM application"],
-                "negative_terms": ["frontend"],
-                "target_location": None,
-            },
-            {
-                "operator_name": "strict_core",
-                "seed_terms": ["retrieval engineer", "ranking", "python"],
-                "seed_rationale": "cover retrieval branch",
-                "source_card_ids": [
-                    "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
-                ],
-                "expected_coverage": ["retrieval or ranking experience"],
-                "negative_terms": [],
-                "target_location": None,
-            },
-            {
-                "operator_name": "domain_company",
-                "seed_terms": ["workflow orchestration", "to-b", "python"],
-                "seed_rationale": "cover business delivery",
-                "source_card_ids": [
-                    "role_alias.llm_agent_rag_engineering.backend_agent_engineer"
-                ],
-                "expected_coverage": ["workflow orchestration"],
-                "negative_terms": [],
-                "target_location": None,
-            },
-        ],
+        "core_keywords": ["agent engineer", "rag", "python backend"],
+        "must_have_keywords": ["llm application", "retrieval pipeline"],
+        "expansion_keywords": ["workflow orchestration", "tool calling"],
+        "negative_keywords": ["frontend"],
     }
 
 
@@ -118,14 +79,26 @@ class FakeCTSClient:
 
 @dataclass
 class FakeRerankRequest:
-    responses: list[RerankResponse]
+    pack_scores: dict[str, float]
+    candidate_scores: list[dict[str, float]]
     seen_requests: list[object] = field(default_factory=list)
 
     async def __call__(self, request):
         self.seen_requests.append(request)
-        if not self.responses:
-            raise AssertionError("unexpected_rerank_call")
-        return self.responses.pop(0)
+        document_ids = [document.id for document in request.documents]
+        if document_ids and document_ids[0].endswith("-2026-04-09-v1"):
+            scores = self.pack_scores
+        else:
+            if not self.candidate_scores:
+                raise AssertionError("unexpected_candidate_rerank_call")
+            scores = self.candidate_scores.pop(0)
+        return RerankResponse(
+            model="test-reranker",
+            results=[
+                RerankResult(id=item_id, index=index, score=scores[item_id], rank=index + 1)
+                for index, item_id in enumerate(document_ids)
+            ],
+        )
 
 
 @dataclass
@@ -140,16 +113,28 @@ class SequentialTestModel:
         return self.outputs.pop(0)
 
 
-def _runtime_assets(*, min_round_index: int) -> object:
+def _runtime_assets(*, min_round_index: int):
     return replace(
         default_bootstrap_assets(),
         stop_guard_thresholds=StopGuardThresholds(min_round_index=min_round_index),
     )
 
 
-def test_workflow_runtime_search_then_controller_stop_finalize() -> None:
+def _settings(tmp_path: Path) -> AppSettings:
+    return AppSettings(_env_file=None, mock_cts=True, runs_dir=str(tmp_path / "runs"))
+
+
+def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(tmp_path: Path) -> None:
+    rerank = FakeRerankRequest(
+        pack_scores={
+            "llm_agent_rag_engineering-2026-04-09-v1": 1.2,
+            "search_ranking_retrieval_engineering-2026-04-09-v1": 0.2,
+            "finance_risk_control_ai-2026-04-09-v1": 0.1,
+        },
+        candidate_scores=[{"candidate-1": 2.0}],
+    )
     runtime = WorkflowRuntime(
-        AppSettings(_env_file=None, mock_cts=True),
+        _settings(tmp_path),
         assets=_runtime_assets(min_round_index=1),
         cts_client=FakeCTSClient(
             results=[
@@ -161,26 +146,10 @@ def test_workflow_runtime_search_then_controller_stop_finalize() -> None:
                 )
             ]
         ),
-        rerank_request=FakeRerankRequest(
-            responses=[
-                RerankResponse(
-                    model="test-reranker",
-                    results=[
-                        RerankResult(
-                            id="candidate-1",
-                            index=0,
-                            score=2.0,
-                            rank=1,
-                        )
-                    ],
-                )
-            ]
-        ),
-        requirement_extraction_model=TestModel(
-            custom_output_args=_requirement_draft_payload()
-        ),
-        grounding_generation_model=TestModel(
-            custom_output_args=_grounding_draft_payload()
+        rerank_request=rerank,
+        requirement_extraction_model=TestModel(custom_output_args=_requirement_draft_payload()),
+        bootstrap_keyword_generation_model=TestModel(
+            custom_output_args=_bootstrap_keyword_draft_payload()
         ),
         search_controller_decision_model=SequentialTestModel(
             outputs=[
@@ -219,14 +188,22 @@ def test_workflow_runtime_search_then_controller_stop_finalize() -> None:
         )
     )
 
-    assert result.stop_reason == "controller_stop"
-    assert result.final_shortlist_candidate_ids == ["candidate-1"]
-    assert result.run_summary == "The shortlist is ready for review."
+    assert result.bootstrap.routing_result.routing_mode == "inferred_domain"
+    assert result.final_result.stop_reason == "controller_stop"
+    assert result.final_result.final_shortlist_candidate_ids == ["candidate-1"]
+    assert result.rounds[0].runtime_audit_tags == {"candidate-1": ["ranking"]}
+    assert [document.id for document in rerank.seen_requests[0].documents] == [
+        "llm_agent_rag_engineering-2026-04-09-v1",
+        "search_ranking_retrieval_engineering-2026-04-09-v1",
+        "finance_risk_control_ai-2026-04-09-v1",
+    ]
+    assert [document.id for document in rerank.seen_requests[1].documents] == ["candidate-1"]
+    assert Path(result.run_dir).joinpath("bundle.json").exists()
 
 
-def test_workflow_runtime_stops_on_exhausted_low_gain() -> None:
+def test_workflow_runtime_stops_on_exhausted_low_gain(tmp_path: Path) -> None:
     runtime = WorkflowRuntime(
-        AppSettings(_env_file=None, mock_cts=True),
+        _settings(tmp_path),
         assets=_runtime_assets(min_round_index=2),
         cts_client=FakeCTSClient(
             results=[
@@ -238,12 +215,17 @@ def test_workflow_runtime_stops_on_exhausted_low_gain() -> None:
                 )
             ]
         ),
-        rerank_request=FakeRerankRequest(responses=[]),
-        requirement_extraction_model=TestModel(
-            custom_output_args=_requirement_draft_payload()
+        rerank_request=FakeRerankRequest(
+            pack_scores={
+                "llm_agent_rag_engineering-2026-04-09-v1": 1.2,
+                "search_ranking_retrieval_engineering-2026-04-09-v1": 0.2,
+                "finance_risk_control_ai-2026-04-09-v1": 0.1,
+            },
+            candidate_scores=[],
         ),
-        grounding_generation_model=TestModel(
-            custom_output_args=_grounding_draft_payload()
+        requirement_extraction_model=TestModel(custom_output_args=_requirement_draft_payload()),
+        bootstrap_keyword_generation_model=TestModel(
+            custom_output_args=_bootstrap_keyword_draft_payload()
         ),
         search_controller_decision_model=TestModel(
             custom_output_args={
@@ -263,9 +245,7 @@ def test_workflow_runtime_stops_on_exhausted_low_gain() -> None:
             }
         ),
         search_run_finalization_model=TestModel(
-            custom_output_args={
-                "run_summary": "The latest branch added too little value."
-            }
+            custom_output_args={"run_summary": "The latest branch added too little value."}
         ),
     )
 
@@ -276,23 +256,28 @@ def test_workflow_runtime_stops_on_exhausted_low_gain() -> None:
         )
     )
 
-    assert result.stop_reason == "exhausted_low_gain"
-    assert result.final_shortlist_candidate_ids == []
-    assert result.run_summary == "The latest branch added too little value."
+    assert result.final_result.stop_reason == "exhausted_low_gain"
+    assert result.final_result.final_shortlist_candidate_ids == []
+    assert result.rounds[0].reward_breakdown is not None
 
 
-def test_workflow_runtime_rejects_direct_stop_then_accepts_next_round() -> None:
-    rerank = FakeRerankRequest(responses=[])
+def test_workflow_runtime_rejects_direct_stop_then_accepts_next_round(tmp_path: Path) -> None:
+    rerank = FakeRerankRequest(
+        pack_scores={
+            "llm_agent_rag_engineering-2026-04-09-v1": 1.2,
+            "search_ranking_retrieval_engineering-2026-04-09-v1": 0.2,
+            "finance_risk_control_ai-2026-04-09-v1": 0.1,
+        },
+        candidate_scores=[],
+    )
     runtime = WorkflowRuntime(
-        AppSettings(_env_file=None, mock_cts=True),
+        _settings(tmp_path),
         assets=_runtime_assets(min_round_index=1),
         cts_client=FakeCTSClient(results=[]),
         rerank_request=rerank,
-        requirement_extraction_model=TestModel(
-            custom_output_args=_requirement_draft_payload()
-        ),
-        grounding_generation_model=TestModel(
-            custom_output_args=_grounding_draft_payload()
+        requirement_extraction_model=TestModel(custom_output_args=_requirement_draft_payload()),
+        bootstrap_keyword_generation_model=TestModel(
+            custom_output_args=_bootstrap_keyword_draft_payload()
         ),
         search_controller_decision_model=TestModel(
             custom_output_args=[
@@ -322,6 +307,9 @@ def test_workflow_runtime_rejects_direct_stop_then_accepts_next_round() -> None:
         )
     )
 
-    assert result.stop_reason == "controller_stop"
-    assert result.final_shortlist_candidate_ids == []
-    assert rerank.seen_requests == []
+    assert result.final_result.stop_reason == "controller_stop"
+    assert [round_artifact.stop_reason for round_artifact in result.rounds] == [
+        None,
+        "controller_stop",
+    ]
+    assert len(rerank.seen_requests) == 1

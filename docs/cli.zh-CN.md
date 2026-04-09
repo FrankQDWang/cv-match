@@ -10,7 +10,7 @@ seektalent --help
 
 ## 当前阶段
 
-这个 CLI 现在是 `v0.3 phase 5 runtime loop active` 表面。
+这个 CLI 现在是 `v0.3 phase 6 offline artifacts active` 表面。
 
 - `doctor`、`init`、`version`、`update`、`inspect`、`run` 可用
 
@@ -28,7 +28,7 @@ seektalent init --force
 
 ### `seektalent doctor`
 
-本地检查 Phase 5 表面，不发网络请求：
+本地检查 Phase 6 表面，不发网络请求：
 
 ```bash
 seektalent doctor
@@ -77,9 +77,9 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 
 当前真实行为是：
 
-- 执行完整 runtime loop
-- human 模式下打印 `stop_reason`、逗号拼接的 shortlist ids、以及 `run_summary`
-- `--json` 模式下把 `SearchRunResult.model_dump(mode="json")` 直接写到 stdout
+- 执行完整 runtime loop，并写出 run artifacts
+- human 模式下打印 `run_dir`、`stop_reason`、逗号拼接的 shortlist ids、以及 `run_summary`
+- `--json` 模式下把 `SearchRunBundle.model_dump(mode="json")` 直接写到 stdout
 
 失败仍会以一个 JSON 对象写到 stderr。
 
