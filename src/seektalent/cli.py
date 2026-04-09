@@ -12,19 +12,17 @@ from seektalent import __version__
 from seektalent.api import run_match
 from seektalent.config import AppSettings
 from seektalent.resources import read_default_env_template, resolve_user_path
-from seektalent.runtime import RUNTIME_PHASE_GATE_MESSAGE
 
 SUBCOMMANDS = {"run", "doctor", "init", "version", "update", "inspect"}
-ROOT_HELP_EPILOG = """Phase 4 status:
-  `run` is intentionally gated. This release ships the v0.3 bootstrap, search execution,
-  ranking, and frontier decision operator slice. Reward, frontier update, stop, and finalize
-  remain gated behind Phase 5.
+ROOT_HELP_EPILOG = """Phase 5 status:
+  `run` now executes the full v0.3 runtime loop and returns SearchRunResult.
+  Start `seektalent-rerank-api` before running searches.
 
 Recommended workflow:
   1. seektalent doctor
   2. seektalent inspect --json
-  3. bootstrap_round0(...) via Python API
-  4. seektalent update
+  3. seektalent-rerank-api
+  4. seektalent run --jd-file ./jd.md
 """
 
 
@@ -150,9 +148,8 @@ def _doctor_checks(settings: AppSettings) -> list[DoctorCheck]:
             name="phase",
             ok=True,
             message=(
-                "Phase 4 bootstrap, search execution, ranking, and frontier decision operator "
-                "slice active. `run` remains gated until reward, frontier update, stop, and "
-                "finalize land."
+                "Phase 5 runtime loop active. `run` executes the full runtime chain and "
+                "expects a rerank API at SEEKTALENT_RERANK_BASE_URL."
             ),
         )
     )
@@ -162,7 +159,7 @@ def _doctor_checks(settings: AppSettings) -> list[DoctorCheck]:
 def _inspect_payload() -> dict[str, object]:
     commands = {
         "run": {
-            "description": "Validate inputs and then fail fast with the phase-4-before-phase-5 runtime gate.",
+            "description": "Execute the full v0.3 runtime loop and return SearchRunResult.",
             "machine_readable": False,
             "arguments": [
                 _arg_spec("--jd", "string", "Inline job description text.", mutually_exclusive_with=["--jd-file"]),
@@ -170,7 +167,6 @@ def _inspect_payload() -> dict[str, object]:
                 _arg_spec("--notes", "string", "Optional inline hiring notes.", mutually_exclusive_with=["--notes-file"]),
                 _arg_spec("--notes-file", "path", "Path to optional hiring notes.", mutually_exclusive_with=["--notes"]),
                 _arg_spec("--env-file", "path", "Env file to read settings from.", default=".env"),
-                _arg_spec("--output-dir", "path", "Override the runs directory."),
                 _arg_spec("--json", "flag", "Emit one JSON error object on stderr when the command fails."),
             ],
         },
@@ -202,16 +198,16 @@ def _inspect_payload() -> dict[str, object]:
     return {
         "tool": "seektalent",
         "version": __version__,
-        "phase": "phase4_operator_slice_gated_before_phase5",
+        "phase": "phase5_runtime_loop_active",
         "summary": (
-            "v0.3 phase 4 operator slice active: bootstrap, execution, ranking, and frontier "
-            "decision are implemented, while reward/frontier update/stop/finalize remain gated."
+            "v0.3 phase 5 runtime loop active: bootstrap, execution, ranking, frontier "
+            "decision, reward, stop, and finalization are implemented."
         ),
         "recommended_workflow": [
             "seektalent doctor",
             "seektalent inspect --json",
-            "bootstrap_round0(...) via Python API",
-            "seektalent update",
+            "seektalent-rerank-api",
+            "seektalent run --jd-file ./jd.md",
         ],
         "commands": commands,
         "environment": {
@@ -225,13 +221,19 @@ def _inspect_payload() -> dict[str, object]:
                 "SEEKTALENT_CTS_SPEC_PATH",
                 "SEEKTALENT_MOCK_CTS",
                 "SEEKTALENT_RUNS_DIR",
+                "SEEKTALENT_RERANK_BASE_URL",
+                "SEEKTALENT_RERANK_TIMEOUT_SECONDS",
             ],
         },
         "json_contracts": {
             "run": {
-                "stdout_success_fields": [],
+                "stdout_success_fields": [
+                    "final_shortlist_candidate_ids",
+                    "run_summary",
+                    "stop_reason",
+                ],
                 "stderr_json_fields": ["error", "error_type"],
-                "current_behavior": "Always fails with the phase-4-before-phase-5 runtime gate.",
+                "current_behavior": "Runs the full runtime loop and returns SearchRunResult.",
             },
             "doctor": {"stdout_success_fields": ["ok", "checks"]},
         },
@@ -250,7 +252,7 @@ def _handle_run(args: argparse.Namespace) -> int:
         settings = _build_settings(args)
         job_description = _read_text(inline_value=args.jd, file_value=args.jd_file, label="jd")
         hiring_notes = _read_optional_text(inline_value=args.notes, file_value=args.notes_file, label="notes")
-        run_match(
+        result = run_match(
             job_description=job_description,
             hiring_notes=hiring_notes,
             settings=settings,
@@ -259,6 +261,12 @@ def _handle_run(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001
         _emit_error(exc, json_output=args.json)
         return 1
+    if args.json:
+        _emit_json(sys.stdout, result.model_dump(mode="json"))
+        return 0
+    print(result.stop_reason)
+    print(", ".join(result.final_shortlist_candidate_ids))
+    print(result.run_summary)
     return 0
 
 
@@ -307,10 +315,10 @@ def _handle_inspect(args: argparse.Namespace) -> int:
     if args.json:
         _emit_json(sys.stdout, payload)
         return 0
-    print("SeekTalent phase 4 CLI inspection summary")
+    print("SeekTalent phase 5 CLI inspection summary")
     print("Use `seektalent inspect --json` for the machine-readable contract.")
     print(f"Current phase: {payload['phase']}")
-    print(f"Run behavior: {RUNTIME_PHASE_GATE_MESSAGE}")
+    print(f"Run behavior: {payload['summary']}")
     return 0
 
 
@@ -319,17 +327,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command")
 
-    run_parser = subparsers.add_parser("run", help="Gated run entrypoint.")
+    run_parser = subparsers.add_parser("run", help="Run the full v0.3 runtime loop.")
     run_parser.add_argument("--jd")
     run_parser.add_argument("--jd-file")
     run_parser.add_argument("--notes")
     run_parser.add_argument("--notes-file")
     run_parser.add_argument("--env-file", default=".env")
-    run_parser.add_argument("--output-dir")
     run_parser.add_argument("--json", action="store_true")
     run_parser.set_defaults(handler=_handle_run)
 
-    doctor_parser = subparsers.add_parser("doctor", help="Validate local phase-4 setup.")
+    doctor_parser = subparsers.add_parser("doctor", help="Validate local phase-5 setup.")
     doctor_parser.add_argument("--env-file", default=".env")
     doctor_parser.add_argument("--output-dir")
     doctor_parser.add_argument("--json", action="store_true")

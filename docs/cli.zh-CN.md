@@ -10,10 +10,9 @@ seektalent --help
 
 ## 当前阶段
 
-这个 CLI 现在是 `v0.3 phase 3 bootstrap/execution/ranking core` 表面。
+这个 CLI 现在是 `v0.3 phase 5 runtime loop active` 表面。
 
-- `doctor`、`init`、`version`、`update`、`inspect` 可用
-- `run` 会故意 fail fast，并抛出 `RuntimePhaseGateError`
+- `doctor`、`init`、`version`、`update`、`inspect`、`run` 可用
 
 ## 命令
 
@@ -29,7 +28,7 @@ seektalent init --force
 
 ### `seektalent doctor`
 
-本地检查 phase 3 表面，不发网络请求：
+本地检查 Phase 5 表面，不发网络请求：
 
 ```bash
 seektalent doctor
@@ -63,12 +62,11 @@ seektalent inspect --json
 
 ### `seektalent run`
 
-这个命令仍然接受计划中的输入：
+这个命令接受：
 
 - `--jd` 或 `--jd-file`
 - `--notes` 或 `--notes-file`
 - `--env-file`
-- `--output-dir`
 - `--json`
 
 示例：
@@ -79,11 +77,11 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 
 当前真实行为是：
 
-- 先校验输入
-- 再加载设置
-- 随后立刻被 runtime phase gate 拦下
+- 执行完整 runtime loop
+- human 模式下打印 `stop_reason`、逗号拼接的 shortlist ids、以及 `run_summary`
+- `--json` 模式下把 `SearchRunResult.model_dump(mode="json")` 直接写到 stdout
 
-在 `--json` 模式下，失败会以一个 JSON 对象写到 stderr。
+失败仍会以一个 JSON 对象写到 stderr。
 
 ## 相关文档
 

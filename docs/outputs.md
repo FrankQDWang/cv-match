@@ -1,8 +1,13 @@
 # Outputs
 
-`SeekTalent v0.3 phase 3 bootstrap/execution/ranking core` still does not produce user-facing run artifacts yet.
+`SeekTalent v0.3 phase 5 runtime loop` returns user-facing results, but still does not persist run artifacts.
 
-`seektalent run` is intentionally phase-gated, so there is no `runs/<id>/` tree, no round artifacts, and no final shortlist output at this stage.
+`seektalent run` writes the final result to stdout:
+
+- human mode: `stop_reason`, comma-joined shortlist ids, `run_summary`
+- `--json` mode: `SearchRunResult.model_dump(mode="json")`
+
+Python API returns the same facts as `SearchRunResult`.
 
 ## What currently writes files
 
@@ -12,7 +17,7 @@ Writes one env file, `.env` by default.
 
 ### `seektalent doctor`
 
-Ensures the configured `runs` directory exists so the gated phase-3 surface can validate path settings.
+Ensures the configured `runs` directory exists so path settings stay valid.
 
 That is the only filesystem side effect kept in the CLI besides `init`.
 
@@ -34,7 +39,7 @@ These facts are available as structured runtime objects, but are not yet persist
 - any controller / reflection / scoring / finalizer artifact
 - any UI payload artifact
 
-These outputs are expected to come back only when the frontier/finalize runtime work lands.
+These outputs stay absent until a later artifact-writing phase lands.
 
 ## Related docs
 

@@ -91,6 +91,9 @@ def test_bootstrap_round0_async_supports_explicit_domain() -> None:
         reranker_calibration=assets.reranker_calibration,
         knowledge_retrieval_budget=assets.knowledge_retrieval_budget,
         runtime_search_budget=assets.runtime_search_budget,
+        runtime_term_budget_policy=assets.runtime_term_budget_policy,
+        crossover_guard_thresholds=assets.crossover_guard_thresholds,
+        stop_guard_thresholds=assets.stop_guard_thresholds,
         operator_catalog=assets.operator_catalog,
     )
     primary_card_id = "role_alias.llm_agent_rag_engineering.backend_agent_engineer"

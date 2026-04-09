@@ -6,6 +6,7 @@ from pathlib import Path
 
 from seektalent.models import (
     BusinessPolicyPack,
+    CrossoverGuardThresholds,
     ExplanationPreferences,
     FitGateConstraints,
     FusionWeightPreferences,
@@ -14,7 +15,9 @@ from seektalent.models import (
     KnowledgeRetrievalBudget,
     RerankerCalibration,
     RuntimeSearchBudget,
+    RuntimeTermBudgetPolicy,
     StabilityPolicy,
+    StopGuardThresholds,
 )
 from seektalent.resources import (
     artifacts_root as default_artifacts_root,
@@ -43,6 +46,9 @@ class BootstrapAssets:
     reranker_calibration: RerankerCalibration
     knowledge_retrieval_budget: KnowledgeRetrievalBudget
     runtime_search_budget: RuntimeSearchBudget
+    runtime_term_budget_policy: RuntimeTermBudgetPolicy
+    crossover_guard_thresholds: CrossoverGuardThresholds
+    stop_guard_thresholds: StopGuardThresholds
     operator_catalog: tuple[str, ...]
 
 
@@ -82,6 +88,9 @@ def default_bootstrap_assets(*, artifacts_root: Path | None = None) -> Bootstrap
             default_target_new_candidate_count=10,
             max_target_new_candidate_count=20,
         ),
+        runtime_term_budget_policy=RuntimeTermBudgetPolicy(),
+        crossover_guard_thresholds=CrossoverGuardThresholds(),
+        stop_guard_thresholds=StopGuardThresholds(),
         operator_catalog=DEFAULT_OPERATOR_CATALOG,
     )
 

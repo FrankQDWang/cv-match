@@ -1,6 +1,6 @@
 # Architecture
 
-`HEAD` is no longer the old `v0.2` agent runtime. It is a `v0.3 phase 3 bootstrap/execution/ranking core` cutover.
+`HEAD` is no longer the old `v0.2` agent runtime. It is a `v0.3 phase 5 runtime loop` baseline.
 
 ## What the codebase contains now
 
@@ -33,10 +33,10 @@
 - `src/seektalent/retrieval/candidate_projection.py`
 - Builds the fixed `raw_candidates -> deduplicated_candidates -> scoring_candidates` sequence
 
-### Gated runtime surface
+### Runtime surface
 
 - `src/seektalent/runtime/orchestrator.py`
-- `run` and `run_async` now raise a runtime phase gate instead of pretending a full runtime loop exists
+- `run` and `run_async` execute the full Phase 5 runtime loop and return `SearchRunResult`
 
 ## What the codebase does not contain anymore
 

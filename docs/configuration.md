@@ -1,6 +1,6 @@
 # Configuration
 
-`SeekTalent v0.3 phase 3 bootstrap/execution/ranking core` keeps CTS and local path settings while the user-facing runtime remains gated. Old model, reflection, search-budget, and UI settings are still gone.
+`SeekTalent v0.3 phase 5 runtime loop` keeps CTS, rerank API, and local path settings. Old model, reflection, search-budget, and UI settings are still gone.
 
 ## Starter env
 
@@ -19,6 +19,8 @@ SEEKTALENT_CTS_TENANT_SECRET=
 SEEKTALENT_CTS_TIMEOUT_SECONDS=20
 SEEKTALENT_CTS_SPEC_PATH=cts.validated.yaml
 SEEKTALENT_MOCK_CTS=false
+SEEKTALENT_RERANK_BASE_URL=http://127.0.0.1:8012
+SEEKTALENT_RERANK_TIMEOUT_SECONDS=20
 SEEKTALENT_RUNS_DIR=runs
 ```
 
@@ -32,7 +34,9 @@ SEEKTALENT_RUNS_DIR=runs
 | `SEEKTALENT_CTS_TIMEOUT_SECONDS` | No | `20` | HTTP timeout for CTS calls. |
 | `SEEKTALENT_CTS_SPEC_PATH` | No | `cts.validated.yaml` | Uses the packaged spec when left at the default value. |
 | `SEEKTALENT_MOCK_CTS` | No | `false` | Enables the local mock CTS corpus. |
-| `SEEKTALENT_RUNS_DIR` | No | `runs` | Output root used by `doctor`; `run` is currently gated. |
+| `SEEKTALENT_RERANK_BASE_URL` | No | `http://127.0.0.1:8012` | Base URL for the local rerank HTTP API. |
+| `SEEKTALENT_RERANK_TIMEOUT_SECONDS` | No | `20` | HTTP timeout for rerank requests. |
+| `SEEKTALENT_RUNS_DIR` | No | `runs` | Output root used by `doctor`. |
 
 ## Modes
 
@@ -53,6 +57,12 @@ For local bridge work and tests:
 SEEKTALENT_MOCK_CTS=true
 ```
 
+The runtime still needs a rerank service. Start the local API with:
+
+```bash
+uv run --group rerank seektalent-rerank-api
+```
+
 ## Validation
 
 Use:
@@ -67,7 +77,7 @@ seektalent doctor
 - settings loading
 - the configured runs directory
 - CTS credentials, unless mock mode is enabled
-- that the repo is still in gated runtime mode
+- rerank base URL and timeout settings
 
 ## Related docs
 

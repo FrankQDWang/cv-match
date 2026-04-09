@@ -311,10 +311,20 @@ class BranchEvaluation_t(BaseModel):
     evaluation_notes: str
 
 
+class BranchEvaluationDraft_t(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    novelty_score: float
+    usefulness_score: float
+    branch_exhausted: bool
+    repair_operator_hint: str | None = None
+    evaluation_notes: str
+
+
 class NodeRewardBreakdown_t(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    delta_top_three: float = Field(ge=0.0)
+    delta_top_three: float
     must_have_gain: float = Field(ge=0.0)
     new_fit_yield: float = Field(ge=0.0)
     novelty: float = Field(ge=0.0, le=1.0)
@@ -444,12 +454,27 @@ class RuntimeTermBudgetPolicy(BaseModel):
     low_budget_range: tuple[int, int] = (2, 4)
 
 
+class RuntimeRoundState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runtime_round_index: int = Field(default=0, ge=0)
+
+
 class CrossoverGuardThresholds(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     min_shared_anchor_terms: int = Field(default=1, ge=0)
     min_reward_score: float = 1.5
     max_donor_candidates: int = Field(default=2, ge=1)
+
+
+class StopGuardThresholds(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    novelty_floor: float = Field(default=0.25, ge=0.0, le=1.0)
+    usefulness_floor: float = Field(default=0.25, ge=0.0, le=1.0)
+    reward_floor: float = 1.5
+    min_round_index: int = Field(default=2, ge=0)
 
 
 class RuntimeOnlyConstraints(BaseModel):
@@ -599,3 +624,9 @@ class SearchRunResult(BaseModel):
     final_shortlist_candidate_ids: list[str] = Field(default_factory=list)
     run_summary: str
     stop_reason: str
+
+
+class SearchRunSummaryDraft_t(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_summary: str

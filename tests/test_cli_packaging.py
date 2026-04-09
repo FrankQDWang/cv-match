@@ -42,7 +42,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert "Phase 4 status" in help_result.stdout
+    assert "Phase 5 status" in help_result.stdout
     assert not ui_cli.exists()
 
     version_result = subprocess.run(
@@ -64,7 +64,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         text=True,
     )
     inspect_payload = json.loads(inspect_result.stdout)
-    assert inspect_payload["phase"] == "phase4_operator_slice_gated_before_phase5"
+    assert inspect_payload["phase"] == "phase5_runtime_loop_active"
 
     subprocess.run(
         [str(cli), "init"],
@@ -88,15 +88,3 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     )
     doctor_payload = json.loads(doctor_result.stdout)
     assert doctor_payload["ok"] is True
-
-    run_result = subprocess.run(
-        [str(cli), "run", "--jd", "Python agent engineer", "--json"],
-        cwd=work_dir,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert run_result.returncode == 1
-    error_payload = json.loads(run_result.stderr)
-    assert error_payload["error_type"] == "RuntimePhaseGateError"

@@ -7,6 +7,7 @@ import pytest
 
 from seektalent import __version__
 from seektalent.cli import main
+from seektalent.models import SearchRunResult
 
 
 def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
@@ -14,7 +15,7 @@ def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
         main(["--help"])
     assert exc.value.code == 0
     help_text = capsys.readouterr().out
-    assert "Phase 4 status" in help_text
+    assert "Phase 5 status" in help_text
     assert "inspect" in help_text
     assert "doctor" in help_text
 
@@ -35,7 +36,7 @@ def test_update_command_prints_upgrade_instructions(capsys: pytest.CaptureFixtur
 def test_inspect_command_points_to_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["inspect"]) == 0
     output = capsys.readouterr().out
-    assert "phase 4 CLI inspection summary" in output
+    assert "phase 5 CLI inspection summary" in output
     assert "inspect --json" in output
 
 
@@ -44,14 +45,15 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     payload = json.loads(capsys.readouterr().out)
     assert payload["tool"] == "seektalent"
     assert payload["version"] == __version__
-    assert payload["phase"] == "phase4_operator_slice_gated_before_phase5"
-    assert payload["recommended_workflow"][-1] == "seektalent update"
-    assert "seektalent run --jd-file ./jd.md" not in payload["recommended_workflow"]
+    assert payload["phase"] == "phase5_runtime_loop_active"
+    assert payload["recommended_workflow"][-1] == "seektalent run --jd-file ./jd.md"
+    assert "seektalent-rerank-api" in payload["recommended_workflow"]
     assert "run" in payload["commands"]
     assert "doctor" in payload["commands"]
     run_args = {item["name"]: item for item in payload["commands"]["run"]["arguments"]}
     assert run_args["--jd"]["mutually_exclusive_with"] == ["--jd-file"]
     assert run_args["--jd-file"]["mutually_exclusive_with"] == ["--jd"]
+    assert "--output-dir" not in run_args
     assert payload["json_contracts"]["run"]["stderr_json_fields"] == ["error", "error_type"]
 
 
@@ -107,15 +109,47 @@ def test_doctor_fails_for_missing_real_cts_credentials(
     assert "FAIL cts_credentials" in capsys.readouterr().out
 
 
-def test_run_json_errors_emit_single_object(
-    tmp_path: Path,
+def test_run_json_success_emits_search_run_result(
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    missing_env = tmp_path / "missing.env"
-    assert main(["run", "--jd", "JD", "--env-file", str(missing_env), "--json"]) == 1
-    payload = json.loads(capsys.readouterr().err)
-    assert payload["error_type"] == "RuntimePhaseGateError"
-    assert "phase 4 bootstrap" in payload["error"]
+    monkeypatch.setattr(
+        "seektalent.cli.run_match",
+        lambda **kwargs: SearchRunResult(
+            final_shortlist_candidate_ids=["c-1", "c-2"],
+            run_summary="Ready for review.",
+            stop_reason="controller_stop",
+        ),
+    )
+
+    assert main(["run", "--jd", "JD", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "final_shortlist_candidate_ids": ["c-1", "c-2"],
+        "run_summary": "Ready for review.",
+        "stop_reason": "controller_stop",
+    }
+
+
+def test_run_human_success_prints_three_lines(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        "seektalent.cli.run_match",
+        lambda **kwargs: SearchRunResult(
+            final_shortlist_candidate_ids=["c-1", "c-2"],
+            run_summary="Ready for review.",
+            stop_reason="controller_stop",
+        ),
+    )
+
+    assert main(["run", "--jd", "JD"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "controller_stop",
+        "c-1, c-2",
+        "Ready for review.",
+    ]
 
 
 def test_run_reads_notes_file_before_phase_gate(

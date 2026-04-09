@@ -7,7 +7,7 @@
 
 ## English
 
-`SeekTalent` is currently in a destructive `v0.3 phase 2 bootstrap` cutover. `HEAD` ships the stable contracts in `docs/v-0.3`, deterministic requirement normalization, the bootstrap core, the CTS bridge, real/mock CTS clients, and a thin gated CLI/API surface.
+`SeekTalent` is currently on the `v0.3 phase 5 runtime loop` baseline. `HEAD` ships the stable contracts in `docs/v-0.3`, deterministic requirement normalization, the bootstrap core, execution/ranking, frontier control, and a live CLI/API runtime surface.
 
 What exists today:
 
@@ -18,7 +18,8 @@ What exists today:
 - `src/seektalent/retrieval/filter_projection.py` projects `SearchExecutionPlan_t` into CTS-safe native filters
 - `src/seektalent/clients/cts_client.py` returns `RetrievedCandidate_t`
 - `src/seektalent/retrieval/candidate_projection.py` builds `SearchExecutionResult_t`
-- `seektalent run` and `run_match(...)` are intentionally gated until the full runtime loop lands
+- `src/seektalent/runtime/orchestrator.py` runs the full Phase 5 runtime loop
+- `seektalent run` and `run_match(...)` return `SearchRunResult`
 
 What does not exist anymore:
 
@@ -57,37 +58,41 @@ SEEKTALENT_CTS_TENANT_KEY=your-cts-tenant-key
 SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
-Check the local bootstrap-era surface:
+Run the local rerank API:
+
+```bash
+uv run --group rerank seektalent-rerank-api
+```
+
+Check the local runtime surface:
 
 ```bash
 seektalent doctor
 seektalent inspect --json
 ```
 
-`run` is present but intentionally gated:
+Run a case:
 
 ```bash
 seektalent run --jd-file ./jd.md
 ```
 
-Expected result today: the command fails fast with a `RuntimePhaseGateError` explaining that the full runtime loop is not available yet.
+Default stdout is three lines: `stop_reason`, comma-joined shortlist ids, and `run_summary`.
 
 ## Python API
 
-The package still exports `run_match(...)` and `run_match_async(...)`, but they now raise the same runtime phase gate:
+The package exports `run_match(...)` and `run_match_async(...)` and returns `SearchRunResult`:
 
 ```python
-from seektalent import AppSettings, RuntimePhaseGateError, run_match
+from seektalent import AppSettings, run_match
 
-try:
-    run_match(
-        job_description="Python agent engineer",
-        hiring_notes="Shanghai preferred",
-        settings=AppSettings(mock_cts=True),
-        env_file=None,
-    )
-except RuntimePhaseGateError as exc:
-    print(exc)
+result = run_match(
+    job_description="Python agent engineer",
+    hiring_notes="Shanghai preferred",
+    settings=AppSettings(mock_cts=True),
+    env_file=None,
+)
+print(result.stop_reason)
 ```
 
 ## Commands

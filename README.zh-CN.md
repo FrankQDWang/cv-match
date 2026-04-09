@@ -7,7 +7,7 @@
 
 ## 简体中文
 
-`SeekTalent` 现在处于一次破坏式的 `v0.3 phase 2 bootstrap` 切换。当前 `HEAD` 提供 `docs/v-0.3` 里的稳定 contract、deterministic requirement normalization、bootstrap 内核、CTS bridge、真实/模拟 CTS client，以及一个仍然 gated 的薄 CLI/API 表面。
+`SeekTalent` 现在以 `v0.3 phase 5 runtime loop` 为当前基线。当前 `HEAD` 提供 `docs/v-0.3` 里的稳定 contract、deterministic requirement normalization、bootstrap 内核、execution/ranking、frontier control，以及已经接通的 CLI/API runtime 表面。
 
 现在仓库里真正存在的东西：
 
@@ -18,7 +18,8 @@
 - `src/seektalent/retrieval/filter_projection.py` 负责把 `SearchExecutionPlan_t` 安全投影到 CTS
 - `src/seektalent/clients/cts_client.py` 直接返回 `RetrievedCandidate_t`
 - `src/seektalent/retrieval/candidate_projection.py` 负责构造 `SearchExecutionResult_t`
-- `seektalent run` 和 `run_match(...)` 目前都故意被 runtime phase gate 挡住
+- `src/seektalent/runtime/orchestrator.py` 负责完整 Phase 5 runtime loop
+- `seektalent run` 和 `run_match(...)` 会直接返回 `SearchRunResult`
 
 已经删除的东西：
 
@@ -57,37 +58,41 @@ SEEKTALENT_CTS_TENANT_KEY=your-cts-tenant-key
 SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
-检查本地 bootstrap 阶段表面：
+本地启动 rerank API：
+
+```bash
+uv run --group rerank seektalent-rerank-api
+```
+
+检查本地 runtime 表面：
 
 ```bash
 seektalent doctor
 seektalent inspect --json
 ```
 
-`run` 入口还在，但当前会明确 fail fast：
+执行一个 case：
 
 ```bash
 seektalent run --jd-file ./jd.md
 ```
 
-今天的预期行为就是抛出 `RuntimePhaseGateError`，明确说明完整 runtime loop 还没开放。
+默认 stdout 会打印三行：`stop_reason`、逗号拼接的 shortlist ids、以及 `run_summary`。
 
 ## Python API
 
-包仍然导出 `run_match(...)` 和 `run_match_async(...)`，但它们现在都会抛同一个 runtime phase gate：
+包导出 `run_match(...)` 和 `run_match_async(...)`，并直接返回 `SearchRunResult`：
 
 ```python
-from seektalent import AppSettings, RuntimePhaseGateError, run_match
+from seektalent import AppSettings, run_match
 
-try:
-    run_match(
-        job_description="Python agent engineer",
-        hiring_notes="Shanghai preferred",
-        settings=AppSettings(mock_cts=True),
-        env_file=None,
-    )
-except RuntimePhaseGateError as exc:
-    print(exc)
+result = run_match(
+    job_description="Python agent engineer",
+    hiring_notes="Shanghai preferred",
+    settings=AppSettings(mock_cts=True),
+    env_file=None,
+)
+print(result.stop_reason)
 ```
 
 ## 命令

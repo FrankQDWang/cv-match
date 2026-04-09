@@ -10,10 +10,9 @@ seektalent --help
 
 ## Current phase
 
-This CLI is a `v0.3 phase 3 bootstrap/execution/ranking core` surface.
+This CLI is a `v0.3 phase 5 runtime loop active` surface.
 
-- `doctor`, `init`, `version`, `update`, and `inspect` work
-- `run` is intentionally gated and always fails fast with `RuntimePhaseGateError`
+- `doctor`, `init`, `version`, `update`, `inspect`, and `run` work
 
 ## Commands
 
@@ -29,7 +28,7 @@ seektalent init --force
 
 ### `seektalent doctor`
 
-Validate the local phase-3 surface without making network calls:
+Validate the local Phase 5 surface without making network calls:
 
 ```bash
 seektalent doctor
@@ -63,12 +62,11 @@ seektalent inspect --json
 
 ### `seektalent run`
 
-The command still accepts the planned inputs:
+The command accepts:
 
 - `--jd` or `--jd-file`
 - `--notes` or `--notes-file`
 - `--env-file`
-- `--output-dir`
 - `--json`
 
 Example:
@@ -79,11 +77,11 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 
 Current behavior:
 
-- validates input wiring
-- loads settings
-- then fails immediately with the runtime phase gate
+- runs the full runtime loop
+- prints `stop_reason`, comma-joined shortlist ids, and `run_summary` in human mode
+- prints `SearchRunResult.model_dump(mode="json")` to stdout in `--json` mode
 
-In `--json` mode, the failure is emitted as one JSON object on stderr.
+Failures still emit one JSON object on stderr.
 
 ## Related docs
 

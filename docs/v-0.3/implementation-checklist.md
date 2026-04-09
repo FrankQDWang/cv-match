@@ -56,7 +56,7 @@
 
 ### 2.6 当前完成情况（截至当前 HEAD）
 
-- 总体状态：Phase 1 已按“contract 先落稳”的目标完成收口；CLI / API 的 `run` 入口仍保持 gated，这不视为 Phase 1 未完成，因为本阶段验收标准是“后续实现者无需再做设计决策即可开工”，不是“bootstrap 或 ranking 主流程已跑通”。
+- 总体状态：Phase 1 已按“contract 先落稳”的目标完成收口；当前 HEAD 的公开 `run` 入口已由 Phase 5 接通，这不改变本阶段的验收口径，因为本阶段关注的始终是 contract 是否稳定，而不是主链是否已经串完。
 
 对应 `2.2 主要工作`：
 
@@ -120,7 +120,7 @@
 
 ### 3.6 当前完成情况（截至当前 HEAD）
 
-- 总体状态：Phase 2 已按“round-0 bootstrap 内核先落地”的目标完成收口；`run` 入口仍保持 gated，这不视为 Phase 2 未完成，因为本阶段验收标准是“bootstrap 主链与稳定产物已可直接供后续阶段消费”，不是“用户侧完整 runtime loop 已开放”。
+- 总体状态：Phase 2 已按“round-0 bootstrap 内核先落地”的目标完成收口；当前 HEAD 的公开 `run` 入口已由 Phase 5 接通，这不改变本阶段的验收口径，因为本阶段关注的是 bootstrap 主链与稳定产物，而不是用户侧 runtime 是否已经对外开放。
 
 对应 `3.2 主要工作`：
 
@@ -187,7 +187,7 @@
 
 ### 4.6 当前完成情况（截至当前 HEAD）
 
-- 总体状态：Phase 3 已按“search execution 与 ranking 先收成稳定 deterministic 切片”的目标完成收口；`run` 入口仍保持 gated，这不视为 Phase 3 未完成，因为本阶段验收标准是“execution / scoring operator 已可直接串通并稳定产出评分结果”，不是“frontier loop、reward、stop、finalize 已开放”。
+- 总体状态：Phase 3 已按“search execution 与 ranking 先收成稳定 deterministic 切片”的目标完成收口；当前 HEAD 的公开 `run` 入口已由 Phase 5 接通，这不改变本阶段的验收口径，因为本阶段关注的是 execution / scoring operator 是否稳定，而不是 runtime 全链路何时开放。
 
 对应 `4.2 主要工作`：
 
@@ -252,7 +252,7 @@
 
 ### 5.6 当前完成情况（截至当前 HEAD）
 
-- 总体状态：Phase 4 的 operator contract、controller draft 收口与局部 search / direct-stop slice 已完成；CLI / API / package metadata 现已同步对外表述为“phase 4 operator slice 已完成、但 `run` 仍 gated 等待 Phase 5”；`semantic dedupe` 的真正状态写入仍留在 Phase 5 的 `UpdateFrontierState`，因此本阶段当前应理解为“frontier decision 面已落稳，但公开 runtime loop 尚未接通”。
+- 总体状态：Phase 4 的 operator contract、controller draft 收口与局部 search / direct-stop slice 已完成；这些能力现已被 Phase 5 runtime loop 直接消费。当前应把本阶段理解为“frontier decision 面已落稳，并已作为完整 runtime 的中段组成部分投入使用”。
 
 对应 `5.2 主要工作`：
 
@@ -260,11 +260,11 @@
 2. `[[GenerateSearchControllerDecision]]` 已落地为 deterministic normalization 层；当前实现固定把控制器草稿收口为 `search_cts / stop`、operator 白名单回退、non-crossover `additional_terms` 裁剪与 crossover donor whitelist，不允许 LLM 自由改写 `target_frontier_node_id` 或旁路 donor。补充说明：controller validator 当前只校验“归一化后是否仍可物化出合法且非空的 query terms”以及 crossover donor / shared-anchor 合法性，不再额外要求 non-crossover `additional_terms` 在裁剪后仍保持非空。
 3. `[[CarryForwardFrontierState]]` 已落地为 identity carry-forward；direct-stop 路径当前会直接把 `FrontierState_t` 原样投影为 `FrontierState_t1`，不新增 child node、不消耗 budget、不写旁路状态。
 4. `crossover_compose` 已在 Phase 4 / Phase 3 接缝上落地：controller 侧会限制合法 donor id 与 crossover args，plan materialization 侧继续负责 shared-anchor guard、donor lineage 与 source card 合并，不再有第二套 crossover path。
-5. donor legality 与 shared-anchor guard 已落地并由新增测试覆盖；`semantic dedupe` 当前仍只冻结在 `SearchExecutionPlan_t.semantic_hash` 与 stable child identity 上，`semantic_hashes_seen` 的真正写入仍保留给 Phase 5 `[[UpdateFrontierState]]`。
+5. donor legality 与 shared-anchor guard 已落地并由新增测试覆盖；Phase 4 自身冻结了 `SearchExecutionPlan_t.semantic_hash` 与 stable child identity，随后由当前 HEAD 的 Phase 5 `[[UpdateFrontierState]]` 继续把 `semantic_hashes_seen` 推进成真实 run-state。
 
 对应 `5.3 交付物`：
 
-1. 部分满足。active-node selection、controller patch、search path、direct-stop path 已能通过 `select_active_frontier_node(...) -> generate_search_controller_decision(...) -> materialize_search_execution_plan(...)` / `carry_forward_frontier_state(...)` 的函数组合与集成测试形成统一 slice；但 `WorkflowRuntime.run*` 仍保持 gated，尚未接成公开 runtime loop。
+1. 已满足。active-node selection、controller patch、search path、direct-stop path 已能通过 `select_active_frontier_node(...) -> generate_search_controller_decision(...) -> materialize_search_execution_plan(...)` / `carry_forward_frontier_state(...)` 的函数组合与集成测试形成统一 slice；`WorkflowRuntime.run*` 现已在 Phase 5 中接成公开 runtime loop。
 2. 已满足。crossover 已有清晰 donor 和 guard 边界；donor legality、shared-anchor、donor lineage 与 `source_card_ids` 合并路径都已固定。
 3. 已满足。runtime 选点与 controller 局部决策职责已分离；当前 frontier 选点是 deterministic 纯函数，控制器只看到 `SearchControllerContext_t` 局部快照。
 
@@ -273,19 +273,19 @@
 1. 已满足。runtime 先选 active node，控制器只做 branch-level patch；当前测试已覆盖 search path 与 direct-stop path。
 2. 已满足。donor 必须满足 `open + reward_breakdown != null + reward 过线 + shared anchor 过线`，且还必须补 active node 未覆盖的 must-have。
 3. 已满足。generic provenance 下不会放开 `domain_company`；当前实现继续以 `source_card_ids == []` 作为唯一 generic provenance 判据。
-4. 已满足到 operator slice 层面。direct-stop 路径与 search 路径当前都使用统一的 `SearchControllerDecision_t` / `FrontierState_t` / `FrontierState_t1` 对象，不再新开旁路状态；但 stop guard 与 finalize 仍属 Phase 5。
+4. 已满足。direct-stop 路径与 search 路径当前都使用统一的 `SearchControllerDecision_t` / `FrontierState_t` / `FrontierState_t1` 对象，不再新开旁路状态；当前 HEAD 中 stop guard 与 finalize 也已由 Phase 5 接通，但这不改变 Phase 4 自身的 owner 边界。
 5. 已满足。`SearchControllerDecisionLLM` 当前已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput` strict schema、禁用 tools、禁用 cross-operator history、`retries=0`、`output_retries=1`；它也是当前唯一启用单次业务型 validator retry 的调用点，且该 retry 现已收窄到 owner 允许的边界：只处理“最终 query 不可物化/为空”与 crossover donor legality 问题，不再附加更强的草稿字段形状约束。
 
 对应 `5.5 下一阶段前提`：
 
-1. 已满足到 operator slice 层面。`[[SearchControllerDecision_t]]`、`[[SearchExecutionPlan_t]]`、`[[FrontierState_t1]]` 现已可通过函数组合闭合 search / direct-stop 分支；后续只需把它们接入 Phase 5 的 reward / stop / finalize 即可。
-2. 已满足到 plan / lineage 层面。crossover 的 donor 合法性、shared-anchor 与 lineage 当前都可审计；`semantic_hashes_seen` 的 run-state 去重推进仍留给 Phase 5。
+1. 已满足。`[[SearchControllerDecision_t]]`、`[[SearchExecutionPlan_t]]`、`[[FrontierState_t1]]` 现已可通过函数组合闭合 search / direct-stop 分支，并已在当前 HEAD 中被 Phase 5 runtime loop 直接消费。
+2. 已满足。crossover 的 donor 合法性、shared-anchor 与 lineage 当前都可审计；`semantic_hashes_seen` 的 run-state 去重也已在当前 HEAD 的 Phase 5 中完成推进。
 
 补充说明：
 
 - 本轮同时补齐了 `SearchControllerContext_t`、`SearchControllerDecisionDraft_t`、`BranchEvaluation_t`、`NodeRewardBreakdown_t` 的代码侧 typed payload，frontier node 上不再继续使用裸 dict 挂载 branch evaluation / reward。
-- 公共 phase 口径现已同步到代码事实：`inspect` / `doctor` / runtime gate / package description 都明确表述为“phase 4 operator slice 已完成，但公开 runtime loop 仍等待 Phase 5 接通”，不再继续对外宣称 phase 3。
-- 当前新增测试已覆盖 `tests/test_bootstrap_ops.py`、`tests/test_controller_llm.py`、`tests/test_search_ops.py`、`tests/test_cli.py`、`tests/test_cli_packaging.py` 与 `tests/test_api.py`；截至当前 HEAD，全量测试为 `88 passed`。
+- 公共 phase 口径现已同步到代码事实：`inspect` / `doctor` / package description 都以 Phase 5 runtime loop 为当前公开状态，Phase 4 不再对外单独作为独立公开阶段暴露。
+- 当前新增测试已覆盖 `tests/test_bootstrap_ops.py`、`tests/test_controller_llm.py`、`tests/test_search_ops.py`、`tests/test_runtime_llm.py`、`tests/test_runtime_ops.py`、`tests/test_runtime_orchestrator.py`、`tests/test_cli.py`、`tests/test_cli_packaging.py` 与 `tests/test_api.py`；截至当前 HEAD，全量测试为 `101 passed`。
 
 ## 6. Phase 5: Reward / Frontier Update / Stop / Finalize
 
@@ -320,6 +320,43 @@
 1. 单次 run 已可从 bootstrap 执行到 `SearchRunResult`。
 2. 所有关键 runtime artifacts 已具备回放价值。
 3. runtime artifacts 已足以渲染同一 case 的 `Agent Trace` 与 `Business Trace`。
+
+### 6.6 当前完成情况（截至当前 HEAD）
+
+- 总体状态：Phase 5 已完成。`bootstrap -> execution/ranking -> frontier decision -> reward/frontier update/stop/finalize` 已接成单次完整 runtime loop；CLI、Python API、package metadata 与测试均已对齐到公开可运行状态。
+
+对应 `6.2 主要工作`：
+
+1. `[[EvaluateBranchOutcome]]` 已落地为稳定纯函数；当前实现会 clamp `novelty_score / usefulness_score` 到 `[0, 1]`，限制 `repair_operator_hint` 只允许 owner 白名单，并在本轮 shortlist 为空时直接把 `branch_exhausted` 置为 `true`。
+2. `[[ComputeNodeRewardBreakdown]]` 已落地为稳定纯函数；当前 reward 公式只读取 `fusion_score` 与 deterministic runtime facts，不再回读旧 base score，也不把 `latency_ms` 混进 reward。
+3. `[[UpdateFrontierState]]` 已落地为稳定纯函数；当前实现固定关闭 parent、按 `branch_exhausted` 决定 child open/closed、更新 `run_shortlist_candidate_ids`、`semantic_hashes_seen`、`operator_statistics` 与 `remaining_budget`，缺失 operator statistics key 时直接 fail-fast。
+4. `[[EvaluateStopCondition]]` 已落地为稳定纯函数；当前 stop 优先级固定为 `budget_exhausted > no_open_node > exhausted_low_gain > controller_stop`，控制器只提供建议，不具备最终裁决权。
+5. `[[FinalizeSearchRun]]` 已落地为稳定纯函数 + LLM summary wrapper 组合；finalizer 只写 `run_summary`，不会改写 final shortlist 顺序或 stop reason。
+
+对应 `6.3 交付物`：
+
+1. 已满足。branch judgment、reward、frontier update、stop、finalize 已形成完整 run 末端闭环。
+2. 已满足。run-global shortlist 的排序事实和 stop reason 已可回放；当前 run-shortlist 排序固定为“最佳已观测 `fusion_score` 降序 + first-seen tie-break”。
+3. 已满足。最终结果对象 `[[SearchRunResult]]` 已能稳定生成，并已接通到 CLI 与 Python API。
+
+对应 `6.4 可开工验收`：
+
+1. 已满足。reward 明确读 fused score，不读旧 base score。
+2. 已满足。run-global shortlist 由最佳已观测 `fusion_score` 决定。
+3. 已满足。stop 统一由 runtime guard 裁决，控制器只能建议。
+4. 已满足。finalizer 只能写总结，不能改 shortlist 事实。
+5. 已满足。`BranchOutcomeEvaluationLLM` 与 `SearchRunFinalizationLLM` 已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput` strict schema、禁用 tools、禁用 cross-operator history、`retries=0`、`output_retries=1`。
+
+对应 `6.5 下一阶段前提`：
+
+1. 已满足。单次 run 已可从 bootstrap 执行到 `SearchRunResult`。
+2. 已满足到内存态 runtime 事实层面。关键 runtime objects 已具备回放价值，但磁盘 artifact writer 仍留给 Phase 6。
+3. 部分满足。runtime objects 已足以支撑后续 `Agent Trace / Business Trace` 设计，但正式双轨 artifact 与索引写盘仍属于 Phase 6 范围。
+
+补充说明：
+
+- 当前公开阶段边界已经很简单：Phase 1-5 均已完成，下一阶段只剩 Phase 6 的 offline eval、artifact 写盘、trace index 与 knowledge base compile loop。
+- Phase 5 的实现仍坚持 `v0.3` 实验项目口径：不引入 compatibility shim、不增加 fallback/retry chain、不预埋 Phase 6 的 artifact writer。
 
 ## 7. Phase 6: Offline Eval 与 Knowledge Base Compile Loop
 
