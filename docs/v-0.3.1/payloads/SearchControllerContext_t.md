@@ -14,6 +14,8 @@ SearchControllerContext_t = {
   unmet_requirement_weights,
   operator_statistics_summary,
   allowed_operator_names,
+  operator_surface_override_reason,
+  operator_surface_unmet_must_haves,
   term_budget_range,
   fit_gate_constraints,
   runtime_budget_state
@@ -31,6 +33,8 @@ SearchControllerContext_t = {
 - 未满足需求权重：`unmet_requirement_weights`
 - operator 统计摘要：`operator_statistics_summary`
 - 当前轮允许的 operator：`allowed_operator_names`
+- 当前轮 operator surface override 原因：`operator_surface_override_reason`
+- 当前 active node 的 must-have 缺口：`operator_surface_unmet_must_haves`
 - term 预算范围：`term_budget_range`
 - fit gate 约束：`fit_gate_constraints`
 - runtime 预算态：`runtime_budget_state`
@@ -47,6 +51,8 @@ SearchControllerContext_t = {
 - `selection_ranking` 只包含 eligible open nodes。
 - `selection_ranking` 必须按 `final_selection_score` 降序；打平按 `open_frontier_node_ids` 顺序稳定。
 - `runtime_budget_state` 是 phase 的唯一 owner。
+- `allowed_operator_names` 是 phase-aware action surface，不是第二套 selection policy。
+- `operator_surface_unmet_must_haves` 必须与 `coverage_opportunity_score` 和 `unmet_requirement_weights` 共享同一个 capability-hit helper 语义。
 - `selection_ranking` 只进入 trace，不进入 controller prompt surface。
 
 ## Prompt Surface Projection
@@ -65,6 +71,12 @@ SearchControllerContext_t = {
 8. `Runtime Budget State`
 9. `Budget Warning`，仅当 `runtime_budget_state.near_budget_end = true`
 10. `Decision Request`
+
+`Allowed Operators` section 会显式包含：
+
+- `Allowed operators: ...`
+- `Operator surface override: ...`
+- `Operator surface unmet must-haves: ...`
 
 `active_selection_breakdown` 与 `selection_ranking` 不会投影到 prompt text。
 
@@ -118,10 +130,12 @@ operator_statistics_summary:
     times_selected: 1
 allowed_operator_names:
   - "core_precision"
-  - "must_have_alias"
-  - "relaxed_floor"
-  - "generic_expansion"
   - "crossover_compose"
+  - "must_have_alias"
+  - "generic_expansion"
+operator_surface_override_reason: "harvest_unmet_must_have_repair"
+operator_surface_unmet_must_haves:
+  - "retrieval_or_ranking_experience"
 term_budget_range: [2, 6]
 fit_gate_constraints:
   locations: ["Shanghai"]

@@ -75,10 +75,96 @@ SearchControllerContext_t.selection_ranking = selection_ranking_t
 SearchControllerContext_t.unmet_requirement_weights = current unmet requirement weights
 SearchControllerContext_t.operator_statistics_summary = FrontierState_t.operator_statistics
 SearchControllerContext_t.allowed_operator_names = current operator surface
+SearchControllerContext_t.operator_surface_override_reason = current operator surface override reason
+SearchControllerContext_t.operator_surface_unmet_must_haves = active node unmet must-have list
 SearchControllerContext_t.term_budget_range = current term budget range
 SearchControllerContext_t.fit_gate_constraints = ScoringPolicy.fit_gate_constraints
 SearchControllerContext_t.runtime_budget_state = RuntimeBudgetState
 ```
+
+## Operator Surface Policy
+
+`allowed_operator_names` 是 phase-aware action surface，不是第二套 selection policy。
+
+同源 helper：
+
+```text
+unmet_must_haves(active_node_t) =
+  [c in RequirementSheet.must_have_capabilities | query_pool_hit(active_node_t, c) = 0]
+```
+
+这一个 helper 同时服务于：
+
+- `coverage_opportunity_score`
+- `unmet_requirement_weights`
+- `harvest` 期 repair override
+
+### `explore`
+
+无 pack：
+
+```text
+["must_have_alias", "generic_expansion", "core_precision", "relaxed_floor"]
+```
+
+有 pack：
+
+```text
+["must_have_alias", "generic_expansion", "core_precision", "relaxed_floor", "pack_expansion", "cross_pack_bridge"]
+```
+
+规则：
+
+- 永不开放 `crossover_compose`
+
+### `balance`
+
+无 pack：
+
+```text
+["core_precision", "must_have_alias", "relaxed_floor", "generic_expansion"]
+```
+
+有 pack：
+
+```text
+["core_precision", "must_have_alias", "relaxed_floor", "generic_expansion", "pack_expansion", "cross_pack_bridge"]
+```
+
+若 donor surface 非空，则在最后追加：
+
+```text
+["crossover_compose"]
+```
+
+### `harvest`
+
+base：
+
+```text
+["core_precision"]
+```
+
+若 donor surface 非空，则在最后追加：
+
+```text
+["crossover_compose"]
+```
+
+若且仅若 `unmet_must_haves(active_node_t)` 非空，再在最后追加：
+
+```text
+["must_have_alias", "generic_expansion"]
+```
+
+规则：
+
+- 默认关闭所有发散型 operator
+- 永不开放 `relaxed_floor`
+- 永不开放 `pack_expansion / cross_pack_bridge`
+- 唯一 repair override 只允许临时开放：
+  - `must_have_alias`
+  - `generic_expansion`
 
 ## Read Set
 
@@ -103,6 +189,8 @@ SearchControllerContext_t.runtime_budget_state = RuntimeBudgetState
 - `SearchControllerContext_t.unmet_requirement_weights`
 - `SearchControllerContext_t.operator_statistics_summary`
 - `SearchControllerContext_t.allowed_operator_names`
+- `SearchControllerContext_t.operator_surface_override_reason`
+- `SearchControllerContext_t.operator_surface_unmet_must_haves`
 - `SearchControllerContext_t.term_budget_range`
 - `SearchControllerContext_t.fit_gate_constraints`
 - `SearchControllerContext_t.runtime_budget_state`

@@ -112,6 +112,8 @@ def _controller_context(*, near_budget_end: bool = False) -> SearchControllerCon
                 "core_precision",
                 "crossover_compose",
             ],
+            "operator_surface_override_reason": "none",
+            "operator_surface_unmet_must_haves": ["ranking"],
             "term_budget_range": [2, 5],
             "fit_gate_constraints": FitGateConstraints().model_dump(mode="python"),
             "runtime_budget_state": budget_state.model_dump(mode="python"),
@@ -290,6 +292,8 @@ def test_controller_prompt_surface_orders_sections_and_delays_budget_warning() -
     assert warned_surface.sections[8].source_paths == [
         "SearchControllerContext_t.runtime_budget_state.near_budget_end"
     ]
+    assert "Operator surface override: none" in regular_surface.sections[4].body_text
+    assert "Operator surface unmet must-haves: ranking" in regular_surface.sections[4].body_text
     assert "Phase progress:" in regular_surface.sections[7].body_text
     assert "Search phase:" in regular_surface.sections[7].body_text
     assert "selection_ranking" not in regular_surface.input_text

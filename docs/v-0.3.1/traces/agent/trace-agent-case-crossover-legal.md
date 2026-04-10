@@ -22,10 +22,11 @@ run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-cross
 | round | action | operator | knowledge_pack_ids | stop_reason |
 | --- | --- | --- | --- | --- |
 | 0 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
-| 1 | search_cts | crossover_compose | ['llm_agent_rag_engineering'] |  |
-| 2 | stop | must_have_alias |  | controller_stop |
+| 1 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
+| 2 | search_cts | crossover_compose | ['llm_agent_rag_engineering'] |  |
+| 3 | stop | must_have_alias |  | controller_stop |
 
 ## Final Result
 
-- shortlist: `['candidate-crossover-2', 'candidate-crossover-1']`
+- shortlist: `['candidate-crossover-3', 'candidate-crossover-2', 'candidate-crossover-1']`
 - run_summary: Legal crossover produced an expanded shortlist.

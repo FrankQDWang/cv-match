@@ -10,27 +10,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai.models.test import TestModel
 
 from seektalent.api import run_match
-from seektalent.bootstrap import bootstrap_round0
 from seektalent.bootstrap_assets import default_bootstrap_assets
 from seektalent.candidate_text import build_candidate_search_text
 from seektalent.clients.cts_client import CTSFetchResult
 from seektalent.config import AppSettings
-from seektalent.frontier_ops import (
-    generate_search_controller_decision,
-    select_active_frontier_node,
-)
 from seektalent.models import (
     BusinessPolicyPack,
     DomainKnowledgePack,
     RetrievedCandidate_t,
-    SearchControllerDecisionDraft_t,
     SearchRunBundle,
     StopGuardThresholds,
     stable_deduplicate,
 )
 from seektalent.resources import runtime_case_dir, runtime_eval_matrix_file
-from seektalent.runtime_budget import build_runtime_budget_state
-from seektalent.search_ops import materialize_search_execution_plan
 from seektalent_rerank.models import RerankResponse, RerankResult
 
 
@@ -161,11 +153,11 @@ def canonical_case_specs() -> tuple[CanonicalCaseSpec, ...]:
         CanonicalCaseSpec(
             case_id="case-crossover-legal",
             scenario="合法 crossover",
-            business_context="已有合法 donor 且 shared anchor 成立时，控制器可发起 crossover 搜索。",
+            business_context="进入 balance 期且已有合法 donor 时，控制器可发起 crossover 搜索。",
             expected_route="inferred_single_pack",
             expected_stop_reason="controller_stop",
             expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
-            must_hold=["round 1 uses crossover_compose with donor_frontier_node_id"],
+            must_hold=["round 2 uses crossover_compose with donor_frontier_node_id"],
             must_not_hold=["missing donor candidate list"],
         ),
         CanonicalCaseSpec(
@@ -354,7 +346,7 @@ def _build_out_of_domain_generic_bundle(*, repo_root: Path) -> SearchRunBundle:
 
 def _build_legal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
     assets = _runtime_assets(min_round_index=2)
-    donor_frontier_node_id = _legal_crossover_donor_id(assets)
+    crossover_payload = _legal_crossover_round_two_payload(assets)
     return _run_case(
         repo_root=repo_root,
         case_id="case-crossover-legal",
@@ -364,12 +356,14 @@ def _build_legal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
         pack_scores=_llm_pack_scores(),
         controller_outputs=[
             _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
-            _crossover_payload(donor_frontier_node_id),
+            _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
+            crossover_payload,
             _stop_payload(),
         ],
         candidate_scores=[
             {"candidate-crossover-1": 2.0},
             {"candidate-crossover-2": 1.7},
+            {"candidate-crossover-3": 1.9},
         ],
         cts_results=[
             CTSFetchResult(
@@ -384,9 +378,16 @@ def _build_legal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
                 raw_candidate_count=1,
                 latency_ms=5,
             ),
+            CTSFetchResult(
+                request_payload={},
+                candidates=[_candidate("candidate-crossover-3", search_text="python backend workflow agent ranking")],
+                raw_candidate_count=1,
+                latency_ms=5,
+            ),
         ],
         branch_outputs=[
             _branch_payload(novelty=0.8, usefulness=0.7, repair_operator_hint="core_precision"),
+            _branch_payload(novelty=0.7, usefulness=0.6, repair_operator_hint="core_precision"),
             _branch_payload(novelty=0.7, usefulness=0.6, repair_operator_hint="crossover_compose"),
         ],
         final_summary="Legal crossover produced an expanded shortlist.",
@@ -403,21 +404,34 @@ def _build_illegal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
         pack_scores=_llm_pack_scores(),
         controller_outputs=[
             _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
+            _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
             [
                 _crossover_payload("missing-donor"),
                 _stop_payload(),
             ],
         ],
-        candidate_scores=[{"candidate-illegal-1": 2.0}],
+        candidate_scores=[
+            {"candidate-illegal-1": 2.0},
+            {"candidate-illegal-2": 1.8},
+        ],
         cts_results=[
             CTSFetchResult(
                 request_payload={},
                 candidates=[_candidate("candidate-illegal-1", search_text="python backend rag ranking")],
                 raw_candidate_count=1,
                 latency_ms=5,
-            )
+            ),
+            CTSFetchResult(
+                request_payload={},
+                candidates=[_candidate("candidate-illegal-2", search_text="python backend workflow ranking")],
+                raw_candidate_count=1,
+                latency_ms=5,
+            ),
         ],
-        branch_outputs=[_branch_payload(novelty=0.8, usefulness=0.7, repair_operator_hint="core_precision")],
+        branch_outputs=[
+            _branch_payload(novelty=0.8, usefulness=0.7, repair_operator_hint="core_precision"),
+            _branch_payload(novelty=0.7, usefulness=0.6, repair_operator_hint="core_precision"),
+        ],
         final_summary="Illegal crossover was rejected and the run stopped on retry.",
     )
 
@@ -528,45 +542,74 @@ def _runtime_assets(
     )
 
 
-def _legal_crossover_donor_id(assets) -> str:
-    bootstrap_artifacts = bootstrap_round0(
-        job_description="Workflow Search Engineer",
+def _legal_crossover_round_two_payload(assets) -> dict[str, object]:
+    probe_bundle = run_match(
+        job_description=str(_crossover_requirement_payload()["role_title_candidate"]),
         hiring_notes="canonical case",
+        settings=AppSettings(
+            _env_file=None,
+            mock_cts=True,
+            runs_dir="/tmp/seektalent-crossover-probe",
+        ),
+        env_file=None,
         assets=assets,
+        cts_client=_FakeCTSClient(
+            [
+                CTSFetchResult(
+                    request_payload={},
+                    candidates=[_candidate("candidate-probe-1", search_text="python backend rag ranking")],
+                    raw_candidate_count=1,
+                    latency_ms=5,
+                ),
+                CTSFetchResult(
+                    request_payload={},
+                    candidates=[_candidate("candidate-probe-2", search_text="python backend ranking workflow")],
+                    raw_candidate_count=1,
+                    latency_ms=5,
+                ),
+            ]
+        ),
         rerank_request=_FakeRerankRequest(
             pack_scores=_llm_pack_scores(),
-            candidate_scores=[],
+            candidate_scores=[
+                {"candidate-probe-1": 2.0},
+                {"candidate-probe-2": 1.7},
+            ],
         ),
         requirement_extraction_model=TestModel(custom_output_args=_crossover_requirement_payload()),
         bootstrap_keyword_generation_model=TestModel(custom_output_args=_crossover_keyword_payload()),
-    )
-    controller_context = select_active_frontier_node(
-        bootstrap_artifacts.frontier_state,
-        bootstrap_artifacts.requirement_sheet,
-        bootstrap_artifacts.scoring_policy,
-        assets.crossover_guard_thresholds,
-        assets.runtime_term_budget_policy,
-        build_runtime_budget_state(
-            initial_round_budget=assets.runtime_search_budget.initial_round_budget,
-            runtime_round_index=0,
-            remaining_budget=bootstrap_artifacts.frontier_state.remaining_budget,
+        search_controller_decision_model=_SequentialTestModel(
+            outputs=[
+                _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
+                _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
+                _stop_payload(),
+            ]
         ),
-    )
-    controller_decision = generate_search_controller_decision(
-        controller_context,
-        SearchControllerDecisionDraft_t.model_validate(
-            _search_payload("core_precision", additional_terms=["workflow systems", "ranking"])
+        branch_outcome_evaluation_model=_SequentialTestModel(
+            outputs=[
+                _branch_payload(novelty=0.8, usefulness=0.7, repair_operator_hint="core_precision"),
+                _branch_payload(novelty=0.7, usefulness=0.6, repair_operator_hint="core_precision"),
+            ]
         ),
+        search_run_finalization_model=TestModel(custom_output_args={"run_summary": "probe"}),
     )
-    plan = materialize_search_execution_plan(
-        bootstrap_artifacts.frontier_state,
-        bootstrap_artifacts.requirement_sheet,
-        controller_decision,
-        assets.runtime_term_budget_policy,
-        assets.runtime_search_budget,
-        assets.crossover_guard_thresholds,
+    round_two = probe_bundle.rounds[2]
+    donors = round_two.controller_context.donor_candidate_node_summaries
+    if not donors:
+        raise ValueError("missing_round_two_legal_crossover_donor")
+    donor_frontier_node_id = donors[0].frontier_node_id
+    active_node = round_two.controller_context.active_frontier_node_summary
+    donor_node = probe_bundle.rounds[1].frontier_state_after.frontier_nodes[donor_frontier_node_id]
+    donor_terms_used = [
+        term
+        for term in donor_node.node_query_term_pool
+        if term not in set(active_node.node_query_term_pool)
+    ]
+    return _crossover_payload(
+        donor_frontier_node_id,
+        shared_anchor_terms=donors[0].shared_anchor_terms,
+        donor_terms_used=donor_terms_used,
     )
-    return plan.child_frontier_node_stub.frontier_node_id
 
 
 def _llm_pack_scores() -> dict[str, float]:
@@ -854,14 +897,19 @@ def _search_payload(operator_name: str, *, additional_terms: list[str]) -> dict[
     }
 
 
-def _crossover_payload(donor_frontier_node_id: str) -> dict[str, object]:
+def _crossover_payload(
+    donor_frontier_node_id: str,
+    *,
+    shared_anchor_terms: list[str] | None = None,
+    donor_terms_used: list[str] | None = None,
+) -> dict[str, object]:
     return {
         "action": "search_cts",
         "selected_operator_name": "crossover_compose",
         "operator_args": {
             "donor_frontier_node_id": donor_frontier_node_id,
-            "shared_anchor_terms": ["Python backend"],
-            "donor_terms_used": ["workflow systems", "ranking"],
+            "shared_anchor_terms": list(shared_anchor_terms or ["ranking"]),
+            "donor_terms_used": list(donor_terms_used or ["workflow systems"]),
             "crossover_rationale": "reuse donor workflow-ranking signal from the relaxed floor branch",
         },
         "expected_gain_hypothesis": "Fuse donor coverage.",

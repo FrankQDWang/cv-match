@@ -452,6 +452,8 @@ class SearchControllerContext_t(BaseModel):
     unmet_requirement_weights: list[UnmetRequirementWeight] = Field(default_factory=list)
     operator_statistics_summary: dict[str, OperatorStatistics] = Field(default_factory=dict)
     allowed_operator_names: list[OperatorName] = Field(default_factory=list)
+    operator_surface_override_reason: Literal["none", "harvest_unmet_must_have_repair"] = "none"
+    operator_surface_unmet_must_haves: list[str] = Field(default_factory=list)
     term_budget_range: tuple[int, int]
     fit_gate_constraints: FitGateConstraints
     runtime_budget_state: RuntimeBudgetState

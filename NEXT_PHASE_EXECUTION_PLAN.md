@@ -127,24 +127,29 @@ phase_progress = runtime_round_index / max(1, initial_round_budget - 1)
 执行：
 
 1. `explore` 期：
-   - 保留 `core_precision`
    - 保留 `must_have_alias`
-   - 保留 `relaxed_floor`
    - 保留 `generic_expansion`
+   - 保留 `core_precision`
+   - 保留 `relaxed_floor`
    - 若有 pack，保留 `pack_expansion` / `cross_pack_bridge`
    - 不开放 `crossover_compose`
 2. `balance` 期：
-   - 恢复完整 catalog
+   - base: `core_precision / must_have_alias / relaxed_floor / generic_expansion`
+   - 若有 pack，再开放 `pack_expansion / cross_pack_bridge`
+   - 仅当 legal donor candidates 非空时，开放 `crossover_compose`
 3. `harvest` 期：
    - 保留 `core_precision`
-   - 保留 `relaxed_floor`
-   - 保留 `crossover_compose`
-   - `generic_expansion` 只在仍存在明显 unmet must-have 时保留
+   - 若 donor surface 非空，保留 `crossover_compose`
+   - 默认关闭 `relaxed_floor`
+   - 默认关闭 `pack_expansion / cross_pack_bridge`
+   - 只有 active node 仍存在 unmet must-have 时，临时开放 `must_have_alias / generic_expansion`
+4. `coverage_opportunity_score`、`unmet_requirement_weights` 与 `harvest repair override` 共用同一个 capability-hit helper。
 
 验收：
 
 - 同一 frontier node，在不同 phase 下 controller context 的 `allowed_operator_names` 会变化。
-- 早期不会过早把预算打到 crossover 上。
+- `explore` 期不会过早把预算打到 crossover 上。
+- `harvest` 期不会因为 pack provenance 自动重新开放发散型 pack operator。
 
 ## Step 5: 改 Term Budget Policy
 

@@ -66,18 +66,18 @@ def select_active_frontier_node(
         requirement_sheet,
         crossover_thresholds,
     )
-    allowed_operator_names: list[OperatorName] = [
-        "core_precision",
-        "must_have_alias",
-        "relaxed_floor",
-        "generic_expansion",
-        "crossover_compose",
-    ]
-    if active_node.knowledge_pack_ids:
-        allowed_operator_names[4:4] = [
-            "pack_expansion",
-            "cross_pack_bridge",
-        ]
+    unmet_must_haves = _unmet_must_haves(active_node, requirement_sheet)
+    allowed_operator_names = _allowed_operator_names(
+        runtime_budget_state.search_phase,
+        has_pack=bool(active_node.knowledge_pack_ids),
+        has_legal_donors=bool(donor_candidates),
+        unmet_must_haves=unmet_must_haves,
+    )
+    override_reason = (
+        "harvest_unmet_must_have_repair"
+        if runtime_budget_state.search_phase == "harvest" and unmet_must_haves
+        else "none"
+    )
 
     return SearchControllerContext_t(
         role_title=requirement_sheet.role_title,
@@ -99,12 +99,14 @@ def select_active_frontier_node(
         unmet_requirement_weights=[
             UnmetRequirementWeight(
                 capability=capability,
-                weight=1.0 if _query_pool_hit(active_node, capability) == 0 else 0.3,
+                weight=1.0 if capability in unmet_must_haves else 0.3,
             )
             for capability in requirement_sheet.must_have_capabilities
         ],
         operator_statistics_summary=dict(frontier_state.operator_statistics),
         allowed_operator_names=allowed_operator_names,
+        operator_surface_override_reason=override_reason,
+        operator_surface_unmet_must_haves=unmet_must_haves,
         term_budget_range=_term_budget_range(
             frontier_state.remaining_budget,
             term_budget_policy,
@@ -304,6 +306,17 @@ def _coverage_opportunity_score(
     return 0.0
 
 
+def _unmet_must_haves(
+    node: FrontierNode_t,
+    requirement_sheet: RequirementSheet,
+) -> list[str]:
+    return [
+        capability
+        for capability in requirement_sheet.must_have_capabilities
+        if _query_pool_hit(node, capability) == 0
+    ]
+
+
 def _incremental_value_score(node: FrontierNode_t) -> float:
     if node.reward_breakdown is None:
         return 0.0
@@ -396,10 +409,48 @@ def _unmet_must_haves_supported_by(
 ) -> list[str]:
     return [
         capability
-        for capability in requirement_sheet.must_have_capabilities
-        if _query_pool_hit(active_node, capability) == 0
-        and _query_pool_hit(donor_node, capability) == 1
+        for capability in _unmet_must_haves(active_node, requirement_sheet)
+        if _query_pool_hit(donor_node, capability) == 1
     ]
+
+
+def _allowed_operator_names(
+    search_phase: str,
+    *,
+    has_pack: bool,
+    has_legal_donors: bool,
+    unmet_must_haves: list[str],
+) -> list[OperatorName]:
+    if search_phase == "explore":
+        operators: list[OperatorName] = [
+            "must_have_alias",
+            "generic_expansion",
+            "core_precision",
+            "relaxed_floor",
+        ]
+        if has_pack:
+            operators.extend(["pack_expansion", "cross_pack_bridge"])
+        return operators
+
+    if search_phase == "harvest":
+        operators = ["core_precision"]
+        if has_legal_donors:
+            operators.append("crossover_compose")
+        if unmet_must_haves:
+            operators.extend(["must_have_alias", "generic_expansion"])
+        return operators
+
+    operators = [
+        "core_precision",
+        "must_have_alias",
+        "relaxed_floor",
+        "generic_expansion",
+    ]
+    if has_pack:
+        operators.extend(["pack_expansion", "cross_pack_bridge"])
+    if has_legal_donors:
+        operators.append("crossover_compose")
+    return operators
 
 
 def _term_budget_range(

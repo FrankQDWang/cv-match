@@ -105,6 +105,7 @@ incremental_value_score =
 - 尚未覆盖的 must-have：`1.0`
 - 已覆盖但仍可能补强的 must-have：`0.3`
 - 输出形状：保序 `list[{capability, weight}]`
+- `coverage_opportunity_score`、`compute_unmet_requirement_weights` 与 `harvest repair override` 必须共用同一个 capability-hit helper
 
 ### 2.3 排序层固定公式
 
@@ -181,6 +182,52 @@ reward_score =
 ```text
 average_reward = ((old_average * old_times) + reward_score) / times_selected
 ```
+
+### 2.5 Controller Action Surface
+
+owner: [[SelectActiveFrontierNode]]
+
+#### `explore operator surface`
+
+- generic provenance:
+  - `must_have_alias`
+  - `generic_expansion`
+  - `core_precision`
+  - `relaxed_floor`
+- pack provenance:
+  - 上述 4 个
+  - `pack_expansion`
+  - `cross_pack_bridge`
+- `crossover_compose` 永不开放
+
+#### `balance operator surface`
+
+- base:
+  - `core_precision`
+  - `must_have_alias`
+  - `relaxed_floor`
+  - `generic_expansion`
+- pack provenance 额外开放：
+  - `pack_expansion`
+  - `cross_pack_bridge`
+- 仅当 legal donor candidates 非空时，最后追加：
+  - `crossover_compose`
+
+#### `harvest operator surface`
+
+- base:
+  - `core_precision`
+- 仅当 legal donor candidates 非空时，最后追加：
+  - `crossover_compose`
+- 仅当 active node 仍存在 unmet must-have 时，最后追加 repair override：
+  - `must_have_alias`
+  - `generic_expansion`
+
+约束：
+
+- `harvest` 永不开放 `relaxed_floor`
+- `harvest` 永不开放 `pack_expansion / cross_pack_bridge`
+- repair override 只允许 `must_have_alias / generic_expansion`
 
 ## 3. runtime 默认值
 

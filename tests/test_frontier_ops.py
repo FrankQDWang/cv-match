@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+import seektalent.frontier_ops as frontier_ops_module
 from seektalent.clients.cts_client import CTSFetchResult
 from seektalent.frontier_ops import (
     carry_forward_frontier_state,
@@ -406,7 +407,7 @@ def test_select_active_frontier_node_rejects_open_exhausted_nodes() -> None:
         )
 
 
-def test_select_active_frontier_node_filters_donors_and_disables_pack_expansion_for_generic_provenance() -> None:
+def test_select_active_frontier_node_uses_explore_surface_for_generic_provenance() -> None:
     active = FrontierNode_t(
         frontier_node_id="seed_generic",
         selected_operator_name="must_have_alias",
@@ -471,14 +472,234 @@ def test_select_active_frontier_node_filters_donors_and_disables_pack_expansion_
     assert context.active_frontier_node_summary.frontier_node_id == "seed_generic"
     assert [donor.frontier_node_id for donor in context.donor_candidate_node_summaries] == ["child_legal"]
     assert context.allowed_operator_names == [
+        "must_have_alias",
+        "generic_expansion",
+        "core_precision",
+        "relaxed_floor",
+    ]
+    assert context.operator_surface_override_reason == "none"
+    assert context.operator_surface_unmet_must_haves == ["ranking"]
+    assert [item.capability for item in context.unmet_requirement_weights] == ["python", "ranking"]
+    assert [item.weight for item in context.unmet_requirement_weights] == [0.3, 1.0]
+
+
+def test_select_active_frontier_node_uses_explore_surface_for_pack_provenance() -> None:
+    active = FrontierNode_t(
+        frontier_node_id="seed_pack",
+        selected_operator_name="must_have_alias",
+        node_query_term_pool=["python"],
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
+        status="open",
+    )
+
+    context = select_active_frontier_node(
+        _frontier_state([active]),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=10, initial_round_budget=12, runtime_round_index=0),
+    )
+
+    assert context.runtime_budget_state.search_phase == "explore"
+    assert context.allowed_operator_names == [
+        "must_have_alias",
+        "generic_expansion",
+        "core_precision",
+        "relaxed_floor",
+        "pack_expansion",
+        "cross_pack_bridge",
+    ]
+
+
+def test_select_active_frontier_node_appends_crossover_only_with_legal_donor_in_balance() -> None:
+    active = FrontierNode_t(
+        frontier_node_id="seed_balance",
+        selected_operator_name="must_have_alias",
+        node_query_term_pool=["python"],
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
+        status="open",
+    )
+    donor = FrontierNode_t(
+        frontier_node_id="child_balance_donor",
+        parent_frontier_node_id="seed_balance",
+        selected_operator_name="core_precision",
+        node_query_term_pool=["python", "ranking"],
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
+        reward_breakdown=_reward(2.5),
+        previous_branch_evaluation=_branch_evaluation(),
+        status="open",
+    )
+
+    context_with_donor = select_active_frontier_node(
+        _frontier_state([active, donor], remaining_budget=6),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=6, initial_round_budget=12, runtime_round_index=5),
+    )
+    context_without_donor = select_active_frontier_node(
+        _frontier_state([active], remaining_budget=6),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=6, initial_round_budget=12, runtime_round_index=5),
+    )
+
+    assert context_with_donor.runtime_budget_state.search_phase == "balance"
+    assert context_with_donor.allowed_operator_names == [
         "core_precision",
         "must_have_alias",
         "relaxed_floor",
         "generic_expansion",
+        "pack_expansion",
+        "cross_pack_bridge",
         "crossover_compose",
     ]
-    assert [item.capability for item in context.unmet_requirement_weights] == ["python", "ranking"]
-    assert [item.weight for item in context.unmet_requirement_weights] == [0.3, 1.0]
+    assert context_without_donor.allowed_operator_names == [
+        "core_precision",
+        "must_have_alias",
+        "relaxed_floor",
+        "generic_expansion",
+        "pack_expansion",
+        "cross_pack_bridge",
+    ]
+
+
+def test_select_active_frontier_node_harvest_surface_stays_convergent_without_repair() -> None:
+    active = FrontierNode_t(
+        frontier_node_id="seed_harvest_full_hit",
+        selected_operator_name="core_precision",
+        node_query_term_pool=["python", "ranking"],
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
+        previous_branch_evaluation=_branch_evaluation(),
+        status="open",
+    )
+
+    context = select_active_frontier_node(
+        _frontier_state([active], remaining_budget=1),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=1, initial_round_budget=5, runtime_round_index=4),
+    )
+
+    assert context.runtime_budget_state.search_phase == "harvest"
+    assert context.allowed_operator_names == ["core_precision"]
+    assert context.operator_surface_override_reason == "none"
+    assert context.operator_surface_unmet_must_haves == []
+
+
+def test_select_active_frontier_node_harvest_surface_allows_repair_and_crossover_when_needed() -> None:
+    active = FrontierNode_t(
+        frontier_node_id="seed_harvest_partial_hit",
+        selected_operator_name="core_precision",
+        node_query_term_pool=["python"],
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
+        previous_branch_evaluation=_branch_evaluation(),
+        status="open",
+    )
+    donor = FrontierNode_t(
+        frontier_node_id="child_harvest_donor",
+        parent_frontier_node_id="seed_harvest_partial_hit",
+        selected_operator_name="core_precision",
+        node_query_term_pool=["python", "ranking"],
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
+        reward_breakdown=_reward(2.5),
+        previous_branch_evaluation=_branch_evaluation(),
+        status="open",
+    )
+
+    context = select_active_frontier_node(
+        _frontier_state([active, donor], remaining_budget=1),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=1, initial_round_budget=5, runtime_round_index=4),
+    )
+
+    assert context.allowed_operator_names == [
+        "core_precision",
+        "crossover_compose",
+        "must_have_alias",
+        "generic_expansion",
+    ]
+    assert context.operator_surface_override_reason == "harvest_unmet_must_have_repair"
+    assert context.operator_surface_unmet_must_haves == ["ranking"]
+
+
+def test_select_active_frontier_node_harvest_repair_never_reopens_pack_expansion() -> None:
+    active = FrontierNode_t(
+        frontier_node_id="seed_harvest_pack",
+        selected_operator_name="core_precision",
+        node_query_term_pool=["python"],
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
+        previous_branch_evaluation=_branch_evaluation(),
+        status="open",
+    )
+
+    context = select_active_frontier_node(
+        _frontier_state([active], remaining_budget=1),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=1, initial_round_budget=5, runtime_round_index=4),
+    )
+
+    assert context.allowed_operator_names == [
+        "core_precision",
+        "must_have_alias",
+        "generic_expansion",
+    ]
+    assert "pack_expansion" not in context.allowed_operator_names
+    assert "cross_pack_bridge" not in context.allowed_operator_names
+
+
+def test_select_active_frontier_node_keeps_coverage_and_repair_semantics_same_source() -> None:
+    partial_hit = FrontierNode_t(
+        frontier_node_id="seed_partial_hit",
+        selected_operator_name="core_precision",
+        node_query_term_pool=["python"],
+        previous_branch_evaluation=_branch_evaluation(),
+        status="open",
+    )
+    full_hit = FrontierNode_t(
+        frontier_node_id="seed_full_hit",
+        selected_operator_name="core_precision",
+        node_query_term_pool=["python", "ranking"],
+        previous_branch_evaluation=_branch_evaluation(),
+        status="open",
+    )
+
+    partial_context = select_active_frontier_node(
+        _frontier_state([partial_hit], remaining_budget=1),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=1, initial_round_budget=5, runtime_round_index=4),
+    )
+    full_context = select_active_frontier_node(
+        _frontier_state([full_hit], remaining_budget=1),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=1, initial_round_budget=5, runtime_round_index=4),
+    )
+
+    assert frontier_ops_module._coverage_opportunity_score(  # noqa: SLF001
+        partial_hit,
+        _requirement_sheet(),
+    ) > 0.0
+    assert partial_context.operator_surface_override_reason == "harvest_unmet_must_have_repair"
+    assert frontier_ops_module._coverage_opportunity_score(full_hit, _requirement_sheet()) == 0.0  # noqa: SLF001
+    assert full_context.operator_surface_override_reason == "none"
 
 
 @pytest.mark.parametrize(
@@ -603,7 +824,7 @@ def test_generate_search_controller_decision_normalizes_crossover_fields() -> No
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
-        _runtime_budget_state(remaining_budget=4),
+        _runtime_budget_state(remaining_budget=6, initial_round_budget=12, runtime_round_index=5),
     )
 
     invalid = generate_search_controller_decision(

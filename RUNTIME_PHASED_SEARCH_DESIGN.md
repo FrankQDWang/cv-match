@@ -107,20 +107,29 @@ operator whitelist 不应在全程保持同一语义。
 建议：
 
 - `explore`:
-  - 优先 `must_have_alias`
-  - 优先 `generic_expansion`
-  - 若有 pack，优先 `pack_expansion` / `cross_pack_bridge`
-  - 暂不开放 `crossover_compose`
+  - 开放 `must_have_alias / generic_expansion / core_precision / relaxed_floor`
+  - 若有 pack，再开放 `pack_expansion / cross_pack_bridge`
+  - 永不开放 `crossover_compose`
 - `balance`:
-  - 恢复完整 operator catalog
-  - `crossover_compose` 仍需走现有 donor guard
+  - base 保留 `core_precision / must_have_alias / relaxed_floor / generic_expansion`
+  - 若有 pack，再开放 `pack_expansion / cross_pack_bridge`
+  - `crossover_compose` 只在 legal donor candidates 非空时开放
 - `harvest`:
-  - 优先 `core_precision`
-  - 优先 `relaxed_floor`
-  - 允许 `crossover_compose`
-  - `generic_expansion` 只在仍有明显 unmet must-have 时保留
+  - base 只保留 `core_precision`
+  - legal donor candidates 非空时，才开放 `crossover_compose`
+  - 默认关闭 `relaxed_floor`
+  - 默认关闭 `pack_expansion / cross_pack_bridge`
+  - 仅当 active node 仍有 unmet must-have 时，才临时开放 `must_have_alias / generic_expansion`
 
 这里的意思不是硬编码“必须选某个 operator”，而是 phase 改写 allowed operator surface，让 controller 在正确的局部动作空间里工作。
+
+这里的 must-have gap 语义必须与 selection 层同源：
+
+- `coverage_opportunity_score`
+- `unmet_requirement_weights`
+- `harvest repair override`
+
+都共用同一个 capability-hit helper。
 
 ### 3. Term Budget Policy
 

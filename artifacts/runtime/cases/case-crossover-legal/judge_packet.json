@@ -13,7 +13,7 @@
   "expected_stop_reason": "controller_stop",
   "observed_stop_reason": "controller_stop",
   "must_hold": [
-    "round 1 uses crossover_compose with donor_frontier_node_id"
+    "round 2 uses crossover_compose with donor_frontier_node_id"
   ],
   "must_not_hold": [
     "missing donor candidate list"

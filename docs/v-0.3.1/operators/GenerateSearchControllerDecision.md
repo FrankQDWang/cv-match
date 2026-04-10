@@ -27,6 +27,14 @@ GenerateSearchControllerDecision : SearchControllerContext_t -> SearchController
 
 这个 prompt surface 会完整落入 `controller_audit.prompt_surface`。
 
+其中 `Allowed Operators` section 会显式投影三行：
+
+- `Allowed operators: ...`
+- `Operator surface override: ...`
+- `Operator surface unmet must-haves: ...`
+
+这里的 override 只是解释当前 phase-aware action surface 为什么被临时放宽；它不是第二套 selection policy。
+
 ## Deterministic Normalization
 
 控制器 LLM 先产出 `SearchControllerDecisionDraft_t`，然后 runtime 再做 deterministic 收口：
@@ -47,6 +55,8 @@ GenerateSearchControllerDecision : SearchControllerContext_t -> SearchController
 - `SearchControllerContext_t.unmet_requirement_weights`
 - `SearchControllerContext_t.operator_statistics_summary`
 - `SearchControllerContext_t.allowed_operator_names`
+- `SearchControllerContext_t.operator_surface_override_reason`
+- `SearchControllerContext_t.operator_surface_unmet_must_haves`
 - `SearchControllerContext_t.term_budget_range`
 - `SearchControllerContext_t.fit_gate_constraints`
 - `SearchControllerContext_t.runtime_budget_state`

@@ -106,6 +106,7 @@ selection_score(n) =
 - 对 active node 尚未覆盖的 must-have 赋权 `1.0`
 - 已覆盖但仍可能补强的 must-have 赋权 `0.3`
 - 输出必须是保序的 `list[{capability, weight}]`
+- `coverage_opportunity_score` 与 `harvest repair override` 必须共享同一个 capability-hit helper
 
 ## `crossover_ready`
 

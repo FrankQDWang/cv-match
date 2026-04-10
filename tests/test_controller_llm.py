@@ -82,6 +82,8 @@ def _context(
                 "core_precision",
                 "crossover_compose",
             ],
+            "operator_surface_override_reason": "none",
+            "operator_surface_unmet_must_haves": ["ranking"],
             "term_budget_range": list(term_budget_range),
             "fit_gate_constraints": FitGateConstraints().model_dump(mode="python"),
             "runtime_budget_state": build_runtime_budget_state(

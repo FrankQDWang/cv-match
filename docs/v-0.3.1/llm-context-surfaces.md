@@ -28,11 +28,21 @@
 
 `Budget Warning` 只在 `near_budget_end=true` 时出现。
 
+`Allowed Operators` section 现在固定包含：
+
+- 最终 `allowed_operator_names`
+- `operator_surface_override_reason`
+- `operator_surface_unmet_must_haves`
+
+也就是说，controller 看到的不是静态 operator catalog，而是已经过 phase-aware action surface 收口后的结果。
+
 `search_phase` 与 `phase_progress` 当前只是 runtime 事实：
 
 - 由 `RuntimeBudgetState` 统一计算
 - 自动进入 context、prompt surface、bundle trace
-- Step 2 不让它们直接改 selection / operator / stop 策略
+- Step 2 只建立 phase 事实
+- Step 3 消费 phase 改写 active node selection
+- Step 4 消费 phase 改写 allowed operator surface
 
 ## 审计形态
 

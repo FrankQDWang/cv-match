@@ -11,7 +11,7 @@
 - 领域知识包：`['llm_agent_rag_engineering']`
 - fallback_reason：`None`
 - 终止原因：`controller_stop`
-- shortlist：`['candidate-illegal-1']`
+- shortlist：`['candidate-illegal-2', 'candidate-illegal-1']`
 
 ## 业务解读
 

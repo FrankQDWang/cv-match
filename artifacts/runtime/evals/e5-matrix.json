@@ -229,7 +229,7 @@
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
-      "round 1 uses crossover_compose with donor_frontier_node_id"
+      "round 2 uses crossover_compose with donor_frontier_node_id"
     ],
     "must_not_hold": [
       "missing donor candidate list"
@@ -261,7 +261,7 @@
       },
       {
         "name": "round_count",
-        "value": 3
+        "value": 4
       }
     ]
   },
@@ -314,7 +314,7 @@
       },
       {
         "name": "round_count",
-        "value": 2
+        "value": 3
       }
     ]
   },

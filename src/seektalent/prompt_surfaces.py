@@ -219,8 +219,17 @@ def build_controller_prompt_surface(
         ),
         _section(
             "Allowed Operators",
-            [f"Allowed operators: {_comma_list(context.allowed_operator_names)}"],
-            ["SearchControllerContext_t.allowed_operator_names"],
+            [
+                f"Allowed operators: {_comma_list(context.allowed_operator_names)}",
+                f"Operator surface override: {context.operator_surface_override_reason}",
+                "Operator surface unmet must-haves: "
+                f"{_comma_list(context.operator_surface_unmet_must_haves)}",
+            ],
+            [
+                "SearchControllerContext_t.allowed_operator_names",
+                "SearchControllerContext_t.operator_surface_override_reason",
+                "SearchControllerContext_t.operator_surface_unmet_must_haves",
+            ],
             is_dynamic=True,
         ),
         _section(
