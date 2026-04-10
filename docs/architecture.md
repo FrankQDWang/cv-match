@@ -50,7 +50,7 @@
 ## Spec ownership
 
 - `docs/v-0.3.1/` 是唯一有效 spec
-- `docs/v-0.2/` 和 `docs/v-0.1/` 只保留归档价值
+- `docs/_archive/v-0.2/` 和 `docs/_archive/v-0.1/` 只保留归档价值
 
 ## Related docs
 

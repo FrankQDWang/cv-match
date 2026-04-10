@@ -25,7 +25,6 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     bin_dir = _bin_dir(venv_dir)
     python = bin_dir / ("python.exe" if os.name == "nt" else "python")
     cli = bin_dir / ("seektalent.exe" if os.name == "nt" else "seektalent")
-    ui_cli = bin_dir / ("seektalent-ui-api.exe" if os.name == "nt" else "seektalent-ui-api")
 
     subprocess.run([str(python), "-m", "pip", "install", str(wheel)], check=True)
 
@@ -44,7 +43,6 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         text=True,
     )
     assert "Phase 6 status" in help_result.stdout
-    assert not ui_cli.exists()
 
     version_result = subprocess.run(
         [str(cli), "version"],

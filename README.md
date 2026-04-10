@@ -24,7 +24,6 @@ What exists today:
 What does not exist anymore:
 
 - the old `v0.2` controller / reflection / scoring / finalize runtime
-- the old web UI and UI API
 - prompt bundles and LLM wiring from `v0.2`
 - compatibility aliases for deleted contracts
 

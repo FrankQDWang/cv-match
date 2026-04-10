@@ -10,7 +10,7 @@
 - `SearchExecutionPlan_t.derived_position` / `derived_work_content` 是显式 plan 字段，adapter 只能从 plan 读取，不得回头读取 `RequirementSheet`
 - round 内的地点 dispatch、分页补拉、无进展停止等编排逻辑由 runtime 持有，不下沉到 `CTSClient.search(...)`
 
-本页是 `v0.3.1` 的 CTS 投影 owner。`docs/v-0.2/cts-enum-observations.md` 只是观测证据，不再是实现时必须翻回去的规范入口。
+本页是 `v0.3.1` 的 CTS 投影 owner。`docs/_archive/v-0.2/cts-enum-observations.md` 只是观测证据，不再是实现时必须翻回去的规范入口。
 
 ## 1. 继承结论
 
@@ -154,4 +154,4 @@
 - 执行层 owner：[[ExecuteSearchPlan]]
 - 候选结果 owner：[[RetrievedCandidate_t]]、[[ScoringCandidate_t]]
 - 排序 gate：[[FreezeScoringPolicy]]、[[ScoreSearchResults]]
-- 证据参考：`docs/v-0.2/cts-enum-observations.md`
+- 证据参考：`docs/_archive/v-0.2/cts-enum-observations.md`

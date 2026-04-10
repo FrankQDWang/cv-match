@@ -24,7 +24,6 @@
 已经删除的东西：
 
 - 旧的 `v0.2` controller / reflection / scoring / finalize 主链
-- 旧 Web UI 和 UI API
 - `v0.2` prompt bundle 和 LLM wiring
 - 所有被删 contract 的兼容别名
 
