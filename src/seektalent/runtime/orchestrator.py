@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -34,6 +35,10 @@ from seektalent.run_artifacts import (
 from seektalent.runtime_llm import (
     request_branch_evaluation_draft,
     request_search_run_summary_draft,
+)
+from seektalent.runtime_budget import (
+    build_runtime_budget_state,
+    resolve_runtime_search_budget,
 )
 from seektalent.runtime_ops import (
     compute_node_reward_breakdown,
@@ -75,11 +80,18 @@ class WorkflowRuntime:
         self.branch_outcome_evaluation_model = branch_outcome_evaluation_model
         self.search_run_finalization_model = search_run_finalization_model
 
-    def run(self, *, job_description: str, hiring_notes: str = "") -> SearchRunBundle:
+    def run(
+        self,
+        *,
+        job_description: str,
+        hiring_notes: str = "",
+        round_budget: int | None = None,
+    ) -> SearchRunBundle:
         return asyncio.run(
             self.run_async(
                 job_description=job_description,
                 hiring_notes=hiring_notes,
+                round_budget=round_budget,
             )
         )
 
@@ -88,9 +100,17 @@ class WorkflowRuntime:
         *,
         job_description: str,
         hiring_notes: str = "",
+        round_budget: int | None = None,
     ) -> SearchRunBundle:
         created_at_utc = utc_now()
         active_assets = self.assets or default_bootstrap_assets()
+        active_assets = replace(
+            active_assets,
+            runtime_search_budget=resolve_runtime_search_budget(
+                active_assets.runtime_search_budget,
+                round_budget,
+            ),
+        )
         active_cts_client = self.cts_client or _default_cts_client(self.settings)
         active_rerank_request = self.rerank_request or _build_http_rerank_request(
             self.settings
@@ -115,6 +135,7 @@ class WorkflowRuntime:
                 policy_id=active_assets.policy_id,
                 policy_pack=active_assets.business_policy_pack,
             ),
+            runtime_search_budget=active_assets.runtime_search_budget,
             routing_result=bootstrap_artifacts.routing_result,
             scoring_policy=bootstrap_artifacts.scoring_policy,
             bootstrap_keyword_generation_audit=bootstrap_artifacts.bootstrap_keyword_generation_audit,
@@ -129,12 +150,18 @@ class WorkflowRuntime:
             frontier_state_before = FrontierState_t.model_validate(
                 frontier_state.model_dump(mode="python")
             )
+            runtime_budget_state = build_runtime_budget_state(
+                initial_round_budget=active_assets.runtime_search_budget.initial_round_budget,
+                runtime_round_index=runtime_round_state.runtime_round_index,
+                remaining_budget=frontier_state.remaining_budget,
+            )
             controller_context = select_active_frontier_node(
                 frontier_state,
                 bootstrap_artifacts.requirement_sheet,
                 bootstrap_artifacts.scoring_policy,
                 active_assets.crossover_guard_thresholds,
                 active_assets.runtime_term_budget_policy,
+                runtime_budget_state,
             )
             controller_draft, controller_audit = await request_search_controller_decision_draft(
                 controller_context,
@@ -192,6 +219,7 @@ class WorkflowRuntime:
                     execution_plan,
                     execution_result,
                     scoring_result,
+                    runtime_budget_state,
                     model=self.branch_outcome_evaluation_model,
                 )
                 branch_evaluation = evaluate_branch_outcome(

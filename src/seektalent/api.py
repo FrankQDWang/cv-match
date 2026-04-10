@@ -25,6 +25,7 @@ def run_match(
     *,
     job_description: str,
     hiring_notes: str = "",
+    round_budget: int | None = None,
     settings: AppSettings | None = None,
     env_file: str | Path | None = ".env",
     assets: BootstrapAssets | None = None,
@@ -47,13 +48,18 @@ def run_match(
         branch_outcome_evaluation_model=branch_outcome_evaluation_model,
         search_run_finalization_model=search_run_finalization_model,
     )
-    return runtime.run(job_description=job_description, hiring_notes=hiring_notes)
+    return runtime.run(
+        job_description=job_description,
+        hiring_notes=hiring_notes,
+        round_budget=round_budget,
+    )
 
 
 async def run_match_async(
     *,
     job_description: str,
     hiring_notes: str = "",
+    round_budget: int | None = None,
     settings: AppSettings | None = None,
     env_file: str | Path | None = ".env",
     assets: BootstrapAssets | None = None,
@@ -76,4 +82,8 @@ async def run_match_async(
         branch_outcome_evaluation_model=branch_outcome_evaluation_model,
         search_run_finalization_model=search_run_finalization_model,
     )
-    return await runtime.run_async(job_description=job_description, hiring_notes=hiring_notes)
+    return await runtime.run_async(
+        job_description=job_description,
+        hiring_notes=hiring_notes,
+        round_budget=round_budget,
+    )

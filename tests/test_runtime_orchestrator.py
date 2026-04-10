@@ -214,10 +214,13 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
         runtime.run_async(
             job_description="Senior Python / LLM Engineer",
             hiring_notes="Shanghai preferred",
+            round_budget=20,
         )
     )
 
     assert result.bootstrap.routing_result.routing_mode == "inferred_single_pack"
+    assert result.bootstrap.runtime_search_budget.initial_round_budget == 12
+    assert result.bootstrap.frontier_state.remaining_budget == 12
     assert result.final_result.stop_reason == "controller_stop"
     assert result.final_result.final_shortlist_candidate_ids == ["candidate-1"]
     assert result.rounds[0].runtime_audit_tags == {"candidate-1": ["ranking"]}

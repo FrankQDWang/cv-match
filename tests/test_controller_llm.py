@@ -7,10 +7,14 @@ import pytest
 from pydantic_ai import ModelRetry
 from pydantic_ai.models.test import TestModel
 
-from seektalent.controller_llm import request_search_controller_decision_draft
+from seektalent.controller_llm import (
+    render_controller_context_text,
+    request_search_controller_decision_draft,
+)
 from seektalent.frontier_ops import generate_search_controller_decision
 from seektalent.models import FitGateConstraints, SearchControllerContext_t
 from seektalent.prompts import load_prompt
+from seektalent.runtime_budget import build_runtime_budget_state
 
 
 def _context(
@@ -20,6 +24,8 @@ def _context(
 ) -> SearchControllerContext_t:
     return SearchControllerContext_t.model_validate(
         {
+            "role_title": "Senior Python Agent Engineer",
+            "role_summary": "Build ranking systems.",
             "active_frontier_node_summary": {
                 "frontier_node_id": "seed_agent_core",
                 "selected_operator_name": "must_have_alias",
@@ -57,6 +63,11 @@ def _context(
             ],
             "term_budget_range": list(term_budget_range),
             "fit_gate_constraints": FitGateConstraints().model_dump(mode="python"),
+            "runtime_budget_state": build_runtime_budget_state(
+                initial_round_budget=5,
+                runtime_round_index=0,
+                remaining_budget=2,
+            ).model_dump(mode="python"),
         }
     )
 
@@ -169,3 +180,33 @@ def test_request_search_controller_decision_draft_accepts_budget_clamped_non_cro
 
     assert normalized.operator_args == {"additional_terms": []}
     assert audit.validator_retry_count == 0
+
+
+def test_render_controller_context_text_uses_sectioned_text_and_omits_budget_warning_before_tail() -> None:
+    text = render_controller_context_text(_context())
+
+    assert "## Task Contract" in text
+    assert "## Role Summary" in text
+    assert "## Runtime Budget State" in text
+    assert "## Decision Request" in text
+    assert text.index("## Runtime Budget State") < text.index("## Decision Request")
+    assert "## Budget Warning" not in text
+    assert "sort_keys" not in text
+
+
+def test_render_controller_context_text_adds_budget_warning_near_budget_end() -> None:
+    context = _context()
+    context = context.model_copy(
+        update={
+            "runtime_budget_state": build_runtime_budget_state(
+                initial_round_budget=10,
+                runtime_round_index=8,
+                remaining_budget=2,
+            )
+        }
+    )
+
+    text = render_controller_context_text(context)
+
+    assert "## Budget Warning" in text
+    assert "Favor high-yield precision moves." in text

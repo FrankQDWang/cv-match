@@ -24,10 +24,12 @@ from seektalent.models import (
     TopThreeStatistics,
 )
 from seektalent.runtime_llm import (
+    render_branch_evaluation_text,
     request_branch_evaluation_draft,
     request_search_run_summary_draft,
 )
 from seektalent.prompts import load_prompt
+from seektalent.runtime_budget import build_runtime_budget_state
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -147,6 +149,14 @@ def _scoring_result() -> SearchScoringResult_t:
     )
 
 
+def _runtime_budget_state(*, initial_round_budget: int = 10, runtime_round_index: int = 0, remaining_budget: int = 4):
+    return build_runtime_budget_state(
+        initial_round_budget=initial_round_budget,
+        runtime_round_index=runtime_round_index,
+        remaining_budget=remaining_budget,
+    )
+
+
 def test_request_branch_evaluation_draft_records_strict_audit() -> None:
     draft, audit = asyncio.run(
         request_branch_evaluation_draft(
@@ -155,6 +165,7 @@ def test_request_branch_evaluation_draft_records_strict_audit() -> None:
             _execution_plan(),
             _execution_result(),
             _scoring_result(),
+            _runtime_budget_state(),
             model=TestModel(
                 custom_output_args={
                     "novelty_score": 0.4,
@@ -184,6 +195,38 @@ def test_request_branch_evaluation_draft_records_strict_audit() -> None:
     ).hexdigest()
     assert audit.message_history_mode == "fresh"
     assert audit.tools_enabled is False
+
+
+def test_render_branch_evaluation_text_uses_sectioned_text_and_omits_budget_warning_before_tail() -> None:
+    text = render_branch_evaluation_text(
+        _requirement_sheet(),
+        _frontier_state().frontier_nodes["seed"],
+        _execution_plan(),
+        _execution_result(),
+        _scoring_result(),
+        _runtime_budget_state(runtime_round_index=1, remaining_budget=8),
+    )
+
+    assert "## Evaluation Contract" in text
+    assert "## Role Summary" in text
+    assert "## Runtime Budget State" in text
+    assert "## Return Fields" in text
+    assert text.index("## Runtime Budget State") < text.index("## Return Fields")
+    assert "## Budget Warning" not in text
+
+
+def test_render_branch_evaluation_text_adds_weak_budget_warning_near_budget_end() -> None:
+    text = render_branch_evaluation_text(
+        _requirement_sheet(),
+        _frontier_state().frontier_nodes["seed"],
+        _execution_plan(),
+        _execution_result(),
+        _scoring_result(),
+        _runtime_budget_state(runtime_round_index=8, remaining_budget=2),
+    )
+
+    assert "## Budget Warning" in text
+    assert "If incremental upside is weak" in text
 
 
 def test_request_search_run_summary_draft_records_strict_audit() -> None:

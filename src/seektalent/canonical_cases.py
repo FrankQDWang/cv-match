@@ -29,6 +29,7 @@ from seektalent.models import (
     stable_deduplicate,
 )
 from seektalent.resources import runtime_case_dir, runtime_eval_matrix_file
+from seektalent.runtime_budget import build_runtime_budget_state
 from seektalent.search_ops import materialize_search_execution_plan
 from seektalent_rerank.models import RerankResponse, RerankResult
 
@@ -545,6 +546,11 @@ def _legal_crossover_donor_id(assets) -> str:
         bootstrap_artifacts.scoring_policy,
         assets.crossover_guard_thresholds,
         assets.runtime_term_budget_policy,
+        build_runtime_budget_state(
+            initial_round_budget=assets.runtime_search_budget.initial_round_budget,
+            runtime_round_index=0,
+            remaining_budget=bootstrap_artifacts.frontier_state.remaining_budget,
+        ),
     )
     controller_decision = generate_search_controller_decision(
         controller_context,

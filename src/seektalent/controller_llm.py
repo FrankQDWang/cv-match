@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from hashlib import sha1
 from typing import Any
 
@@ -15,6 +14,7 @@ from seektalent.models import (
     stable_deduplicate,
 )
 from seektalent.prompts import load_prompt
+from seektalent.runtime_prompt_text import render_controller_context_text
 
 SEARCH_CONTROLLER_DECISION_PROMPT = load_prompt("search_controller_decision.md")
 
@@ -150,7 +150,7 @@ async def request_search_controller_decision_draft(
             raise
 
     result = await active_agent.run(
-        json.dumps(context.model_dump(mode="json"), ensure_ascii=False, sort_keys=True),
+        render_controller_context_text(context),
         message_history=None,
         instructions=SEARCH_CONTROLLER_DECISION_PROMPT,
         builtin_tools=(),
@@ -165,5 +165,6 @@ async def request_search_controller_decision_draft(
 
 __all__ = [
     "SEARCH_CONTROLLER_DECISION_PROMPT",
+    "render_controller_context_text",
     "request_search_controller_decision_draft",
 ]

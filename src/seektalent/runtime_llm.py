@@ -13,12 +13,14 @@ from seektalent.models import (
     FrontierState_t1,
     LLMCallAuditSnapshot,
     RequirementSheet,
+    RuntimeBudgetState,
     SearchExecutionPlan_t,
     SearchExecutionResult_t,
     SearchRunSummaryDraft_t,
     SearchScoringResult_t,
 )
 from seektalent.prompts import load_prompt
+from seektalent.runtime_prompt_text import render_branch_evaluation_text
 
 
 BRANCH_OUTCOME_EVALUATION_PROMPT = load_prompt("branch_outcome_evaluation.md")
@@ -81,6 +83,7 @@ async def request_branch_evaluation_draft(
     plan: SearchExecutionPlan_t,
     execution_result: SearchExecutionResult_t,
     scoring_result: SearchScoringResult_t,
+    runtime_budget_state: RuntimeBudgetState,
     *,
     model: Any | None = None,
 ) -> tuple[BranchEvaluationDraft_t, LLMCallAuditSnapshot]:
@@ -98,28 +101,15 @@ async def request_branch_evaluation_draft(
             f"unknown_parent_frontier_node_id: {plan.child_frontier_node_stub.parent_frontier_node_id}"
         )
     active_agent = _build_agent(BranchEvaluationDraft_t, model=model)
-    packet = json.dumps(
-        {
-            "must_have_capabilities": requirement_sheet.must_have_capabilities,
-            "parent_frontier_node_id": parent_node.frontier_node_id,
-            "previous_node_shortlist_candidate_ids": parent_node.node_shortlist_candidate_ids,
-            "donor_frontier_node_id": plan.child_frontier_node_stub.donor_frontier_node_id,
-            "knowledge_pack_ids": plan.knowledge_pack_ids,
-            "query_terms": plan.query_terms,
-            "semantic_hash": plan.semantic_hash,
-            "search_page_statistics": execution_result.search_page_statistics.model_dump(
-                mode="json"
-            ),
-            "node_shortlist_candidate_ids": scoring_result.node_shortlist_candidate_ids,
-            "top_three_statistics": scoring_result.top_three_statistics.model_dump(
-                mode="json"
-            ),
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
     result = await active_agent.run(
-        packet,
+        render_branch_evaluation_text(
+            requirement_sheet,
+            parent_node,
+            plan,
+            execution_result,
+            scoring_result,
+            runtime_budget_state,
+        ),
         message_history=None,
         instructions=BRANCH_OUTCOME_EVALUATION_PROMPT,
         builtin_tools=(),
@@ -174,6 +164,7 @@ async def request_search_run_summary_draft(
 __all__ = [
     "BRANCH_OUTCOME_EVALUATION_PROMPT",
     "SEARCH_RUN_FINALIZATION_PROMPT",
+    "render_branch_evaluation_text",
     "request_branch_evaluation_draft",
     "request_search_run_summary_draft",
 ]

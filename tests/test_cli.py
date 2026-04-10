@@ -79,6 +79,7 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     run_args = {item["name"]: item for item in payload["commands"]["run"]["arguments"]}
     assert run_args["--jd"]["mutually_exclusive_with"] == ["--jd-file"]
     assert run_args["--jd-file"]["mutually_exclusive_with"] == ["--jd"]
+    assert run_args["--round-budget"]["kind"] == "integer"
     assert "--output-dir" not in run_args
     assert payload["json_contracts"]["run"]["stderr_json_fields"] == ["error", "error_type"]
 
@@ -190,6 +191,23 @@ def test_run_reads_notes_file_before_phase_gate(
     assert payload == {"error": "captured", "error_type": "RuntimeError"}
     assert captured["job_description"] == "JD"
     assert captured["hiring_notes"] == "Notes from file"
+
+
+def test_run_passes_round_budget_to_api(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_match(**kwargs):
+        captured.update(kwargs)
+        return _fake_bundle()
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+
+    assert main(["run", "--jd", "JD", "--round-budget", "8", "--json"]) == 0
+    json.loads(capsys.readouterr().out)
+    assert captured["round_budget"] == 8
 
 
 def test_run_rejects_duplicate_input_sources(

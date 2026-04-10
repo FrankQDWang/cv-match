@@ -379,6 +379,17 @@ class FrontierHeadSummary(BaseModel):
     highest_priority_score: float
 
 
+class RuntimeBudgetState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    initial_round_budget: int = Field(ge=0)
+    runtime_round_index: int = Field(ge=0)
+    remaining_budget: int = Field(ge=0)
+    used_ratio: float = Field(ge=0.0, le=1.0)
+    remaining_ratio: float = Field(ge=0.0, le=1.0)
+    near_budget_end: bool
+
+
 class UnmetRequirementWeight(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -389,6 +400,8 @@ class UnmetRequirementWeight(BaseModel):
 class SearchControllerContext_t(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    role_title: str
+    role_summary: str
     active_frontier_node_summary: ActiveFrontierNodeSummary
     donor_candidate_node_summaries: list[DonorCandidateNodeSummary] = Field(default_factory=list)
     frontier_head_summary: FrontierHeadSummary
@@ -397,6 +410,7 @@ class SearchControllerContext_t(BaseModel):
     allowed_operator_names: list[OperatorName] = Field(default_factory=list)
     term_budget_range: tuple[int, int]
     fit_gate_constraints: FitGateConstraints
+    runtime_budget_state: RuntimeBudgetState
 
 
 class SearchControllerDecisionDraft_t(BaseModel):
@@ -635,6 +649,7 @@ class SearchRunBootstrapArtifact(BaseModel):
     requirement_extraction_audit: LLMCallAuditSnapshot
     requirement_sheet: RequirementSheet
     business_policy_snapshot: BusinessPolicySnapshot
+    runtime_search_budget: RuntimeSearchBudget
     routing_result: BootstrapRoutingResult
     scoring_policy: ScoringPolicy
     bootstrap_keyword_generation_audit: LLMCallAuditSnapshot

@@ -204,6 +204,7 @@ def _inspect_payload() -> dict[str, object]:
                 _arg_spec("--jd-file", "path", "Path to a job description file.", mutually_exclusive_with=["--jd"]),
                 _arg_spec("--notes", "string", "Optional inline hiring notes.", mutually_exclusive_with=["--notes-file"]),
                 _arg_spec("--notes-file", "path", "Path to optional hiring notes.", mutually_exclusive_with=["--notes"]),
+                _arg_spec("--round-budget", "integer", "Override the runtime round budget. Values are clamped to 5-12."),
                 _arg_spec("--env-file", "path", "Env file to read settings from.", default=".env"),
                 _arg_spec("--json", "flag", "Emit one JSON error object on stderr when the command fails."),
             ],
@@ -299,6 +300,7 @@ def _handle_run(args: argparse.Namespace) -> int:
         result = run_match(
             job_description=job_description,
             hiring_notes=hiring_notes,
+            round_budget=args.round_budget,
             settings=settings,
             env_file=args.env_file,
         )
@@ -377,6 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--jd-file")
     run_parser.add_argument("--notes")
     run_parser.add_argument("--notes-file")
+    run_parser.add_argument("--round-budget", type=int)
     run_parser.add_argument("--env-file", default=".env")
     run_parser.add_argument("--json", action="store_true")
     run_parser.set_defaults(handler=_handle_run)

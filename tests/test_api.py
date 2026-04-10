@@ -104,6 +104,7 @@ def test_run_match_returns_search_run_bundle(tmp_path: Path) -> None:
     result = run_match(
         job_description="Senior Python / LLM Engineer",
         hiring_notes="Shanghai preferred",
+        round_budget=3,
         settings=_settings(tmp_path),
         env_file=None,
         assets=_active_assets(),
@@ -133,6 +134,8 @@ def test_run_match_returns_search_run_bundle(tmp_path: Path) -> None:
 
     assert result.phase == "phase6_offline_artifacts_active"
     assert result.bootstrap.routing_result.routing_mode == "inferred_single_pack"
+    assert result.bootstrap.runtime_search_budget.initial_round_budget == 5
+    assert result.bootstrap.frontier_state.remaining_budget == 5
     assert result.final_result.stop_reason == "controller_stop"
     assert result.final_result.run_summary == "Controller stop accepted."
     assert Path(result.run_dir).joinpath("bundle.json").exists()
@@ -144,6 +147,7 @@ def test_run_match_async_returns_search_run_bundle(tmp_path: Path) -> None:
         run_match_async(
             job_description="Senior Python / LLM Engineer",
             hiring_notes="Shanghai preferred",
+            round_budget=20,
             settings=_settings(tmp_path),
             env_file=None,
             assets=_active_assets(),
@@ -172,6 +176,8 @@ def test_run_match_async_returns_search_run_bundle(tmp_path: Path) -> None:
         )
     )
 
+    assert result.bootstrap.runtime_search_budget.initial_round_budget == 12
+    assert result.bootstrap.frontier_state.remaining_budget == 12
     assert result.final_result.stop_reason == "controller_stop"
     assert Path(result.run_dir).joinpath("eval.json").exists()
 

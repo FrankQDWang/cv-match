@@ -10,6 +10,7 @@ from seektalent.models import (
     FrontierState_t1,
     OperatorName,
     RequirementSheet,
+    RuntimeBudgetState,
     RuntimeTermBudgetPolicy,
     ScoringPolicy,
     SearchControllerContext_t,
@@ -26,6 +27,7 @@ def select_active_frontier_node(
     scoring_policy: ScoringPolicy,
     crossover_thresholds: CrossoverGuardThresholds,
     term_budget_policy: RuntimeTermBudgetPolicy,
+    runtime_budget_state: RuntimeBudgetState,
 ) -> SearchControllerContext_t:
     open_nodes = [
         frontier_state.frontier_nodes[node_id]
@@ -62,6 +64,8 @@ def select_active_frontier_node(
         ]
 
     return SearchControllerContext_t(
+        role_title=requirement_sheet.role_title,
+        role_summary=requirement_sheet.role_summary,
         active_frontier_node_summary={
             "frontier_node_id": active_node.frontier_node_id,
             "selected_operator_name": active_node.selected_operator_name,
@@ -90,6 +94,7 @@ def select_active_frontier_node(
         fit_gate_constraints=FitGateConstraints.model_validate(
             scoring_policy.fit_gate_constraints.model_dump(mode="python")
         ),
+        runtime_budget_state=runtime_budget_state,
     )
 
 

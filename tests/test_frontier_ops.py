@@ -36,6 +36,7 @@ from seektalent.search_ops import (
     materialize_search_execution_plan,
     score_search_results,
 )
+from seektalent.runtime_budget import build_runtime_budget_state
 from seektalent_rerank.models import RerankResponse, RerankResult
 
 
@@ -124,6 +125,19 @@ def _candidate(candidate_id: str, *, search_text: str) -> RetrievedCandidate_t:
     )
 
 
+def _runtime_budget_state(
+    *,
+    remaining_budget: int,
+    initial_round_budget: int = 5,
+    runtime_round_index: int = 0,
+):
+    return build_runtime_budget_state(
+        initial_round_budget=initial_round_budget,
+        runtime_round_index=runtime_round_index,
+        remaining_budget=remaining_budget,
+    )
+
+
 @dataclass
 class FakeCTSClient:
     result: CTSFetchResult
@@ -171,6 +185,7 @@ def test_select_active_frontier_node_applies_saturation_penalty() -> None:
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4),
     )
 
     assert context.active_frontier_node_summary.frontier_node_id == "seed_fresh"
@@ -236,6 +251,7 @@ def test_select_active_frontier_node_filters_donors_and_disables_pack_expansion_
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4),
     )
 
     assert context.active_frontier_node_summary.frontier_node_id == "seed_generic"
@@ -273,6 +289,7 @@ def test_select_active_frontier_node_freezes_term_budget_ranges(
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=remaining_budget),
     )
 
     assert context.term_budget_range == expected_range
@@ -295,6 +312,7 @@ def test_generate_search_controller_decision_normalizes_stop_and_falls_back_to_a
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4),
     )
 
     decision = generate_search_controller_decision(
@@ -330,6 +348,7 @@ def test_generate_search_controller_decision_clamps_non_crossover_terms() -> Non
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=2),
     )
 
     decision = generate_search_controller_decision(
@@ -370,6 +389,7 @@ def test_generate_search_controller_decision_normalizes_crossover_fields() -> No
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4),
     )
 
     invalid = generate_search_controller_decision(
@@ -454,6 +474,7 @@ def test_frontier_search_path_connects_to_phase3_ops() -> None:
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4),
     )
     decision = generate_search_controller_decision(
         context,
@@ -521,6 +542,7 @@ def test_frontier_stop_path_keeps_the_same_frontier_state() -> None:
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4),
     )
     decision = generate_search_controller_decision(
         context,
