@@ -31,6 +31,7 @@ ScoringPolicy = { fit_gate_constraints, must_have_capabilities_snapshot, preferr
 - `must_have_capabilities_snapshot` 与 `preferred_capabilities_snapshot` 是排序层唯一读取的结构化需求快照，不允许靠 prompt 文本反推。
 - `fusion_weights` 必须经过 `normalize_weights(...)` 后总和为 `1.0`。
 - `rerank_instruction` 与 `rerank_query_text` 只服务 `RerankService` 的 text-only contract。
+- `rerank_query_text` 由 `build_rerank_query_text(RequirementSheet)` 唯一生成，不允许在其他 operator 内散拼。
 - `rerank_query_text` 是岗位目标的简洁自然语言表达，不是审计散文。
 - `reranker_calibration_snapshot` 必须来自 `RerankerCalibration` 的 run 内快照，而不是业务 prompt 自由生成。
 - `ranking_audit_notes` 只服务审计与解释，不进入 reranker query。
@@ -65,8 +66,8 @@ penalty_weights:
   job_hop: 1.0
   job_hop_confidence_floor: 0.6
 top_n_for_explanation: 5
-rerank_instruction: "Rank candidate resumes for hiring relevance. Prioritize must-have capabilities first, use preferred capabilities as secondary evidence, and do not hard-reject on soft risk signals."
-rerank_query_text: "Senior Python / LLM Engineer; must-have: Python backend, LLM application, retrieval or ranking experience; location: Shanghai; min 6 years; preferred: workflow orchestration, to-b delivery."
+rerank_instruction: "Given a hiring requirement, judge how well the candidate resume matches the role. Prioritize must-have capabilities, use preferred capabilities as secondary evidence, and do not over-penalize weak soft-risk signals."
+rerank_query_text: "Hiring for Senior Python / LLM Engineer. Must have Python backend, LLM application, retrieval or ranking experience. Location: Shanghai. Minimum 6 years of experience. Preferred workflow orchestration, to-b delivery."
 reranker_calibration_snapshot:
   model_id: "qwen3-8b-reranker"
   normalization: "sigmoid"

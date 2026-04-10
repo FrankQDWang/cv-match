@@ -140,8 +140,8 @@
         "job_hop_confidence_floor": 0.6
       },
       "top_n_for_explanation": 5,
-      "rerank_instruction": "Rank candidate resumes for hiring relevance. Prioritize must-have capabilities first, use preferred capabilities as secondary evidence, and do not hard-reject on soft risk signals.",
-      "rerank_query_text": "Workflow Search Engineer; must-have: Python backend, LLM, retrieval, workflow, ranking, agent; location: Shanghai; min 5 years; max 10 years",
+      "rerank_instruction": "Given a hiring requirement, judge how well the candidate resume matches the role. Prioritize must-have capabilities, use preferred capabilities as secondary evidence, and do not over-penalize weak soft-risk signals.",
+      "rerank_query_text": "Hiring for Workflow Search Engineer. Must have Python backend, LLM, retrieval, workflow, ranking, agent. Location: Shanghai. Minimum 5 years of experience. Maximum 10 years of experience.",
       "reranker_calibration_snapshot": {
         "model_id": "mlx-community/Qwen3-Reranker-8B-mxfp8",
         "normalization": "sigmoid",
@@ -853,7 +853,7 @@
               "python",
               "ranking"
             ],
-            "search_text": "python backend rag ranking",
+            "search_text": "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
             "raw_payload": {
               "title": "Python Engineer",
               "workExperienceList": []
@@ -881,7 +881,7 @@
               "python",
               "ranking"
             ],
-            "search_text": "python backend rag ranking",
+            "search_text": "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
             "raw_payload": {
               "title": "Python Engineer",
               "workExperienceList": []
@@ -891,7 +891,7 @@
         "scoring_candidates": [
           {
             "candidate_id": "candidate-illegal-1",
-            "scoring_text": "python backend rag ranking",
+            "scoring_text": "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
             "capability_signals": [
               "retrieval platform",
               "python",

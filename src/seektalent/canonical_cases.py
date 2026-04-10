@@ -12,6 +12,7 @@ from pydantic_ai.models.test import TestModel
 from seektalent.api import run_match
 from seektalent.bootstrap import bootstrap_round0
 from seektalent.bootstrap_assets import default_bootstrap_assets
+from seektalent.candidate_text import build_candidate_search_text
 from seektalent.clients.cts_client import CTSFetchResult
 from seektalent.config import AppSettings
 from seektalent.frontier_ops import (
@@ -888,7 +889,16 @@ def _candidate(candidate_id: str, *, search_text: str) -> RetrievedCandidate_t:
         ],
         project_names=["retrieval platform"],
         work_summaries=["python", "ranking"],
-        search_text=search_text,
+        search_text=build_candidate_search_text(
+            role_title="Python Engineer",
+            locations=["Shanghai"],
+            projects=["retrieval platform"],
+            work_summaries=[search_text],
+            education_summaries=["复旦大学 计算机 本科"],
+            work_experience_summaries=[
+                "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+        ),
         raw_payload={"title": "Python Engineer", "workExperienceList": []},
     )
 

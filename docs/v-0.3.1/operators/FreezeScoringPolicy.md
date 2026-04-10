@@ -143,36 +143,14 @@ top_n_for_explanation_t =
 ### Phase 3 — Rerank Surface Freeze
 
 ```text
-must_have_phrase_t =
-  join(", ", R.must_have_capabilities)
-
-preferred_phrase_t =
-  join(", ", R.preferred_capabilities)
-
-hard_constraint_phrase_t =
-  join(
-    "; ",
-    drop_empty([
-      "location: " + join(", ", truth_gate_t.locations) if |truth_gate_t.locations| > 0 else "",
-      "min " + truth_gate_t.min_years + " years" if truth_gate_t.min_years != null else "",
-      "max " + truth_gate_t.max_years + " years" if truth_gate_t.max_years != null else ""
-    ])
-  )
-
 rerank_instruction_t =
   normalized(
-    "Rank candidate resumes for hiring relevance. "
-    + "Prioritize must-have capabilities first, use preferred capabilities as secondary evidence, "
-    + "and do not hard-reject on soft risk signals."
+    "Given a hiring requirement, judge how well the candidate resume matches the role. "
+    + "Prioritize must-have capabilities, use preferred capabilities as secondary evidence, "
+    + "and do not over-penalize weak soft-risk signals."
   )
 
-rerank_query_text_t =
-  normalized(
-    R.role_title
-    + "; must-have: " + must_have_phrase_t
-    + ("; " + hard_constraint_phrase_t if hard_constraint_phrase_t != "" else "")
-    + ("; preferred: " + preferred_phrase_t if preferred_phrase_t != "" else "")
-  )
+rerank_query_text_t = build_rerank_query_text(R)
 
 ranking_audit_notes_t =
   normalized(
@@ -180,6 +158,25 @@ ranking_audit_notes_t =
     + " "
     + "must-have 优先于 preferred；低置信度稳定性风险不处罚。"
   )
+```
+
+其中：
+
+```text
+build_rerank_query_text(R) =
+  sentence_join([
+    "Hiring for " + R.role_title,
+    "Must have " + join(", ", stable_deduplicate(R.must_have_capabilities))
+      if |R.must_have_capabilities| > 0 else "",
+    "Location: " + join(", ", stable_deduplicate(R.hard_constraints.locations))
+      if |R.hard_constraints.locations| > 0 else "",
+    "Minimum " + R.hard_constraints.min_years + " years of experience"
+      if R.hard_constraints.min_years != null else "",
+    "Maximum " + R.hard_constraints.max_years + " years of experience"
+      if R.hard_constraints.max_years != null else "",
+    "Preferred " + join(", ", stable_deduplicate(R.preferred_capabilities))
+      if |R.preferred_capabilities| > 0 else ""
+  ])
 ```
 
 ### Field-Level Output Assembly

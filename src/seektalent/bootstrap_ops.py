@@ -24,6 +24,7 @@ from seektalent.models import (
     ScoringPolicy,
     stable_deduplicate,
 )
+from seektalent.rerank_text import build_rerank_query_text
 from seektalent_rerank.models import RerankDocument, RerankRequest, RerankResponse
 
 DEGREE_RANK = {
@@ -36,8 +37,8 @@ ROUTING_CONFIDENCE_FLOOR = 0.55
 ROUTING_MULTI_PACK_GAP = 0.08
 MAX_ROUTED_PACKS = 2
 ROUTING_INSTRUCTION = (
-    "Rank domain knowledge packs for round-0 bootstrap relevance. "
-    "Prefer the pack whose context best matches the hiring requirement."
+    "Given a hiring requirement, judge whether this domain knowledge pack is relevant "
+    "for expanding round-0 search terms."
 )
 FINAL_SEED_COUNTS = {
     "generic_fallback": 4,
@@ -161,23 +162,7 @@ def freeze_scoring_policy(
     )
     stability_policy = business_policy_pack.stability_policy
     top_n = business_policy_pack.explanation_preferences.top_n_for_explanation or 5
-    hard_constraint_phrase = "; ".join(
-        part
-        for part in [
-            _phrase("location", truth_gate.locations),
-            _range_phrase("min", truth_gate.min_years, "years"),
-            _range_phrase("max", truth_gate.max_years, "years"),
-        ]
-        if part
-    )
-    must_have_phrase = ", ".join(requirement_sheet.must_have_capabilities)
-    preferred_phrase = ", ".join(requirement_sheet.preferred_capabilities)
-    rerank_query_text = _normalize_text(
-        requirement_sheet.role_title
-        + f"; must-have: {must_have_phrase}"
-        + (f"; {hard_constraint_phrase}" if hard_constraint_phrase else "")
-        + (f"; preferred: {preferred_phrase}" if preferred_phrase else "")
-    )
+    rerank_query_text = build_rerank_query_text(requirement_sheet)
     return ScoringPolicy(
         fit_gate_constraints=fit_gate,
         must_have_capabilities_snapshot=list(requirement_sheet.must_have_capabilities),
@@ -193,8 +178,9 @@ def freeze_scoring_policy(
         ),
         top_n_for_explanation=top_n,
         rerank_instruction=(
-            "Rank candidate resumes for hiring relevance. Prioritize must-have capabilities first, "
-            "use preferred capabilities as secondary evidence, and do not hard-reject on soft risk signals."
+            "Given a hiring requirement, judge how well the candidate resume matches the role. "
+            "Prioritize must-have capabilities, use preferred capabilities as secondary evidence, "
+            "and do not over-penalize weak soft-risk signals."
         ),
         rerank_query_text=rerank_query_text,
         reranker_calibration_snapshot=reranker_calibration,
@@ -299,13 +285,17 @@ def initialize_frontier_state(
 
 
 def _routing_query_text(requirement_sheet: RequirementSheet) -> str:
-    must_have = ", ".join(requirement_sheet.must_have_capabilities)
-    preferred = ", ".join(requirement_sheet.preferred_capabilities)
-    return _normalize_text(
-        requirement_sheet.role_title
-        + (f"; must-have: {must_have}" if must_have else "")
-        + (f"; preferred: {preferred}" if preferred else "")
-    )
+    parts = [f"Hiring for {requirement_sheet.role_title}"]
+    role_summary = _normalize_text(requirement_sheet.role_summary)
+    if role_summary and role_summary.casefold() != _normalize_text(requirement_sheet.role_title).casefold():
+        parts.append(f"Role focus: {role_summary}")
+    must_have = stable_deduplicate(list(requirement_sheet.must_have_capabilities))
+    if must_have:
+        parts.append(f"Must have {', '.join(must_have)}")
+    preferred = stable_deduplicate(list(requirement_sheet.preferred_capabilities))
+    if preferred:
+        parts.append(f"Preferred {', '.join(preferred)}")
+    return _join_sentences(parts)
 
 
 def _rerank_scores_by_id(
@@ -544,17 +534,17 @@ def _normalized_weight(value: float | None, fallback: float) -> float:
     return value if value is not None and value >= 0 else fallback
 
 
-def _range_phrase(label: str, value: int | None, suffix: str) -> str:
-    if value is None:
-        return ""
-    return f"{label} {value} {suffix}"
+def _join_sentences(parts: Sequence[str]) -> str:
+    return " ".join(_sentence(part) for part in parts if _normalize_text(part))
 
 
-def _phrase(label: str, values: Sequence[str]) -> str:
-    items = stable_deduplicate(list(values))
-    if not items:
+def _sentence(value: str) -> str:
+    clean = _normalize_text(value)
+    if not clean:
         return ""
-    return f"{label}: {', '.join(items)}"
+    if clean.endswith((".", "!", "?", "。", "！", "？")):
+        return clean
+    return f"{clean}."
 
 
 def _normalize_text(value: str | None) -> str:

@@ -26,7 +26,9 @@
 
 ## `build_rerank_query_text`
 
+- owner：`seektalent.rerank_text.build_rerank_query_text(RequirementSheet) -> str`
 - 顺序固定为：`role_title -> must-have -> 必要硬约束摘要 -> 短 preferred 补充`
+- 输出按短句拼接，句尾稳定补 `.`，不输出 schema label dump
 - `must-have` 必须完整保留原义，可中英混合
 - 硬约束摘要当前只允许稳定、短文本的约束，如 `locations`、`min_years`、`max_years`
 - `preferred` 只允许 1 句短补充，不得盖过 must-have

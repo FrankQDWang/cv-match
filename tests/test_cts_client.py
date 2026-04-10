@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from seektalent.clients.cts_client import CTSClient, MockCTSClient
+from seektalent.clients.cts_models import Candidate
 from seektalent.config import AppSettings
 from seektalent.models import ChildFrontierNodeStub, HardConstraints, RuntimeOnlyConstraints, SearchExecutionPlan_t
 
@@ -60,3 +61,43 @@ def test_mock_cts_client_returns_retrieved_candidates() -> None:
     assert result.candidates
     assert all(candidate.candidate_id.startswith("mock-r") for candidate in result.candidates)
     assert result.candidates[0].now_location == "上海"
+
+
+def test_cts_client_normalizes_candidate_search_text_into_sections() -> None:
+    client = CTSClient(AppSettings(_env_file=None, mock_cts=True))
+    candidate = Candidate.model_validate(
+        {
+            "resume_id": "resume-1",
+            "age": 30,
+            "gender": "男",
+            "expectedJobCategory": "Python Agent Engineer",
+            "expectedIndustry": "AI Infra",
+            "expectedLocation": "上海",
+            "nowLocation": "杭州",
+            "projectNameAll": ["retrieval platform"],
+            "workSummariesAll": ["python backend", "ranking"],
+            "workYear": 6,
+            "educationList": [
+                {"school": "复旦大学", "speciality": "计算机", "degree": "本科"}
+            ],
+            "workExperienceList": [
+                {
+                    "company": "TestCo",
+                    "title": "Senior Engineer",
+                    "summary": "Built ranking workflows",
+                }
+            ],
+        }
+    )
+
+    normalized = client._normalize_candidate(candidate)
+
+    assert normalized.search_text == (
+        "Target role: Python Agent Engineer. "
+        "Industry: AI Infra. "
+        "Location: 上海, 杭州. "
+        "Projects: retrieval platform. "
+        "Work summary: python backend, ranking. "
+        "Experience: TestCo | Senior Engineer | Built ranking workflows. "
+        "Education: 复旦大学 计算机 本科."
+    )

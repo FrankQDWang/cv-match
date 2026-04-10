@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seektalent.candidate_text import build_candidate_search_text
 from seektalent.locations import normalize_location
 from seektalent.models import RetrievedCandidate_t, stable_fallback_resume_id
 
@@ -52,18 +53,14 @@ def _candidate(
         work_experience_summaries=work_experience_summaries,
         project_names=list(projects),
         work_summaries=list(work_summaries),
-        search_text=" ".join(
-            [
-                candidate_name,
-                title,
-                current_company,
-                canonical_location,
-                industry,
-                *projects,
-                *education,
-                *work_experience_summaries,
-                *work_summaries,
-            ]
+        search_text=build_candidate_search_text(
+            role_title=title,
+            industry=industry,
+            locations=[canonical_location],
+            projects=projects,
+            work_summaries=work_summaries,
+            education_summaries=education,
+            work_experience_summaries=work_experience_summaries,
         ),
         raw_payload=raw_payload,
     )

@@ -138,8 +138,8 @@
         "job_hop_confidence_floor": 0.6
       },
       "top_n_for_explanation": 5,
-      "rerank_instruction": "Rank candidate resumes for hiring relevance. Prioritize must-have capabilities first, use preferred capabilities as secondary evidence, and do not hard-reject on soft risk signals.",
-      "rerank_query_text": "Senior Python / LLM Engineer; must-have: Python backend, LLM application, retrieval pipeline; location: Shanghai; min 5 years; max 10 years; preferred: workflow orchestration, tool calling",
+      "rerank_instruction": "Given a hiring requirement, judge how well the candidate resume matches the role. Prioritize must-have capabilities, use preferred capabilities as secondary evidence, and do not over-penalize weak soft-risk signals.",
+      "rerank_query_text": "Hiring for Senior Python / LLM Engineer. Must have Python backend, LLM application, retrieval pipeline. Location: Shanghai. Minimum 5 years of experience. Maximum 10 years of experience. Preferred workflow orchestration, tool calling.",
       "reranker_calibration_snapshot": {
         "model_id": "mlx-community/Qwen3-Reranker-8B-mxfp8",
         "normalization": "sigmoid",

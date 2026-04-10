@@ -7,6 +7,7 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, Field
 
+from seektalent.candidate_text import build_candidate_search_text
 from seektalent.clients.cts_models import Candidate, CandidateSearchRequest, CandidateSearchResponse
 from seektalent.config import AppSettings
 from seektalent.locations import normalize_location, normalize_locations
@@ -118,17 +119,14 @@ class BaseCTSClient:
             for item in candidate.workExperienceList
         ]
         raw_payload = candidate.model_dump(mode="python", exclude_none=False)
-        search_text = " ".join(
-            [
-                candidate.expectedJobCategory or "",
-                candidate.expectedIndustry or "",
-                candidate.expectedLocation or "",
-                candidate.nowLocation or "",
-                *candidate.projectNameAll,
-                *candidate.workSummariesAll,
-                *education_summaries,
-                *work_experience_summaries,
-            ]
+        search_text = build_candidate_search_text(
+            role_title=candidate.expectedJobCategory,
+            industry=candidate.expectedIndustry,
+            locations=[candidate.expectedLocation, candidate.nowLocation],
+            projects=candidate.projectNameAll,
+            work_summaries=candidate.workSummariesAll,
+            education_summaries=education_summaries,
+            work_experience_summaries=work_experience_summaries,
         )
         return RetrievedCandidate_t(
             candidate_id=self._extract_candidate_id(candidate),

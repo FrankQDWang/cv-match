@@ -207,6 +207,16 @@ def test_route_domain_knowledge_pack_uses_reranker_top1() -> None:
     assert result.routing_mode == "inferred_single_pack"
     assert result.selected_knowledge_pack_ids == ["llm_agent_rag_engineering"]
     assert result.pack_scores["llm_agent_rag_engineering"] > 0.6
+    assert rerank.seen_requests[0].instruction == (
+        "Given a hiring requirement, judge whether this domain knowledge pack is relevant "
+        "for expanding round-0 search terms."
+    )
+    assert rerank.seen_requests[0].query == (
+        "Hiring for Senior Python / LLM Engineer. "
+        "Role focus: Build Python, LLM, and retrieval systems. "
+        "Must have Python backend, LLM application, retrieval pipeline. "
+        "Preferred workflow orchestration, tool calling."
+    )
 
 
 def test_route_domain_knowledge_pack_falls_back_when_top1_is_too_low() -> None:
@@ -433,3 +443,16 @@ def test_freeze_scoring_policy_only_tightens_truth_gate_and_normalizes_weights()
     assert scoring_policy.fit_gate_constraints.degree_requirement == "硕士及以上"
     assert scoring_policy.fit_gate_constraints.gender_requirement == "男"
     assert sum(scoring_policy.fusion_weights.model_dump().values()) == pytest.approx(1.0)
+    assert scoring_policy.rerank_instruction == (
+        "Given a hiring requirement, judge how well the candidate resume matches the role. "
+        "Prioritize must-have capabilities, use preferred capabilities as secondary evidence, "
+        "and do not over-penalize weak soft-risk signals."
+    )
+    assert scoring_policy.rerank_query_text == (
+        "Hiring for Senior Python / LLM Engineer. "
+        "Must have Python backend, LLM application, retrieval pipeline. "
+        "Location: 上海. "
+        "Minimum 5 years of experience. "
+        "Maximum 10 years of experience. "
+        "Preferred workflow orchestration, tool calling."
+    )
