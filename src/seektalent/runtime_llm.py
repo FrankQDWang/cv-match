@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import json
-from hashlib import sha1
 from typing import Any
 
 from pydantic_ai import Agent, NativeOutput
 
-from seektalent.bootstrap_llm import OUTPUT_RETRIES, RETRIES, STRICT_MODEL_SETTINGS
 from seektalent.models import (
     BranchEvaluationDraft_t,
     FrontierState_t,
     FrontierState_t1,
-    LLMCallAuditSnapshot,
+    LLMCallAudit,
     RequirementSheet,
     RuntimeBudgetState,
     SearchExecutionPlan_t,
@@ -19,15 +16,25 @@ from seektalent.models import (
     SearchRunSummaryDraft_t,
     SearchScoringResult_t,
 )
+from seektalent.prompt_surfaces import (
+    OUTPUT_RETRIES,
+    RETRIES,
+    STRICT_MODEL_SETTINGS,
+    build_branch_evaluation_prompt_surface,
+    build_llm_call_audit,
+    build_search_run_finalization_prompt_surface,
+)
 from seektalent.prompts import load_prompt
-from seektalent.runtime_prompt_text import render_branch_evaluation_text
-
 
 BRANCH_OUTCOME_EVALUATION_PROMPT = load_prompt("branch_outcome_evaluation.md")
 SEARCH_RUN_FINALIZATION_PROMPT = load_prompt("search_run_finalization.md")
 
 
-def _build_agent(output_type: type[BranchEvaluationDraft_t] | type[SearchRunSummaryDraft_t], *, model: Any | None) -> Agent:
+def _build_agent(
+    output_type: type[BranchEvaluationDraft_t] | type[SearchRunSummaryDraft_t],
+    *,
+    model: Any | None,
+) -> Agent:
     return Agent(
         model,
         output_type=NativeOutput(output_type, strict=True),
@@ -53,30 +60,6 @@ def _test_model_output(
     return output_type.model_validate(payload)
 
 
-def _audit_snapshot(*, model: Any | None, instructions: str) -> LLMCallAuditSnapshot:
-    return LLMCallAuditSnapshot(
-        output_mode="NativeOutput(strict=True)",
-        retries=RETRIES,
-        output_retries=OUTPUT_RETRIES,
-        validator_retry_count=0,
-        model_name=_model_name(model),
-        instruction_id_or_hash=sha1(instructions.encode("utf-8")).hexdigest(),
-        message_history_mode="fresh",
-        tools_enabled=False,
-        model_settings_snapshot={**STRICT_MODEL_SETTINGS, "native_output_strict": True},
-    )
-
-
-def _model_name(model: Any | None) -> str:
-    if model is None:
-        return "default"
-    for attr in ("model_name", "name"):
-        value = getattr(model, attr, None)
-        if isinstance(value, str) and value.strip():
-            return value
-    return type(model).__name__
-
-
 async def request_branch_evaluation_draft(
     requirement_sheet: RequirementSheet,
     frontier_state: FrontierState_t,
@@ -86,13 +69,7 @@ async def request_branch_evaluation_draft(
     runtime_budget_state: RuntimeBudgetState,
     *,
     model: Any | None = None,
-) -> tuple[BranchEvaluationDraft_t, LLMCallAuditSnapshot]:
-    test_output = _test_model_output(BranchEvaluationDraft_t, model=model)
-    if test_output is not None:
-        return test_output, _audit_snapshot(
-            model=model,
-            instructions=BRANCH_OUTCOME_EVALUATION_PROMPT,
-        )
+) -> tuple[BranchEvaluationDraft_t, LLMCallAudit]:
     parent_node = frontier_state.frontier_nodes.get(
         plan.child_frontier_node_stub.parent_frontier_node_id
     )
@@ -100,25 +77,34 @@ async def request_branch_evaluation_draft(
         raise ValueError(
             f"unknown_parent_frontier_node_id: {plan.child_frontier_node_stub.parent_frontier_node_id}"
         )
-    active_agent = _build_agent(BranchEvaluationDraft_t, model=model)
-    result = await active_agent.run(
-        render_branch_evaluation_text(
-            requirement_sheet,
-            parent_node,
-            plan,
-            execution_result,
-            scoring_result,
-            runtime_budget_state,
-        ),
+    prompt_surface = build_branch_evaluation_prompt_surface(
+        requirement_sheet,
+        parent_node,
+        plan,
+        execution_result,
+        scoring_result,
+        runtime_budget_state,
+        instructions_text=BRANCH_OUTCOME_EVALUATION_PROMPT,
+    )
+    test_output = _test_model_output(BranchEvaluationDraft_t, model=model)
+    if test_output is not None:
+        return test_output, build_llm_call_audit(
+            model=model,
+            prompt_surface=prompt_surface,
+            validator_retry_count=0,
+        )
+    result = await _build_agent(BranchEvaluationDraft_t, model=model).run(
+        prompt_surface.input_text,
         message_history=None,
         instructions=BRANCH_OUTCOME_EVALUATION_PROMPT,
         builtin_tools=(),
         toolsets=(),
         infer_name=False,
     )
-    return BranchEvaluationDraft_t.model_validate(result.output), _audit_snapshot(
+    return BranchEvaluationDraft_t.model_validate(result.output), build_llm_call_audit(
         model=model,
-        instructions=BRANCH_OUTCOME_EVALUATION_PROMPT,
+        prompt_surface=prompt_surface,
+        validator_retry_count=0,
     )
 
 
@@ -128,43 +114,38 @@ async def request_search_run_summary_draft(
     stop_reason: str,
     *,
     model: Any | None = None,
-) -> tuple[SearchRunSummaryDraft_t, LLMCallAuditSnapshot]:
+) -> tuple[SearchRunSummaryDraft_t, LLMCallAudit]:
+    prompt_surface = build_search_run_finalization_prompt_surface(
+        requirement_sheet,
+        frontier_state,
+        stop_reason,
+        instructions_text=SEARCH_RUN_FINALIZATION_PROMPT,
+    )
     test_output = _test_model_output(SearchRunSummaryDraft_t, model=model)
     if test_output is not None:
-        return test_output, _audit_snapshot(
+        return test_output, build_llm_call_audit(
             model=model,
-            instructions=SEARCH_RUN_FINALIZATION_PROMPT,
+            prompt_surface=prompt_surface,
+            validator_retry_count=0,
         )
-    active_agent = _build_agent(SearchRunSummaryDraft_t, model=model)
-    packet = json.dumps(
-        {
-            "role_title": requirement_sheet.role_title,
-            "must_have_capabilities": requirement_sheet.must_have_capabilities,
-            "hard_constraints": requirement_sheet.hard_constraints.model_dump(mode="json"),
-            "ranked_candidates": frontier_state.run_shortlist_candidate_ids,
-            "stop_reason": stop_reason,
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-    result = await active_agent.run(
-        packet,
+    result = await _build_agent(SearchRunSummaryDraft_t, model=model).run(
+        prompt_surface.input_text,
         message_history=None,
         instructions=SEARCH_RUN_FINALIZATION_PROMPT,
         builtin_tools=(),
         toolsets=(),
         infer_name=False,
     )
-    return SearchRunSummaryDraft_t.model_validate(result.output), _audit_snapshot(
+    return SearchRunSummaryDraft_t.model_validate(result.output), build_llm_call_audit(
         model=model,
-        instructions=SEARCH_RUN_FINALIZATION_PROMPT,
+        prompt_surface=prompt_surface,
+        validator_retry_count=0,
     )
 
 
 __all__ = [
     "BRANCH_OUTCOME_EVALUATION_PROMPT",
     "SEARCH_RUN_FINALIZATION_PROMPT",
-    "render_branch_evaluation_text",
     "request_branch_evaluation_draft",
     "request_search_run_summary_draft",
 ]

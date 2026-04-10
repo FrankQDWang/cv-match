@@ -46,6 +46,7 @@ class AppSettings(BaseSettings):
     cts_spec_path: str = DEFAULT_CTS_SPEC_NAME
     mock_cts: bool = False
     runs_dir: str = "runs"
+    round_budget: int | None = None
     rerank_base_url: str = "http://127.0.0.1:8012"
     rerank_timeout_seconds: float = Field(default=20.0, gt=0)
 

@@ -1,20 +1,24 @@
 from __future__ import annotations
 
-from hashlib import sha1
 from typing import Any
 
 from pydantic_ai import Agent, ModelRetry, NativeOutput
 
-from seektalent.bootstrap_llm import OUTPUT_RETRIES, RETRIES, STRICT_MODEL_SETTINGS
 from seektalent.frontier_ops import generate_search_controller_decision
 from seektalent.models import (
-    LLMCallAuditSnapshot,
+    LLMCallAudit,
     SearchControllerContext_t,
     SearchControllerDecisionDraft_t,
     stable_deduplicate,
 )
+from seektalent.prompt_surfaces import (
+    OUTPUT_RETRIES,
+    RETRIES,
+    STRICT_MODEL_SETTINGS,
+    build_controller_prompt_surface,
+    build_llm_call_audit,
+)
 from seektalent.prompts import load_prompt
-from seektalent.runtime_prompt_text import render_controller_context_text
 
 SEARCH_CONTROLLER_DECISION_PROMPT = load_prompt("search_controller_decision.md")
 
@@ -41,36 +45,6 @@ def _test_model_outputs(model: Any | None) -> list[dict[str, object]] | None:
     if isinstance(payload, list) and all(isinstance(item, dict) for item in payload):
         return payload
     raise ValueError("test_model_requires_custom_output_args")
-
-
-def _audit_snapshot(
-    *,
-    model: Any | None,
-    validator_retry_count: int,
-) -> LLMCallAuditSnapshot:
-    return LLMCallAuditSnapshot(
-        output_mode="NativeOutput(strict=True)",
-        retries=RETRIES,
-        output_retries=OUTPUT_RETRIES,
-        validator_retry_count=validator_retry_count,
-        model_name=_model_name(model),
-        instruction_id_or_hash=sha1(
-            SEARCH_CONTROLLER_DECISION_PROMPT.encode("utf-8")
-        ).hexdigest(),
-        message_history_mode="fresh",
-        tools_enabled=False,
-        model_settings_snapshot={**STRICT_MODEL_SETTINGS, "native_output_strict": True},
-    )
-
-
-def _model_name(model: Any | None) -> str:
-    if model is None:
-        return "default"
-    for attr in ("model_name", "name"):
-        value = getattr(model, attr, None)
-        if isinstance(value, str) and value.strip():
-            return value
-    return type(model).__name__
 
 
 def _validate_controller_draft(
@@ -118,15 +92,20 @@ async def request_search_controller_decision_draft(
     context: SearchControllerContext_t,
     *,
     model: Any | None = None,
-) -> tuple[SearchControllerDecisionDraft_t, LLMCallAuditSnapshot]:
+) -> tuple[SearchControllerDecisionDraft_t, LLMCallAudit]:
+    prompt_surface = build_controller_prompt_surface(
+        context,
+        instructions_text=SEARCH_CONTROLLER_DECISION_PROMPT,
+    )
     test_outputs = _test_model_outputs(model)
     if test_outputs is not None:
         validator_retry_count = 0
         for index, payload in enumerate(test_outputs):
             draft = SearchControllerDecisionDraft_t.model_validate(payload)
             try:
-                return _validate_controller_draft(draft, context), _audit_snapshot(
+                return _validate_controller_draft(draft, context), build_llm_call_audit(
                     model=model,
+                    prompt_surface=prompt_surface,
                     validator_retry_count=validator_retry_count,
                 )
             except ModelRetry:
@@ -150,21 +129,21 @@ async def request_search_controller_decision_draft(
             raise
 
     result = await active_agent.run(
-        render_controller_context_text(context),
+        prompt_surface.input_text,
         message_history=None,
         instructions=SEARCH_CONTROLLER_DECISION_PROMPT,
         builtin_tools=(),
         toolsets=(),
         infer_name=False,
     )
-    return SearchControllerDecisionDraft_t.model_validate(result.output), _audit_snapshot(
+    return SearchControllerDecisionDraft_t.model_validate(result.output), build_llm_call_audit(
         model=model,
+        prompt_surface=prompt_surface,
         validator_retry_count=validator_retry_count,
     )
 
 
 __all__ = [
     "SEARCH_CONTROLLER_DECISION_PROMPT",
-    "render_controller_context_text",
     "request_search_controller_decision_draft",
 ]

@@ -66,7 +66,27 @@ class SearchInputTruth(BaseModel):
     hiring_notes_sha256: str
 
 
-class LLMCallAuditSnapshot(BaseModel):
+class PromptSurfaceSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    body_text: str
+    source_paths: list[str] = Field(default_factory=list)
+    is_dynamic: bool = False
+
+
+class PromptSurfaceSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    surface_id: str
+    instructions_text: str
+    input_text: str
+    instructions_sha1: str
+    input_sha1: str
+    sections: list[PromptSurfaceSection] = Field(default_factory=list)
+
+
+class LLMCallAudit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     output_mode: str
@@ -74,10 +94,8 @@ class LLMCallAuditSnapshot(BaseModel):
     output_retries: int = Field(ge=0)
     validator_retry_count: int = Field(ge=0)
     model_name: str
-    instruction_id_or_hash: str
-    message_history_mode: str
-    tools_enabled: bool
     model_settings_snapshot: dict[str, Any] = Field(default_factory=dict)
+    prompt_surface: PromptSurfaceSnapshot
 
 
 class RequirementPreferences(BaseModel):
@@ -646,13 +664,13 @@ class SearchRunBootstrapArtifact(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     input_truth: SearchInputTruth
-    requirement_extraction_audit: LLMCallAuditSnapshot
+    requirement_extraction_audit: LLMCallAudit
     requirement_sheet: RequirementSheet
     business_policy_snapshot: BusinessPolicySnapshot
     runtime_search_budget: RuntimeSearchBudget
     routing_result: BootstrapRoutingResult
     scoring_policy: ScoringPolicy
-    bootstrap_keyword_generation_audit: LLMCallAuditSnapshot
+    bootstrap_keyword_generation_audit: LLMCallAudit
     bootstrap_output: BootstrapOutput
     frontier_state: FrontierState_t
 
@@ -664,14 +682,14 @@ class SearchRoundArtifact(BaseModel):
     frontier_state_before: FrontierState_t
     controller_context: SearchControllerContext_t
     controller_draft: SearchControllerDecisionDraft_t
-    controller_audit: LLMCallAuditSnapshot
+    controller_audit: LLMCallAudit
     controller_decision: SearchControllerDecision_t
     execution_plan: SearchExecutionPlan_t | None = None
     execution_result: SearchExecutionResult_t | None = None
     runtime_audit_tags: dict[str, list[str]] = Field(default_factory=dict)
     scoring_result: SearchScoringResult_t | None = None
     branch_evaluation_draft: BranchEvaluationDraft_t | None = None
-    branch_evaluation_audit: LLMCallAuditSnapshot | None = None
+    branch_evaluation_audit: LLMCallAudit | None = None
     branch_evaluation: BranchEvaluation_t | None = None
     reward_breakdown: NodeRewardBreakdown_t | None = None
     frontier_state_after: FrontierState_t1
@@ -703,6 +721,6 @@ class SearchRunBundle(BaseModel):
     created_at_utc: str
     bootstrap: SearchRunBootstrapArtifact
     rounds: list[SearchRoundArtifact] = Field(default_factory=list)
-    finalization_audit: LLMCallAuditSnapshot
+    finalization_audit: LLMCallAudit
     final_result: SearchRunResult
     eval: SearchRunEval | None = None

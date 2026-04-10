@@ -66,6 +66,7 @@ The command accepts:
 
 - `--jd` or `--jd-file`
 - `--notes` or `--notes-file`
+- `--round-budget`
 - `--env-file`
 - `--json`
 
@@ -78,6 +79,7 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 Current behavior:
 
 - runs the full runtime loop and writes run artifacts
+- `--round-budget` overrides `SEEKTALENT_ROUND_BUDGET`
 - prints `run_dir`, `stop_reason`, comma-joined shortlist ids, and `run_summary` in human mode
 - prints `SearchRunBundle.model_dump(mode="json")` to stdout in `--json` mode
 

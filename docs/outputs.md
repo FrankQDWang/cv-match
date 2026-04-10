@@ -33,6 +33,38 @@ Ensures the configured `runs` directory exists and validates the active runtime 
 - `artifacts/runtime/cases/<case_id>/...`
 - `artifacts/runtime/evals/e5-matrix.json`
 
+## `bundle.json` now includes full prompt surfaces
+
+Every one of the 5 LLM callpoints writes a full `LLMCallAudit` into the bundle:
+
+- `bootstrap.requirement_extraction_audit`
+- `bootstrap.bootstrap_keyword_generation_audit`
+- `rounds[*].controller_audit`
+- `rounds[*].branch_evaluation_audit`
+- `finalization_audit`
+
+Each audit now contains:
+
+- fixed runtime audit fields: `output_mode`, `retries`, `output_retries`, `validator_retry_count`, `model_name`, `model_settings_snapshot`
+- a full `prompt_surface`
+
+Each `prompt_surface` stores:
+
+- `instructions_text`
+- `input_text`
+- `instructions_sha1`
+- `input_sha1`
+- ordered `sections[*]`
+
+Each section stores:
+
+- `title`
+- `body_text`
+- `source_paths`
+- `is_dynamic`
+
+This is the only prompt audit owner. There is no sidecar prompt file, no prompt preview field, and no hash-only audit fallback.
+
 ## What remains intentionally absent
 
 - `trace.log`
@@ -41,6 +73,7 @@ Ensures the configured `runs` directory exists and validates the active runtime 
 
 ## Related docs
 
-- [CLI](cli.md)
-- [Configuration](configuration.md)
-- [docs/v-0.3.1/implementation-checklist.md](v-0.3.1/implementation-checklist.md)
+- [CLI](/Users/frankqdwang/Agents/SeekTalent/docs/cli.md)
+- [Configuration](/Users/frankqdwang/Agents/SeekTalent/docs/configuration.md)
+- [Implementation Checklist](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.1/implementation-checklist.md)
+- [LLM Context Surfaces](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.1/llm-context-surfaces.md)

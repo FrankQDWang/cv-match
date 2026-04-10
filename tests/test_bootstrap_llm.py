@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from hashlib import sha1
 
 import pytest
 from pydantic_ai import ModelRetry
 from pydantic_ai.models.test import TestModel
 
-from seektalent.bootstrap_llm import (
-    _bootstrap_keyword_generation_packet,
-    request_bootstrap_keyword_draft,
-)
+from seektalent.bootstrap_llm import request_bootstrap_keyword_draft
 from seektalent.models import (
     BootstrapRoutingResult,
     DomainKnowledgePack,
@@ -18,7 +14,6 @@ from seektalent.models import (
     RequirementPreferences,
     RequirementSheet,
 )
-from seektalent.prompts import load_prompt
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -201,9 +196,12 @@ def test_request_bootstrap_keyword_draft_retries_after_missing_relaxed_floor() -
 
     assert any(seed.intent_type == "relaxed_floor" for seed in draft.candidate_seeds)
     assert audit.validator_retry_count == 1
-    assert audit.instruction_id_or_hash == sha1(
-        load_prompt("bootstrap_keyword_generation.md").encode("utf-8")
-    ).hexdigest()
+    assert audit.prompt_surface.surface_id == "bootstrap_keyword_generation"
+    assert audit.prompt_surface.instructions_text
+    assert "## Selected Knowledge Packs" in audit.prompt_surface.input_text
+    assert audit.prompt_surface.sections[3].body_text.startswith(
+        "- llm_agent_rag_engineering | LLM Agent / RAG Engineering"
+    )
 
 
 def test_request_bootstrap_keyword_draft_rejects_generic_pack_reference() -> None:
@@ -253,46 +251,3 @@ def test_request_bootstrap_keyword_draft_rejects_multi_pack_bridge_without_two_p
                 model=TestModel(custom_output_args=invalid),
             )
         )
-
-
-def test_bootstrap_keyword_generation_packet_uses_prompt_friendly_pack_fields() -> None:
-    packet = _bootstrap_keyword_generation_packet(
-        _requirement_sheet(),
-        BootstrapRoutingResult(
-            routing_mode="inferred_single_pack",
-            selected_knowledge_pack_ids=["llm_agent_rag_engineering"],
-            routing_confidence=0.7,
-            pack_scores={"llm_agent_rag_engineering": 0.7},
-        ),
-        _packs()[:1],
-    )
-
-    assert packet["routing"] == {
-        "routing_mode": "inferred_single_pack",
-        "selected_knowledge_pack_ids": ["llm_agent_rag_engineering"],
-    }
-    assert packet["packs"] == [
-        {
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "label": "LLM Agent / RAG Engineering",
-            "domain_summary": "agent engineer, rag, tool calling",
-            "positive_hints": ["agent engineer", "tool calling"],
-            "negative_hints": ["sales"],
-        }
-    ]
-
-
-def test_bootstrap_keyword_generation_packet_leaves_generic_pack_list_empty() -> None:
-    packet = _bootstrap_keyword_generation_packet(
-        _requirement_sheet(),
-        BootstrapRoutingResult(
-            routing_mode="generic_fallback",
-            selected_knowledge_pack_ids=[],
-            routing_confidence=0.3,
-            fallback_reason="top1_confidence_below_floor",
-            pack_scores={},
-        ),
-        [],
-    )
-
-    assert packet["packs"] == []

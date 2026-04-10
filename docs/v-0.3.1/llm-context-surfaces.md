@@ -1,60 +1,58 @@
 # SeekTalent v0.3.1 LLM Context Surfaces
 
-> 本页只总结当前 5 个 LLM 调用点真正能看到什么。
+> 本页描述 5 个 LLM 调用点真正看到的 prompt surface，而不是内部 typed payload 全量结构。
 
-## 1. 总结论
+## 总结论
 
-`v0.3.1` 现在的 LLM surface 比旧方案更窄：
+`v0.3.1` 现在统一使用：
 
-- requirement 抽取只看原始输入
-- bootstrap 关键词生成只看 `RequirementSheet + routing_result + selected knowledge pack`
-- controller 只看局部 frontier context
-- branch evaluator 只看单轮 branch packet
-- finalizer 只看最终 shortlist 事实
+- markdown prompt 文件作为 `instructions_text`
+- sectioned text 作为 `input_text`
+- `PromptSurfaceSnapshot` 作为唯一 prompt 审计 owner
 
-排序、路由、reward、stop 都不是生成式 LLM owner。
+不再允许：
 
-## 2. 当前调用点
+- raw JSON payload 直接喂 LLM
+- `sort_keys=True` 按字母序排 prompt
+- 只保留 instruction hash 的 hash-only audit
 
-| 调用点 | 真正看到的 context | 明确看不到的内容 |
+## 当前 5 个调用点
+
+| 调用点 | 真正看到的 surface | 明确看不到的内容 |
 | --- | --- | --- |
-| `RequirementExtractionLLM` | `SearchInputTruth` | routing、frontier、候选、评分 |
-| `BootstrapKeywordGenerationLLM` | `RequirementSheet + BootstrapRoutingResult + selected DomainKnowledgePack \| null` | 后续轮次状态、候选、排序偏好、CTS 细节 |
-| `SearchControllerDecisionLLM` | `SearchControllerContext_t` | 整份 frontier、原始候选文本、CTS payload |
-| `BranchOutcomeEvaluationLLM` | 单轮 branch packet | 全量运行历史、未来轮次状态 |
-| `SearchRunFinalizationLLM` | `RequirementSheet + FrontierState_t1 + stop_reason` | 排序改写权、CTS 原始观测 |
+| `RequirementExtractionLLM` | `Task Contract / Job Description / Hiring Notes / Return Fields` | routing、frontier、候选、评分 |
+| `BootstrapKeywordGenerationLLM` | `Task Contract / Requirement Summary / Routing Result / Selected Knowledge Packs / Return Fields` | 后续轮次状态、候选、CTS 结果、reward |
+| `SearchControllerDecisionLLM` | `Task Contract / Role Summary / Active Frontier Node / Donor Candidates / Allowed Operators / Operator Statistics / Fit Gates And Unmet Requirements / Runtime Budget State / Budget Warning? / Decision Request` | 整份 frontier、原始候选文本、CTS payload |
+| `BranchOutcomeEvaluationLLM` | `Evaluation Contract / Role Summary / Branch Facts / Search And Scoring Summary / Runtime Budget State / Budget Warning? / Return Fields` | 全量运行历史、未来轮次状态、stop owner |
+| `SearchRunFinalizationLLM` | `Task Contract / Role Summary / Final Shortlist State / Stop Reason / Return Fields` | 排序改写权、CTS 原始观测 |
 
-## 3. 关键边界
+`Budget Warning` 只在 `near_budget_end=true` 时出现。
 
-### 3.1 bootstrap 关键词生成
+## 审计形态
 
-它现在不是“让模型自由拼 query”，而是：
+每次 LLM 调用都会在 bundle 中保存完整 `PromptSurfaceSnapshot`：
 
-- 只在 round-0 使用
-- 只基于选中的单个 knowledge pack 或 generic fallback
-- 产出 `BootstrapKeywordDraft`
-- 再由 runtime deterministic 地映射成 seeds
+- `surface_id`
+- `instructions_text`
+- `input_text`
+- `instructions_sha1`
+- `input_sha1`
+- `sections[*]`
 
-### 3.2 reranker 不是 LLM surface
+每个 section 都会保存：
 
-当前 reranker 只消费：
+- `title`
+- `body_text`
+- `source_paths`
+- `is_dynamic`
 
-- `instruction`
-- `query`
-- `document-text`
+所以 `bundle.json` 单独就能回答：
 
-它不是结构化 JSON scorer，也不负责生成关键词。
+1. 模型看到了什么
+2. 这些内容按什么 section 排列
+3. 每个 section 从哪些 typed 字段抽出来
 
-### 3.3 当前不再存在的旧 surface
-
-以下旧调用面已经退出当前主链：
-
-- `RetrieveGroundingKnowledge`
-- `GroundingGenerationLLM` 读取 `KnowledgeRetrievalResult`
-- `GroundingDraft`
-- `GroundingOutput`
-
-## 4. 统一执行约束
+## 统一执行约束
 
 所有 5 个调用点都遵守：
 
@@ -67,14 +65,10 @@
 - no tools
 - no cross-operator history
 
-## 5. 推荐阅读
+## 相关
 
-- [[design]]
 - [[workflow-explained]]
-- [[operator-map]]
-- [[ExtractRequirements]]
-- [[RouteDomainKnowledgePack]]
-- [[GenerateBootstrapOutput]]
 - [[GenerateSearchControllerDecision]]
 - [[EvaluateBranchOutcome]]
-- [[FinalizeSearchRun]]
+- [[PromptSurfaceSnapshot]]
+- [[LLMCallAudit]]

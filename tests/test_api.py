@@ -100,6 +100,22 @@ def _settings(tmp_path: Path) -> AppSettings:
     return AppSettings(_env_file=None, mock_cts=True, runs_dir=str(tmp_path / "runs"))
 
 
+def _env_file(tmp_path: Path, *, round_budget: int) -> Path:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "SEEKTALENT_MOCK_CTS=true",
+                f"SEEKTALENT_RUNS_DIR={tmp_path / 'runs'}",
+                f"SEEKTALENT_ROUND_BUDGET={round_budget}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return env_file
+
+
 def test_run_match_returns_search_run_bundle(tmp_path: Path) -> None:
     result = run_match(
         job_description="Senior Python / LLM Engineer",
@@ -180,6 +196,77 @@ def test_run_match_async_returns_search_run_bundle(tmp_path: Path) -> None:
     assert result.bootstrap.frontier_state.remaining_budget == 12
     assert result.final_result.stop_reason == "controller_stop"
     assert Path(result.run_dir).joinpath("eval.json").exists()
+
+
+def test_run_match_uses_env_round_budget_when_cli_override_is_missing(tmp_path: Path) -> None:
+    result = run_match(
+        job_description="Senior Python / LLM Engineer",
+        hiring_notes="Shanghai preferred",
+        settings=None,
+        env_file=_env_file(tmp_path, round_budget=8),
+        assets=_active_assets(),
+        rerank_request=FakeRerankRequest(
+            {
+                "llm_agent_rag_engineering": 1.2,
+                "search_ranking_retrieval_engineering": 0.2,
+                "finance_risk_control_ai": 0.1,
+            }
+        ),
+        requirement_extraction_model=TestModel(custom_output_args=_requirement_draft_payload()),
+        bootstrap_keyword_generation_model=TestModel(
+            custom_output_args=_bootstrap_keyword_draft_payload()
+        ),
+        search_controller_decision_model=TestModel(
+            custom_output_args={
+                "action": "stop",
+                "selected_operator_name": "must_have_alias",
+                "operator_args": {},
+                "expected_gain_hypothesis": "Stop.",
+            }
+        ),
+        search_run_finalization_model=TestModel(
+            custom_output_args={"run_summary": "Controller stop accepted."}
+        ),
+    )
+
+    assert result.bootstrap.runtime_search_budget.initial_round_budget == 8
+    assert result.bootstrap.frontier_state.remaining_budget == 8
+
+
+def test_run_match_explicit_round_budget_overrides_env_round_budget(tmp_path: Path) -> None:
+    result = run_match(
+        job_description="Senior Python / LLM Engineer",
+        hiring_notes="Shanghai preferred",
+        round_budget=20,
+        settings=None,
+        env_file=_env_file(tmp_path, round_budget=8),
+        assets=_active_assets(),
+        rerank_request=FakeRerankRequest(
+            {
+                "llm_agent_rag_engineering": 1.2,
+                "search_ranking_retrieval_engineering": 0.2,
+                "finance_risk_control_ai": 0.1,
+            }
+        ),
+        requirement_extraction_model=TestModel(custom_output_args=_requirement_draft_payload()),
+        bootstrap_keyword_generation_model=TestModel(
+            custom_output_args=_bootstrap_keyword_draft_payload()
+        ),
+        search_controller_decision_model=TestModel(
+            custom_output_args={
+                "action": "stop",
+                "selected_operator_name": "must_have_alias",
+                "operator_args": {},
+                "expected_gain_hypothesis": "Stop.",
+            }
+        ),
+        search_run_finalization_model=TestModel(
+            custom_output_args={"run_summary": "Controller stop accepted."}
+        ),
+    )
+
+    assert result.bootstrap.runtime_search_budget.initial_round_budget == 12
+    assert result.bootstrap.frontier_state.remaining_budget == 12
 
 
 def test_top_level_exports_remain_available() -> None:

@@ -224,12 +224,20 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     assert result.final_result.stop_reason == "controller_stop"
     assert result.final_result.final_shortlist_candidate_ids == ["candidate-1"]
     assert result.rounds[0].runtime_audit_tags == {"candidate-1": ["ranking"]}
+    assert result.bootstrap.requirement_extraction_audit.prompt_surface.surface_id == "requirement_extraction"
+    assert result.rounds[0].controller_audit.prompt_surface.surface_id == "search_controller_decision"
+    assert result.rounds[0].branch_evaluation_audit is not None
+    assert result.rounds[0].branch_evaluation_audit.prompt_surface.surface_id == "branch_outcome_evaluation"
+    assert result.finalization_audit.prompt_surface.surface_id == "search_run_finalization"
     assert [document.id for document in rerank.seen_requests[0].documents] == [
         "llm_agent_rag_engineering",
         "search_ranking_retrieval_engineering",
         "finance_risk_control_ai",
     ]
     assert [document.id for document in rerank.seen_requests[1].documents] == ["candidate-1"]
+    metrics = {metric.name: metric.value for metric in result.eval.metrics}
+    assert metrics["prompt_surface_count"] == 6
+    assert metrics["budget_warning_round_count"] == 0
     assert Path(result.run_dir).joinpath("bundle.json").exists()
 
 

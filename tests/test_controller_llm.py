@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from hashlib import sha1
 
 import pytest
 from pydantic_ai import ModelRetry
 from pydantic_ai.models.test import TestModel
 
-from seektalent.controller_llm import (
-    render_controller_context_text,
-    request_search_controller_decision_draft,
-)
+from seektalent.controller_llm import request_search_controller_decision_draft
 from seektalent.frontier_ops import generate_search_controller_decision
 from seektalent.models import FitGateConstraints, SearchControllerContext_t
-from seektalent.prompts import load_prompt
 from seektalent.runtime_budget import build_runtime_budget_state
 
 
@@ -72,7 +67,7 @@ def _context(
     )
 
 
-def test_request_search_controller_decision_draft_records_strict_audit() -> None:
+def test_request_search_controller_decision_draft_records_prompt_surface_audit() -> None:
     draft, audit = asyncio.run(
         request_search_controller_decision_draft(
             _context(),
@@ -93,16 +88,15 @@ def test_request_search_controller_decision_draft_records_strict_audit() -> None
     assert audit.output_retries == 1
     assert audit.validator_retry_count == 0
     assert audit.model_name == "test"
-    assert audit.message_history_mode == "fresh"
-    assert audit.tools_enabled is False
-    assert audit.instruction_id_or_hash == sha1(
-        load_prompt("search_controller_decision.md").encode("utf-8")
-    ).hexdigest()
     assert audit.model_settings_snapshot == {
         "allow_text_output": False,
         "allow_image_output": False,
         "native_output_strict": True,
     }
+    assert audit.prompt_surface.surface_id == "search_controller_decision"
+    assert audit.prompt_surface.instructions_text
+    assert "## Runtime Budget State" in audit.prompt_surface.input_text
+    assert audit.prompt_surface.sections[-1].title == "Decision Request"
 
 
 def test_request_search_controller_decision_draft_retries_once_for_empty_non_crossover_patch() -> None:
@@ -180,33 +174,3 @@ def test_request_search_controller_decision_draft_accepts_budget_clamped_non_cro
 
     assert normalized.operator_args == {"additional_terms": []}
     assert audit.validator_retry_count == 0
-
-
-def test_render_controller_context_text_uses_sectioned_text_and_omits_budget_warning_before_tail() -> None:
-    text = render_controller_context_text(_context())
-
-    assert "## Task Contract" in text
-    assert "## Role Summary" in text
-    assert "## Runtime Budget State" in text
-    assert "## Decision Request" in text
-    assert text.index("## Runtime Budget State") < text.index("## Decision Request")
-    assert "## Budget Warning" not in text
-    assert "sort_keys" not in text
-
-
-def test_render_controller_context_text_adds_budget_warning_near_budget_end() -> None:
-    context = _context()
-    context = context.model_copy(
-        update={
-            "runtime_budget_state": build_runtime_budget_state(
-                initial_round_budget=10,
-                runtime_round_index=8,
-                remaining_budget=2,
-            )
-        }
-    )
-
-    text = render_controller_context_text(context)
-
-    assert "## Budget Warning" in text
-    assert "Favor high-yield precision moves." in text

@@ -19,7 +19,7 @@ from seektalent.models import (
     BootstrapOutput,
     BootstrapRoutingResult,
     FrontierState_t,
-    LLMCallAuditSnapshot,
+    LLMCallAudit,
     RequirementSheet,
     ScoringPolicy,
     SearchInputTruth,
@@ -31,11 +31,11 @@ from seektalent.search_ops import AsyncRerankRequest
 @dataclass(frozen=True)
 class BootstrapArtifacts:
     input_truth: SearchInputTruth
-    requirement_extraction_audit: LLMCallAuditSnapshot
+    requirement_extraction_audit: LLMCallAudit
     requirement_sheet: RequirementSheet
     routing_result: BootstrapRoutingResult
     scoring_policy: ScoringPolicy
-    bootstrap_keyword_generation_audit: LLMCallAuditSnapshot
+    bootstrap_keyword_generation_audit: LLMCallAudit
     bootstrap_output: BootstrapOutput
     frontier_state: FrontierState_t
 

@@ -90,6 +90,7 @@ def test_init_writes_env_template(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert env_file.exists()
     text = env_file.read_text(encoding="utf-8")
     assert "SEEKTALENT_CTS_TENANT_KEY=" in text
+    assert "SEEKTALENT_ROUND_BUDGET=5" in text
     assert str(env_file) in capsys.readouterr().out
 
 

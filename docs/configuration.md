@@ -19,9 +19,10 @@ SEEKTALENT_CTS_TENANT_SECRET=
 SEEKTALENT_CTS_TIMEOUT_SECONDS=20
 SEEKTALENT_CTS_SPEC_PATH=cts.validated.yaml
 SEEKTALENT_MOCK_CTS=false
+SEEKTALENT_RUNS_DIR=runs
+SEEKTALENT_ROUND_BUDGET=5
 SEEKTALENT_RERANK_BASE_URL=http://127.0.0.1:8012
 SEEKTALENT_RERANK_TIMEOUT_SECONDS=20
-SEEKTALENT_RUNS_DIR=runs
 ```
 
 ## Variables
@@ -34,9 +35,10 @@ SEEKTALENT_RUNS_DIR=runs
 | `SEEKTALENT_CTS_TIMEOUT_SECONDS` | No | `20` | HTTP timeout for CTS calls. |
 | `SEEKTALENT_CTS_SPEC_PATH` | No | `cts.validated.yaml` | Uses the packaged spec when left at the default value. |
 | `SEEKTALENT_MOCK_CTS` | No | `false` | Enables the local mock CTS corpus. |
+| `SEEKTALENT_RUNS_DIR` | No | `runs` | Output root for `run` artifacts and `doctor`. |
+| `SEEKTALENT_ROUND_BUDGET` | No | `5` | Default runtime round budget. Values are clamped to `5..12`. |
 | `SEEKTALENT_RERANK_BASE_URL` | No | `http://127.0.0.1:8012` | Base URL for the local rerank HTTP API. |
 | `SEEKTALENT_RERANK_TIMEOUT_SECONDS` | No | `20` | HTTP timeout for rerank requests. |
-| `SEEKTALENT_RUNS_DIR` | No | `runs` | Output root for `run` artifacts and `doctor`. |
 
 ## Modes
 
@@ -62,6 +64,16 @@ The runtime still needs a rerank service. Start the local API with:
 ```bash
 uv run --group rerank seektalent-rerank-api
 ```
+
+## Budget precedence
+
+Runtime budget resolves in this order:
+
+1. CLI `--round-budget`
+2. `SEEKTALENT_ROUND_BUDGET`
+3. packaged asset default
+
+The effective value is always clamped to `5..12`.
 
 ## Validation
 

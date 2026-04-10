@@ -376,7 +376,7 @@
 1. `Agent Trace`、`Business Trace`、[[trace-index]]、`Judge Packet` 模板已稳定
 2. 关键场景可回放，且同一 case 可同时服务 replay/judge 与业务复盘
 3. reranker、routing、crossover、reward 的离线评估 artifacts 已可归因
-4. LLM call 审计产物至少保留 `output_mode / retries / output_retries / validator_retry_count`，并补充 `model_name / instruction_id_or_hash / message_history_mode / tools_enabled / model_settings_snapshot`
+4. LLM call 审计产物至少保留 `output_mode / retries / output_retries / validator_retry_count / model_name / model_settings_snapshot`，并完整保存 `prompt_surface = { instructions_text, input_text, instructions_sha1, input_sha1, sections[*] }`
 
 ### 7.4 可开工验收
 

@@ -39,6 +39,17 @@ def build_search_run_eval(bundle: SearchRunBundle) -> SearchRunEval:
         for round_artifact in bundle.rounds
         for tags in round_artifact.runtime_audit_tags.values()
     )
+    prompt_surfaces = [
+        bundle.bootstrap.requirement_extraction_audit.prompt_surface,
+        bundle.bootstrap.bootstrap_keyword_generation_audit.prompt_surface,
+        bundle.finalization_audit.prompt_surface,
+        *[round_artifact.controller_audit.prompt_surface for round_artifact in bundle.rounds],
+        *[
+            round_artifact.branch_evaluation_audit.prompt_surface
+            for round_artifact in bundle.rounds
+            if round_artifact.branch_evaluation_audit is not None
+        ],
+    ]
     metrics = [
         SearchRunEvalMetric(
             name="routing_mode",
@@ -137,6 +148,24 @@ def build_search_run_eval(bundle: SearchRunBundle) -> SearchRunEval:
             value=total_runtime_audit_tags,
         ),
         SearchRunEvalMetric(
+            name="prompt_surface_count",
+            value=len(prompt_surfaces),
+        ),
+        SearchRunEvalMetric(
+            name="budget_warning_round_count",
+            value=sum(
+                1
+                for round_artifact in bundle.rounds
+                if _has_budget_warning(round_artifact.controller_audit.prompt_surface)
+                or (
+                    round_artifact.branch_evaluation_audit is not None
+                    and _has_budget_warning(
+                        round_artifact.branch_evaluation_audit.prompt_surface
+                    )
+                )
+            ),
+        ),
+        SearchRunEvalMetric(
             name="llm_validator_retry_count",
             value=(
                 bundle.bootstrap.requirement_extraction_audit.validator_retry_count
@@ -172,6 +201,11 @@ def _write_json(path: Path, payload: object) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _has_budget_warning(prompt_surface: object) -> bool:
+    sections = getattr(prompt_surface, "sections", [])
+    return any(getattr(section, "title", "") == "Budget Warning" for section in sections)
 
 
 __all__ = [

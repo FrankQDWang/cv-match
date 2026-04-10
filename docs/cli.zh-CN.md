@@ -66,6 +66,7 @@ seektalent inspect --json
 
 - `--jd` 或 `--jd-file`
 - `--notes` 或 `--notes-file`
+- `--round-budget`
 - `--env-file`
 - `--json`
 
@@ -78,6 +79,7 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 当前真实行为是：
 
 - 执行完整 runtime loop，并写出 run artifacts
+- `--round-budget` 会覆盖 `SEEKTALENT_ROUND_BUDGET`
 - human 模式下打印 `run_dir`、`stop_reason`、逗号拼接的 shortlist ids、以及 `run_summary`
 - `--json` 模式下把 `SearchRunBundle.model_dump(mode="json")` 直接写到 stdout
 

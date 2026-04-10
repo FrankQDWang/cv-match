@@ -33,7 +33,7 @@ SearchControllerDecisionDraft_t = {
 ## Implementation Surface
 
 - Phase 2+ 默认使用 `pydantic-ai` 实现 `SearchControllerDecisionLLM`，但它只作为 typed request/response wrapper。
-- 调用方式固定为 `fresh request`：使用 `instructions` 承载调用点级规则，`SearchControllerContext_t` 作为当前 user content，默认不继承任何 cross-operator history。
+- 调用方式固定为 `fresh request`：使用 `instructions` 承载调用点级规则，固定 sectioned prompt surface 作为当前 user content，默认不继承任何 cross-operator history。
 - 输出模式固定为 `NativeOutput` strict schema；`allow_text_output = false`、`allow_image_output = false`。
 - 禁用 `function_tools`、`builtin_tools`、任意 MCP/tool calling 与 fallback model chain。
 - 它是唯一允许单次 bounded `output_validator + ModelRetry` 的调用点；补充校验边界仅限“能物化非空 query terms”与 runtime canonicalization。

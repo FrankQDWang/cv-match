@@ -5,111 +5,41 @@
 ## Signature
 
 ```text
-EvaluateBranchOutcome : (RequirementSheet, FrontierState_t, SearchExecutionPlan_t, SearchExecutionResult_t, SearchScoringResult_t) -> BranchEvaluation_t
+EvaluateBranchOutcome : (RequirementSheet, FrontierState_t, SearchExecutionPlan_t, SearchExecutionResult_t, SearchScoringResult_t, RuntimeBudgetState) -> BranchEvaluation_t
 ```
 
-## Notation Legend
+## Prompt Surface
 
-```text
-R := RequirementSheet
-F_t := FrontierState_t
-p_t := SearchExecutionPlan_t
-x_t := SearchExecutionResult_t
-y_t := SearchScoringResult_t
-draft_branch_evaluation_t := BranchEvaluationDraft_t
-a_t := BranchEvaluation_t
-```
+branch evaluator 不再读取 `branch_evaluation_packet_t` 形式的 raw JSON。
 
-## Input Projection
+输入会先被投影成固定顺序的 prompt surface：
 
-```text
-parent_node_t = F_t.frontier_nodes[p_t.child_frontier_node_stub.parent_frontier_node_id]
-allowed_repair_operator_names_t =
-  ["core_precision", "must_have_alias", "relaxed_floor", "generic_expansion", "crossover_compose"]
-  if |p_t.knowledge_pack_ids| = 0
-  else
-    ["core_precision", "must_have_alias", "relaxed_floor", "generic_expansion", "pack_expansion", "cross_pack_bridge", "crossover_compose"]
-```
+1. `Evaluation Contract`
+2. `Role Summary`
+3. `Branch Facts`
+4. `Search And Scoring Summary`
+5. `Runtime Budget State`
+6. `Budget Warning`，仅当 `near_budget_end = true`
+7. `Return Fields`
 
-## Primitive Predicates / Matching Rules
+这个 prompt surface 会完整落入 `branch_evaluation_audit.prompt_surface`。
 
-```text
-normalized_text(text) = trim(compress_whitespace(text))
-```
+## Deterministic Normalization
 
-```text
-whitelisted_repair_hint_t(hint_t) =
-  hint_t if hint_t in allowed_repair_operator_names_t
-  else null
-```
+`BranchOutcomeEvaluationLLM` 先产出 `BranchEvaluationDraft_t`，然后 runtime 再做 deterministic 收口：
 
-## Transformation
-
-### Phase 1 — Prompt Packing
-
-```text
-branch_evaluation_packet_t = {
-  must_have_capabilities: R.must_have_capabilities,
-  parent_frontier_node_id: parent_node_t.frontier_node_id,
-  previous_node_shortlist_candidate_ids: parent_node_t.node_shortlist_candidate_ids,
-  donor_frontier_node_id: p_t.child_frontier_node_stub.donor_frontier_node_id,
-  knowledge_pack_ids: p_t.knowledge_pack_ids,
-  query_terms: p_t.query_terms,
-  semantic_hash: p_t.semantic_hash,
-  search_page_statistics: x_t.search_page_statistics,
-  node_shortlist_candidate_ids: y_t.node_shortlist_candidate_ids,
-  top_three_statistics: y_t.top_three_statistics
-}
-```
-
-### Phase 2 — LLM Draft
-
-```text
-draft_branch_evaluation_t =
-  BranchOutcomeEvaluationLLM(branch_evaluation_packet_t)
-```
-
-### Phase 3 — Deterministic Normalization
-
-```text
-normalized_novelty_t =
-  min(1.0, max(0.0, draft_branch_evaluation_t.novelty_score))
-
-normalized_usefulness_t =
-  min(1.0, max(0.0, draft_branch_evaluation_t.usefulness_score))
-
-normalized_branch_exhausted_t =
-  draft_branch_evaluation_t.branch_exhausted
-  or (|y_t.node_shortlist_candidate_ids| = 0)
-
-normalized_repair_operator_hint_t =
-  whitelisted_repair_hint_t(draft_branch_evaluation_t.repair_operator_hint)
-
-normalized_evaluation_notes_t =
-  normalized_text(draft_branch_evaluation_t.evaluation_notes)
-```
-
-### Field-Level Output Assembly
-
-```text
-a_t.novelty_score = normalized_novelty_t
-a_t.usefulness_score = normalized_usefulness_t
-a_t.branch_exhausted = normalized_branch_exhausted_t
-a_t.repair_operator_hint = normalized_repair_operator_hint_t
-a_t.evaluation_notes = normalized_evaluation_notes_t
-```
-
-## Defaults / Thresholds Used Here
-
-```text
-branch_exhausted is forced to true
-when the current round produces zero fit shortlist candidates,
-even if the LLM draft does not request exhaustion.
-```
+- `novelty_score` clamp 到 `[0, 1]`
+- `usefulness_score` clamp 到 `[0, 1]`
+- `branch_exhausted` 在当前轮 shortlist 为空时会被强制拉成 `true`
+- `repair_operator_hint` 只允许落在 runtime whitelist 内
+- `evaluation_notes` 会被规范化成稳定文本
 
 ## Read Set
 
+- `RequirementSheet.role_title`
+- `RequirementSheet.role_summary`
 - `RequirementSheet.must_have_capabilities`
+- `RequirementSheet.preferred_capabilities`
 - `FrontierState_t.frontier_nodes`
 - `SearchExecutionPlan_t.query_terms`
 - `SearchExecutionPlan_t.semantic_hash`
@@ -118,6 +48,7 @@ even if the LLM draft does not request exhaustion.
 - `SearchExecutionResult_t.search_page_statistics`
 - `SearchScoringResult_t.node_shortlist_candidate_ids`
 - `SearchScoringResult_t.top_three_statistics`
+- `RuntimeBudgetState`
 
 ## Write Set
 
@@ -127,33 +58,16 @@ even if the LLM draft does not request exhaustion.
 - `BranchEvaluation_t.repair_operator_hint`
 - `BranchEvaluation_t.evaluation_notes`
 
-## 输入 payload
+## 不确定性边界
 
-- [[RequirementSheet]]
-- [[FrontierState_t]]
-- [[SearchExecutionPlan_t]]
-- [[SearchExecutionResult_t]]
-- [[SearchScoringResult_t]]
-
-## 输出 payload
-
-- [[BranchEvaluation_t]]
-
-## 不确定性边界 / 说明
-
-- 唯一黑盒是 `BranchOutcomeEvaluationLLM(branch_evaluation_packet_t)`；它必须先产出 [[BranchEvaluationDraft_t]]，再经过 clamp / whitelist / normalize 收口进入 `BranchEvaluation_t`。
-- `BranchOutcomeEvaluationLLM` 必须使用 provider-native strict structured output，固定 `retries=0`、`output_retries=1`。
-- 默认不额外要求 `output_validator`；若未来引入，只允许补充 schema 无法表达且不会改写 runtime fact 的 branch-level business 约束。
-- 它判断 branch 价值，但不直接修改 frontier，也不直接决定 stop。
-- `pack_expansion / cross_pack_bridge` 是否允许修复，只取决于 `knowledge_pack_ids` 是否非空。
+- 唯一黑盒是 `BranchOutcomeEvaluationLLM`；它只能返回 `BranchEvaluationDraft_t`
+- provider-native strict structured output 固定为 `retries=0`、`output_retries=1`
+- evaluator 只判断 branch 价值，不直接改 frontier，也不直接持有 stop owner
+- 预算信号只影响尾段评论口径，不改写 runtime fact 集合
 
 ## 相关
 
-- [[operator-spec-style]]
-- [[RequirementSheet]]
-- [[FrontierState_t]]
-- [[SearchExecutionPlan_t]]
-- [[SearchExecutionResult_t]]
-- [[SearchScoringResult_t]]
 - [[BranchEvaluationDraft_t]]
 - [[BranchEvaluation_t]]
+- [[RuntimeBudgetState]]
+- [[PromptSurfaceSnapshot]]

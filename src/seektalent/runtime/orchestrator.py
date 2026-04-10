@@ -108,7 +108,9 @@ class WorkflowRuntime:
             active_assets,
             runtime_search_budget=resolve_runtime_search_budget(
                 active_assets.runtime_search_budget,
-                round_budget,
+                round_budget
+                if round_budget is not None
+                else self.settings.round_budget,
             ),
         )
         active_cts_client = self.cts_client or _default_cts_client(self.settings)

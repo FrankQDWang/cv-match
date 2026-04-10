@@ -16,13 +16,47 @@
       "output_retries": 1,
       "validator_retry_count": 0,
       "model_name": "test",
-      "instruction_id_or_hash": "106d2cd11b9d472730ee042539cf9d9caa2fa52f",
-      "message_history_mode": "fresh",
-      "tools_enabled": false,
       "model_settings_snapshot": {
         "allow_text_output": false,
         "allow_image_output": false,
         "native_output_strict": true
+      },
+      "prompt_surface": {
+        "surface_id": "requirement_extraction",
+        "instructions_text": "Extract a strict structured requirement draft from the hiring input.\n\nUse only the provided job description and hiring notes.\nReturn structured fields only.",
+        "input_text": "## Task Contract\n- Extract a strict structured requirement draft from the provided hiring inputs.\n- Use only the provided job description and hiring notes.\n\n## Job Description\n- Senior Python / LLM Engineer\n\n## Hiring Notes\n- canonical case\n\n## Return Fields\n- Return role_title_candidate, role_summary_candidate, must_have_capability_candidates, preferred_capability_candidates, exclusion_signal_candidates, preference_candidates, hard_constraint_candidates, and scoring_rationale_candidate.",
+        "instructions_sha1": "106d2cd11b9d472730ee042539cf9d9caa2fa52f",
+        "input_sha1": "6344564ed15b5af281ed11e4da72297aed34b991",
+        "sections": [
+          {
+            "title": "Task Contract",
+            "body_text": "- Extract a strict structured requirement draft from the provided hiring inputs.\n- Use only the provided job description and hiring notes.",
+            "source_paths": [],
+            "is_dynamic": false
+          },
+          {
+            "title": "Job Description",
+            "body_text": "- Senior Python / LLM Engineer",
+            "source_paths": [
+              "SearchInputTruth.job_description"
+            ],
+            "is_dynamic": true
+          },
+          {
+            "title": "Hiring Notes",
+            "body_text": "- canonical case",
+            "source_paths": [
+              "SearchInputTruth.hiring_notes"
+            ],
+            "is_dynamic": true
+          },
+          {
+            "title": "Return Fields",
+            "body_text": "- Return role_title_candidate, role_summary_candidate, must_have_capability_candidates, preferred_capability_candidates, exclusion_signal_candidates, preference_candidates, hard_constraint_candidates, and scoring_rationale_candidate.",
+            "source_paths": [],
+            "is_dynamic": false
+          }
+        ]
       }
     },
     "requirement_sheet": {
@@ -93,6 +127,11 @@
         }
       }
     },
+    "runtime_search_budget": {
+      "initial_round_budget": 5,
+      "default_target_new_candidate_count": 10,
+      "max_target_new_candidate_count": 20
+    },
     "routing_result": {
       "routing_mode": "inferred_single_pack",
       "selected_knowledge_pack_ids": [
@@ -159,13 +198,67 @@
       "output_retries": 1,
       "validator_retry_count": 0,
       "model_name": "test",
-      "instruction_id_or_hash": "448bdb8f617d93f8f81b5a1c4fd2b76a53daeed5",
-      "message_history_mode": "fresh",
-      "tools_enabled": false,
       "model_settings_snapshot": {
         "allow_text_output": false,
         "allow_image_output": false,
         "native_output_strict": true
+      },
+      "prompt_surface": {
+        "surface_id": "bootstrap_keyword_generation",
+        "instructions_text": "Generate a strict structured bootstrap keyword draft for round-0 search startup.\n\nYou will receive:\n- `requirement`: the normalized requirement sheet fields\n- `routing`: the routing mode and selected knowledge pack ids\n- `packs`: the routed knowledge pack context\n\nReturn a `BootstrapKeywordDraft` with:\n- `candidate_seeds`: 5-8 seed intents\n- `negative_keywords`: global negative keywords\n\nRules:\n- Use only the provided requirement, routing, and packs.\n- Do not invent unsupported domain facts outside the provided packs.\n- `positive_hints` are positive expansion hints.\n- `negative_hints` are exclusion hints only. Do not use them as positive keywords.\n- `keywords` must look like short executable search phrases, not explanations or sentences.\n- Keep each `keywords` list compact and concrete.\n- `reasoning` must be one short sentence and must not just repeat the keywords.\n- `source_knowledge_pack_ids` must be empty unless the seed truly depends on pack context.\n\nRequired intents by routing mode:\n- `generic_fallback`: include `core_precision`, `must_have_alias`, `relaxed_floor`, `generic_expansion`\n- `explicit_pack` or `inferred_single_pack`: include `core_precision`, `must_have_alias`, `relaxed_floor`, `pack_expansion`\n- `inferred_multi_pack`: include `core_precision`, `must_have_alias`, `relaxed_floor`, `pack_expansion`, `cross_pack_bridge`\n\nExtra rules for pack-aware intents:\n- `pack_expansion` must use one selected pack and reference it in `source_knowledge_pack_ids`\n- `cross_pack_bridge` must combine both selected packs and reference exactly those two pack ids",
+        "input_text": "## Task Contract\n- Generate round-0 seed intents from the provided requirement summary, routing result, and selected knowledge packs.\n- Do not use any runtime or candidate information outside this packet.\n\n## Requirement Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Preferred capabilities: workflow orchestration, tool calling\n- Exclusion signals: frontend\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Company names: None\n- School names: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n\n## Routing Result\n- Routing mode: inferred_single_pack\n- Selected knowledge pack ids: llm_agent_rag_engineering\n- Routing confidence: 0.62\n- Fallback reason: None\n\n## Selected Knowledge Packs\n- llm_agent_rag_engineering | LLM / Agent 应用研发 | domain_summary=LLM agent engineer, RAG engineer, agent backend, workflow orchestration, tool calling, retrieval pipeline, Python backend, inference application. | positive_hints=agent engineer, rag, tool calling, workflow orchestration, retrieval pipeline, python backend | negative_hints=prompt operation, pure algorithm research, frontend\n\n## Return Fields\n- Return candidate_seeds and negative_keywords.\n- Each candidate seed must include intent_type, keywords, source_knowledge_pack_ids, and reasoning.",
+        "instructions_sha1": "448bdb8f617d93f8f81b5a1c4fd2b76a53daeed5",
+        "input_sha1": "188c1012d67d35ff6bd752ce1ffae1832b0a4948",
+        "sections": [
+          {
+            "title": "Task Contract",
+            "body_text": "- Generate round-0 seed intents from the provided requirement summary, routing result, and selected knowledge packs.\n- Do not use any runtime or candidate information outside this packet.",
+            "source_paths": [],
+            "is_dynamic": false
+          },
+          {
+            "title": "Requirement Summary",
+            "body_text": "- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Preferred capabilities: workflow orchestration, tool calling\n- Exclusion signals: frontend\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Company names: None\n- School names: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None",
+            "source_paths": [
+              "RequirementSheet.role_title",
+              "RequirementSheet.role_summary",
+              "RequirementSheet.must_have_capabilities",
+              "RequirementSheet.preferred_capabilities",
+              "RequirementSheet.exclusion_signals",
+              "RequirementSheet.hard_constraints"
+            ],
+            "is_dynamic": true
+          },
+          {
+            "title": "Routing Result",
+            "body_text": "- Routing mode: inferred_single_pack\n- Selected knowledge pack ids: llm_agent_rag_engineering\n- Routing confidence: 0.62\n- Fallback reason: None",
+            "source_paths": [
+              "BootstrapRoutingResult.routing_mode",
+              "BootstrapRoutingResult.selected_knowledge_pack_ids",
+              "BootstrapRoutingResult.routing_confidence",
+              "BootstrapRoutingResult.fallback_reason"
+            ],
+            "is_dynamic": true
+          },
+          {
+            "title": "Selected Knowledge Packs",
+            "body_text": "- llm_agent_rag_engineering | LLM / Agent 应用研发 | domain_summary=LLM agent engineer, RAG engineer, agent backend, workflow orchestration, tool calling, retrieval pipeline, Python backend, inference application. | positive_hints=agent engineer, rag, tool calling, workflow orchestration, retrieval pipeline, python backend | negative_hints=prompt operation, pure algorithm research, frontend",
+            "source_paths": [
+              "DomainKnowledgePack.knowledge_pack_id",
+              "DomainKnowledgePack.label",
+              "DomainKnowledgePack.routing_text",
+              "DomainKnowledgePack.include_keywords",
+              "DomainKnowledgePack.exclude_keywords"
+            ],
+            "is_dynamic": true
+          },
+          {
+            "title": "Return Fields",
+            "body_text": "- Return candidate_seeds and negative_keywords.\n- Each candidate seed must include intent_type, keywords, source_knowledge_pack_ids, and reasoning.",
+            "source_paths": [],
+            "is_dynamic": false
+          }
+        ]
       }
     },
     "bootstrap_output": {
@@ -651,6 +744,8 @@
         "remaining_budget": 5
       },
       "controller_context": {
+        "role_title": "Senior Python / LLM Engineer",
+        "role_summary": "Build Python, LLM, and retrieval systems.",
         "active_frontier_node_summary": {
           "frontier_node_id": "seed_core_precision_23dd2b51",
           "selected_operator_name": "core_precision",
@@ -736,6 +831,14 @@
           "gender_requirement": null,
           "min_age": null,
           "max_age": null
+        },
+        "runtime_budget_state": {
+          "initial_round_budget": 5,
+          "runtime_round_index": 0,
+          "remaining_budget": 5,
+          "used_ratio": 0.0,
+          "remaining_ratio": 1.0,
+          "near_budget_end": false
         }
       },
       "controller_draft": {
@@ -754,13 +857,90 @@
         "output_retries": 1,
         "validator_retry_count": 0,
         "model_name": "test",
-        "instruction_id_or_hash": "ec1833921ed269a04ba89af17021e143e63e5f16",
-        "message_history_mode": "fresh",
-        "tools_enabled": false,
         "model_settings_snapshot": {
           "allow_text_output": false,
           "allow_image_output": false,
           "native_output_strict": true
+        },
+        "prompt_surface": {
+          "surface_id": "search_controller_decision",
+          "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n\n## Active Frontier Node\n- Frontier node id: seed_core_precision_23dd2b51\n- Current operator: core_precision\n- Query term pool: agent engineer, rag, python backend\n- Current node shortlist ids: None\n\n## Donor Candidates\n- No legal donor candidates.\n\n## Allowed Operators\n- Allowed operators: core_precision, must_have_alias, relaxed_floor, generic_expansion, pack_expansion, cross_pack_bridge, crossover_compose\n\n## Operator Statistics\n- core_precision: average_reward=0.00, times_selected=0\n- must_have_alias: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- Term budget range: 2 to 6\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- LLM application: weight=1.00\n- retrieval pipeline: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 0\n- Remaining budget: 5\n- Used ratio: 0.00\n- Remaining ratio: 1.00\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
+          "input_sha1": "db4188ac91cf653eacaa3bb75a9ce7f1c361ef37",
+          "sections": [
+            {
+              "title": "Task Contract",
+              "body_text": "- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.",
+              "source_paths": [],
+              "is_dynamic": false
+            },
+            {
+              "title": "Role Summary",
+              "body_text": "- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.",
+              "source_paths": [
+                "SearchControllerContext_t.role_title",
+                "SearchControllerContext_t.role_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Active Frontier Node",
+              "body_text": "- Frontier node id: seed_core_precision_23dd2b51\n- Current operator: core_precision\n- Query term pool: agent engineer, rag, python backend\n- Current node shortlist ids: None",
+              "source_paths": [
+                "SearchControllerContext_t.active_frontier_node_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Donor Candidates",
+              "body_text": "- No legal donor candidates.",
+              "source_paths": [
+                "SearchControllerContext_t.donor_candidate_node_summaries"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Allowed Operators",
+              "body_text": "- Allowed operators: core_precision, must_have_alias, relaxed_floor, generic_expansion, pack_expansion, cross_pack_bridge, crossover_compose",
+              "source_paths": [
+                "SearchControllerContext_t.allowed_operator_names"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Operator Statistics",
+              "body_text": "- core_precision: average_reward=0.00, times_selected=0\n- must_have_alias: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0",
+              "source_paths": [
+                "SearchControllerContext_t.operator_statistics_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Fit Gates And Unmet Requirements",
+              "body_text": "- Term budget range: 2 to 6\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- LLM application: weight=1.00\n- retrieval pipeline: weight=1.00",
+              "source_paths": [
+                "SearchControllerContext_t.fit_gate_constraints",
+                "SearchControllerContext_t.unmet_requirement_weights",
+                "SearchControllerContext_t.term_budget_range"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Runtime Budget State",
+              "body_text": "- Initial round budget: 5\n- Runtime round index: 0\n- Remaining budget: 5\n- Used ratio: 0.00\n- Remaining ratio: 1.00\n- Near budget end: no",
+              "source_paths": [
+                "SearchControllerContext_t.runtime_budget_state"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Decision Request",
+              "body_text": "- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+              "source_paths": [],
+              "is_dynamic": false
+            }
+          ]
         }
       },
       "controller_decision": {
@@ -860,13 +1040,73 @@
         "output_retries": 1,
         "validator_retry_count": 0,
         "model_name": "test",
-        "instruction_id_or_hash": "c642ef71b75c5f757b150a200ce01ede319d049a",
-        "message_history_mode": "fresh",
-        "tools_enabled": false,
         "model_settings_snapshot": {
           "allow_text_output": false,
           "allow_image_output": false,
           "native_output_strict": true
+        },
+        "prompt_surface": {
+          "surface_id": "branch_outcome_evaluation",
+          "instructions_text": "Generate a strict structured branch evaluation draft for the current search expansion.\n\nUse only the provided branch evaluation packet.\nDo not rewrite runtime facts outside the draft fields.",
+          "input_text": "## Evaluation Contract\n- Use only the provided branch evaluation packet.\n- Do not rewrite runtime facts outside the draft fields.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Preferred capabilities: workflow orchestration, tool calling\n\n## Branch Facts\n- Parent frontier node id: seed_core_precision_23dd2b51\n- Previous node shortlist ids: None\n- Donor frontier node id: None\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: agent engineer, rag, python backend, ranking\n- Semantic hash: 75d7cc7ed4e3c75c1e6ab7bd571462163253392a\n\n## Search And Scoring Summary\n- Pages fetched: 0\n- Duplicate rate: 0.00\n- Latency ms: 5\n- Node shortlist ids: None\n- Average fusion score top three: 0.00\n\n## Runtime Budget State\n- Runtime round index: 0\n- Remaining budget: 5\n- Remaining ratio: 1.00\n- Near budget end: no\n\n## Return Fields\n- Return novelty_score, usefulness_score, branch_exhausted, repair_operator_hint, and evaluation_notes.",
+          "instructions_sha1": "c642ef71b75c5f757b150a200ce01ede319d049a",
+          "input_sha1": "b71048da3ce109cb291de2899be748750360e167",
+          "sections": [
+            {
+              "title": "Evaluation Contract",
+              "body_text": "- Use only the provided branch evaluation packet.\n- Do not rewrite runtime facts outside the draft fields.",
+              "source_paths": [],
+              "is_dynamic": false
+            },
+            {
+              "title": "Role Summary",
+              "body_text": "- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Preferred capabilities: workflow orchestration, tool calling",
+              "source_paths": [
+                "RequirementSheet.role_title",
+                "RequirementSheet.role_summary",
+                "RequirementSheet.must_have_capabilities",
+                "RequirementSheet.preferred_capabilities"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Branch Facts",
+              "body_text": "- Parent frontier node id: seed_core_precision_23dd2b51\n- Previous node shortlist ids: None\n- Donor frontier node id: None\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: agent engineer, rag, python backend, ranking\n- Semantic hash: 75d7cc7ed4e3c75c1e6ab7bd571462163253392a",
+              "source_paths": [
+                "FrontierNode_t.frontier_node_id",
+                "FrontierNode_t.node_shortlist_candidate_ids",
+                "SearchExecutionPlan_t.child_frontier_node_stub.donor_frontier_node_id",
+                "SearchExecutionPlan_t.knowledge_pack_ids",
+                "SearchExecutionPlan_t.query_terms",
+                "SearchExecutionPlan_t.semantic_hash"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Search And Scoring Summary",
+              "body_text": "- Pages fetched: 0\n- Duplicate rate: 0.00\n- Latency ms: 5\n- Node shortlist ids: None\n- Average fusion score top three: 0.00",
+              "source_paths": [
+                "SearchExecutionResult_t.search_page_statistics",
+                "SearchScoringResult_t.node_shortlist_candidate_ids",
+                "SearchScoringResult_t.top_three_statistics"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Runtime Budget State",
+              "body_text": "- Runtime round index: 0\n- Remaining budget: 5\n- Remaining ratio: 1.00\n- Near budget end: no",
+              "source_paths": [
+                "RuntimeBudgetState"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Return Fields",
+              "body_text": "- Return novelty_score, usefulness_score, branch_exhausted, repair_operator_hint, and evaluation_notes.",
+              "source_paths": [],
+              "is_dynamic": false
+            }
+          ]
         }
       },
       "branch_evaluation": {
@@ -1132,13 +1372,61 @@
     "output_retries": 1,
     "validator_retry_count": 0,
     "model_name": "test",
-    "instruction_id_or_hash": "8e78c48e227a8a26cadc04d211f4bc7c5b210c19",
-    "message_history_mode": "fresh",
-    "tools_enabled": false,
     "model_settings_snapshot": {
       "allow_text_output": false,
       "allow_image_output": false,
       "native_output_strict": true
+    },
+    "prompt_surface": {
+      "surface_id": "search_run_finalization",
+      "instructions_text": "Generate a strict structured final run summary draft.\n\nUse only the provided finalization context.\nDo not rewrite shortlist ordering or stop facts.",
+      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Locations: Shanghai\n\n## Final Shortlist State\n- Final shortlist candidate ids: None\n- Remaining budget: 4\n- Open frontier node ids: seed_relaxed_floor_72461842, seed_pack_expansion_0d92f929, seed_must_have_alias_6b90971a, seed_generic_expansion_bcfcab3b\n- Closed frontier node ids: seed_core_precision_23dd2b51, child_seed_core_precision_23dd2b51_75d7cc7e\n\n## Stop Reason\n- exhausted_low_gain\n\n## Return Fields\n- Return run_summary.",
+      "instructions_sha1": "8e78c48e227a8a26cadc04d211f4bc7c5b210c19",
+      "input_sha1": "611d09a303dbaa751af210fac87f77e63ceab142",
+      "sections": [
+        {
+          "title": "Task Contract",
+          "body_text": "- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.",
+          "source_paths": [],
+          "is_dynamic": false
+        },
+        {
+          "title": "Role Summary",
+          "body_text": "- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Locations: Shanghai",
+          "source_paths": [
+            "RequirementSheet.role_title",
+            "RequirementSheet.role_summary",
+            "RequirementSheet.must_have_capabilities",
+            "RequirementSheet.hard_constraints.locations"
+          ],
+          "is_dynamic": true
+        },
+        {
+          "title": "Final Shortlist State",
+          "body_text": "- Final shortlist candidate ids: None\n- Remaining budget: 4\n- Open frontier node ids: seed_relaxed_floor_72461842, seed_pack_expansion_0d92f929, seed_must_have_alias_6b90971a, seed_generic_expansion_bcfcab3b\n- Closed frontier node ids: seed_core_precision_23dd2b51, child_seed_core_precision_23dd2b51_75d7cc7e",
+          "source_paths": [
+            "FrontierState_t1.run_shortlist_candidate_ids",
+            "FrontierState_t1.remaining_budget",
+            "FrontierState_t1.open_frontier_node_ids",
+            "FrontierState_t1.closed_frontier_node_ids"
+          ],
+          "is_dynamic": true
+        },
+        {
+          "title": "Stop Reason",
+          "body_text": "- exhausted_low_gain",
+          "source_paths": [
+            "SearchRunResult.stop_reason"
+          ],
+          "is_dynamic": true
+        },
+        {
+          "title": "Return Fields",
+          "body_text": "- Return run_summary.",
+          "source_paths": [],
+          "is_dynamic": false
+        }
+      ]
     }
   },
   "final_result": {
@@ -1206,6 +1494,14 @@
       },
       {
         "name": "runtime_audit_tag_count",
+        "value": 0
+      },
+      {
+        "name": "prompt_surface_count",
+        "value": 5
+      },
+      {
+        "name": "budget_warning_round_count",
         "value": 0
       },
       {
