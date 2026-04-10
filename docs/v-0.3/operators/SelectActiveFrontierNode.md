@@ -137,7 +137,7 @@ allowed_operator_names_t =
   ["must_have_alias", "strict_core", "crossover_compose"]
   if n_t.knowledge_pack_id = null
   else
-    ["must_have_alias", "strict_core", "domain_company", "crossover_compose"]
+    ["must_have_alias", "strict_core", "domain_expansion", "crossover_compose"]
 ```
 
 ```text
@@ -230,7 +230,7 @@ CrossoverGuardThresholds defaults = {
 
 ## 不确定性边界 / 说明
 
-- `domain_company` 是否允许，只取决于 active node 是否带 `knowledge_pack_id`。
+- `domain_expansion` 是否允许，只取决于 active node 是否带 `knowledge_pack_id`。
 - 这里不会读取知识包正文，也不会重新做领域路由。
 
 - `SearchControllerContext_t.active_frontier_node_summary`

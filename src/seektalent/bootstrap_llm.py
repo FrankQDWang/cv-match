@@ -4,7 +4,7 @@ import json
 from hashlib import sha1
 from typing import Any
 
-from pydantic_ai import Agent, NativeOutput
+from pydantic_ai import Agent, ModelRetry, NativeOutput
 
 from seektalent.models import (
     BootstrapKeywordDraft,
@@ -14,6 +14,7 @@ from seektalent.models import (
     RequirementExtractionDraft,
     RequirementSheet,
     SearchInputTruth,
+    stable_deduplicate,
 )
 
 REQUIREMENT_EXTRACTION_INSTRUCTIONS = """
@@ -24,8 +25,9 @@ Return structured fields only.
 
 BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS = """
 Generate a strict structured bootstrap keyword draft for round-0 search startup.
-Use only the provided requirement sheet, routing result, and selected knowledge pack.
-Do not invent unsupported domain context.
+Return 5-8 candidate seed intents.
+Use only the provided requirement sheet, routing result, and selected knowledge packs.
+Do not invent unsupported domain context outside the selected packs.
 """.strip()
 
 RETRIES = 0
@@ -53,25 +55,32 @@ def _build_agent(
     )
 
 
-def _test_model_output(
+def _test_model_outputs(
     output_type: type[RequirementExtractionDraft] | type[BootstrapKeywordDraft],
     *,
     model: Any | None,
-) -> RequirementExtractionDraft | BootstrapKeywordDraft | None:
+) -> list[RequirementExtractionDraft | BootstrapKeywordDraft] | None:
     if getattr(model, "model_name", None) != "test":
         return None
     payload = getattr(model, "custom_output_args", None)
-    if not isinstance(payload, dict):
-        raise ValueError("test_model_requires_custom_output_args")
-    return output_type.model_validate(payload)
+    if isinstance(payload, dict):
+        return [output_type.model_validate(payload)]
+    if isinstance(payload, list) and all(isinstance(item, dict) for item in payload):
+        return [output_type.model_validate(item) for item in payload]
+    raise ValueError("test_model_requires_custom_output_args")
 
 
-def _audit_snapshot(*, model: Any | None, instructions: str) -> LLMCallAuditSnapshot:
+def _audit_snapshot(
+    *,
+    model: Any | None,
+    instructions: str,
+    validator_retry_count: int,
+) -> LLMCallAuditSnapshot:
     return LLMCallAuditSnapshot(
         output_mode="NativeOutput(strict=True)",
         retries=RETRIES,
         output_retries=OUTPUT_RETRIES,
-        validator_retry_count=0,
+        validator_retry_count=validator_retry_count,
         model_name=_model_name(model),
         instruction_id_or_hash=sha1(instructions.encode("utf-8")).hexdigest(),
         message_history_mode="fresh",
@@ -95,11 +104,12 @@ async def request_requirement_extraction_draft(
     *,
     model: Any | None = None,
 ) -> tuple[RequirementExtractionDraft, LLMCallAuditSnapshot]:
-    test_output = _test_model_output(RequirementExtractionDraft, model=model)
-    if test_output is not None:
-        return test_output, _audit_snapshot(
+    test_outputs = _test_model_outputs(RequirementExtractionDraft, model=model)
+    if test_outputs is not None:
+        return test_outputs[0], _audit_snapshot(
             model=model,
             instructions=REQUIREMENT_EXTRACTION_INSTRUCTIONS,
+            validator_retry_count=0,
         )
     active_agent = _build_agent(RequirementExtractionDraft, model=model)
     result = await active_agent.run(
@@ -113,30 +123,61 @@ async def request_requirement_extraction_draft(
     return RequirementExtractionDraft.model_validate(result.output), _audit_snapshot(
         model=model,
         instructions=REQUIREMENT_EXTRACTION_INSTRUCTIONS,
+        validator_retry_count=0,
     )
 
 
 async def request_bootstrap_keyword_draft(
     requirement_sheet: RequirementSheet,
     routing_result: BootstrapRoutingResult,
-    selected_knowledge_pack: DomainKnowledgePack | None,
+    selected_knowledge_packs: list[DomainKnowledgePack],
     *,
     model: Any | None = None,
 ) -> tuple[BootstrapKeywordDraft, LLMCallAuditSnapshot]:
-    test_output = _test_model_output(BootstrapKeywordDraft, model=model)
-    if test_output is not None:
-        return test_output, _audit_snapshot(
-            model=model,
-            instructions=BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS,
-        )
+    test_outputs = _test_model_outputs(BootstrapKeywordDraft, model=model)
+    if test_outputs is not None:
+        validator_retry_count = 0
+        for index, draft in enumerate(test_outputs):
+            try:
+                return _validate_bootstrap_keyword_draft(
+                    draft,
+                    routing_result=routing_result,
+                    selected_knowledge_packs=selected_knowledge_packs,
+                ), _audit_snapshot(
+                    model=model,
+                    instructions=BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS,
+                    validator_retry_count=validator_retry_count,
+                )
+            except ModelRetry:
+                validator_retry_count += 1
+                if validator_retry_count > 1 or index == len(test_outputs) - 1:
+                    raise
+        raise ValueError("test_model_requires_custom_output_args")
+
+    validator_retry_count = 0
     active_agent = _build_agent(BootstrapKeywordDraft, model=model)
+
+    @active_agent.output_validator
+    def _output_validator(draft: BootstrapKeywordDraft) -> BootstrapKeywordDraft:
+        nonlocal validator_retry_count
+        try:
+            return _validate_bootstrap_keyword_draft(
+                draft,
+                routing_result=routing_result,
+                selected_knowledge_packs=selected_knowledge_packs,
+            )
+        except ModelRetry:
+            validator_retry_count += 1
+            raise
+
     packet = json.dumps(
         {
             "requirement_sheet": requirement_sheet.model_dump(mode="json"),
             "routing_result": routing_result.model_dump(mode="json"),
-            "selected_knowledge_pack": (
-                None if selected_knowledge_pack is None else selected_knowledge_pack.model_dump(mode="json")
-            ),
+            "selected_knowledge_packs": [
+                pack.model_dump(mode="json")
+                for pack in selected_knowledge_packs
+            ],
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -152,7 +193,61 @@ async def request_bootstrap_keyword_draft(
     return BootstrapKeywordDraft.model_validate(result.output), _audit_snapshot(
         model=model,
         instructions=BOOTSTRAP_KEYWORD_GENERATION_INSTRUCTIONS,
+        validator_retry_count=validator_retry_count,
     )
+
+
+def _validate_bootstrap_keyword_draft(
+    draft: BootstrapKeywordDraft,
+    *,
+    routing_result: BootstrapRoutingResult,
+    selected_knowledge_packs: list[DomainKnowledgePack],
+) -> BootstrapKeywordDraft:
+    if not 5 <= len(draft.candidate_seeds) <= 8:
+        raise ModelRetry("bootstrap candidate_seeds must contain 5-8 items")
+
+    selected_pack_ids = {pack.knowledge_pack_id for pack in selected_knowledge_packs}
+    seen_intents = {seed.intent_type for seed in draft.candidate_seeds}
+    if "core_precision" not in seen_intents:
+        raise ModelRetry("bootstrap candidate_seeds must include core_precision")
+    if "relaxed_floor" not in seen_intents:
+        raise ModelRetry("bootstrap candidate_seeds must include relaxed_floor")
+
+    for seed in draft.candidate_seeds:
+        if not _normalized_keywords(seed.keywords):
+            raise ModelRetry("bootstrap seed keywords must be materializable")
+        source_pack_ids = stable_deduplicate(list(seed.source_knowledge_pack_ids))
+        if any(pack_id not in selected_pack_ids for pack_id in source_pack_ids):
+            raise ModelRetry("bootstrap seed source_knowledge_pack_ids must be selected packs")
+        if routing_result.routing_mode == "generic_fallback":
+            if seed.intent_type in {"pack_expansion", "cross_pack_bridge"}:
+                raise ModelRetry("generic fallback cannot emit pack expansion intents")
+            if source_pack_ids:
+                raise ModelRetry("generic fallback cannot reference knowledge packs")
+        elif routing_result.routing_mode in {"explicit_pack", "inferred_single_pack"}:
+            if seed.intent_type == "cross_pack_bridge":
+                raise ModelRetry("single-pack routing cannot emit cross_pack_bridge")
+            if seed.intent_type == "pack_expansion" and len(source_pack_ids) != 1:
+                raise ModelRetry("single-pack pack_expansion must reference exactly one pack")
+        elif routing_result.routing_mode == "inferred_multi_pack":
+            if seed.intent_type == "cross_pack_bridge" and len(source_pack_ids) != 2:
+                raise ModelRetry("multi-pack cross_pack_bridge must reference exactly two packs")
+
+    if routing_result.routing_mode == "generic_fallback" and "generic_expansion" not in seen_intents:
+        raise ModelRetry("generic fallback must include generic_expansion")
+    if routing_result.routing_mode in {"explicit_pack", "inferred_single_pack"} and "pack_expansion" not in seen_intents:
+        raise ModelRetry("single-pack routing must include pack_expansion")
+    if routing_result.routing_mode == "inferred_multi_pack":
+        if "pack_expansion" not in seen_intents:
+            raise ModelRetry("multi-pack routing must include pack_expansion")
+        if "cross_pack_bridge" not in seen_intents:
+            raise ModelRetry("multi-pack routing must include cross_pack_bridge")
+
+    return draft
+
+
+def _normalized_keywords(keywords: list[str]) -> list[str]:
+    return stable_deduplicate(list(keywords))[:4]
 
 
 __all__ = [

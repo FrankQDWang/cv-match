@@ -8,9 +8,22 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 ConstraintValue = str | int | list[str]
-RoutingMode = Literal["explicit_domain", "inferred_domain", "generic_fallback"]
-Round0OperatorName = Literal["must_have_alias", "strict_core", "domain_company"]
-OperatorName = Literal["must_have_alias", "strict_core", "domain_company", "crossover_compose"]
+RoutingMode = Literal[
+    "explicit_pack",
+    "inferred_single_pack",
+    "inferred_multi_pack",
+    "generic_fallback",
+]
+SeedIntentType = Literal[
+    "core_precision",
+    "must_have_alias",
+    "relaxed_floor",
+    "pack_expansion",
+    "cross_pack_bridge",
+    "generic_expansion",
+]
+Round0OperatorName = Literal["must_have_alias", "strict_core", "domain_expansion"]
+OperatorName = Literal["must_have_alias", "strict_core", "domain_expansion", "crossover_compose"]
 SearchControllerAction = Literal["search_cts", "stop"]
 
 
@@ -215,18 +228,25 @@ class FrontierSeedSpecification(BaseModel):
     operator_name: Round0OperatorName
     seed_terms: list[str] = Field(default_factory=list)
     seed_rationale: str
-    knowledge_pack_id: str | None = None
+    knowledge_pack_ids: list[str] = Field(default_factory=list)
     expected_coverage: list[str] = Field(default_factory=list)
     negative_terms: list[str] = Field(default_factory=list)
     target_location: str | None = None
 
 
+class SeedIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    intent_type: SeedIntentType
+    keywords: list[str] = Field(default_factory=list)
+    source_knowledge_pack_ids: list[str] = Field(default_factory=list)
+    reasoning: str
+
+
 class BootstrapKeywordDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    core_keywords: list[str] = Field(default_factory=list)
-    must_have_keywords: list[str] = Field(default_factory=list)
-    expansion_keywords: list[str] = Field(default_factory=list)
+    candidate_seeds: list[SeedIntent] = Field(default_factory=list)
     negative_keywords: list[str] = Field(default_factory=list)
 
 
@@ -234,7 +254,7 @@ class BootstrapRoutingResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     routing_mode: RoutingMode
-    selected_knowledge_pack_id: str | None = None
+    selected_knowledge_pack_ids: list[str] = Field(default_factory=list)
     routing_confidence: float = Field(ge=0.0, le=1.0)
     fallback_reason: str | None = None
     pack_scores: dict[str, float] = Field(default_factory=dict)
@@ -297,7 +317,7 @@ class FrontierNode_t(BaseModel):
     donor_frontier_node_id: str | None = None
     selected_operator_name: OperatorName
     node_query_term_pool: list[str] = Field(default_factory=list)
-    knowledge_pack_id: str | None = None
+    knowledge_pack_ids: list[str] = Field(default_factory=list)
     seed_rationale: str | None = None
     negative_terms: list[str] = Field(default_factory=list)
     parent_shortlist_candidate_ids: list[str] = Field(default_factory=list)
@@ -453,7 +473,7 @@ class SearchExecutionPlan_t(BaseModel):
     runtime_only_constraints: RuntimeOnlyConstraints = Field(default_factory=RuntimeOnlyConstraints)
     target_new_candidate_count: int
     semantic_hash: str
-    knowledge_pack_id: str | None = None
+    knowledge_pack_ids: list[str] = Field(default_factory=list)
     child_frontier_node_stub: ChildFrontierNodeStub
     derived_position: str | None = None
     derived_work_content: str | None = None

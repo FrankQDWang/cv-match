@@ -40,9 +40,38 @@ def _requirement_draft_payload() -> dict[str, object]:
 
 def _bootstrap_keyword_draft_payload() -> dict[str, object]:
     return {
-        "core_keywords": ["agent engineer", "rag", "python backend"],
-        "must_have_keywords": ["llm application", "retrieval pipeline"],
-        "expansion_keywords": ["workflow orchestration", "tool calling"],
+        "candidate_seeds": [
+            {
+                "intent_type": "core_precision",
+                "keywords": ["agent engineer", "rag", "python backend"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "anchor the route",
+            },
+            {
+                "intent_type": "must_have_alias",
+                "keywords": ["llm application", "retrieval pipeline"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "cover aliases",
+            },
+            {
+                "intent_type": "relaxed_floor",
+                "keywords": ["python backend", "retrieval"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "widen recall",
+            },
+            {
+                "intent_type": "pack_expansion",
+                "keywords": ["workflow orchestration", "tool calling"],
+                "source_knowledge_pack_ids": ["llm_agent_rag_engineering"],
+                "reasoning": "use pack hints",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["backend engineer", "agent workflow"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "extra route",
+            },
+        ],
         "negative_keywords": ["frontend"],
     }
 
@@ -188,7 +217,7 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
         )
     )
 
-    assert result.bootstrap.routing_result.routing_mode == "inferred_domain"
+    assert result.bootstrap.routing_result.routing_mode == "inferred_single_pack"
     assert result.final_result.stop_reason == "controller_stop"
     assert result.final_result.final_shortlist_candidate_ids == ["candidate-1"]
     assert result.rounds[0].runtime_audit_tags == {"candidate-1": ["ranking"]}

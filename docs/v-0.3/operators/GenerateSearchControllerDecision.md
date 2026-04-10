@@ -179,7 +179,7 @@ max_additional_terms_t =
 - `controller_prompt_t` 是控制器真正看到的 prompt payload；它不再读取整份 frontier。
 - `target_frontier_node_id` 不接受 LLM 自由改写，固定绑定当前 active node。
 - `donor_frontier_node_id` 只能来自 runtime 打包的 donor candidate 列表。
-- generic provenance 下即使 LLM 提议 `domain_company`，也会因 `allowed_operator_names_t` 白名单而被 runtime 回退。
+- generic provenance 下即使 LLM 提议 `domain_expansion`，也会因 `allowed_operator_names_t` 白名单而被 runtime 回退。
 
 ## 相关
 

@@ -45,9 +45,9 @@ pack_score =
 
 #### 路由置信度
 
-- `explicit_domain = 1.0`
-- 单领域 `inferred_domain = 0.8`
-- 双领域 `inferred_domain = 0.7`
+- `explicit_pack = 1.0`
+- 单领域 `inferred_single_pack = 0.8`
+- 双领域 `inferred_single_pack = 0.7`
 - `generic_fallback = 0.3`
 
 #### 领域卡排序 `card_score`
@@ -177,7 +177,7 @@ owner: [[KnowledgeRetrievalBudget]]
 
 ```yaml
 max_cards: 8
-max_inferred_domain_packs: 2
+max_inferred_single_pack_packs: 2
 ```
 
 ### 3.2 Search Budget

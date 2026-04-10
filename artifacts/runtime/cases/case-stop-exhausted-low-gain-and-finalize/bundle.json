@@ -94,8 +94,10 @@
       }
     },
     "routing_result": {
-      "routing_mode": "inferred_domain",
-      "selected_knowledge_pack_id": "llm_agent_rag_engineering",
+      "routing_mode": "inferred_single_pack",
+      "selected_knowledge_pack_ids": [
+        "llm_agent_rag_engineering"
+      ],
       "routing_confidence": 0.6224593312018546,
       "fallback_reason": null,
       "pack_scores": {
@@ -157,7 +159,7 @@
       "output_retries": 1,
       "validator_retry_count": 0,
       "model_name": "test",
-      "instruction_id_or_hash": "fe8e7b2591f4b79b66fd9e6bb9b0a6bbc20a8bc3",
+      "instruction_id_or_hash": "5960ba82d6c35310ddb1e093883a442e18d686dd",
       "message_history_mode": "fresh",
       "tools_enabled": false,
       "model_settings_snapshot": {
@@ -171,14 +173,18 @@
         {
           "operator_name": "strict_core",
           "seed_terms": [
-            "Senior Python / LLM Engineer",
             "agent engineer",
             "rag",
             "python backend"
           ],
-          "seed_rationale": "role_title_plus_core_keywords",
-          "knowledge_pack_id": "llm_agent_rag_engineering",
-          "expected_coverage": [],
+          "seed_rationale": "00:core_precision",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "expected_coverage": [
+            "workflow orchestration",
+            "tool calling"
+          ],
           "negative_terms": [
             "frontend",
             "prompt operation",
@@ -189,16 +195,81 @@
         {
           "operator_name": "must_have_alias",
           "seed_terms": [
-            "Python backend",
-            "LLM application",
-            "retrieval pipeline"
+            "python backend",
+            "retrieval"
           ],
-          "seed_rationale": "must_have_plus_keyword_hints",
-          "knowledge_pack_id": "llm_agent_rag_engineering",
+          "seed_rationale": "02:relaxed_floor",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
           "expected_coverage": [
             "Python backend",
             "LLM application",
             "retrieval pipeline"
+          ],
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "domain_expansion",
+          "seed_terms": [
+            "workflow orchestration",
+            "tool calling"
+          ],
+          "seed_rationale": "03:pack_expansion",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "expected_coverage": [
+            "workflow orchestration",
+            "tool calling"
+          ],
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "must_have_alias",
+          "seed_terms": [
+            "llm application",
+            "retrieval pipeline"
+          ],
+          "seed_rationale": "01:must_have_alias",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "expected_coverage": [
+            "Python backend",
+            "LLM application",
+            "retrieval pipeline"
+          ],
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "strict_core",
+          "seed_terms": [
+            "backend engineer",
+            "agent workflow"
+          ],
+          "seed_rationale": "04:generic_expansion",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "expected_coverage": [
+            "workflow orchestration",
+            "tool calling"
           ],
           "negative_terms": [
             "frontend",
@@ -211,19 +282,20 @@
     },
     "frontier_state": {
       "frontier_nodes": {
-        "seed_strict_core_c9cd9c88": {
-          "frontier_node_id": "seed_strict_core_c9cd9c88",
+        "seed_strict_core_23dd2b51": {
+          "frontier_node_id": "seed_strict_core_23dd2b51",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "strict_core",
           "node_query_term_pool": [
-            "Senior Python / LLM Engineer",
             "agent engineer",
             "rag",
             "python backend"
           ],
-          "knowledge_pack_id": "llm_agent_rag_engineering",
-          "seed_rationale": "role_title_plus_core_keywords",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "seed_rationale": "00:core_precision",
           "negative_terms": [
             "frontend",
             "prompt operation",
@@ -236,18 +308,94 @@
           "reward_breakdown": null,
           "status": "open"
         },
-        "seed_must_have_alias_e79396f2": {
-          "frontier_node_id": "seed_must_have_alias_e79396f2",
+        "seed_must_have_alias_72461842": {
+          "frontier_node_id": "seed_must_have_alias_72461842",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "must_have_alias",
           "node_query_term_pool": [
-            "Python backend",
-            "LLM application",
+            "python backend",
+            "retrieval"
+          ],
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "seed_rationale": "02:relaxed_floor",
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_domain_expansion_0d92f929": {
+          "frontier_node_id": "seed_domain_expansion_0d92f929",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "domain_expansion",
+          "node_query_term_pool": [
+            "workflow orchestration",
+            "tool calling"
+          ],
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "seed_rationale": "03:pack_expansion",
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_must_have_alias_6b90971a": {
+          "frontier_node_id": "seed_must_have_alias_6b90971a",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "must_have_alias",
+          "node_query_term_pool": [
+            "llm application",
             "retrieval pipeline"
           ],
-          "knowledge_pack_id": "llm_agent_rag_engineering",
-          "seed_rationale": "must_have_plus_keyword_hints",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "seed_rationale": "01:must_have_alias",
+          "negative_terms": [
+            "frontend",
+            "prompt operation",
+            "pure algorithm research"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_strict_core_bcfcab3b": {
+          "frontier_node_id": "seed_strict_core_bcfcab3b",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "backend engineer",
+            "agent workflow"
+          ],
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "seed_rationale": "04:generic_expansion",
           "negative_terms": [
             "frontend",
             "prompt operation",
@@ -262,17 +410,24 @@
         }
       },
       "open_frontier_node_ids": [
-        "seed_strict_core_c9cd9c88",
-        "seed_must_have_alias_e79396f2"
+        "seed_strict_core_23dd2b51",
+        "seed_must_have_alias_72461842",
+        "seed_domain_expansion_0d92f929",
+        "seed_must_have_alias_6b90971a",
+        "seed_strict_core_bcfcab3b"
       ],
       "closed_frontier_node_ids": [],
       "run_term_catalog": [
-        "Senior Python / LLM Engineer",
         "agent engineer",
         "rag",
         "python backend",
-        "LLM application",
-        "retrieval pipeline"
+        "retrieval",
+        "workflow orchestration",
+        "tool calling",
+        "llm application",
+        "retrieval pipeline",
+        "backend engineer",
+        "agent workflow"
       ],
       "run_shortlist_candidate_ids": [],
       "semantic_hashes_seen": [],
@@ -285,7 +440,7 @@
           "average_reward": 0.0,
           "times_selected": 0
         },
-        "domain_company": {
+        "domain_expansion": {
           "average_reward": 0.0,
           "times_selected": 0
         },
@@ -302,19 +457,20 @@
       "runtime_round_index": 0,
       "frontier_state_before": {
         "frontier_nodes": {
-          "seed_strict_core_c9cd9c88": {
-            "frontier_node_id": "seed_strict_core_c9cd9c88",
+          "seed_strict_core_23dd2b51": {
+            "frontier_node_id": "seed_strict_core_23dd2b51",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "strict_core",
             "node_query_term_pool": [
-              "Senior Python / LLM Engineer",
               "agent engineer",
               "rag",
               "python backend"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "role_title_plus_core_keywords",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "00:core_precision",
             "negative_terms": [
               "frontend",
               "prompt operation",
@@ -327,18 +483,94 @@
             "reward_breakdown": null,
             "status": "open"
           },
-          "seed_must_have_alias_e79396f2": {
-            "frontier_node_id": "seed_must_have_alias_e79396f2",
+          "seed_must_have_alias_72461842": {
+            "frontier_node_id": "seed_must_have_alias_72461842",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
             "node_query_term_pool": [
-              "Python backend",
-              "LLM application",
+              "python backend",
+              "retrieval"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "02:relaxed_floor",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_domain_expansion_0d92f929": {
+            "frontier_node_id": "seed_domain_expansion_0d92f929",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "domain_expansion",
+            "node_query_term_pool": [
+              "workflow orchestration",
+              "tool calling"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "03:pack_expansion",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_must_have_alias_6b90971a": {
+            "frontier_node_id": "seed_must_have_alias_6b90971a",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "llm application",
               "retrieval pipeline"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "must_have_plus_keyword_hints",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "01:must_have_alias",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_strict_core_bcfcab3b": {
+            "frontier_node_id": "seed_strict_core_bcfcab3b",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "backend engineer",
+              "agent workflow"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "04:generic_expansion",
             "negative_terms": [
               "frontend",
               "prompt operation",
@@ -353,17 +585,24 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_strict_core_c9cd9c88",
-          "seed_must_have_alias_e79396f2"
+          "seed_strict_core_23dd2b51",
+          "seed_must_have_alias_72461842",
+          "seed_domain_expansion_0d92f929",
+          "seed_must_have_alias_6b90971a",
+          "seed_strict_core_bcfcab3b"
         ],
         "closed_frontier_node_ids": [],
         "run_term_catalog": [
-          "Senior Python / LLM Engineer",
           "agent engineer",
           "rag",
           "python backend",
-          "LLM application",
-          "retrieval pipeline"
+          "retrieval",
+          "workflow orchestration",
+          "tool calling",
+          "llm application",
+          "retrieval pipeline",
+          "backend engineer",
+          "agent workflow"
         ],
         "run_shortlist_candidate_ids": [],
         "semantic_hashes_seen": [],
@@ -376,7 +615,7 @@
             "average_reward": 0.0,
             "times_selected": 0
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -389,10 +628,9 @@
       },
       "controller_context": {
         "active_frontier_node_summary": {
-          "frontier_node_id": "seed_strict_core_c9cd9c88",
+          "frontier_node_id": "seed_strict_core_23dd2b51",
           "selected_operator_name": "strict_core",
           "node_query_term_pool": [
-            "Senior Python / LLM Engineer",
             "agent engineer",
             "rag",
             "python backend"
@@ -401,7 +639,7 @@
         },
         "donor_candidate_node_summaries": [],
         "frontier_head_summary": {
-          "open_node_count": 2,
+          "open_node_count": 5,
           "remaining_budget": 5,
           "highest_priority_score": 3.6999999999999997
         },
@@ -428,7 +666,7 @@
             "average_reward": 0.0,
             "times_selected": 0
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -440,7 +678,7 @@
         "allowed_operator_names": [
           "must_have_alias",
           "strict_core",
-          "domain_company",
+          "domain_expansion",
           "crossover_compose"
         ],
         "term_budget_range": [
@@ -488,7 +726,7 @@
       },
       "controller_decision": {
         "action": "search_cts",
-        "target_frontier_node_id": "seed_strict_core_c9cd9c88",
+        "target_frontier_node_id": "seed_strict_core_23dd2b51",
         "selected_operator_name": "strict_core",
         "operator_args": {
           "additional_terms": [
@@ -499,7 +737,6 @@
       },
       "execution_plan": {
         "query_terms": [
-          "Senior Python / LLM Engineer",
           "agent engineer",
           "rag",
           "python backend",
@@ -524,7 +761,6 @@
             "Python backend",
             "LLM application",
             "retrieval pipeline",
-            "Senior Python / LLM Engineer",
             "agent engineer",
             "rag",
             "ranking"
@@ -536,11 +772,13 @@
           ]
         },
         "target_new_candidate_count": 10,
-        "semantic_hash": "8a166b22b4f2280c3d99cb784eae5babae71d3a9",
-        "knowledge_pack_id": "llm_agent_rag_engineering",
+        "semantic_hash": "a9a466e681ea622026a591aa4b83ea3617c08f6f",
+        "knowledge_pack_ids": [
+          "llm_agent_rag_engineering"
+        ],
         "child_frontier_node_stub": {
-          "frontier_node_id": "child_seed_strict_core_c9cd9c88_8a166b22",
-          "parent_frontier_node_id": "seed_strict_core_c9cd9c88",
+          "frontier_node_id": "child_seed_strict_core_23dd2b51_a9a466e6",
+          "parent_frontier_node_id": "seed_strict_core_23dd2b51",
           "donor_frontier_node_id": null,
           "selected_operator_name": "strict_core"
         },
@@ -614,19 +852,20 @@
       },
       "frontier_state_after": {
         "frontier_nodes": {
-          "seed_strict_core_c9cd9c88": {
-            "frontier_node_id": "seed_strict_core_c9cd9c88",
+          "seed_strict_core_23dd2b51": {
+            "frontier_node_id": "seed_strict_core_23dd2b51",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "strict_core",
             "node_query_term_pool": [
-              "Senior Python / LLM Engineer",
               "agent engineer",
               "rag",
               "python backend"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "role_title_plus_core_keywords",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "00:core_precision",
             "negative_terms": [
               "frontend",
               "prompt operation",
@@ -639,18 +878,19 @@
             "reward_breakdown": null,
             "status": "closed"
           },
-          "seed_must_have_alias_e79396f2": {
-            "frontier_node_id": "seed_must_have_alias_e79396f2",
+          "seed_must_have_alias_72461842": {
+            "frontier_node_id": "seed_must_have_alias_72461842",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
             "node_query_term_pool": [
-              "Python backend",
-              "LLM application",
-              "retrieval pipeline"
+              "python backend",
+              "retrieval"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "must_have_plus_keyword_hints",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "02:relaxed_floor",
             "negative_terms": [
               "frontend",
               "prompt operation",
@@ -663,19 +903,95 @@
             "reward_breakdown": null,
             "status": "open"
           },
-          "child_seed_strict_core_c9cd9c88_8a166b22": {
-            "frontier_node_id": "child_seed_strict_core_c9cd9c88_8a166b22",
-            "parent_frontier_node_id": "seed_strict_core_c9cd9c88",
+          "seed_domain_expansion_0d92f929": {
+            "frontier_node_id": "seed_domain_expansion_0d92f929",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "domain_expansion",
+            "node_query_term_pool": [
+              "workflow orchestration",
+              "tool calling"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "03:pack_expansion",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_must_have_alias_6b90971a": {
+            "frontier_node_id": "seed_must_have_alias_6b90971a",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "must_have_alias",
+            "node_query_term_pool": [
+              "llm application",
+              "retrieval pipeline"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "01:must_have_alias",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_strict_core_bcfcab3b": {
+            "frontier_node_id": "seed_strict_core_bcfcab3b",
+            "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "strict_core",
             "node_query_term_pool": [
-              "Senior Python / LLM Engineer",
+              "backend engineer",
+              "agent workflow"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "04:generic_expansion",
+            "negative_terms": [
+              "frontend",
+              "prompt operation",
+              "pure algorithm research"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "child_seed_strict_core_23dd2b51_a9a466e6": {
+            "frontier_node_id": "child_seed_strict_core_23dd2b51_a9a466e6",
+            "parent_frontier_node_id": "seed_strict_core_23dd2b51",
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
               "agent engineer",
               "rag",
               "python backend",
               "ranking"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
             "seed_rationale": null,
             "negative_terms": [
               "frontend",
@@ -709,24 +1025,31 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_must_have_alias_e79396f2"
+          "seed_must_have_alias_72461842",
+          "seed_domain_expansion_0d92f929",
+          "seed_must_have_alias_6b90971a",
+          "seed_strict_core_bcfcab3b"
         ],
         "closed_frontier_node_ids": [
-          "seed_strict_core_c9cd9c88",
-          "child_seed_strict_core_c9cd9c88_8a166b22"
+          "seed_strict_core_23dd2b51",
+          "child_seed_strict_core_23dd2b51_a9a466e6"
         ],
         "run_term_catalog": [
-          "Senior Python / LLM Engineer",
           "agent engineer",
           "rag",
           "python backend",
-          "LLM application",
+          "retrieval",
+          "workflow orchestration",
+          "tool calling",
+          "llm application",
           "retrieval pipeline",
+          "backend engineer",
+          "agent workflow",
           "ranking"
         ],
         "run_shortlist_candidate_ids": [],
         "semantic_hashes_seen": [
-          "8a166b22b4f2280c3d99cb784eae5babae71d3a9"
+          "a9a466e681ea622026a591aa4b83ea3617c08f6f"
         ],
         "operator_statistics": {
           "must_have_alias": {
@@ -737,7 +1060,7 @@
             "average_reward": 0.1,
             "times_selected": 1
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -778,11 +1101,13 @@
     "metrics": [
       {
         "name": "routing_mode",
-        "value": "inferred_domain"
+        "value": "inferred_single_pack"
       },
       {
-        "name": "selected_knowledge_pack_id",
-        "value": "llm_agent_rag_engineering"
+        "name": "selected_knowledge_pack_ids",
+        "value": [
+          "llm_agent_rag_engineering"
+        ]
       },
       {
         "name": "routing_confidence",

@@ -1,21 +1,24 @@
 {
-  "case_id": "case-bootstrap-ambiguous-close-score-generic",
-  "scenario": "接近分数触发 generic",
+  "case_id": "case-bootstrap-inferred-single-pack",
+  "scenario": "单领域 top1 路由",
   "experiment_id": "E5",
-  "expected_route": "generic_fallback",
-  "observed_route": "generic_fallback",
+  "expected_route": "inferred_single_pack",
+  "observed_route": "inferred_single_pack",
   "expected_stop_reason": "controller_stop",
   "observed_stop_reason": "controller_stop",
-  "expected_knowledge_pack_id": null,
-  "observed_knowledge_pack_id": null,
-  "expected_fallback_reason": "top1_top2_gap_below_floor",
-  "observed_fallback_reason": "top1_top2_gap_below_floor",
+  "expected_knowledge_pack_ids": [
+    "llm_agent_rag_engineering"
+  ],
+  "observed_knowledge_pack_ids": [
+    "llm_agent_rag_engineering"
+  ],
+  "expected_fallback_reason": null,
+  "observed_fallback_reason": null,
   "must_hold": [
-    "fallback_reason is top1_top2_gap_below_floor",
-    "selected_knowledge_pack_id is null"
+    "selected_knowledge_pack_ids contains llm_agent_rag_engineering"
   ],
   "must_not_hold": [
-    "domain_company appears in bootstrap seeds"
+    "routing_mode = generic_fallback"
   ],
   "metrics": [
     {
@@ -23,7 +26,7 @@
       "value": true
     },
     {
-      "name": "selected_pack_match",
+      "name": "selected_packs_match",
       "value": true
     },
     {
@@ -32,7 +35,7 @@
     },
     {
       "name": "include_keyword_adoption",
-      "value": 0.0
+      "value": 1.0
     },
     {
       "name": "exclude_keyword_leak",

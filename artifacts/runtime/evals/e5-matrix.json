@@ -1,19 +1,23 @@
 [
   {
-    "case_id": "case-bootstrap-explicit-domain",
-    "scenario": "显式领域 bootstrap",
+    "case_id": "case-bootstrap-explicit-pack",
+    "scenario": "显式 pack bootstrap",
     "experiment_id": "E5",
-    "expected_route": "explicit_domain",
-    "observed_route": "explicit_domain",
+    "expected_route": "explicit_pack",
+    "observed_route": "explicit_pack",
     "expected_stop_reason": "controller_stop",
     "observed_stop_reason": "controller_stop",
-    "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-    "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+    "expected_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
+    "observed_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
-      "selected_knowledge_pack_id is llm_agent_rag_engineering",
-      "domain_company remains legal in bootstrap"
+      "selected_knowledge_pack_ids contains llm_agent_rag_engineering",
+      "domain_expansion remains legal in bootstrap"
     ],
     "must_not_hold": [
       "routing_mode = generic_fallback"
@@ -24,7 +28,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -50,19 +54,23 @@
     ]
   },
   {
-    "case_id": "case-bootstrap-inferred-top1",
+    "case_id": "case-bootstrap-inferred-single-pack",
     "scenario": "单领域 top1 路由",
     "experiment_id": "E5",
-    "expected_route": "inferred_domain",
-    "observed_route": "inferred_domain",
+    "expected_route": "inferred_single_pack",
+    "observed_route": "inferred_single_pack",
     "expected_stop_reason": "controller_stop",
     "observed_stop_reason": "controller_stop",
-    "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-    "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+    "expected_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
+    "observed_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
-      "selected_knowledge_pack_id is llm_agent_rag_engineering"
+      "selected_knowledge_pack_ids contains llm_agent_rag_engineering"
     ],
     "must_not_hold": [
       "routing_mode = generic_fallback"
@@ -73,7 +81,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -99,23 +107,29 @@
     ]
   },
   {
-    "case_id": "case-bootstrap-ambiguous-close-score-generic",
-    "scenario": "接近分数触发 generic",
+    "case_id": "case-bootstrap-close-high-score-multi-pack",
+    "scenario": "接近高分触发 multi-pack",
     "experiment_id": "E5",
-    "expected_route": "generic_fallback",
-    "observed_route": "generic_fallback",
+    "expected_route": "inferred_multi_pack",
+    "observed_route": "inferred_multi_pack",
     "expected_stop_reason": "controller_stop",
     "observed_stop_reason": "controller_stop",
-    "expected_knowledge_pack_id": null,
-    "observed_knowledge_pack_id": null,
-    "expected_fallback_reason": "top1_top2_gap_below_floor",
-    "observed_fallback_reason": "top1_top2_gap_below_floor",
+    "expected_knowledge_pack_ids": [
+      "llm_agent_rag_engineering",
+      "search_ranking_retrieval_engineering"
+    ],
+    "observed_knowledge_pack_ids": [
+      "llm_agent_rag_engineering",
+      "search_ranking_retrieval_engineering"
+    ],
+    "expected_fallback_reason": null,
+    "observed_fallback_reason": null,
     "must_hold": [
-      "fallback_reason is top1_top2_gap_below_floor",
-      "selected_knowledge_pack_id is null"
+      "selected_knowledge_pack_ids contains llm_agent_rag_engineering",
+      "selected_knowledge_pack_ids contains search_ranking_retrieval_engineering"
     ],
     "must_not_hold": [
-      "domain_company appears in bootstrap seeds"
+      "routing_mode = generic_fallback"
     ],
     "metrics": [
       {
@@ -123,7 +137,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -132,7 +146,7 @@
       },
       {
         "name": "include_keyword_adoption",
-        "value": 0.0
+        "value": 0.5833333333333334
       },
       {
         "name": "exclude_keyword_leak",
@@ -156,16 +170,16 @@
     "observed_route": "generic_fallback",
     "expected_stop_reason": "controller_stop",
     "observed_stop_reason": "controller_stop",
-    "expected_knowledge_pack_id": null,
-    "observed_knowledge_pack_id": null,
+    "expected_knowledge_pack_ids": [],
+    "observed_knowledge_pack_ids": [],
     "expected_fallback_reason": "top1_confidence_below_floor",
     "observed_fallback_reason": "top1_confidence_below_floor",
     "must_hold": [
       "fallback_reason is top1_confidence_below_floor",
-      "selected_knowledge_pack_id is null"
+      "selected_knowledge_pack_ids is empty"
     ],
     "must_not_hold": [
-      "routing_mode = inferred_domain"
+      "routing_mode = inferred_single_pack"
     ],
     "metrics": [
       {
@@ -173,7 +187,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -202,12 +216,16 @@
     "case_id": "case-crossover-legal",
     "scenario": "合法 crossover",
     "experiment_id": "E5",
-    "expected_route": "inferred_domain",
-    "observed_route": "inferred_domain",
+    "expected_route": "inferred_single_pack",
+    "observed_route": "inferred_single_pack",
     "expected_stop_reason": "controller_stop",
     "observed_stop_reason": "controller_stop",
-    "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-    "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+    "expected_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
+    "observed_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
@@ -222,7 +240,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -231,7 +249,7 @@
       },
       {
         "name": "include_keyword_adoption",
-        "value": 0.5
+        "value": 0.6666666666666666
       },
       {
         "name": "exclude_keyword_leak",
@@ -251,12 +269,16 @@
     "case_id": "case-crossover-illegal-reject",
     "scenario": "非法 crossover 拒绝",
     "experiment_id": "E5",
-    "expected_route": "inferred_domain",
-    "observed_route": "inferred_domain",
+    "expected_route": "inferred_single_pack",
+    "observed_route": "inferred_single_pack",
     "expected_stop_reason": "controller_stop",
     "observed_stop_reason": "controller_stop",
-    "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-    "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+    "expected_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
+    "observed_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
@@ -271,7 +293,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -280,7 +302,7 @@
       },
       {
         "name": "include_keyword_adoption",
-        "value": 0.5
+        "value": 0.6666666666666666
       },
       {
         "name": "exclude_keyword_leak",
@@ -300,12 +322,16 @@
     "case_id": "case-stop-controller-direct-accepted",
     "scenario": "controller stop 直接接受",
     "experiment_id": "E5",
-    "expected_route": "inferred_domain",
-    "observed_route": "inferred_domain",
+    "expected_route": "inferred_single_pack",
+    "observed_route": "inferred_single_pack",
     "expected_stop_reason": "controller_stop",
     "observed_stop_reason": "controller_stop",
-    "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-    "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+    "expected_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
+    "observed_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
@@ -320,7 +346,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -329,7 +355,7 @@
       },
       {
         "name": "include_keyword_adoption",
-        "value": 0.6666666666666666
+        "value": 1.0
       },
       {
         "name": "exclude_keyword_leak",
@@ -349,12 +375,16 @@
     "case_id": "case-stop-controller-direct-rejected",
     "scenario": "controller stop 先拒绝后接受",
     "experiment_id": "E5",
-    "expected_route": "inferred_domain",
-    "observed_route": "inferred_domain",
+    "expected_route": "inferred_single_pack",
+    "observed_route": "inferred_single_pack",
     "expected_stop_reason": "controller_stop",
     "observed_stop_reason": "controller_stop",
-    "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-    "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+    "expected_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
+    "observed_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
@@ -370,7 +400,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -379,7 +409,7 @@
       },
       {
         "name": "include_keyword_adoption",
-        "value": 0.6666666666666666
+        "value": 1.0
       },
       {
         "name": "exclude_keyword_leak",
@@ -399,12 +429,16 @@
     "case_id": "case-stop-exhausted-low-gain-and-finalize",
     "scenario": "低增益 exhausted finalize",
     "experiment_id": "E5",
-    "expected_route": "inferred_domain",
-    "observed_route": "inferred_domain",
+    "expected_route": "inferred_single_pack",
+    "observed_route": "inferred_single_pack",
     "expected_stop_reason": "exhausted_low_gain",
     "observed_stop_reason": "exhausted_low_gain",
-    "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-    "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+    "expected_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
+    "observed_knowledge_pack_ids": [
+      "llm_agent_rag_engineering"
+    ],
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
@@ -419,7 +453,7 @@
         "value": true
       },
       {
-        "name": "selected_pack_match",
+        "name": "selected_packs_match",
         "value": true
       },
       {
@@ -428,7 +462,7 @@
       },
       {
         "name": "include_keyword_adoption",
-        "value": 0.6666666666666666
+        "value": 1.0
       },
       {
         "name": "exclude_keyword_leak",

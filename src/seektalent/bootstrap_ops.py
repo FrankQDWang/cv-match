@@ -26,7 +26,7 @@ from seektalent.models import (
 )
 from seektalent_rerank.models import RerankDocument, RerankRequest, RerankResponse
 
-ROUND0_OPERATORS = {"must_have_alias", "strict_core", "domain_company"}
+ROUND0_OPERATORS = {"must_have_alias", "strict_core", "domain_expansion"}
 DEGREE_RANK = {
     "大专及以上": 1,
     "本科及以上": 2,
@@ -34,11 +34,26 @@ DEGREE_RANK = {
     "博士及以上": 4,
 }
 ROUTING_CONFIDENCE_FLOOR = 0.55
-ROUTING_AMBIGUITY_GAP = 0.08
+ROUTING_MULTI_PACK_GAP = 0.08
+MAX_ROUTED_PACKS = 2
 ROUTING_INSTRUCTION = (
     "Rank domain knowledge packs for round-0 bootstrap relevance. "
     "Prefer the pack whose context best matches the hiring requirement."
 )
+FINAL_SEED_COUNTS = {
+    "generic_fallback": 4,
+    "explicit_pack": 5,
+    "inferred_single_pack": 5,
+    "inferred_multi_pack": 5,
+}
+INTENT_OPERATOR_MAP = {
+    "core_precision": "strict_core",
+    "must_have_alias": "must_have_alias",
+    "relaxed_floor": "must_have_alias",
+    "pack_expansion": "domain_expansion",
+    "cross_pack_bridge": "domain_expansion",
+    "generic_expansion": "strict_core",
+}
 
 
 class AsyncRerankRequest(Protocol):
@@ -59,8 +74,8 @@ async def route_domain_knowledge_pack(
         if selected_pack is None:
             raise ValueError(f"unknown_knowledge_pack_id_override: {override}")
         return BootstrapRoutingResult(
-            routing_mode="explicit_domain",
-            selected_knowledge_pack_id=selected_pack.knowledge_pack_id,
+            routing_mode="explicit_pack",
+            selected_knowledge_pack_ids=[selected_pack.knowledge_pack_id],
             routing_confidence=1.0,
             fallback_reason=None,
             pack_scores={selected_pack.knowledge_pack_id: 1.0},
@@ -94,22 +109,23 @@ async def route_domain_knowledge_pack(
     if top1_score < ROUTING_CONFIDENCE_FLOOR:
         return BootstrapRoutingResult(
             routing_mode="generic_fallback",
-            selected_knowledge_pack_id=None,
+            selected_knowledge_pack_ids=[],
             routing_confidence=top1_score,
             fallback_reason="top1_confidence_below_floor",
             pack_scores=pack_scores,
         )
-    if top1_score - top2_score < ROUTING_AMBIGUITY_GAP:
-        return BootstrapRoutingResult(
-            routing_mode="generic_fallback",
-            selected_knowledge_pack_id=None,
-            routing_confidence=top1_score,
-            fallback_reason="top1_top2_gap_below_floor",
-            pack_scores=pack_scores,
-        )
+    selected_pack_ids = [top1.knowledge_pack_id]
+    routing_mode = "inferred_single_pack"
+    if (
+        len(ranked_packs) > 1
+        and top2_score >= ROUTING_CONFIDENCE_FLOOR
+        and top1_score - top2_score <= ROUTING_MULTI_PACK_GAP
+    ):
+        selected_pack_ids.append(ranked_packs[1].knowledge_pack_id)
+        routing_mode = "inferred_multi_pack"
     return BootstrapRoutingResult(
-        routing_mode="inferred_domain",
-        selected_knowledge_pack_id=top1.knowledge_pack_id,
+        routing_mode=routing_mode,
+        selected_knowledge_pack_ids=selected_pack_ids[:MAX_ROUTED_PACKS],
         routing_confidence=top1_score,
         fallback_reason=None,
         pack_scores=pack_scores,
@@ -202,12 +218,16 @@ def freeze_scoring_policy(
 def generate_bootstrap_output(
     requirement_sheet: RequirementSheet,
     routing_result: BootstrapRoutingResult,
-    selected_knowledge_pack: DomainKnowledgePack | None,
+    selected_knowledge_packs: Sequence[DomainKnowledgePack],
     keyword_draft: BootstrapKeywordDraft,
 ) -> BootstrapOutput:
     negative_terms = stable_deduplicate(
         list(requirement_sheet.exclusion_signals)
-        + ([] if selected_knowledge_pack is None else list(selected_knowledge_pack.exclude_keywords))
+        + [
+            keyword
+            for pack in selected_knowledge_packs
+            for keyword in pack.exclude_keywords
+        ]
         + list(keyword_draft.negative_keywords)
     )
     target_location = (
@@ -215,40 +235,23 @@ def generate_bootstrap_output(
         if len(requirement_sheet.hard_constraints.locations) == 1
         else None
     )
-    seed_specs = [
-        FrontierSeedSpecification(
-            operator_name="strict_core",
-            seed_terms=_bounded_terms([requirement_sheet.role_title, *keyword_draft.core_keywords]),
-            seed_rationale="role_title_plus_core_keywords",
-            knowledge_pack_id=routing_result.selected_knowledge_pack_id,
-            expected_coverage=[],
-            negative_terms=negative_terms,
-            target_location=target_location,
-        ),
-        FrontierSeedSpecification(
-            operator_name="must_have_alias",
-            seed_terms=_bounded_terms(
-                [*requirement_sheet.must_have_capabilities, *keyword_draft.must_have_keywords]
-            ),
-            seed_rationale="must_have_plus_keyword_hints",
-            knowledge_pack_id=routing_result.selected_knowledge_pack_id,
-            expected_coverage=stable_deduplicate(requirement_sheet.must_have_capabilities),
-            negative_terms=negative_terms,
-            target_location=target_location,
-        ),
-    ]
-    if routing_result.routing_mode != "generic_fallback" and keyword_draft.expansion_keywords:
-        seed_specs.append(
-            FrontierSeedSpecification(
-                operator_name="domain_company",
-                seed_terms=_bounded_terms(keyword_draft.expansion_keywords),
-                seed_rationale="domain_expansion_keywords",
-                knowledge_pack_id=routing_result.selected_knowledge_pack_id,
-                expected_coverage=stable_deduplicate(requirement_sheet.preferred_capabilities),
+    candidate_seed_specs = [
+        seed_spec
+        for seed_spec in (
+            _materialize_seed_spec(
+                requirement_sheet,
+                routing_result,
+                intent_index=index,
                 negative_terms=negative_terms,
                 target_location=target_location,
+                selected_knowledge_pack_ids=routing_result.selected_knowledge_pack_ids,
+                candidate_seed=candidate_seed,
             )
+            for index, candidate_seed in enumerate(keyword_draft.candidate_seeds)
         )
+        if seed_spec is not None
+    ]
+    seed_specs = _select_seed_specs(candidate_seed_specs, routing_mode=routing_result.routing_mode)
     return BootstrapOutput(
         frontier_seed_specifications=[
             seed_spec
@@ -272,7 +275,7 @@ def initialize_frontier_state(
                 donor_frontier_node_id=None,
                 selected_operator_name=seed_spec.operator_name,
                 node_query_term_pool=stable_deduplicate(seed_spec.seed_terms),
-                knowledge_pack_id=seed_spec.knowledge_pack_id,
+                knowledge_pack_ids=list(seed_spec.knowledge_pack_ids),
                 seed_rationale=seed_spec.seed_rationale,
                 negative_terms=list(seed_spec.negative_terms),
                 parent_shortlist_candidate_ids=[],
@@ -346,13 +349,146 @@ def _bounded_terms(terms: Sequence[str]) -> list[str]:
     return stable_deduplicate(list(terms))[:4]
 
 
+def _materialize_seed_spec(
+    requirement_sheet: RequirementSheet,
+    routing_result: BootstrapRoutingResult,
+    *,
+    intent_index: int,
+    negative_terms: list[str],
+    target_location: str | None,
+    selected_knowledge_pack_ids: list[str],
+    candidate_seed,
+) -> FrontierSeedSpecification | None:
+    seed_terms = _bounded_terms(list(candidate_seed.keywords))
+    if not seed_terms:
+        return None
+    operator_name = INTENT_OPERATOR_MAP[candidate_seed.intent_type]
+    knowledge_pack_ids = _materialized_pack_ids(
+        routing_result,
+        selected_knowledge_pack_ids=selected_knowledge_pack_ids,
+        source_knowledge_pack_ids=candidate_seed.source_knowledge_pack_ids,
+    )
+    expected_coverage = (
+        stable_deduplicate(requirement_sheet.must_have_capabilities)
+        if candidate_seed.intent_type in {"must_have_alias", "relaxed_floor"}
+        else stable_deduplicate(requirement_sheet.preferred_capabilities)
+    )
+    return FrontierSeedSpecification(
+        operator_name=operator_name,
+        seed_terms=seed_terms,
+        seed_rationale=f"{intent_index:02d}:{candidate_seed.intent_type}",
+        knowledge_pack_ids=knowledge_pack_ids,
+        expected_coverage=expected_coverage,
+        negative_terms=negative_terms,
+        target_location=target_location,
+    )
+
+
+def _materialized_pack_ids(
+    routing_result: BootstrapRoutingResult,
+    *,
+    selected_knowledge_pack_ids: list[str],
+    source_knowledge_pack_ids: list[str],
+) -> list[str]:
+    if routing_result.routing_mode == "generic_fallback":
+        return []
+    source_ids = stable_deduplicate(list(source_knowledge_pack_ids))
+    return source_ids or stable_deduplicate(list(selected_knowledge_pack_ids))
+
+
+def _select_seed_specs(
+    candidate_seed_specs: list[FrontierSeedSpecification],
+    *,
+    routing_mode: str,
+) -> list[FrontierSeedSpecification]:
+    target_count = FINAL_SEED_COUNTS[routing_mode]
+    selected: list[FrontierSeedSpecification] = []
+    forced_rationales = ["core_precision", "relaxed_floor"]
+    if routing_mode == "generic_fallback":
+        forced_rationales.append("generic_expansion")
+    else:
+        forced_rationales.append("pack_expansion")
+    if routing_mode == "inferred_multi_pack":
+        forced_rationales.append("cross_pack_bridge")
+
+    for intent_name in forced_rationales:
+        seed_spec = next(
+            (
+                candidate
+                for candidate in candidate_seed_specs
+                if candidate.seed_rationale.endswith(intent_name)
+            ),
+            None,
+        )
+        if seed_spec is None:
+            raise ValueError(f"missing_required_seed_intent: {intent_name}")
+        if not _has_seed_spec(selected, seed_spec):
+            selected.append(seed_spec)
+
+    while len(selected) < target_count:
+        remaining = [
+            candidate
+            for candidate in candidate_seed_specs
+            if not _has_seed_spec(selected, candidate)
+        ]
+        if not remaining:
+            raise ValueError("insufficient_seed_candidates_after_prune")
+        next_seed = min(
+            remaining,
+            key=lambda candidate: (
+                _max_jaccard_overlap(candidate, selected),
+                _seed_order(candidate),
+            ),
+        )
+        selected.append(next_seed)
+    return selected
+
+
+def _has_seed_spec(
+    selected: Sequence[FrontierSeedSpecification],
+    candidate: FrontierSeedSpecification,
+) -> bool:
+    return any(
+        seed_spec.operator_name == candidate.operator_name
+        and seed_spec.seed_terms == candidate.seed_terms
+        and seed_spec.knowledge_pack_ids == candidate.knowledge_pack_ids
+        for seed_spec in selected
+    )
+
+
+def _max_jaccard_overlap(
+    candidate: FrontierSeedSpecification,
+    selected: Sequence[FrontierSeedSpecification],
+) -> float:
+    if not selected:
+        return 0.0
+    candidate_terms = set(candidate.seed_terms)
+    return max(
+        _jaccard(candidate_terms, set(seed_spec.seed_terms))
+        for seed_spec in selected
+    )
+
+
+def _jaccard(left: set[str], right: set[str]) -> float:
+    union = left | right
+    if not union:
+        return 0.0
+    return len(left & right) / len(union)
+
+
+def _seed_order(seed_spec: FrontierSeedSpecification) -> int:
+    prefix, _, _ = seed_spec.seed_rationale.partition(":")
+    return int(prefix)
+
+
 def _unique_seed_specs(seed_specs: Sequence[FrontierSeedSpecification]) -> list[FrontierSeedSpecification]:
-    seen: set[tuple[str, tuple[str, ...], str | None]] = set()
+    seen: set[tuple[str, tuple[str, ...], tuple[str, ...], str | None]] = set()
     output: list[FrontierSeedSpecification] = []
     for seed_spec in seed_specs:
         key = (
             seed_spec.operator_name,
             tuple(seed_spec.seed_terms),
+            tuple(seed_spec.knowledge_pack_ids),
             seed_spec.target_location,
         )
         if key in seen:
@@ -366,6 +502,7 @@ def _seed_id(seed_spec: FrontierSeedSpecification) -> str:
     digest = sha1(
         json.dumps(
             {
+                "knowledge_pack_ids": seed_spec.knowledge_pack_ids,
                 "seed_terms": seed_spec.seed_terms,
                 "target_location": seed_spec.target_location,
             },

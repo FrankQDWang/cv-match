@@ -2,12 +2,16 @@
   "case_id": "case-crossover-illegal-reject",
   "scenario": "非法 crossover 拒绝",
   "experiment_id": "E5",
-  "expected_route": "inferred_domain",
-  "observed_route": "inferred_domain",
+  "expected_route": "inferred_single_pack",
+  "observed_route": "inferred_single_pack",
   "expected_stop_reason": "controller_stop",
   "observed_stop_reason": "controller_stop",
-  "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-  "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+  "expected_knowledge_pack_ids": [
+    "llm_agent_rag_engineering"
+  ],
+  "observed_knowledge_pack_ids": [
+    "llm_agent_rag_engineering"
+  ],
   "expected_fallback_reason": null,
   "observed_fallback_reason": null,
   "must_hold": [
@@ -22,7 +26,7 @@
       "value": true
     },
     {
-      "name": "selected_pack_match",
+      "name": "selected_packs_match",
       "value": true
     },
     {
@@ -31,7 +35,7 @@
     },
     {
       "name": "include_keyword_adoption",
-      "value": 0.5
+      "value": 0.6666666666666666
     },
     {
       "name": "exclude_keyword_leak",

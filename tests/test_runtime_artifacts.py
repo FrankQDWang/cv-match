@@ -92,7 +92,7 @@ def test_runtime_artifact_builder_emits_nine_canonical_cases() -> None:
     case_ids = sorted(path.name for path in case_root.iterdir() if path.is_dir())
 
     assert case_ids == sorted(spec.case_id for spec in canonical_case_specs())
-    assert "case-bootstrap-ambiguous-close-score-generic" in case_ids
+    assert "case-bootstrap-close-high-score-multi-pack" in case_ids
     assert "case-bootstrap-out-of-domain-generic" in case_ids
 
 

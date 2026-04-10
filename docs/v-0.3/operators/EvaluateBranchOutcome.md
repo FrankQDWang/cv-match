@@ -28,7 +28,7 @@ allowed_repair_operator_names_t =
   ["must_have_alias", "strict_core", "crossover_compose"]
   if p_t.knowledge_pack_id = null
   else
-    ["must_have_alias", "strict_core", "domain_company", "crossover_compose"]
+    ["must_have_alias", "strict_core", "domain_expansion", "crossover_compose"]
 ```
 
 ## Primitive Predicates / Matching Rules
@@ -145,7 +145,7 @@ even if the LLM draft does not request exhaustion.
 - `BranchOutcomeEvaluationLLM` 必须使用 provider-native strict structured output，固定 `retries=0`、`output_retries=1`。
 - 默认不额外要求 `output_validator`；若未来引入，只允许补充 schema 无法表达且不会改写 runtime fact 的 branch-level business 约束。
 - 它判断 branch 价值，但不直接修改 frontier，也不直接决定 stop。
-- `domain_company` 是否允许修复，只取决于 `knowledge_pack_id` 是否存在。
+- `domain_expansion` 是否允许修复，只取决于 `knowledge_pack_id` 是否存在。
 
 ## 相关
 

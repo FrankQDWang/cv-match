@@ -25,7 +25,7 @@ from seektalent.resources import (
 DEFAULT_OPERATOR_CATALOG = (
     "must_have_alias",
     "strict_core",
-    "domain_company",
+    "domain_expansion",
     "crossover_compose",
 )
 

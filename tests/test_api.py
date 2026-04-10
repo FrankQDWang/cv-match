@@ -38,9 +38,38 @@ def _requirement_draft_payload() -> dict[str, object]:
 
 def _bootstrap_keyword_draft_payload() -> dict[str, object]:
     return {
-        "core_keywords": ["agent engineer", "rag", "python backend"],
-        "must_have_keywords": ["llm application", "retrieval pipeline"],
-        "expansion_keywords": ["workflow orchestration", "tool calling"],
+        "candidate_seeds": [
+            {
+                "intent_type": "core_precision",
+                "keywords": ["agent engineer", "rag", "python backend"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "anchor the route",
+            },
+            {
+                "intent_type": "must_have_alias",
+                "keywords": ["llm application", "retrieval pipeline"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "cover aliases",
+            },
+            {
+                "intent_type": "relaxed_floor",
+                "keywords": ["python backend", "retrieval"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "widen recall",
+            },
+            {
+                "intent_type": "pack_expansion",
+                "keywords": ["workflow orchestration", "tool calling"],
+                "source_knowledge_pack_ids": ["llm_agent_rag_engineering"],
+                "reasoning": "use pack hints",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["backend engineer", "agent workflow"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "extra route",
+            },
+        ],
         "negative_keywords": ["frontend"],
     }
 
@@ -103,7 +132,7 @@ def test_run_match_returns_search_run_bundle(tmp_path: Path) -> None:
     )
 
     assert result.phase == "phase6_offline_artifacts_active"
-    assert result.bootstrap.routing_result.routing_mode == "inferred_domain"
+    assert result.bootstrap.routing_result.routing_mode == "inferred_single_pack"
     assert result.final_result.stop_reason == "controller_stop"
     assert result.final_result.run_summary == "Controller stop accepted."
     assert Path(result.run_dir).joinpath("bundle.json").exists()

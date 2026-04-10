@@ -74,7 +74,7 @@ def materialize_search_execution_plan(
         _, max_terms = term_budget_policy.low_budget_range
 
     donor_frontier_node_id: str | None = None
-    knowledge_pack_id = parent_node.knowledge_pack_id
+    knowledge_pack_ids = list(parent_node.knowledge_pack_ids)
     donor_negative_terms: list[str] = []
     if decision.selected_operator_name == "crossover_compose":
         donor_frontier_node_id = _required_text(decision.operator_args.get("donor_frontier_node_id"), "donor_frontier_node_id")
@@ -133,7 +133,7 @@ def materialize_search_execution_plan(
         runtime_only_constraints=runtime_only_constraints,
         target_new_candidate_count=target_new_candidate_count,
         semantic_hash=semantic_hash,
-        knowledge_pack_id=knowledge_pack_id,
+        knowledge_pack_ids=knowledge_pack_ids,
         child_frontier_node_stub={
             "frontier_node_id": f"child_{parent_node.frontier_node_id}_{semantic_hash[:8]}",
             "parent_frontier_node_id": parent_node.frontier_node_id,

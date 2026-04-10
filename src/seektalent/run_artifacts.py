@@ -45,8 +45,8 @@ def build_search_run_eval(bundle: SearchRunBundle) -> SearchRunEval:
             value=bundle.bootstrap.routing_result.routing_mode,
         ),
         SearchRunEvalMetric(
-            name="selected_knowledge_pack_id",
-            value=bundle.bootstrap.routing_result.selected_knowledge_pack_id or "",
+            name="selected_knowledge_pack_ids",
+            value=bundle.bootstrap.routing_result.selected_knowledge_pack_ids,
         ),
         SearchRunEvalMetric(
             name="routing_confidence",

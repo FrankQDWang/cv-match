@@ -48,7 +48,7 @@ def _frontier_state() -> FrontierState_t:
                 frontier_node_id="seed",
                 selected_operator_name="must_have_alias",
                 node_query_term_pool=["python"],
-                knowledge_pack_id="llm_agent_rag_engineering",
+                knowledge_pack_ids=["llm_agent_rag_engineering"],
                 node_shortlist_candidate_ids=["c-1"],
                 node_shortlist_score_snapshot={"c-1": 0.7},
                 reward_breakdown=NodeRewardBreakdown_t(
@@ -75,7 +75,7 @@ def _frontier_state() -> FrontierState_t:
         operator_statistics={
             "must_have_alias": {"average_reward": 0.0, "times_selected": 0},
             "strict_core": {"average_reward": 0.0, "times_selected": 0},
-            "domain_company": {"average_reward": 0.0, "times_selected": 0},
+            "domain_expansion": {"average_reward": 0.0, "times_selected": 0},
             "crossover_compose": {"average_reward": 0.0, "times_selected": 0},
         },
         remaining_budget=4,
@@ -93,7 +93,7 @@ def _execution_plan() -> SearchExecutionPlan_t:
             },
             "target_new_candidate_count": 10,
             "semantic_hash": "hash-1",
-            "knowledge_pack_id": "llm_agent_rag_engineering",
+            "knowledge_pack_ids": ["llm_agent_rag_engineering"],
             "child_frontier_node_stub": {
                 "frontier_node_id": "child_seed_hash1",
                 "parent_frontier_node_id": "seed",

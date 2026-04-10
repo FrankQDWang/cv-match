@@ -1,13 +1,13 @@
 {
   "phase": "phase6_offline_artifacts_active",
-  "run_id": "case-bootstrap-explicit-domain",
-  "run_dir": "/Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-bootstrap-explicit-domain",
+  "run_id": "case-bootstrap-close-high-score-multi-pack",
+  "run_dir": "/Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-bootstrap-close-high-score-multi-pack",
   "created_at_utc": "2026-04-09T00:00:00Z",
   "bootstrap": {
     "input_truth": {
-      "job_description": "Senior Python / LLM Engineer",
+      "job_description": "Agent Search Engineer",
       "hiring_notes": "canonical case",
-      "job_description_sha256": "286bf3c0d98871a8437c1ae078420a70170411e73d213e7252c68d837d1cd01d",
+      "job_description_sha256": "ef5d613debd194c6748e9d9cf4b8be342d997ca6dc2e4b596954383e9edf9d26",
       "hiring_notes_sha256": "06024dbeaeeb6959673a544857a69677f079940640e362ac77d8f9f7477f15b5"
     },
     "requirement_extraction_audit": {
@@ -26,25 +26,24 @@
       }
     },
     "requirement_sheet": {
-      "role_title": "Senior Python / LLM Engineer",
-      "role_summary": "Build Python, LLM, and retrieval systems.",
+      "role_title": "Agent Search Engineer",
+      "role_summary": "Build agent and ranking systems together.",
       "must_have_capabilities": [
         "Python backend",
-        "LLM application",
-        "retrieval pipeline"
+        "agent engineer",
+        "ranking"
       ],
       "preferred_capabilities": [
-        "workflow orchestration",
-        "tool calling"
+        "workflow orchestration"
       ],
       "exclusion_signals": [
-        "frontend"
+        "sales"
       ],
       "hard_constraints": {
         "locations": [
           "Shanghai"
         ],
-        "min_years": 5,
+        "min_years": 4,
         "max_years": 10,
         "company_names": [],
         "school_names": [],
@@ -58,12 +57,12 @@
         "preferred_domains": [],
         "preferred_backgrounds": []
       },
-      "scoring_rationale": "Prioritize core must-have fit."
+      "scoring_rationale": "Prefer direct technical overlap."
     },
     "business_policy_snapshot": {
       "policy_id": "business-default-2026-04-09-v1",
       "policy_pack": {
-        "knowledge_pack_id_override": "llm_agent_rag_engineering",
+        "knowledge_pack_id_override": null,
         "fusion_weight_preferences": {
           "rerank": 0.55,
           "must_have": 0.25,
@@ -94,12 +93,17 @@
       }
     },
     "routing_result": {
-      "routing_mode": "explicit_domain",
-      "selected_knowledge_pack_id": "llm_agent_rag_engineering",
-      "routing_confidence": 1.0,
+      "routing_mode": "inferred_multi_pack",
+      "selected_knowledge_pack_ids": [
+        "llm_agent_rag_engineering",
+        "search_ranking_retrieval_engineering"
+      ],
+      "routing_confidence": 0.5724041114770213,
       "fallback_reason": null,
       "pack_scores": {
-        "llm_agent_rag_engineering": 1.0
+        "llm_agent_rag_engineering": 0.5724041114770213,
+        "search_ranking_retrieval_engineering": 0.5672974756343349,
+        "finance_risk_control_ai": 0.5104151598873647
       }
     },
     "scoring_policy": {
@@ -107,7 +111,7 @@
         "locations": [
           "Shanghai"
         ],
-        "min_years": 5,
+        "min_years": 4,
         "max_years": 10,
         "company_names": [],
         "school_names": [],
@@ -118,12 +122,11 @@
       },
       "must_have_capabilities_snapshot": [
         "Python backend",
-        "LLM application",
-        "retrieval pipeline"
+        "agent engineer",
+        "ranking"
       ],
       "preferred_capabilities_snapshot": [
-        "workflow orchestration",
-        "tool calling"
+        "workflow orchestration"
       ],
       "fusion_weights": {
         "rerank": 0.55,
@@ -137,7 +140,7 @@
       },
       "top_n_for_explanation": 5,
       "rerank_instruction": "Rank candidate resumes for hiring relevance. Prioritize must-have capabilities first, use preferred capabilities as secondary evidence, and do not hard-reject on soft risk signals.",
-      "rerank_query_text": "Senior Python / LLM Engineer; must-have: Python backend, LLM application, retrieval pipeline; location: Shanghai; min 5 years; max 10 years; preferred: workflow orchestration, tool calling",
+      "rerank_query_text": "Agent Search Engineer; must-have: Python backend, agent engineer, ranking; location: Shanghai; min 4 years; max 10 years; preferred: workflow orchestration",
       "reranker_calibration_snapshot": {
         "model_id": "mlx-community/Qwen3-Reranker-8B-mxfp8",
         "normalization": "sigmoid",
@@ -147,7 +150,7 @@
         "clip_max": 12.0,
         "calibration_version": "2026-04-07-v1"
       },
-      "ranking_audit_notes": "Prioritize core must-have fit. must-have 优先于 preferred；低置信度稳定性风险不处罚。"
+      "ranking_audit_notes": "Prefer direct technical overlap. must-have 优先于 preferred；低置信度稳定性风险不处罚。"
     },
     "bootstrap_keyword_generation_audit": {
       "output_mode": "NativeOutput(strict=True)",
@@ -155,7 +158,7 @@
       "output_retries": 1,
       "validator_retry_count": 0,
       "model_name": "test",
-      "instruction_id_or_hash": "fe8e7b2591f4b79b66fd9e6bb9b0a6bbc20a8bc3",
+      "instruction_id_or_hash": "5960ba82d6c35310ddb1e093883a442e18d686dd",
       "message_history_mode": "fresh",
       "tools_enabled": false,
       "model_settings_snapshot": {
@@ -169,58 +172,122 @@
         {
           "operator_name": "strict_core",
           "seed_terms": [
-            "Senior Python / LLM Engineer",
             "agent engineer",
-            "rag",
+            "ranking",
             "python backend"
           ],
-          "seed_rationale": "role_title_plus_core_keywords",
-          "knowledge_pack_id": "llm_agent_rag_engineering",
-          "expected_coverage": [],
+          "seed_rationale": "00:core_precision",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering"
+          ],
+          "expected_coverage": [
+            "workflow orchestration"
+          ],
           "negative_terms": [
-            "frontend",
+            "sales",
             "prompt operation",
-            "pure algorithm research"
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
           ],
           "target_location": "Shanghai"
         },
         {
           "operator_name": "must_have_alias",
           "seed_terms": [
-            "Python backend",
-            "LLM application",
-            "retrieval pipeline"
+            "python backend",
+            "agent"
           ],
-          "seed_rationale": "must_have_plus_keyword_hints",
-          "knowledge_pack_id": "llm_agent_rag_engineering",
+          "seed_rationale": "02:relaxed_floor",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering"
+          ],
           "expected_coverage": [
             "Python backend",
-            "LLM application",
-            "retrieval pipeline"
+            "agent engineer",
+            "ranking"
           ],
           "negative_terms": [
-            "frontend",
+            "sales",
             "prompt operation",
-            "pure algorithm research"
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
           ],
           "target_location": "Shanghai"
         },
         {
-          "operator_name": "domain_company",
+          "operator_name": "domain_expansion",
           "seed_terms": [
             "workflow orchestration",
             "tool calling"
           ],
-          "seed_rationale": "domain_expansion_keywords",
-          "knowledge_pack_id": "llm_agent_rag_engineering",
+          "seed_rationale": "03:pack_expansion",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
           "expected_coverage": [
-            "workflow orchestration",
-            "tool calling"
+            "workflow orchestration"
           ],
           "negative_terms": [
-            "frontend",
+            "sales",
             "prompt operation",
-            "pure algorithm research"
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "domain_expansion",
+          "seed_terms": [
+            "agent ranking",
+            "retrieval workflow"
+          ],
+          "seed_rationale": "04:cross_pack_bridge",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering"
+          ],
+          "expected_coverage": [
+            "workflow orchestration"
+          ],
+          "negative_terms": [
+            "sales",
+            "prompt operation",
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "strict_core",
+          "seed_terms": [
+            "search backend",
+            "reranker"
+          ],
+          "seed_rationale": "05:generic_expansion",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering"
+          ],
+          "expected_coverage": [
+            "workflow orchestration"
+          ],
+          "negative_terms": [
+            "sales",
+            "prompt operation",
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
           ],
           "target_location": "Shanghai"
         }
@@ -228,23 +295,28 @@
     },
     "frontier_state": {
       "frontier_nodes": {
-        "seed_strict_core_c9cd9c88": {
-          "frontier_node_id": "seed_strict_core_c9cd9c88",
+        "seed_strict_core_87acf8a7": {
+          "frontier_node_id": "seed_strict_core_87acf8a7",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "strict_core",
           "node_query_term_pool": [
-            "Senior Python / LLM Engineer",
             "agent engineer",
-            "rag",
+            "ranking",
             "python backend"
           ],
-          "knowledge_pack_id": "llm_agent_rag_engineering",
-          "seed_rationale": "role_title_plus_core_keywords",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering"
+          ],
+          "seed_rationale": "00:core_precision",
           "negative_terms": [
-            "frontend",
+            "sales",
             "prompt operation",
-            "pure algorithm research"
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
           ],
           "parent_shortlist_candidate_ids": [],
           "node_shortlist_candidate_ids": [],
@@ -253,22 +325,27 @@
           "reward_breakdown": null,
           "status": "open"
         },
-        "seed_must_have_alias_e79396f2": {
-          "frontier_node_id": "seed_must_have_alias_e79396f2",
+        "seed_must_have_alias_72de7f4f": {
+          "frontier_node_id": "seed_must_have_alias_72de7f4f",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "must_have_alias",
           "node_query_term_pool": [
-            "Python backend",
-            "LLM application",
-            "retrieval pipeline"
+            "python backend",
+            "agent"
           ],
-          "knowledge_pack_id": "llm_agent_rag_engineering",
-          "seed_rationale": "must_have_plus_keyword_hints",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering"
+          ],
+          "seed_rationale": "02:relaxed_floor",
           "negative_terms": [
-            "frontend",
+            "sales",
             "prompt operation",
-            "pure algorithm research"
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
           ],
           "parent_shortlist_candidate_ids": [],
           "node_shortlist_candidate_ids": [],
@@ -277,21 +354,84 @@
           "reward_breakdown": null,
           "status": "open"
         },
-        "seed_domain_company_1f980b9c": {
-          "frontier_node_id": "seed_domain_company_1f980b9c",
+        "seed_domain_expansion_0d92f929": {
+          "frontier_node_id": "seed_domain_expansion_0d92f929",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
-          "selected_operator_name": "domain_company",
+          "selected_operator_name": "domain_expansion",
           "node_query_term_pool": [
             "workflow orchestration",
             "tool calling"
           ],
-          "knowledge_pack_id": "llm_agent_rag_engineering",
-          "seed_rationale": "domain_expansion_keywords",
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering"
+          ],
+          "seed_rationale": "03:pack_expansion",
           "negative_terms": [
-            "frontend",
+            "sales",
             "prompt operation",
-            "pure algorithm research"
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_domain_expansion_f0c14380": {
+          "frontier_node_id": "seed_domain_expansion_f0c14380",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "domain_expansion",
+          "node_query_term_pool": [
+            "agent ranking",
+            "retrieval workflow"
+          ],
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering"
+          ],
+          "seed_rationale": "04:cross_pack_bridge",
+          "negative_terms": [
+            "sales",
+            "prompt operation",
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_strict_core_8690d463": {
+          "frontier_node_id": "seed_strict_core_8690d463",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "search backend",
+            "reranker"
+          ],
+          "knowledge_pack_ids": [
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering"
+          ],
+          "seed_rationale": "05:generic_expansion",
+          "negative_terms": [
+            "sales",
+            "prompt operation",
+            "pure algorithm research",
+            "frontend",
+            "crm",
+            "hr operations"
           ],
           "parent_shortlist_candidate_ids": [],
           "node_shortlist_candidate_ids": [],
@@ -302,20 +442,24 @@
         }
       },
       "open_frontier_node_ids": [
-        "seed_strict_core_c9cd9c88",
-        "seed_must_have_alias_e79396f2",
-        "seed_domain_company_1f980b9c"
+        "seed_strict_core_87acf8a7",
+        "seed_must_have_alias_72de7f4f",
+        "seed_domain_expansion_0d92f929",
+        "seed_domain_expansion_f0c14380",
+        "seed_strict_core_8690d463"
       ],
       "closed_frontier_node_ids": [],
       "run_term_catalog": [
-        "Senior Python / LLM Engineer",
         "agent engineer",
-        "rag",
+        "ranking",
         "python backend",
-        "LLM application",
-        "retrieval pipeline",
+        "agent",
         "workflow orchestration",
-        "tool calling"
+        "tool calling",
+        "agent ranking",
+        "retrieval workflow",
+        "search backend",
+        "reranker"
       ],
       "run_shortlist_candidate_ids": [],
       "semantic_hashes_seen": [],
@@ -328,7 +472,7 @@
           "average_reward": 0.0,
           "times_selected": 0
         },
-        "domain_company": {
+        "domain_expansion": {
           "average_reward": 0.0,
           "times_selected": 0
         },
@@ -345,23 +489,28 @@
       "runtime_round_index": 0,
       "frontier_state_before": {
         "frontier_nodes": {
-          "seed_strict_core_c9cd9c88": {
-            "frontier_node_id": "seed_strict_core_c9cd9c88",
+          "seed_strict_core_87acf8a7": {
+            "frontier_node_id": "seed_strict_core_87acf8a7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "strict_core",
             "node_query_term_pool": [
-              "Senior Python / LLM Engineer",
               "agent engineer",
-              "rag",
+              "ranking",
               "python backend"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "role_title_plus_core_keywords",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "00:core_precision",
             "negative_terms": [
-              "frontend",
+              "sales",
               "prompt operation",
-              "pure algorithm research"
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
             ],
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
@@ -370,22 +519,27 @@
             "reward_breakdown": null,
             "status": "open"
           },
-          "seed_must_have_alias_e79396f2": {
-            "frontier_node_id": "seed_must_have_alias_e79396f2",
+          "seed_must_have_alias_72de7f4f": {
+            "frontier_node_id": "seed_must_have_alias_72de7f4f",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
             "node_query_term_pool": [
-              "Python backend",
-              "LLM application",
-              "retrieval pipeline"
+              "python backend",
+              "agent"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "must_have_plus_keyword_hints",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "02:relaxed_floor",
             "negative_terms": [
-              "frontend",
+              "sales",
               "prompt operation",
-              "pure algorithm research"
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
             ],
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
@@ -394,21 +548,84 @@
             "reward_breakdown": null,
             "status": "open"
           },
-          "seed_domain_company_1f980b9c": {
-            "frontier_node_id": "seed_domain_company_1f980b9c",
+          "seed_domain_expansion_0d92f929": {
+            "frontier_node_id": "seed_domain_expansion_0d92f929",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
-            "selected_operator_name": "domain_company",
+            "selected_operator_name": "domain_expansion",
             "node_query_term_pool": [
               "workflow orchestration",
               "tool calling"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "domain_expansion_keywords",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "03:pack_expansion",
             "negative_terms": [
-              "frontend",
+              "sales",
               "prompt operation",
-              "pure algorithm research"
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_domain_expansion_f0c14380": {
+            "frontier_node_id": "seed_domain_expansion_f0c14380",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "domain_expansion",
+            "node_query_term_pool": [
+              "agent ranking",
+              "retrieval workflow"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "04:cross_pack_bridge",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_strict_core_8690d463": {
+            "frontier_node_id": "seed_strict_core_8690d463",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "search backend",
+              "reranker"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "05:generic_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
             ],
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
@@ -419,20 +636,24 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_strict_core_c9cd9c88",
-          "seed_must_have_alias_e79396f2",
-          "seed_domain_company_1f980b9c"
+          "seed_strict_core_87acf8a7",
+          "seed_must_have_alias_72de7f4f",
+          "seed_domain_expansion_0d92f929",
+          "seed_domain_expansion_f0c14380",
+          "seed_strict_core_8690d463"
         ],
         "closed_frontier_node_ids": [],
         "run_term_catalog": [
-          "Senior Python / LLM Engineer",
           "agent engineer",
-          "rag",
+          "ranking",
           "python backend",
-          "LLM application",
-          "retrieval pipeline",
+          "agent",
           "workflow orchestration",
-          "tool calling"
+          "tool calling",
+          "agent ranking",
+          "retrieval workflow",
+          "search backend",
+          "reranker"
         ],
         "run_shortlist_candidate_ids": [],
         "semantic_hashes_seen": [],
@@ -445,7 +666,7 @@
             "average_reward": 0.0,
             "times_selected": 0
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -458,19 +679,17 @@
       },
       "controller_context": {
         "active_frontier_node_summary": {
-          "frontier_node_id": "seed_strict_core_c9cd9c88",
-          "selected_operator_name": "strict_core",
+          "frontier_node_id": "seed_domain_expansion_0d92f929",
+          "selected_operator_name": "domain_expansion",
           "node_query_term_pool": [
-            "Senior Python / LLM Engineer",
-            "agent engineer",
-            "rag",
-            "python backend"
+            "workflow orchestration",
+            "tool calling"
           ],
           "node_shortlist_candidate_ids": []
         },
         "donor_candidate_node_summaries": [],
         "frontier_head_summary": {
-          "open_node_count": 3,
+          "open_node_count": 5,
           "remaining_budget": 5,
           "highest_priority_score": 3.6999999999999997
         },
@@ -480,11 +699,11 @@
             "weight": 1.0
           },
           {
-            "capability": "LLM application",
+            "capability": "agent engineer",
             "weight": 1.0
           },
           {
-            "capability": "retrieval pipeline",
+            "capability": "ranking",
             "weight": 1.0
           }
         ],
@@ -497,7 +716,7 @@
             "average_reward": 0.0,
             "times_selected": 0
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -509,7 +728,7 @@
         "allowed_operator_names": [
           "must_have_alias",
           "strict_core",
-          "domain_company",
+          "domain_expansion",
           "crossover_compose"
         ],
         "term_budget_range": [
@@ -520,7 +739,7 @@
           "locations": [
             "Shanghai"
           ],
-          "min_years": 5,
+          "min_years": 4,
           "max_years": 10,
           "company_names": [],
           "school_names": [],
@@ -553,7 +772,7 @@
       },
       "controller_decision": {
         "action": "stop",
-        "target_frontier_node_id": "seed_strict_core_c9cd9c88",
+        "target_frontier_node_id": "seed_domain_expansion_0d92f929",
         "selected_operator_name": "must_have_alias",
         "operator_args": {},
         "expected_gain_hypothesis": "Stop."
@@ -568,23 +787,28 @@
       "reward_breakdown": null,
       "frontier_state_after": {
         "frontier_nodes": {
-          "seed_strict_core_c9cd9c88": {
-            "frontier_node_id": "seed_strict_core_c9cd9c88",
+          "seed_strict_core_87acf8a7": {
+            "frontier_node_id": "seed_strict_core_87acf8a7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "strict_core",
             "node_query_term_pool": [
-              "Senior Python / LLM Engineer",
               "agent engineer",
-              "rag",
+              "ranking",
               "python backend"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "role_title_plus_core_keywords",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "00:core_precision",
             "negative_terms": [
-              "frontend",
+              "sales",
               "prompt operation",
-              "pure algorithm research"
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
             ],
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
@@ -593,22 +817,27 @@
             "reward_breakdown": null,
             "status": "open"
           },
-          "seed_must_have_alias_e79396f2": {
-            "frontier_node_id": "seed_must_have_alias_e79396f2",
+          "seed_must_have_alias_72de7f4f": {
+            "frontier_node_id": "seed_must_have_alias_72de7f4f",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
             "node_query_term_pool": [
-              "Python backend",
-              "LLM application",
-              "retrieval pipeline"
+              "python backend",
+              "agent"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "must_have_plus_keyword_hints",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "02:relaxed_floor",
             "negative_terms": [
-              "frontend",
+              "sales",
               "prompt operation",
-              "pure algorithm research"
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
             ],
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
@@ -617,21 +846,84 @@
             "reward_breakdown": null,
             "status": "open"
           },
-          "seed_domain_company_1f980b9c": {
-            "frontier_node_id": "seed_domain_company_1f980b9c",
+          "seed_domain_expansion_0d92f929": {
+            "frontier_node_id": "seed_domain_expansion_0d92f929",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
-            "selected_operator_name": "domain_company",
+            "selected_operator_name": "domain_expansion",
             "node_query_term_pool": [
               "workflow orchestration",
               "tool calling"
             ],
-            "knowledge_pack_id": "llm_agent_rag_engineering",
-            "seed_rationale": "domain_expansion_keywords",
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "03:pack_expansion",
             "negative_terms": [
-              "frontend",
+              "sales",
               "prompt operation",
-              "pure algorithm research"
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_domain_expansion_f0c14380": {
+            "frontier_node_id": "seed_domain_expansion_f0c14380",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "domain_expansion",
+            "node_query_term_pool": [
+              "agent ranking",
+              "retrieval workflow"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "04:cross_pack_bridge",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_strict_core_8690d463": {
+            "frontier_node_id": "seed_strict_core_8690d463",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "search backend",
+              "reranker"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "05:generic_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
             ],
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
@@ -642,20 +934,24 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_strict_core_c9cd9c88",
-          "seed_must_have_alias_e79396f2",
-          "seed_domain_company_1f980b9c"
+          "seed_strict_core_87acf8a7",
+          "seed_must_have_alias_72de7f4f",
+          "seed_domain_expansion_0d92f929",
+          "seed_domain_expansion_f0c14380",
+          "seed_strict_core_8690d463"
         ],
         "closed_frontier_node_ids": [],
         "run_term_catalog": [
-          "Senior Python / LLM Engineer",
           "agent engineer",
-          "rag",
+          "ranking",
           "python backend",
-          "LLM application",
-          "retrieval pipeline",
+          "agent",
           "workflow orchestration",
-          "tool calling"
+          "tool calling",
+          "agent ranking",
+          "retrieval workflow",
+          "search backend",
+          "reranker"
         ],
         "run_shortlist_candidate_ids": [],
         "semantic_hashes_seen": [],
@@ -668,7 +964,7 @@
             "average_reward": 0.0,
             "times_selected": 0
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -700,24 +996,27 @@
   },
   "final_result": {
     "final_shortlist_candidate_ids": [],
-    "run_summary": "Explicit domain bootstrap stopped cleanly.",
+    "run_summary": "Close high scores triggered a multi-pack bootstrap.",
     "stop_reason": "controller_stop"
   },
   "eval": {
     "experiment_id": "E5",
-    "run_id": "case-bootstrap-explicit-domain",
+    "run_id": "case-bootstrap-close-high-score-multi-pack",
     "metrics": [
       {
         "name": "routing_mode",
-        "value": "explicit_domain"
+        "value": "inferred_multi_pack"
       },
       {
-        "name": "selected_knowledge_pack_id",
-        "value": "llm_agent_rag_engineering"
+        "name": "selected_knowledge_pack_ids",
+        "value": [
+          "llm_agent_rag_engineering",
+          "search_ranking_retrieval_engineering"
+        ]
       },
       {
         "name": "routing_confidence",
-        "value": 1.0
+        "value": 0.5724041114770213
       },
       {
         "name": "round_count",

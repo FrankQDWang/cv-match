@@ -32,7 +32,7 @@ SearchControllerContext_t = { active_frontier_node_summary, donor_candidate_node
 - `SearchControllerContext_t` 是只读快照，不是可回写状态。
 - 它只暴露控制器真正需要的字段，不暴露整份 frontier。
 - `donor_candidate_node_summaries` 只提供合法 donor 候选，不等于已选 donor。
-- `allowed_operator_names` 必须是 [[OperatorCatalog]] 的子集；当 active node 没有领域 provenance 时不得包含 `domain_company`。
+- `allowed_operator_names` 必须是 [[OperatorCatalog]] 的子集；当 active node 没有领域 provenance 时不得包含 `domain_expansion`。
 - `term_budget_range` 必须来自 [[RuntimeTermBudgetPolicy]]。
 - `unmet_requirement_weights` 必须是保序的 `list[{capability, weight}]`，不允许用 map 形状替代。
 

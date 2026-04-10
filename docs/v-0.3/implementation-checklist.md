@@ -107,7 +107,7 @@
 ### 3.4 可开工验收
 
 1. round-0 固定为 `requirements -> route knowledge pack -> scoring freeze -> generate bootstrap output -> frontier init`。
-2. routing 只有 `explicit_domain / inferred_domain / generic_fallback`。
+2. routing 只有 `explicit_pack / inferred_single_pack / generic_fallback`。
 3. routed path 最多生成 `3` 条 seeds；generic fallback 固定为 `2` 条。
 4. [[ScoringPolicy]] 已作为 run 内冻结对象存在，而不是运行中散落参数。
 5. 知识库只服务 bootstrap 关键词初始化，不参与评分冻结、reward、stop 或 finalize。
@@ -125,9 +125,9 @@
 对应 `3.2 主要工作`：
 
 1. `[[ExtractRequirements]]` 已落地为现有 deterministic requirements 归一化主链与 `RequirementExtractionLLM` wrapper 的组合；`SearchInputTruth -> RequirementSheet` 的 owner 已固定，不再另起第二套 requirements schema。
-2. `[[RouteDomainKnowledgePack]]` 已落地为稳定纯函数，routing 固定为 `explicit_domain / inferred_domain / generic_fallback` 三选一；未知 explicit `knowledge_pack_id_override` 直接 fail-fast。bootstrap 所需的最小 domain knowledge packs 已以内置 fixture 形式落地。
+2. `[[RouteDomainKnowledgePack]]` 已落地为稳定纯函数，routing 固定为 `explicit_pack / inferred_single_pack / generic_fallback` 三选一；未知 explicit `knowledge_pack_id_override` 直接 fail-fast。bootstrap 所需的最小 domain knowledge packs 已以内置 fixture 形式落地。
 3. `[[FreezeScoringPolicy]]` 已落地为 run 内评分口径冻结步骤；fit gate 只允许在 truth 基础上收紧，fusion weights 会规范化到总和 `1.0`，并与 rerank instruction / query 一起形成稳定的 `[[ScoringPolicy]]`。
-4. `[[GenerateBootstrapOutput]]` 已落地为稳定纯函数；当前 routed path 产出 `strict_core / must_have_alias / domain_company` 三条以内 seeds，generic fallback 只产出 `strict_core / must_have_alias` 两条 seeds。补充说明：`BootstrapKeywordGenerationLLM` 的 round-0 输出已收窄到 `BootstrapKeywordDraft`，不再让 LLM 直接写 operator patch。
+4. `[[GenerateBootstrapOutput]]` 已落地为稳定纯函数；当前 routed path 产出 `strict_core / must_have_alias / domain_expansion` 三条以内 seeds，generic fallback 只产出 `strict_core / must_have_alias` 两条 seeds。补充说明：`BootstrapKeywordGenerationLLM` 的 round-0 输出已收窄到 `BootstrapKeywordDraft`，不再让 LLM 直接写 operator patch。
 5. `[[InitializeFrontierState]]` 已落地为 runtime-owned frontier init；bootstrap seeds 会被收敛成稳定的 `[[FrontierState_t]]`，不允许 LLM draft 直接写入 frontier runtime state。
 
 对应 `3.3 交付物`：
@@ -140,7 +140,7 @@
 对应 `3.4 可开工验收`：
 
 1. 已满足。round-0 顺序已固定为 `requirements -> route knowledge pack -> scoring freeze -> generate bootstrap output -> frontier init`，bootstrap orchestration 不再留白。
-2. 已满足。routing 只有 `explicit_domain / inferred_domain / generic_fallback` 三种模式；当前测试已覆盖 explicit、inferred、generic 三条路径以及相关 fail-fast 边界。
+2. 已满足。routing 只有 `explicit_pack / inferred_single_pack / generic_fallback` 三种模式；当前测试已覆盖 explicit、inferred、generic 三条路径以及相关 fail-fast 边界。
 3. 已满足。routed path 最多生成 `3` 条 seeds；generic fallback 固定为 `2` 条。
 4. 已满足。`[[ScoringPolicy]]` 已作为 run 内冻结对象存在，而不是运行中散落参数。
 5. 已满足。知识库当前只服务 bootstrap 关键词初始化；不参与评分冻结、reward、stop 或 finalize。
@@ -241,7 +241,7 @@
 
 1. runtime 先选 active node，控制器只做 branch-level patch。
 2. donor 必须满足 `open + reward_breakdown != null + reward 过线 + shared anchor 过线`。
-3. generic provenance 下不得放开 `domain_company`。
+3. generic provenance 下不得放开 `domain_expansion`。
 4. direct-stop 路径与 search 路径使用统一状态对象，不再有旁路状态。
 5. `SearchControllerDecisionLLM` 必须遵守统一 `pydantic-ai` 调用约束；它是唯一允许单次业务型 validator retry 的调用点。
 
@@ -256,7 +256,7 @@
 
 对应 `5.2 主要工作`：
 
-1. `[[SelectActiveFrontierNode]]` 已落地为稳定纯函数；当前实现固定执行 active node priority scoring、donor candidate packing、generic provenance 下 `domain_company` 禁用、term budget range 冻结与 unmet requirement weight 投影，不再把这些规则散落在 runtime 其他位置。
+1. `[[SelectActiveFrontierNode]]` 已落地为稳定纯函数；当前实现固定执行 active node priority scoring、donor candidate packing、generic provenance 下 `domain_expansion` 禁用、term budget range 冻结与 unmet requirement weight 投影，不再把这些规则散落在 runtime 其他位置。
 2. `[[GenerateSearchControllerDecision]]` 已落地为 deterministic normalization 层；当前实现固定把控制器草稿收口为 `search_cts / stop`、operator 白名单回退、non-crossover `additional_terms` 裁剪与 crossover donor whitelist，不允许 LLM 自由改写 `target_frontier_node_id` 或旁路 donor。补充说明：controller validator 当前只校验“归一化后是否仍可物化出合法且非空的 query terms”以及 crossover donor / shared-anchor 合法性，不再额外要求 non-crossover `additional_terms` 在裁剪后仍保持非空。
 3. `[[CarryForwardFrontierState]]` 已落地为 identity carry-forward；direct-stop 路径当前会直接把 `FrontierState_t` 原样投影为 `FrontierState_t1`，不新增 child node、不消耗 budget、不写旁路状态。
 4. `crossover_compose` 已在 Phase 4 / Phase 3 接缝上落地：controller 侧会限制合法 donor id 与 crossover args，plan materialization 侧继续负责 shared-anchor guard、donor lineage 与 `knowledge_pack_id` provenance 传递，不再有第二套 crossover path。
@@ -272,7 +272,7 @@
 
 1. 已满足。runtime 先选 active node，控制器只做 branch-level patch；当前测试已覆盖 search path 与 direct-stop path。
 2. 已满足。donor 必须满足 `open + reward_breakdown != null + reward 过线 + shared anchor 过线`，且还必须补 active node 未覆盖的 must-have。
-3. 已满足。generic provenance 下不会放开 `domain_company`；当前实现继续以 `knowledge_pack_id is null` 作为唯一 generic provenance 判据。
+3. 已满足。generic provenance 下不会放开 `domain_expansion`；当前实现继续以 `knowledge_pack_id is null` 作为唯一 generic provenance 判据。
 4. 已满足。direct-stop 路径与 search 路径当前都使用统一的 `SearchControllerDecision_t` / `FrontierState_t` / `FrontierState_t1` 对象，不再新开旁路状态；当前 HEAD 中 stop guard 与 finalize 也已由 Phase 5 接通，但这不改变 Phase 4 自身的 owner 边界。
 5. 已满足。`SearchControllerDecisionLLM` 当前已按统一 `pydantic-ai` 约束实现：fresh request、`NativeOutput` strict schema、禁用 tools、禁用 cross-operator history、`retries=0`、`output_retries=1`；它也是当前唯一启用单次业务型 validator retry 的调用点，且该 retry 现已收窄到 owner 允许的边界：只处理“最终 query 不可物化/为空”与 crossover donor legality 问题，不再附加更强的草稿字段形状约束。
 

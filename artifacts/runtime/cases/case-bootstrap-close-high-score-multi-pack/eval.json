@@ -1,18 +1,24 @@
 {
-  "case_id": "case-bootstrap-explicit-domain",
-  "scenario": "显式领域 bootstrap",
+  "case_id": "case-bootstrap-close-high-score-multi-pack",
+  "scenario": "接近高分触发 multi-pack",
   "experiment_id": "E5",
-  "expected_route": "explicit_domain",
-  "observed_route": "explicit_domain",
+  "expected_route": "inferred_multi_pack",
+  "observed_route": "inferred_multi_pack",
   "expected_stop_reason": "controller_stop",
   "observed_stop_reason": "controller_stop",
-  "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-  "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+  "expected_knowledge_pack_ids": [
+    "llm_agent_rag_engineering",
+    "search_ranking_retrieval_engineering"
+  ],
+  "observed_knowledge_pack_ids": [
+    "llm_agent_rag_engineering",
+    "search_ranking_retrieval_engineering"
+  ],
   "expected_fallback_reason": null,
   "observed_fallback_reason": null,
   "must_hold": [
-    "selected_knowledge_pack_id is llm_agent_rag_engineering",
-    "domain_company remains legal in bootstrap"
+    "selected_knowledge_pack_ids contains llm_agent_rag_engineering",
+    "selected_knowledge_pack_ids contains search_ranking_retrieval_engineering"
   ],
   "must_not_hold": [
     "routing_mode = generic_fallback"
@@ -23,7 +29,7 @@
       "value": true
     },
     {
-      "name": "selected_pack_match",
+      "name": "selected_packs_match",
       "value": true
     },
     {
@@ -32,7 +38,7 @@
     },
     {
       "name": "include_keyword_adoption",
-      "value": 1.0
+      "value": 0.5833333333333334
     },
     {
       "name": "exclude_keyword_leak",

@@ -52,7 +52,7 @@ def _frontier_state() -> FrontierState_t:
                 frontier_node_id="seed",
                 selected_operator_name="must_have_alias",
                 node_query_term_pool=["python"],
-                knowledge_pack_id="llm_agent_rag_engineering",
+                knowledge_pack_ids=["llm_agent_rag_engineering"],
                 node_shortlist_candidate_ids=["legacy-a", "legacy-b"],
                 node_shortlist_score_snapshot={"legacy-a": 0.92, "legacy-b": 0.81},
                 status="open",
@@ -61,7 +61,7 @@ def _frontier_state() -> FrontierState_t:
                 frontier_node_id="sibling",
                 selected_operator_name="strict_core",
                 node_query_term_pool=["ranking"],
-                knowledge_pack_id="search_ranking_retrieval_engineering",
+                knowledge_pack_ids=["search_ranking_retrieval_engineering"],
                 node_shortlist_candidate_ids=["legacy-c"],
                 node_shortlist_score_snapshot={"legacy-c": 0.88},
                 reward_breakdown=NodeRewardBreakdown_t(
@@ -88,7 +88,7 @@ def _frontier_state() -> FrontierState_t:
         operator_statistics={
             "must_have_alias": {"average_reward": 0.4, "times_selected": 1},
             "strict_core": {"average_reward": 0.6, "times_selected": 2},
-            "domain_company": {"average_reward": 0.0, "times_selected": 0},
+            "domain_expansion": {"average_reward": 0.0, "times_selected": 0},
             "crossover_compose": {"average_reward": 0.0, "times_selected": 0},
         },
         remaining_budget=3,
@@ -106,7 +106,7 @@ def _plan() -> SearchExecutionPlan_t:
             },
             "target_new_candidate_count": 10,
             "semantic_hash": "hash-child",
-            "knowledge_pack_id": "llm_agent_rag_engineering",
+            "knowledge_pack_ids": ["llm_agent_rag_engineering"],
             "child_frontier_node_stub": {
                 "frontier_node_id": "child_seed_hash",
                 "parent_frontier_node_id": "seed",
@@ -193,14 +193,14 @@ def test_evaluate_branch_outcome_clamps_whitelists_and_forces_exhaustion() -> No
     result = evaluate_branch_outcome(
         _requirement_sheet(),
         _frontier_state(),
-        _plan().model_copy(update={"knowledge_pack_id": None}),
+        _plan().model_copy(update={"knowledge_pack_ids": []}),
         _execution_result(),
         _scoring_result(shortlist_ids=[]),
         BranchEvaluationDraft_t(
             novelty_score=1.5,
             usefulness_score=-1.0,
             branch_exhausted=False,
-            repair_operator_hint="domain_company",
+            repair_operator_hint="domain_expansion",
             evaluation_notes="  too broad  ",
         ),
     )
@@ -269,6 +269,9 @@ def test_update_frontier_state_closes_parent_and_sorts_run_shortlist() -> None:
 
     assert updated.frontier_nodes["seed"].status == "closed"
     assert updated.frontier_nodes["child_seed_hash"].status == "open"
+    assert updated.frontier_nodes["child_seed_hash"].knowledge_pack_ids == [
+        "llm_agent_rag_engineering"
+    ]
     assert updated.open_frontier_node_ids == ["sibling", "child_seed_hash"]
     assert updated.closed_frontier_node_ids == ["seed"]
     assert updated.run_shortlist_candidate_ids == ["new-fit", "legacy-a", "legacy-c"]

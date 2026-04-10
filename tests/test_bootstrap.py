@@ -41,13 +41,79 @@ def _requirement_draft_payload(
 
 def _bootstrap_keyword_draft_payload(
     *,
-    expansion: list[str] | None = None,
+    routing_mode: str = "single_pack",
     negative: list[str] | None = None,
 ) -> dict[str, object]:
+    pack_expansion_ids = ["llm_agent_rag_engineering"]
+    if routing_mode == "generic":
+        return {
+            "candidate_seeds": [
+                {
+                    "intent_type": "core_precision",
+                    "keywords": ["people operations manager", "process design"],
+                    "source_knowledge_pack_ids": [],
+                    "reasoning": "anchor the search",
+                },
+                {
+                    "intent_type": "must_have_alias",
+                    "keywords": ["stakeholder management", "operations"],
+                    "source_knowledge_pack_ids": [],
+                    "reasoning": "cover hard requirements",
+                },
+                {
+                    "intent_type": "relaxed_floor",
+                    "keywords": ["operations", "manager"],
+                    "source_knowledge_pack_ids": [],
+                    "reasoning": "widen recall",
+                },
+                {
+                    "intent_type": "generic_expansion",
+                    "keywords": ["process improvement", "team operations"],
+                    "source_knowledge_pack_ids": [],
+                    "reasoning": "generic exploration",
+                },
+                {
+                    "intent_type": "generic_expansion",
+                    "keywords": ["hiring operations", "workflow"],
+                    "source_knowledge_pack_ids": [],
+                    "reasoning": "secondary exploration",
+                },
+            ],
+            "negative_keywords": negative or ["sales"],
+        }
     return {
-        "core_keywords": ["agent engineer", "rag", "python backend"],
-        "must_have_keywords": ["llm application", "retrieval pipeline"],
-        "expansion_keywords": expansion or ["workflow orchestration", "tool calling"],
+        "candidate_seeds": [
+            {
+                "intent_type": "core_precision",
+                "keywords": ["agent engineer", "rag", "python backend"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "anchor the core route",
+            },
+            {
+                "intent_type": "must_have_alias",
+                "keywords": ["llm application", "retrieval pipeline"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "cover must-have aliases",
+            },
+            {
+                "intent_type": "relaxed_floor",
+                "keywords": ["python backend", "retrieval"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "widen recall",
+            },
+            {
+                "intent_type": "pack_expansion",
+                "keywords": ["workflow orchestration", "tool calling"],
+                "source_knowledge_pack_ids": pack_expansion_ids,
+                "reasoning": "use pack jargon",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["backend engineer", "agent workflow"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "extra orthogonal route",
+            },
+        ],
         "negative_keywords": negative or ["prompt operation"],
     }
 
@@ -69,7 +135,7 @@ class FakeRerankRequest:
         )
 
 
-def test_bootstrap_round0_async_supports_explicit_domain_override() -> None:
+def test_bootstrap_round0_async_supports_explicit_pack_override() -> None:
     assets = replace(
         default_bootstrap_assets(),
         business_policy_pack=default_bootstrap_assets().business_policy_pack.model_copy(
@@ -96,13 +162,12 @@ def test_bootstrap_round0_async_supports_explicit_domain_override() -> None:
         )
     )
 
-    assert artifacts.routing_result.routing_mode == "explicit_domain"
-    assert artifacts.routing_result.selected_knowledge_pack_id == "llm_agent_rag_engineering"
+    assert artifacts.routing_result.routing_mode == "explicit_pack"
+    assert artifacts.routing_result.selected_knowledge_pack_ids == ["llm_agent_rag_engineering"]
     assert artifacts.bootstrap_keyword_generation_audit.model_name == "test"
-    assert [seed.operator_name for seed in artifacts.bootstrap_output.frontier_seed_specifications] == [
-        "strict_core",
-        "must_have_alias",
-        "domain_company",
+    assert len(artifacts.bootstrap_output.frontier_seed_specifications) == 5
+    assert "domain_expansion" in [
+        seed.operator_name for seed in artifacts.bootstrap_output.frontier_seed_specifications
     ]
 
 
@@ -128,7 +193,7 @@ def test_bootstrap_round0_async_requires_rerank_when_no_override() -> None:
         )
 
 
-def test_bootstrap_round0_async_supports_inferred_domain() -> None:
+def test_bootstrap_round0_async_supports_inferred_single_pack() -> None:
     rerank = FakeRerankRequest(
         {
             "llm_agent_rag_engineering": 1.2,
@@ -156,9 +221,11 @@ def test_bootstrap_round0_async_supports_inferred_domain() -> None:
         )
     )
 
-    assert artifacts.routing_result.routing_mode == "inferred_domain"
+    assert artifacts.routing_result.routing_mode == "inferred_single_pack"
     assert rerank.seen_requests
-    assert artifacts.bootstrap_output.frontier_seed_specifications[0].knowledge_pack_id == "llm_agent_rag_engineering"
+    assert artifacts.bootstrap_output.frontier_seed_specifications[0].knowledge_pack_ids == [
+        "llm_agent_rag_engineering"
+    ]
     assert artifacts.frontier_state.remaining_budget == 5
 
 
@@ -185,7 +252,7 @@ def test_bootstrap_round0_async_supports_generic_fallback() -> None:
             ),
             bootstrap_keyword_generation_model=TestModel(
                 custom_output_args=_bootstrap_keyword_draft_payload(
-                    expansion=["should be ignored"],
+                    routing_mode="generic",
                     negative=["sales"],
                 )
             ),
@@ -193,12 +260,12 @@ def test_bootstrap_round0_async_supports_generic_fallback() -> None:
     )
 
     assert artifacts.routing_result.routing_mode == "generic_fallback"
-    assert artifacts.routing_result.selected_knowledge_pack_id is None
-    assert [seed.operator_name for seed in artifacts.bootstrap_output.frontier_seed_specifications] == [
-        "strict_core",
-        "must_have_alias",
-    ]
-    assert all(seed.knowledge_pack_id is None for seed in artifacts.bootstrap_output.frontier_seed_specifications)
+    assert artifacts.routing_result.selected_knowledge_pack_ids == []
+    assert len(artifacts.bootstrap_output.frontier_seed_specifications) == 4
+    assert all(
+        seed.knowledge_pack_ids == []
+        for seed in artifacts.bootstrap_output.frontier_seed_specifications
+    )
 
 
 def test_bootstrap_round0_sync_wrapper_works_with_test_models() -> None:

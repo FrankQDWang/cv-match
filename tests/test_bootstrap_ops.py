@@ -68,6 +68,98 @@ def _rerank_response(scores: dict[str, float]) -> RerankResponse:
     )
 
 
+def _keyword_draft_payload(
+    *,
+    routing_mode: str = "single_pack",
+    selected_pack_ids: list[str] | None = None,
+    negative_keywords: list[str] | None = None,
+) -> BootstrapKeywordDraft:
+    selected_pack_ids = [] if selected_pack_ids is None else selected_pack_ids
+    if routing_mode == "generic":
+        return BootstrapKeywordDraft.model_validate(
+            {
+                "candidate_seeds": [
+                    {
+                        "intent_type": "core_precision",
+                        "keywords": ["operations manager", "process design"],
+                        "source_knowledge_pack_ids": [],
+                        "reasoning": "anchor the route",
+                    },
+                    {
+                        "intent_type": "must_have_alias",
+                        "keywords": ["stakeholder management", "operations"],
+                        "source_knowledge_pack_ids": [],
+                        "reasoning": "cover aliases",
+                    },
+                    {
+                        "intent_type": "relaxed_floor",
+                        "keywords": ["operations", "manager"],
+                        "source_knowledge_pack_ids": [],
+                        "reasoning": "widen recall",
+                    },
+                    {
+                        "intent_type": "generic_expansion",
+                        "keywords": ["process improvement", "team operations"],
+                        "source_knowledge_pack_ids": [],
+                        "reasoning": "generic exploration",
+                    },
+                    {
+                        "intent_type": "generic_expansion",
+                        "keywords": ["hiring operations", "workflow"],
+                        "source_knowledge_pack_ids": [],
+                        "reasoning": "secondary exploration",
+                    },
+                ],
+                "negative_keywords": negative_keywords or ["sales"],
+            }
+        )
+    payload = {
+        "candidate_seeds": [
+            {
+                "intent_type": "core_precision",
+                "keywords": ["agent engineer", "rag", "python backend"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "anchor the route",
+            },
+            {
+                "intent_type": "must_have_alias",
+                "keywords": ["llm application", "retrieval pipeline"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "cover aliases",
+            },
+            {
+                "intent_type": "relaxed_floor",
+                "keywords": ["python backend", "retrieval"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "widen recall",
+            },
+            {
+                "intent_type": "pack_expansion",
+                "keywords": ["workflow orchestration", "tool calling"],
+                "source_knowledge_pack_ids": selected_pack_ids[:1],
+                "reasoning": "use pack hints",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["backend engineer", "agent workflow"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "extra route",
+            },
+        ],
+        "negative_keywords": negative_keywords or ["prompt operation"],
+    }
+    if routing_mode == "multi_pack":
+        payload["candidate_seeds"].append(
+            {
+                "intent_type": "cross_pack_bridge",
+                "keywords": ["agent ranking", "retrieval workflow"],
+                "source_knowledge_pack_ids": selected_pack_ids[:2],
+                "reasoning": "bridge both packs",
+            }
+        )
+    return BootstrapKeywordDraft.model_validate(payload)
+
+
 def test_route_domain_knowledge_pack_supports_explicit_override() -> None:
     assets = default_bootstrap_assets()
     business_policy = assets.business_policy_pack.model_copy(
@@ -85,8 +177,8 @@ def test_route_domain_knowledge_pack_supports_explicit_override() -> None:
         )
     )
 
-    assert result.routing_mode == "explicit_domain"
-    assert result.selected_knowledge_pack_id == "llm_agent_rag_engineering"
+    assert result.routing_mode == "explicit_pack"
+    assert result.selected_knowledge_pack_ids == ["llm_agent_rag_engineering"]
     assert rerank.seen_requests == []
 
 
@@ -112,8 +204,8 @@ def test_route_domain_knowledge_pack_uses_reranker_top1() -> None:
         )
     )
 
-    assert result.routing_mode == "inferred_domain"
-    assert result.selected_knowledge_pack_id == "llm_agent_rag_engineering"
+    assert result.routing_mode == "inferred_single_pack"
+    assert result.selected_knowledge_pack_ids == ["llm_agent_rag_engineering"]
     assert result.pack_scores["llm_agent_rag_engineering"] > 0.6
 
 
@@ -140,11 +232,11 @@ def test_route_domain_knowledge_pack_falls_back_when_top1_is_too_low() -> None:
     )
 
     assert result.routing_mode == "generic_fallback"
-    assert result.selected_knowledge_pack_id is None
+    assert result.selected_knowledge_pack_ids == []
     assert result.fallback_reason == "top1_confidence_below_floor"
 
 
-def test_route_domain_knowledge_pack_falls_back_when_gap_is_too_small() -> None:
+def test_route_domain_knowledge_pack_selects_two_packs_when_gap_is_small() -> None:
     assets = default_bootstrap_assets()
     rerank = FakeRerankRequest(
         _rerank_response(
@@ -166,9 +258,12 @@ def test_route_domain_knowledge_pack_falls_back_when_gap_is_too_small() -> None:
         )
     )
 
-    assert result.routing_mode == "generic_fallback"
-    assert result.selected_knowledge_pack_id is None
-    assert result.fallback_reason == "top1_top2_gap_below_floor"
+    assert result.routing_mode == "inferred_multi_pack"
+    assert result.selected_knowledge_pack_ids == [
+        "llm_agent_rag_engineering",
+        "search_ranking_retrieval_engineering",
+    ]
+    assert result.fallback_reason is None
 
 
 def test_generate_bootstrap_output_projects_exclude_keywords_into_negative_terms() -> None:
@@ -181,26 +276,75 @@ def test_generate_bootstrap_output_projects_exclude_keywords_into_negative_terms
     output = generate_bootstrap_output(
         _requirement_sheet(),
         BootstrapRoutingResult(
-            routing_mode="inferred_domain",
-            selected_knowledge_pack_id=llm_pack.knowledge_pack_id,
+            routing_mode="inferred_single_pack",
+            selected_knowledge_pack_ids=[llm_pack.knowledge_pack_id],
             routing_confidence=0.61,
             pack_scores={llm_pack.knowledge_pack_id: 0.61},
         ),
-        llm_pack,
-        BootstrapKeywordDraft(
-            core_keywords=["agent engineer", "rag", "python backend"],
-            must_have_keywords=["llm application"],
-            expansion_keywords=["workflow orchestration", "tool calling"],
-            negative_keywords=["prompt operation"],
+        [llm_pack],
+        _keyword_draft_payload(
+            selected_pack_ids=[llm_pack.knowledge_pack_id],
         ),
     )
 
     operators = [seed.operator_name for seed in output.frontier_seed_specifications]
-    assert operators == ["strict_core", "must_have_alias", "domain_company"]
-    assert all(seed.knowledge_pack_id == llm_pack.knowledge_pack_id for seed in output.frontier_seed_specifications)
+    assert operators == [
+        "strict_core",
+        "must_have_alias",
+        "domain_expansion",
+        "must_have_alias",
+        "strict_core",
+    ]
+    assert all(
+        seed.knowledge_pack_ids == [llm_pack.knowledge_pack_id]
+        for seed in output.frontier_seed_specifications
+    )
     assert "frontend" in output.frontier_seed_specifications[0].negative_terms
     assert "prompt operation" in output.frontier_seed_specifications[0].negative_terms
     assert "pure algorithm research" in output.frontier_seed_specifications[0].negative_terms
+
+
+def test_generate_bootstrap_output_keeps_multi_pack_bridge_provenance() -> None:
+    assets = default_bootstrap_assets()
+    selected_packs = [
+        pack
+        for pack in assets.knowledge_packs
+        if pack.knowledge_pack_id in {
+            "llm_agent_rag_engineering",
+            "search_ranking_retrieval_engineering",
+        }
+    ]
+    output = generate_bootstrap_output(
+        _requirement_sheet(must_have=["agent engineer", "ranking"]),
+        BootstrapRoutingResult(
+            routing_mode="inferred_multi_pack",
+            selected_knowledge_pack_ids=[
+                "llm_agent_rag_engineering",
+                "search_ranking_retrieval_engineering",
+            ],
+            routing_confidence=0.7,
+            pack_scores={
+                "llm_agent_rag_engineering": 0.7,
+                "search_ranking_retrieval_engineering": 0.68,
+            },
+        ),
+        selected_packs,
+        _keyword_draft_payload(
+            routing_mode="multi_pack",
+            selected_pack_ids=[
+                "llm_agent_rag_engineering",
+                "search_ranking_retrieval_engineering",
+            ],
+        ),
+    )
+
+    assert len(output.frontier_seed_specifications) == 5
+    assert any(
+        seed.operator_name == "domain_expansion"
+        and seed.knowledge_pack_ids
+        == ["llm_agent_rag_engineering", "search_ranking_retrieval_engineering"]
+        for seed in output.frontier_seed_specifications
+    )
 
 
 def test_generate_bootstrap_output_keeps_generic_bootstrap_small() -> None:
@@ -208,25 +352,22 @@ def test_generate_bootstrap_output_keeps_generic_bootstrap_small() -> None:
         _requirement_sheet(role_title="Operations Manager", must_have=["stakeholder management"]),
         BootstrapRoutingResult(
             routing_mode="generic_fallback",
-            selected_knowledge_pack_id=None,
+            selected_knowledge_pack_ids=[],
             routing_confidence=0.5,
             fallback_reason="top1_confidence_below_floor",
             pack_scores={},
         ),
-        None,
-        BootstrapKeywordDraft(
-            core_keywords=["process design"],
-            must_have_keywords=["stakeholder management"],
-            expansion_keywords=["should be ignored"],
-            negative_keywords=["sales"],
-        ),
+        [],
+        _keyword_draft_payload(routing_mode="generic"),
     )
 
     assert [seed.operator_name for seed in output.frontier_seed_specifications] == [
         "strict_core",
         "must_have_alias",
+        "strict_core",
+        "strict_core",
     ]
-    assert all(seed.knowledge_pack_id is None for seed in output.frontier_seed_specifications)
+    assert all(seed.knowledge_pack_ids == [] for seed in output.frontier_seed_specifications)
     frontier_state = initialize_frontier_state(
         output,
         default_bootstrap_assets().runtime_search_budget,
@@ -234,7 +375,7 @@ def test_generate_bootstrap_output_keeps_generic_bootstrap_small() -> None:
     )
     assert frontier_state.open_frontier_node_ids
     assert all(
-        frontier_state.frontier_nodes[node_id].knowledge_pack_id is None
+        frontier_state.frontier_nodes[node_id].knowledge_pack_ids == []
         for node_id in frontier_state.open_frontier_node_ids
     )
 

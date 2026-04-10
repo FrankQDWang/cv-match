@@ -112,7 +112,7 @@ async def request_branch_evaluation_draft(
             "parent_frontier_node_id": parent_node.frontier_node_id,
             "previous_node_shortlist_candidate_ids": parent_node.node_shortlist_candidate_ids,
             "donor_frontier_node_id": plan.child_frontier_node_stub.donor_frontier_node_id,
-            "knowledge_pack_id": plan.knowledge_pack_id,
+            "knowledge_pack_ids": plan.knowledge_pack_ids,
             "query_terms": plan.query_terms,
             "semantic_hash": plan.semantic_hash,
             "search_page_statistics": execution_result.search_page_statistics.model_dump(

@@ -67,14 +67,11 @@ async def bootstrap_round0_async(
         active_assets.reranker_calibration,
         rerank_request=rerank_request,
     )
-    selected_knowledge_pack = next(
-        (
-            pack
-            for pack in active_assets.knowledge_packs
-            if pack.knowledge_pack_id == routing_result.selected_knowledge_pack_id
-        ),
-        None,
-    )
+    selected_knowledge_packs = [
+        pack
+        for pack in active_assets.knowledge_packs
+        if pack.knowledge_pack_id in set(routing_result.selected_knowledge_pack_ids)
+    ]
     scoring_policy = freeze_scoring_policy(
         requirement_sheet,
         active_assets.business_policy_pack,
@@ -83,13 +80,13 @@ async def bootstrap_round0_async(
     keyword_draft, bootstrap_keyword_generation_audit = await request_bootstrap_keyword_draft(
         requirement_sheet,
         routing_result,
-        selected_knowledge_pack,
+        selected_knowledge_packs,
         model=bootstrap_keyword_generation_model,
     )
     bootstrap_output = generate_bootstrap_output(
         requirement_sheet,
         routing_result,
-        selected_knowledge_pack,
+        selected_knowledge_packs,
         keyword_draft,
     )
     frontier_state = initialize_frontier_state(

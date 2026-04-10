@@ -25,6 +25,7 @@ from seektalent.models import (
     SearchControllerDecisionDraft_t,
     SearchRunBundle,
     StopGuardThresholds,
+    stable_deduplicate,
 )
 from seektalent.resources import runtime_case_dir, runtime_eval_matrix_file
 from seektalent.search_ops import materialize_search_execution_plan
@@ -46,7 +47,7 @@ class CanonicalCaseSpec(BaseModel):
     business_context: str
     expected_route: str
     expected_stop_reason: str
-    expected_knowledge_pack_id: str | None = None
+    expected_knowledge_pack_ids: list[str] = Field(default_factory=list)
     expected_fallback_reason: str | None = None
     must_hold: list[str] = Field(default_factory=list)
     must_not_hold: list[str] = Field(default_factory=list)
@@ -104,40 +105,43 @@ class _SequentialTestModel:
 def canonical_case_specs() -> tuple[CanonicalCaseSpec, ...]:
     return (
         CanonicalCaseSpec(
-            case_id="case-bootstrap-explicit-domain",
-            scenario="显式领域 bootstrap",
+            case_id="case-bootstrap-explicit-pack",
+            scenario="显式 pack bootstrap",
             business_context="业务已明确指定领域，系统直接注入该领域知识包，不再猜领域。",
-            expected_route="explicit_domain",
+            expected_route="explicit_pack",
             expected_stop_reason="controller_stop",
-            expected_knowledge_pack_id="llm_agent_rag_engineering",
+            expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
             must_hold=[
-                "selected_knowledge_pack_id is llm_agent_rag_engineering",
-                "domain_company remains legal in bootstrap",
+                "selected_knowledge_pack_ids contains llm_agent_rag_engineering",
+                "domain_expansion remains legal in bootstrap",
             ],
             must_not_hold=["routing_mode = generic_fallback"],
         ),
         CanonicalCaseSpec(
-            case_id="case-bootstrap-inferred-top1",
+            case_id="case-bootstrap-inferred-single-pack",
             scenario="单领域 top1 路由",
             business_context="岗位文本足够明确，reranker 应稳定命中单一领域知识包。",
-            expected_route="inferred_domain",
+            expected_route="inferred_single_pack",
             expected_stop_reason="controller_stop",
-            expected_knowledge_pack_id="llm_agent_rag_engineering",
-            must_hold=["selected_knowledge_pack_id is llm_agent_rag_engineering"],
+            expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
+            must_hold=["selected_knowledge_pack_ids contains llm_agent_rag_engineering"],
             must_not_hold=["routing_mode = generic_fallback"],
         ),
         CanonicalCaseSpec(
-            case_id="case-bootstrap-ambiguous-close-score-generic",
-            scenario="接近分数触发 generic",
-            business_context="两个领域分数太接近时，不注入模糊上下文，直接退回 generic。",
-            expected_route="generic_fallback",
+            case_id="case-bootstrap-close-high-score-multi-pack",
+            scenario="接近高分触发 multi-pack",
+            business_context="两个领域都很强且分数接近时，同时注入 top2 packs 做 bootstrap。",
+            expected_route="inferred_multi_pack",
             expected_stop_reason="controller_stop",
-            expected_fallback_reason="top1_top2_gap_below_floor",
-            must_hold=[
-                "fallback_reason is top1_top2_gap_below_floor",
-                "selected_knowledge_pack_id is null",
+            expected_knowledge_pack_ids=[
+                "llm_agent_rag_engineering",
+                "search_ranking_retrieval_engineering",
             ],
-            must_not_hold=["domain_company appears in bootstrap seeds"],
+            must_hold=[
+                "selected_knowledge_pack_ids contains llm_agent_rag_engineering",
+                "selected_knowledge_pack_ids contains search_ranking_retrieval_engineering",
+            ],
+            must_not_hold=["routing_mode = generic_fallback"],
         ),
         CanonicalCaseSpec(
             case_id="case-bootstrap-out-of-domain-generic",
@@ -148,17 +152,17 @@ def canonical_case_specs() -> tuple[CanonicalCaseSpec, ...]:
             expected_fallback_reason="top1_confidence_below_floor",
             must_hold=[
                 "fallback_reason is top1_confidence_below_floor",
-                "selected_knowledge_pack_id is null",
+                "selected_knowledge_pack_ids is empty",
             ],
-            must_not_hold=["routing_mode = inferred_domain"],
+            must_not_hold=["routing_mode = inferred_single_pack"],
         ),
         CanonicalCaseSpec(
             case_id="case-crossover-legal",
             scenario="合法 crossover",
             business_context="已有合法 donor 且 shared anchor 成立时，控制器可发起 crossover 搜索。",
-            expected_route="inferred_domain",
+            expected_route="inferred_single_pack",
             expected_stop_reason="controller_stop",
-            expected_knowledge_pack_id="llm_agent_rag_engineering",
+            expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
             must_hold=["round 1 uses crossover_compose with donor_frontier_node_id"],
             must_not_hold=["missing donor candidate list"],
         ),
@@ -166,9 +170,9 @@ def canonical_case_specs() -> tuple[CanonicalCaseSpec, ...]:
             case_id="case-crossover-illegal-reject",
             scenario="非法 crossover 拒绝",
             business_context="控制器给出非法 donor 时，structured validator 立即拒绝并要求重试。",
-            expected_route="inferred_domain",
+            expected_route="inferred_single_pack",
             expected_stop_reason="controller_stop",
-            expected_knowledge_pack_id="llm_agent_rag_engineering",
+            expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
             must_hold=["controller validator retry count equals 1"],
             must_not_hold=["illegal crossover reaches execution_plan"],
         ),
@@ -176,9 +180,9 @@ def canonical_case_specs() -> tuple[CanonicalCaseSpec, ...]:
             case_id="case-stop-controller-direct-accepted",
             scenario="controller stop 直接接受",
             business_context="达到最小 round 门槛后，controller stop 可以直接终止 run。",
-            expected_route="inferred_domain",
+            expected_route="inferred_single_pack",
             expected_stop_reason="controller_stop",
-            expected_knowledge_pack_id="llm_agent_rag_engineering",
+            expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
             must_hold=["round 0 stop_reason is controller_stop"],
             must_not_hold=["search_cts round exists"],
         ),
@@ -186,9 +190,9 @@ def canonical_case_specs() -> tuple[CanonicalCaseSpec, ...]:
             case_id="case-stop-controller-direct-rejected",
             scenario="controller stop 先拒绝后接受",
             business_context="未到 stop guard 门槛时，controller stop 先被拒绝，再在下一轮接受。",
-            expected_route="inferred_domain",
+            expected_route="inferred_single_pack",
             expected_stop_reason="controller_stop",
-            expected_knowledge_pack_id="llm_agent_rag_engineering",
+            expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
             must_hold=["round 0 stop_reason is null", "round 1 stop_reason is controller_stop"],
             must_not_hold=["round count equals 1"],
         ),
@@ -196,9 +200,9 @@ def canonical_case_specs() -> tuple[CanonicalCaseSpec, ...]:
             case_id="case-stop-exhausted-low-gain-and-finalize",
             scenario="低增益 exhausted finalize",
             business_context="空结果且 novelty/usefulness/reward 都偏低时，系统应以 exhausted_low_gain 收口。",
-            expected_route="inferred_domain",
+            expected_route="inferred_single_pack",
             expected_stop_reason="exhausted_low_gain",
-            expected_knowledge_pack_id="llm_agent_rag_engineering",
+            expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
             must_hold=["first search round has empty deduplicated candidates"],
             must_not_hold=["stop_reason = controller_stop"],
         ),
@@ -224,12 +228,12 @@ def build_all_canonical_artifacts(*, repo_root: Path) -> None:
 
 def build_case_bundle(spec: CanonicalCaseSpec, *, repo_root: Path) -> SearchRunBundle:
     match spec.case_id:
-        case "case-bootstrap-explicit-domain":
-            return _build_explicit_domain_bundle(repo_root=repo_root)
-        case "case-bootstrap-inferred-top1":
-            return _build_inferred_top1_bundle(repo_root=repo_root)
-        case "case-bootstrap-ambiguous-close-score-generic":
-            return _build_ambiguous_close_score_generic_bundle(repo_root=repo_root)
+        case "case-bootstrap-explicit-pack":
+            return _build_explicit_pack_bundle(repo_root=repo_root)
+        case "case-bootstrap-inferred-single-pack":
+            return _build_inferred_single_pack_bundle(repo_root=repo_root)
+        case "case-bootstrap-close-high-score-multi-pack":
+            return _build_close_high_score_multi_pack_bundle(repo_root=repo_root)
         case "case-bootstrap-out-of-domain-generic":
             return _build_out_of_domain_generic_bundle(repo_root=repo_root)
         case "case-crossover-legal":
@@ -247,10 +251,10 @@ def build_case_bundle(spec: CanonicalCaseSpec, *, repo_root: Path) -> SearchRunB
 
 def build_case_eval(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> dict[str, object]:
     routing = bundle.bootstrap.routing_result
-    selected_pack = routing.selected_knowledge_pack_id
-    pack = _selected_pack(bundle)
-    include_keyword_adoption = _include_keyword_adoption(bundle, pack)
-    exclude_keyword_leak = _exclude_keyword_leak(bundle, pack)
+    selected_pack_ids = routing.selected_knowledge_pack_ids
+    packs = _selected_packs(bundle)
+    include_keyword_adoption = _include_keyword_adoption(bundle, packs)
+    exclude_keyword_leak = _exclude_keyword_leak(bundle, packs)
     return {
         "case_id": spec.case_id,
         "scenario": spec.scenario,
@@ -259,20 +263,20 @@ def build_case_eval(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> dict[st
         "observed_route": routing.routing_mode,
         "expected_stop_reason": spec.expected_stop_reason,
         "observed_stop_reason": bundle.final_result.stop_reason,
-        "expected_knowledge_pack_id": spec.expected_knowledge_pack_id,
-        "observed_knowledge_pack_id": selected_pack,
+        "expected_knowledge_pack_ids": spec.expected_knowledge_pack_ids,
+        "observed_knowledge_pack_ids": selected_pack_ids,
         "expected_fallback_reason": spec.expected_fallback_reason,
         "observed_fallback_reason": routing.fallback_reason,
         "must_hold": spec.must_hold,
         "must_not_hold": spec.must_not_hold,
         "metrics": [
             {"name": "route_match", "value": routing.routing_mode == spec.expected_route},
-            {"name": "selected_pack_match", "value": selected_pack == spec.expected_knowledge_pack_id},
+            {"name": "selected_packs_match", "value": selected_pack_ids == spec.expected_knowledge_pack_ids},
             {
                 "name": "generic_fallback_correctness",
                 "value": (
                     routing.routing_mode == "generic_fallback"
-                    and selected_pack is None
+                    and not selected_pack_ids
                     and routing.fallback_reason == spec.expected_fallback_reason
                 )
                 if spec.expected_route == "generic_fallback"
@@ -286,36 +290,36 @@ def build_case_eval(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> dict[st
     }
 
 
-def _build_explicit_domain_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_explicit_pack_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
-        case_id="case-bootstrap-explicit-domain",
+        case_id="case-bootstrap-explicit-pack",
         assets=_runtime_assets(knowledge_pack_id_override="llm_agent_rag_engineering", min_round_index=0),
         requirement_payload=_llm_requirement_payload(),
-        keyword_payload=_llm_keyword_payload(with_expansion=True),
+        keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[_stop_payload()],
-        final_summary="Explicit domain bootstrap stopped cleanly.",
+        final_summary="Explicit pack bootstrap stopped cleanly.",
     )
 
 
-def _build_inferred_top1_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_inferred_single_pack_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
-        case_id="case-bootstrap-inferred-top1",
+        case_id="case-bootstrap-inferred-single-pack",
         assets=_runtime_assets(min_round_index=0),
         requirement_payload=_llm_requirement_payload(),
-        keyword_payload=_llm_keyword_payload(with_expansion=True),
+        keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[_stop_payload()],
-        final_summary="Top-1 inferred bootstrap stopped cleanly.",
+        final_summary="Single-pack inferred bootstrap stopped cleanly.",
     )
 
 
-def _build_ambiguous_close_score_generic_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_close_high_score_multi_pack_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
-        case_id="case-bootstrap-ambiguous-close-score-generic",
+        case_id="case-bootstrap-close-high-score-multi-pack",
         assets=_runtime_assets(min_round_index=0),
         requirement_payload=_hybrid_requirement_payload(),
         keyword_payload=_hybrid_keyword_payload(),
@@ -325,7 +329,7 @@ def _build_ambiguous_close_score_generic_bundle(*, repo_root: Path) -> SearchRun
             "finance_risk_control_ai": 0.1,
         },
         controller_outputs=[_stop_payload()],
-        final_summary="Ambiguous route fell back to generic bootstrap.",
+        final_summary="Close high scores triggered a multi-pack bootstrap.",
     )
 
 
@@ -357,7 +361,7 @@ def _build_legal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
         keyword_payload=_crossover_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[
-            _search_payload("strict_core", additional_terms=["ranking", "agent"]),
+            _search_payload("strict_core", additional_terms=["workflow systems", "ranking"]),
             _crossover_payload(donor_frontier_node_id),
             _stop_payload(),
         ],
@@ -396,7 +400,7 @@ def _build_illegal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
         keyword_payload=_crossover_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[
-            _search_payload("strict_core", additional_terms=["ranking", "agent"]),
+            _search_payload("strict_core", additional_terms=["workflow systems", "ranking"]),
             [
                 _crossover_payload("missing-donor"),
                 _stop_payload(),
@@ -422,7 +426,7 @@ def _build_direct_stop_accepted_bundle(*, repo_root: Path) -> SearchRunBundle:
         case_id="case-stop-controller-direct-accepted",
         assets=_runtime_assets(min_round_index=0),
         requirement_payload=_llm_requirement_payload(),
-        keyword_payload=_llm_keyword_payload(with_expansion=False),
+        keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[_stop_payload()],
         final_summary="Controller stop was accepted immediately.",
@@ -435,7 +439,7 @@ def _build_direct_stop_rejected_bundle(*, repo_root: Path) -> SearchRunBundle:
         case_id="case-stop-controller-direct-rejected",
         assets=_runtime_assets(min_round_index=1),
         requirement_payload=_llm_requirement_payload(),
-        keyword_payload=_llm_keyword_payload(with_expansion=False),
+        keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[_stop_payload(), _stop_payload()],
         final_summary="Controller stop was accepted after one retry round.",
@@ -448,7 +452,7 @@ def _build_exhausted_low_gain_bundle(*, repo_root: Path) -> SearchRunBundle:
         case_id="case-stop-exhausted-low-gain-and-finalize",
         assets=_runtime_assets(min_round_index=2),
         requirement_payload=_llm_requirement_payload(),
-        keyword_payload=_llm_keyword_payload(with_expansion=False),
+        keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[_search_payload("strict_core", additional_terms=["ranking"])],
         cts_results=[
@@ -544,7 +548,7 @@ def _legal_crossover_donor_id(assets) -> str:
     controller_decision = generate_search_controller_decision(
         controller_context,
         SearchControllerDecisionDraft_t.model_validate(
-            _search_payload("strict_core", additional_terms=["ranking", "agent"])
+            _search_payload("strict_core", additional_terms=["workflow systems", "ranking"])
         ),
     )
     plan = materialize_search_execution_plan(
@@ -664,38 +668,163 @@ def _ops_requirement_payload() -> dict[str, object]:
     }
 
 
-def _llm_keyword_payload(*, with_expansion: bool) -> dict[str, object]:
+def _llm_keyword_payload() -> dict[str, object]:
     return {
-        "core_keywords": ["agent engineer", "rag", "python backend"],
-        "must_have_keywords": ["llm application", "retrieval pipeline"],
-        "expansion_keywords": ["workflow orchestration", "tool calling"] if with_expansion else [],
+        "candidate_seeds": [
+            {
+                "intent_type": "core_precision",
+                "keywords": ["agent engineer", "rag", "python backend"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "anchor the route",
+            },
+            {
+                "intent_type": "must_have_alias",
+                "keywords": ["llm application", "retrieval pipeline"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "cover aliases",
+            },
+            {
+                "intent_type": "relaxed_floor",
+                "keywords": ["python backend", "retrieval"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "widen recall",
+            },
+            {
+                "intent_type": "pack_expansion",
+                "keywords": ["workflow orchestration", "tool calling"],
+                "source_knowledge_pack_ids": ["llm_agent_rag_engineering"],
+                "reasoning": "use pack hints",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["backend engineer", "agent workflow"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "extra route",
+            },
+        ],
         "negative_keywords": ["frontend"],
     }
 
 
 def _hybrid_keyword_payload() -> dict[str, object]:
     return {
-        "core_keywords": ["agent engineer", "ranking", "python backend"],
-        "must_have_keywords": ["retrieval pipeline"],
-        "expansion_keywords": ["workflow orchestration"],
+        "candidate_seeds": [
+            {
+                "intent_type": "core_precision",
+                "keywords": ["agent engineer", "ranking", "python backend"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "anchor the hybrid route",
+            },
+            {
+                "intent_type": "must_have_alias",
+                "keywords": ["retrieval pipeline", "ranking"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "cover aliases",
+            },
+            {
+                "intent_type": "relaxed_floor",
+                "keywords": ["python backend", "agent"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "widen recall",
+            },
+            {
+                "intent_type": "pack_expansion",
+                "keywords": ["workflow orchestration", "tool calling"],
+                "source_knowledge_pack_ids": ["llm_agent_rag_engineering"],
+                "reasoning": "expand through llm pack",
+            },
+            {
+                "intent_type": "cross_pack_bridge",
+                "keywords": ["agent ranking", "retrieval workflow"],
+                "source_knowledge_pack_ids": [
+                    "llm_agent_rag_engineering",
+                    "search_ranking_retrieval_engineering",
+                ],
+                "reasoning": "bridge both packs",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["search backend", "reranker"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "extra route",
+            },
+        ],
         "negative_keywords": ["sales"],
     }
 
 
 def _crossover_keyword_payload() -> dict[str, object]:
     return {
-        "core_keywords": ["Python backend", "LLM", "retrieval"],
-        "must_have_keywords": [],
-        "expansion_keywords": [],
+        "candidate_seeds": [
+            {
+                "intent_type": "core_precision",
+                "keywords": ["Python backend", "LLM", "retrieval"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "anchor the route",
+            },
+            {
+                "intent_type": "must_have_alias",
+                "keywords": ["workflow", "ranking"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "cover aliases",
+            },
+            {
+                "intent_type": "relaxed_floor",
+                "keywords": ["Python backend", "workflow"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "widen recall",
+            },
+            {
+                "intent_type": "pack_expansion",
+                "keywords": ["agent", "ranking"],
+                "source_knowledge_pack_ids": ["llm_agent_rag_engineering"],
+                "reasoning": "use pack hints",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["retrieval engineer", "workflow systems"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "extra route",
+            },
+        ],
         "negative_keywords": ["frontend"],
     }
 
 
 def _ops_keyword_payload() -> dict[str, object]:
     return {
-        "core_keywords": ["process design"],
-        "must_have_keywords": ["stakeholder management"],
-        "expansion_keywords": ["hiring operations"],
+        "candidate_seeds": [
+            {
+                "intent_type": "core_precision",
+                "keywords": ["process design", "operations manager"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "anchor the route",
+            },
+            {
+                "intent_type": "must_have_alias",
+                "keywords": ["stakeholder management", "operations"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "cover aliases",
+            },
+            {
+                "intent_type": "relaxed_floor",
+                "keywords": ["operations", "manager"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "widen recall",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["hiring operations", "workflow"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "generic expansion",
+            },
+            {
+                "intent_type": "generic_expansion",
+                "keywords": ["process improvement", "team operations"],
+                "source_knowledge_pack_ids": [],
+                "reasoning": "secondary route",
+            },
+        ],
         "negative_keywords": ["sales"],
     }
 
@@ -724,9 +853,9 @@ def _crossover_payload(donor_frontier_node_id: str) -> dict[str, object]:
         "selected_operator_name": "crossover_compose",
         "operator_args": {
             "donor_frontier_node_id": donor_frontier_node_id,
-            "shared_anchor_terms": ["Python backend"],
-            "donor_terms_used": ["ranking", "agent"],
-            "crossover_rationale": "reuse donor ranking signal",
+            "shared_anchor_terms": ["workflow systems"],
+            "donor_terms_used": ["ranking"],
+            "crossover_rationale": "reuse donor workflow-ranking signal",
         },
         "expected_gain_hypothesis": "Fuse donor coverage.",
     }
@@ -764,15 +893,16 @@ def _candidate(candidate_id: str, *, search_text: str) -> RetrievedCandidate_t:
     )
 
 
-def _selected_pack(bundle: SearchRunBundle) -> DomainKnowledgePack | None:
-    selected_pack_id = bundle.bootstrap.routing_result.selected_knowledge_pack_id
-    if selected_pack_id is None:
-        return None
+def _selected_packs(bundle: SearchRunBundle) -> list[DomainKnowledgePack]:
+    selected_pack_ids = set(bundle.bootstrap.routing_result.selected_knowledge_pack_ids)
+    if not selected_pack_ids:
+        return []
     assets = default_bootstrap_assets()
-    return next(
-        (pack for pack in assets.knowledge_packs if pack.knowledge_pack_id == selected_pack_id),
-        None,
-    )
+    return [
+        pack
+        for pack in assets.knowledge_packs
+        if pack.knowledge_pack_id in selected_pack_ids
+    ]
 
 
 def _seed_terms(bundle: SearchRunBundle) -> list[str]:
@@ -783,18 +913,23 @@ def _seed_terms(bundle: SearchRunBundle) -> list[str]:
     ]
 
 
-def _include_keyword_adoption(bundle: SearchRunBundle, pack: DomainKnowledgePack | None) -> float:
-    if pack is None or not pack.include_keywords:
+def _include_keyword_adoption(bundle: SearchRunBundle, packs: list[DomainKnowledgePack]) -> float:
+    include_keywords = stable_deduplicate(
+        [keyword for pack in packs for keyword in pack.include_keywords]
+    )
+    if not include_keywords:
         return 0.0
     seed_terms = _seed_terms(bundle)
-    hits = sum(1 for keyword in pack.include_keywords if _any_text_hit(keyword, seed_terms))
-    return hits / len(pack.include_keywords)
+    hits = sum(1 for keyword in include_keywords if _any_text_hit(keyword, seed_terms))
+    return hits / len(include_keywords)
 
 
-def _exclude_keyword_leak(bundle: SearchRunBundle, pack: DomainKnowledgePack | None) -> bool:
-    if pack is None:
-        return False
-    return any(_any_text_hit(keyword, _seed_terms(bundle)) for keyword in pack.exclude_keywords)
+def _exclude_keyword_leak(bundle: SearchRunBundle, packs: list[DomainKnowledgePack]) -> bool:
+    return any(
+        _any_text_hit(keyword, _seed_terms(bundle))
+        for pack in packs
+        for keyword in pack.exclude_keywords
+    )
 
 
 def _any_text_hit(keyword: str, haystack: list[str]) -> bool:
@@ -857,7 +992,7 @@ def _render_agent_trace(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> str
     round_rows = "\n".join(
         f"| {round_artifact.runtime_round_index} | {round_artifact.controller_decision.action} | "
         f"{round_artifact.controller_decision.selected_operator_name} | "
-        f"{round_artifact.execution_plan.knowledge_pack_id if round_artifact.execution_plan else ''} | "
+        f"{round_artifact.execution_plan.knowledge_pack_ids if round_artifact.execution_plan else ''} | "
         f"{round_artifact.stop_reason or ''} |"
         for round_artifact in bundle.rounds
     ) or "| 0 | stop | must_have_alias |  | controller_stop |"
@@ -867,17 +1002,17 @@ def _render_agent_trace(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> str
         "```yaml\n"
         f"case_id: {spec.case_id}\n"
         f"routing_mode: {bundle.bootstrap.routing_result.routing_mode}\n"
-        f"selected_knowledge_pack_id: {bundle.bootstrap.routing_result.selected_knowledge_pack_id}\n"
+        f"selected_knowledge_pack_ids: {bundle.bootstrap.routing_result.selected_knowledge_pack_ids}\n"
         f"stop_reason: {bundle.final_result.stop_reason}\n"
         f"run_dir: {bundle.run_dir}\n"
         "```\n\n"
         "## Bootstrap\n\n"
         f"- routing_mode: `{bundle.bootstrap.routing_result.routing_mode}`\n"
-        f"- selected_knowledge_pack_id: `{bundle.bootstrap.routing_result.selected_knowledge_pack_id}`\n"
+        f"- selected_knowledge_pack_ids: `{bundle.bootstrap.routing_result.selected_knowledge_pack_ids}`\n"
         f"- fallback_reason: `{bundle.bootstrap.routing_result.fallback_reason}`\n"
         f"- seed_count: `{len(bundle.bootstrap.bootstrap_output.frontier_seed_specifications)}`\n\n"
         "## Runtime Rounds\n\n"
-        "| round | action | operator | knowledge_pack_id | stop_reason |\n"
+        "| round | action | operator | knowledge_pack_ids | stop_reason |\n"
         "| --- | --- | --- | --- | --- |\n"
         f"{round_rows}\n\n"
         "## Final Result\n\n"
@@ -895,7 +1030,7 @@ def _render_business_trace(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> 
         f"- 业务解释：{spec.business_context}\n\n"
         "## 关键信号\n\n"
         f"- 路由结果：`{routing.routing_mode}`\n"
-        f"- 领域知识包：`{routing.selected_knowledge_pack_id}`\n"
+        f"- 领域知识包：`{routing.selected_knowledge_pack_ids}`\n"
         f"- fallback_reason：`{routing.fallback_reason}`\n"
         f"- 终止原因：`{bundle.final_result.stop_reason}`\n"
         f"- shortlist：`{bundle.final_result.final_shortlist_candidate_ids}`\n\n"
@@ -913,8 +1048,8 @@ def _judge_packet(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> dict[str,
         "case_id": spec.case_id,
         "expected_route": spec.expected_route,
         "observed_route": routing.routing_mode,
-        "expected_knowledge_pack_id": spec.expected_knowledge_pack_id,
-        "observed_knowledge_pack_id": routing.selected_knowledge_pack_id,
+        "expected_knowledge_pack_ids": spec.expected_knowledge_pack_ids,
+        "observed_knowledge_pack_ids": routing.selected_knowledge_pack_ids,
         "expected_fallback_reason": spec.expected_fallback_reason,
         "observed_fallback_reason": routing.fallback_reason,
         "expected_stop_reason": spec.expected_stop_reason,
@@ -922,7 +1057,7 @@ def _judge_packet(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> dict[str,
         "must_hold": spec.must_hold,
         "must_not_hold": spec.must_not_hold,
         "route_match": routing.routing_mode == spec.expected_route,
-        "selected_pack_match": routing.selected_knowledge_pack_id == spec.expected_knowledge_pack_id,
+        "selected_packs_match": routing.selected_knowledge_pack_ids == spec.expected_knowledge_pack_ids,
         "stop_reason_match": bundle.final_result.stop_reason == spec.expected_stop_reason,
     }
 

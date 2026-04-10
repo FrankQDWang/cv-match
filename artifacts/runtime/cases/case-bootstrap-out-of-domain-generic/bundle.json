@@ -93,7 +93,7 @@
     },
     "routing_result": {
       "routing_mode": "generic_fallback",
-      "selected_knowledge_pack_id": null,
+      "selected_knowledge_pack_ids": [],
       "routing_confidence": 0.520821285372743,
       "fallback_reason": "top1_confidence_below_floor",
       "pack_scores": {
@@ -153,7 +153,7 @@
       "output_retries": 1,
       "validator_retry_count": 0,
       "model_name": "test",
-      "instruction_id_or_hash": "fe8e7b2591f4b79b66fd9e6bb9b0a6bbc20a8bc3",
+      "instruction_id_or_hash": "5960ba82d6c35310ddb1e093883a442e18d686dd",
       "message_history_mode": "fresh",
       "tools_enabled": false,
       "model_settings_snapshot": {
@@ -167,12 +167,14 @@
         {
           "operator_name": "strict_core",
           "seed_terms": [
-            "People Operations Manager",
-            "process design"
+            "process design",
+            "operations manager"
           ],
-          "seed_rationale": "role_title_plus_core_keywords",
-          "knowledge_pack_id": null,
-          "expected_coverage": [],
+          "seed_rationale": "00:core_precision",
+          "knowledge_pack_ids": [],
+          "expected_coverage": [
+            "hiring operations"
+          ],
           "negative_terms": [
             "sales"
           ],
@@ -181,14 +183,46 @@
         {
           "operator_name": "must_have_alias",
           "seed_terms": [
-            "stakeholder management",
-            "process design"
+            "operations",
+            "manager"
           ],
-          "seed_rationale": "must_have_plus_keyword_hints",
-          "knowledge_pack_id": null,
+          "seed_rationale": "02:relaxed_floor",
+          "knowledge_pack_ids": [],
           "expected_coverage": [
             "stakeholder management",
             "process design"
+          ],
+          "negative_terms": [
+            "sales"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "strict_core",
+          "seed_terms": [
+            "hiring operations",
+            "workflow"
+          ],
+          "seed_rationale": "03:generic_expansion",
+          "knowledge_pack_ids": [],
+          "expected_coverage": [
+            "hiring operations"
+          ],
+          "negative_terms": [
+            "sales"
+          ],
+          "target_location": "Shanghai"
+        },
+        {
+          "operator_name": "strict_core",
+          "seed_terms": [
+            "process improvement",
+            "team operations"
+          ],
+          "seed_rationale": "04:generic_expansion",
+          "knowledge_pack_ids": [],
+          "expected_coverage": [
+            "hiring operations"
           ],
           "negative_terms": [
             "sales"
@@ -199,17 +233,17 @@
     },
     "frontier_state": {
       "frontier_nodes": {
-        "seed_strict_core_8b59f654": {
-          "frontier_node_id": "seed_strict_core_8b59f654",
+        "seed_strict_core_1ff7dd0e": {
+          "frontier_node_id": "seed_strict_core_1ff7dd0e",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "strict_core",
           "node_query_term_pool": [
-            "People Operations Manager",
-            "process design"
+            "process design",
+            "operations manager"
           ],
-          "knowledge_pack_id": null,
-          "seed_rationale": "role_title_plus_core_keywords",
+          "knowledge_pack_ids": [],
+          "seed_rationale": "00:core_precision",
           "negative_terms": [
             "sales"
           ],
@@ -220,17 +254,59 @@
           "reward_breakdown": null,
           "status": "open"
         },
-        "seed_must_have_alias_89eeb58d": {
-          "frontier_node_id": "seed_must_have_alias_89eeb58d",
+        "seed_must_have_alias_dd776970": {
+          "frontier_node_id": "seed_must_have_alias_dd776970",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "must_have_alias",
           "node_query_term_pool": [
-            "stakeholder management",
-            "process design"
+            "operations",
+            "manager"
           ],
-          "knowledge_pack_id": null,
-          "seed_rationale": "must_have_plus_keyword_hints",
+          "knowledge_pack_ids": [],
+          "seed_rationale": "02:relaxed_floor",
+          "negative_terms": [
+            "sales"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_strict_core_b160178f": {
+          "frontier_node_id": "seed_strict_core_b160178f",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "hiring operations",
+            "workflow"
+          ],
+          "knowledge_pack_ids": [],
+          "seed_rationale": "03:generic_expansion",
+          "negative_terms": [
+            "sales"
+          ],
+          "parent_shortlist_candidate_ids": [],
+          "node_shortlist_candidate_ids": [],
+          "node_shortlist_score_snapshot": {},
+          "previous_branch_evaluation": null,
+          "reward_breakdown": null,
+          "status": "open"
+        },
+        "seed_strict_core_41d8d57a": {
+          "frontier_node_id": "seed_strict_core_41d8d57a",
+          "parent_frontier_node_id": null,
+          "donor_frontier_node_id": null,
+          "selected_operator_name": "strict_core",
+          "node_query_term_pool": [
+            "process improvement",
+            "team operations"
+          ],
+          "knowledge_pack_ids": [],
+          "seed_rationale": "04:generic_expansion",
           "negative_terms": [
             "sales"
           ],
@@ -243,14 +319,21 @@
         }
       },
       "open_frontier_node_ids": [
-        "seed_strict_core_8b59f654",
-        "seed_must_have_alias_89eeb58d"
+        "seed_strict_core_1ff7dd0e",
+        "seed_must_have_alias_dd776970",
+        "seed_strict_core_b160178f",
+        "seed_strict_core_41d8d57a"
       ],
       "closed_frontier_node_ids": [],
       "run_term_catalog": [
-        "People Operations Manager",
         "process design",
-        "stakeholder management"
+        "operations manager",
+        "operations",
+        "manager",
+        "hiring operations",
+        "workflow",
+        "process improvement",
+        "team operations"
       ],
       "run_shortlist_candidate_ids": [],
       "semantic_hashes_seen": [],
@@ -263,7 +346,7 @@
           "average_reward": 0.0,
           "times_selected": 0
         },
-        "domain_company": {
+        "domain_expansion": {
           "average_reward": 0.0,
           "times_selected": 0
         },
@@ -280,17 +363,17 @@
       "runtime_round_index": 0,
       "frontier_state_before": {
         "frontier_nodes": {
-          "seed_strict_core_8b59f654": {
-            "frontier_node_id": "seed_strict_core_8b59f654",
+          "seed_strict_core_1ff7dd0e": {
+            "frontier_node_id": "seed_strict_core_1ff7dd0e",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "strict_core",
             "node_query_term_pool": [
-              "People Operations Manager",
-              "process design"
+              "process design",
+              "operations manager"
             ],
-            "knowledge_pack_id": null,
-            "seed_rationale": "role_title_plus_core_keywords",
+            "knowledge_pack_ids": [],
+            "seed_rationale": "00:core_precision",
             "negative_terms": [
               "sales"
             ],
@@ -301,17 +384,59 @@
             "reward_breakdown": null,
             "status": "open"
           },
-          "seed_must_have_alias_89eeb58d": {
-            "frontier_node_id": "seed_must_have_alias_89eeb58d",
+          "seed_must_have_alias_dd776970": {
+            "frontier_node_id": "seed_must_have_alias_dd776970",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
             "node_query_term_pool": [
-              "stakeholder management",
-              "process design"
+              "operations",
+              "manager"
             ],
-            "knowledge_pack_id": null,
-            "seed_rationale": "must_have_plus_keyword_hints",
+            "knowledge_pack_ids": [],
+            "seed_rationale": "02:relaxed_floor",
+            "negative_terms": [
+              "sales"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_strict_core_b160178f": {
+            "frontier_node_id": "seed_strict_core_b160178f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "hiring operations",
+              "workflow"
+            ],
+            "knowledge_pack_ids": [],
+            "seed_rationale": "03:generic_expansion",
+            "negative_terms": [
+              "sales"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_strict_core_41d8d57a": {
+            "frontier_node_id": "seed_strict_core_41d8d57a",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "process improvement",
+              "team operations"
+            ],
+            "knowledge_pack_ids": [],
+            "seed_rationale": "04:generic_expansion",
             "negative_terms": [
               "sales"
             ],
@@ -324,14 +449,21 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_strict_core_8b59f654",
-          "seed_must_have_alias_89eeb58d"
+          "seed_strict_core_1ff7dd0e",
+          "seed_must_have_alias_dd776970",
+          "seed_strict_core_b160178f",
+          "seed_strict_core_41d8d57a"
         ],
         "closed_frontier_node_ids": [],
         "run_term_catalog": [
-          "People Operations Manager",
           "process design",
-          "stakeholder management"
+          "operations manager",
+          "operations",
+          "manager",
+          "hiring operations",
+          "workflow",
+          "process improvement",
+          "team operations"
         ],
         "run_shortlist_candidate_ids": [],
         "semantic_hashes_seen": [],
@@ -344,7 +476,7 @@
             "average_reward": 0.0,
             "times_selected": 0
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -357,19 +489,19 @@
       },
       "controller_context": {
         "active_frontier_node_summary": {
-          "frontier_node_id": "seed_strict_core_8b59f654",
-          "selected_operator_name": "strict_core",
+          "frontier_node_id": "seed_must_have_alias_dd776970",
+          "selected_operator_name": "must_have_alias",
           "node_query_term_pool": [
-            "People Operations Manager",
-            "process design"
+            "operations",
+            "manager"
           ],
           "node_shortlist_candidate_ids": []
         },
         "donor_candidate_node_summaries": [],
         "frontier_head_summary": {
-          "open_node_count": 2,
+          "open_node_count": 4,
           "remaining_budget": 5,
-          "highest_priority_score": 2.5
+          "highest_priority_score": 3.0999999999999996
         },
         "unmet_requirement_weights": [
           {
@@ -378,7 +510,7 @@
           },
           {
             "capability": "process design",
-            "weight": 0.3
+            "weight": 1.0
           }
         ],
         "operator_statistics_summary": {
@@ -390,7 +522,7 @@
             "average_reward": 0.0,
             "times_selected": 0
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -445,7 +577,7 @@
       },
       "controller_decision": {
         "action": "stop",
-        "target_frontier_node_id": "seed_strict_core_8b59f654",
+        "target_frontier_node_id": "seed_must_have_alias_dd776970",
         "selected_operator_name": "must_have_alias",
         "operator_args": {},
         "expected_gain_hypothesis": "Stop."
@@ -460,17 +592,17 @@
       "reward_breakdown": null,
       "frontier_state_after": {
         "frontier_nodes": {
-          "seed_strict_core_8b59f654": {
-            "frontier_node_id": "seed_strict_core_8b59f654",
+          "seed_strict_core_1ff7dd0e": {
+            "frontier_node_id": "seed_strict_core_1ff7dd0e",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "strict_core",
             "node_query_term_pool": [
-              "People Operations Manager",
-              "process design"
+              "process design",
+              "operations manager"
             ],
-            "knowledge_pack_id": null,
-            "seed_rationale": "role_title_plus_core_keywords",
+            "knowledge_pack_ids": [],
+            "seed_rationale": "00:core_precision",
             "negative_terms": [
               "sales"
             ],
@@ -481,17 +613,59 @@
             "reward_breakdown": null,
             "status": "open"
           },
-          "seed_must_have_alias_89eeb58d": {
-            "frontier_node_id": "seed_must_have_alias_89eeb58d",
+          "seed_must_have_alias_dd776970": {
+            "frontier_node_id": "seed_must_have_alias_dd776970",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
             "node_query_term_pool": [
-              "stakeholder management",
-              "process design"
+              "operations",
+              "manager"
             ],
-            "knowledge_pack_id": null,
-            "seed_rationale": "must_have_plus_keyword_hints",
+            "knowledge_pack_ids": [],
+            "seed_rationale": "02:relaxed_floor",
+            "negative_terms": [
+              "sales"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_strict_core_b160178f": {
+            "frontier_node_id": "seed_strict_core_b160178f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "hiring operations",
+              "workflow"
+            ],
+            "knowledge_pack_ids": [],
+            "seed_rationale": "03:generic_expansion",
+            "negative_terms": [
+              "sales"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_strict_core_41d8d57a": {
+            "frontier_node_id": "seed_strict_core_41d8d57a",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "strict_core",
+            "node_query_term_pool": [
+              "process improvement",
+              "team operations"
+            ],
+            "knowledge_pack_ids": [],
+            "seed_rationale": "04:generic_expansion",
             "negative_terms": [
               "sales"
             ],
@@ -504,14 +678,21 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_strict_core_8b59f654",
-          "seed_must_have_alias_89eeb58d"
+          "seed_strict_core_1ff7dd0e",
+          "seed_must_have_alias_dd776970",
+          "seed_strict_core_b160178f",
+          "seed_strict_core_41d8d57a"
         ],
         "closed_frontier_node_ids": [],
         "run_term_catalog": [
-          "People Operations Manager",
           "process design",
-          "stakeholder management"
+          "operations manager",
+          "operations",
+          "manager",
+          "hiring operations",
+          "workflow",
+          "process improvement",
+          "team operations"
         ],
         "run_shortlist_candidate_ids": [],
         "semantic_hashes_seen": [],
@@ -524,7 +705,7 @@
             "average_reward": 0.0,
             "times_selected": 0
           },
-          "domain_company": {
+          "domain_expansion": {
             "average_reward": 0.0,
             "times_selected": 0
           },
@@ -568,8 +749,8 @@
         "value": "generic_fallback"
       },
       {
-        "name": "selected_knowledge_pack_id",
-        "value": ""
+        "name": "selected_knowledge_pack_ids",
+        "value": []
       },
       {
         "name": "routing_confidence",

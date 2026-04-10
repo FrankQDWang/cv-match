@@ -150,7 +150,7 @@ def test_select_active_frontier_node_applies_saturation_penalty() -> None:
         frontier_node_id="seed_saturated",
         selected_operator_name="must_have_alias",
         node_query_term_pool=["python"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         node_shortlist_candidate_ids=["c1"],
         status="open",
     )
@@ -158,7 +158,7 @@ def test_select_active_frontier_node_applies_saturation_penalty() -> None:
         frontier_node_id="seed_fresh",
         selected_operator_name="must_have_alias",
         node_query_term_pool=["python"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         status="open",
     )
 
@@ -177,12 +177,12 @@ def test_select_active_frontier_node_applies_saturation_penalty() -> None:
     assert context.frontier_head_summary.highest_priority_score == pytest.approx(2.5)
 
 
-def test_select_active_frontier_node_filters_donors_and_disables_domain_company_for_generic_provenance() -> None:
+def test_select_active_frontier_node_filters_donors_and_disables_domain_expansion_for_generic_provenance() -> None:
     active = FrontierNode_t(
         frontier_node_id="seed_generic",
         selected_operator_name="must_have_alias",
         node_query_term_pool=["python"],
-        knowledge_pack_id=None,
+        knowledge_pack_ids=[],
         status="open",
     )
     legal_donor = FrontierNode_t(
@@ -190,7 +190,7 @@ def test_select_active_frontier_node_filters_donors_and_disables_domain_company_
         parent_frontier_node_id="root",
         selected_operator_name="strict_core",
         node_query_term_pool=["python", "ranking"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         reward_breakdown=_reward(2.5),
         status="open",
     )
@@ -199,7 +199,7 @@ def test_select_active_frontier_node_filters_donors_and_disables_domain_company_
         parent_frontier_node_id="root",
         selected_operator_name="strict_core",
         node_query_term_pool=["python", "ranking"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         status="open",
     )
     no_anchor = FrontierNode_t(
@@ -207,7 +207,7 @@ def test_select_active_frontier_node_filters_donors_and_disables_domain_company_
         parent_frontier_node_id="root",
         selected_operator_name="strict_core",
         node_query_term_pool=["ranking"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         reward_breakdown=_reward(2.5),
         status="open",
     )
@@ -216,7 +216,7 @@ def test_select_active_frontier_node_filters_donors_and_disables_domain_company_
         parent_frontier_node_id="root",
         selected_operator_name="strict_core",
         node_query_term_pool=["python"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         reward_breakdown=_reward(2.5),
         status="open",
     )
@@ -225,7 +225,7 @@ def test_select_active_frontier_node_filters_donors_and_disables_domain_company_
         parent_frontier_node_id="root",
         selected_operator_name="strict_core",
         node_query_term_pool=["python", "ranking"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         reward_breakdown=_reward(2.5),
         status="closed",
     )
@@ -261,7 +261,7 @@ def test_select_active_frontier_node_freezes_term_budget_ranges(
         frontier_node_id="seed",
         selected_operator_name="must_have_alias",
         node_query_term_pool=["python"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         status="open",
     )
 
@@ -284,7 +284,7 @@ def test_generate_search_controller_decision_normalizes_stop_and_falls_back_to_a
                     frontier_node_id="seed",
                     selected_operator_name="must_have_alias",
                     node_query_term_pool=["python"],
-                    knowledge_pack_id="llm_agent_rag_engineering",
+                    knowledge_pack_ids=["llm_agent_rag_engineering"],
                     status="open",
                 )
             ]
@@ -318,7 +318,7 @@ def test_generate_search_controller_decision_clamps_non_crossover_terms() -> Non
                     frontier_node_id="seed",
                     selected_operator_name="must_have_alias",
                     node_query_term_pool=["python", "agent", "workflow", "backend"],
-                    knowledge_pack_id="llm_agent_rag_engineering",
+                    knowledge_pack_ids=["llm_agent_rag_engineering"],
                     status="open",
                 )
             ],
@@ -350,7 +350,7 @@ def test_generate_search_controller_decision_normalizes_crossover_fields() -> No
         frontier_node_id="seed_generic",
         selected_operator_name="must_have_alias",
         node_query_term_pool=["python"],
-        knowledge_pack_id=None,
+        knowledge_pack_ids=[],
         status="open",
     )
     donor = FrontierNode_t(
@@ -358,7 +358,7 @@ def test_generate_search_controller_decision_normalizes_crossover_fields() -> No
         parent_frontier_node_id="root",
         selected_operator_name="strict_core",
         node_query_term_pool=["python", "ranking"],
-        knowledge_pack_id="llm_agent_rag_engineering",
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
         reward_breakdown=_reward(2.5),
         status="open",
     )
@@ -413,7 +413,7 @@ def test_carry_forward_frontier_state_is_identity_projection() -> None:
                 frontier_node_id="seed",
                 selected_operator_name="must_have_alias",
                 node_query_term_pool=["python"],
-                knowledge_pack_id="llm_agent_rag_engineering",
+                knowledge_pack_ids=["llm_agent_rag_engineering"],
                 status="open",
             )
         ],
@@ -440,7 +440,7 @@ def test_frontier_search_path_connects_to_phase3_ops() -> None:
                 frontier_node_id="seed",
                 selected_operator_name="must_have_alias",
                 node_query_term_pool=["python", "agent"],
-                knowledge_pack_id="llm_agent_rag_engineering",
+                knowledge_pack_ids=["llm_agent_rag_engineering"],
                 negative_terms=["frontend"],
                 status="open",
             )
@@ -508,7 +508,7 @@ def test_frontier_stop_path_keeps_the_same_frontier_state() -> None:
                 frontier_node_id="seed",
                 selected_operator_name="must_have_alias",
                 node_query_term_pool=["python"],
-                knowledge_pack_id="llm_agent_rag_engineering",
+                knowledge_pack_ids=["llm_agent_rag_engineering"],
                 status="open",
             )
         ]

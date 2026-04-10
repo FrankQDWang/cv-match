@@ -1,17 +1,22 @@
 {
-  "case_id": "case-bootstrap-inferred-top1",
-  "scenario": "单领域 top1 路由",
+  "case_id": "case-bootstrap-explicit-pack",
+  "scenario": "显式 pack bootstrap",
   "experiment_id": "E5",
-  "expected_route": "inferred_domain",
-  "observed_route": "inferred_domain",
+  "expected_route": "explicit_pack",
+  "observed_route": "explicit_pack",
   "expected_stop_reason": "controller_stop",
   "observed_stop_reason": "controller_stop",
-  "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-  "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+  "expected_knowledge_pack_ids": [
+    "llm_agent_rag_engineering"
+  ],
+  "observed_knowledge_pack_ids": [
+    "llm_agent_rag_engineering"
+  ],
   "expected_fallback_reason": null,
   "observed_fallback_reason": null,
   "must_hold": [
-    "selected_knowledge_pack_id is llm_agent_rag_engineering"
+    "selected_knowledge_pack_ids contains llm_agent_rag_engineering",
+    "domain_expansion remains legal in bootstrap"
   ],
   "must_not_hold": [
     "routing_mode = generic_fallback"
@@ -22,7 +27,7 @@
       "value": true
     },
     {
-      "name": "selected_pack_match",
+      "name": "selected_packs_match",
       "value": true
     },
     {

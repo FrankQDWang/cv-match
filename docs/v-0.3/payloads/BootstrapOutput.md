@@ -18,7 +18,7 @@ BootstrapOutput = { frontier_seed_specifications }
 ## Invariants
 
 - 它只服务 round-0 frontier 初始化。
-- routed path 最多生成 `strict_core / must_have_alias / domain_company` 三条 seeds。
+- routed path 最多生成 `strict_core / must_have_alias / domain_expansion` 三条 seeds。
 - generic fallback 固定只生成 `strict_core / must_have_alias` 两条 seeds。
 
 ## 相关

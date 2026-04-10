@@ -1,4 +1,4 @@
-# Business Trace: case-bootstrap-inferred-top1
+# Business Trace: case-bootstrap-inferred-single-pack
 
 ## 场景背景
 
@@ -7,15 +7,15 @@
 
 ## 关键信号
 
-- 路由结果：`inferred_domain`
-- 领域知识包：`llm_agent_rag_engineering`
+- 路由结果：`inferred_single_pack`
+- 领域知识包：`['llm_agent_rag_engineering']`
 - fallback_reason：`None`
 - 终止原因：`controller_stop`
 - shortlist：`[]`
 
 ## 业务解读
 
-- 该 case 期望走 `inferred_domain`，实际路由为 `inferred_domain`。
+- 该 case 期望走 `inferred_single_pack`，实际路由为 `inferred_single_pack`。
 - 该 case 期望 stop 为 `controller_stop`，实际 stop 为 `controller_stop`。
-- 必须保留的事实：selected_knowledge_pack_id is llm_agent_rag_engineering。
+- 必须保留的事实：selected_knowledge_pack_ids contains llm_agent_rag_engineering。
 - 不应出现的事实：routing_mode = generic_fallback。

@@ -1,9 +1,13 @@
 {
   "case_id": "case-crossover-illegal-reject",
-  "expected_route": "inferred_domain",
-  "observed_route": "inferred_domain",
-  "expected_knowledge_pack_id": "llm_agent_rag_engineering",
-  "observed_knowledge_pack_id": "llm_agent_rag_engineering",
+  "expected_route": "inferred_single_pack",
+  "observed_route": "inferred_single_pack",
+  "expected_knowledge_pack_ids": [
+    "llm_agent_rag_engineering"
+  ],
+  "observed_knowledge_pack_ids": [
+    "llm_agent_rag_engineering"
+  ],
   "expected_fallback_reason": null,
   "observed_fallback_reason": null,
   "expected_stop_reason": "controller_stop",
@@ -15,6 +19,6 @@
     "illegal crossover reaches execution_plan"
   ],
   "route_match": true,
-  "selected_pack_match": true,
+  "selected_packs_match": true,
   "stop_reason_match": true
 }
