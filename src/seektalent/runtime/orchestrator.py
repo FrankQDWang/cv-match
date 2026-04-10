@@ -201,7 +201,7 @@ class WorkflowRuntime:
                     frontier_state,
                     bootstrap_artifacts.requirement_sheet,
                     controller_decision,
-                    active_assets.runtime_term_budget_policy,
+                    controller_context.term_budget_range,
                     active_assets.runtime_search_budget,
                     active_assets.crossover_guard_thresholds,
                 )

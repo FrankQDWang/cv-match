@@ -12,7 +12,6 @@ from seektalent.models import (
     FrontierState_t,
     RequirementSheet,
     RuntimeSearchBudget,
-    RuntimeTermBudgetPolicy,
     ScoredCandidate_t,
     ScoringCandidate_t,
     ScoringPolicy,
@@ -55,7 +54,7 @@ def materialize_search_execution_plan(
     frontier_state: FrontierState_t,
     requirement_sheet: RequirementSheet,
     decision: SearchControllerDecision_t,
-    term_budget_policy: RuntimeTermBudgetPolicy,
+    term_budget_range: tuple[int, int],
     search_budget: RuntimeSearchBudget,
     crossover_thresholds: CrossoverGuardThresholds,
 ) -> SearchExecutionPlan_t:
@@ -66,12 +65,7 @@ def materialize_search_execution_plan(
     if parent_node is None:
         raise ValueError(f"unknown_target_frontier_node_id: {decision.target_frontier_node_id}")
 
-    if frontier_state.remaining_budget >= 4:
-        _, max_terms = term_budget_policy.high_budget_range
-    elif frontier_state.remaining_budget >= 2:
-        _, max_terms = term_budget_policy.medium_budget_range
-    else:
-        _, max_terms = term_budget_policy.low_budget_range
+    _, max_terms = term_budget_range
 
     donor_frontier_node_id: str | None = None
     knowledge_pack_ids = list(parent_node.knowledge_pack_ids)

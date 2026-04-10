@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from seektalent.models import RuntimeBudgetState, RuntimeSearchBudget
+from seektalent.models import RuntimeBudgetState, RuntimeSearchBudget, RuntimeTermBudgetPolicy
 
 
 MIN_ROUND_BUDGET = 5
@@ -51,6 +51,17 @@ def build_runtime_budget_state(
     )
 
 
+def derive_term_budget_range(
+    runtime_budget_state: RuntimeBudgetState,
+    term_budget_policy: RuntimeTermBudgetPolicy,
+) -> tuple[int, int]:
+    if runtime_budget_state.search_phase == "explore":
+        return term_budget_policy.explore_budget_range
+    if runtime_budget_state.search_phase == "harvest":
+        return term_budget_policy.harvest_budget_range
+    return term_budget_policy.balance_budget_range
+
+
 def _search_phase(phase_progress: float) -> str:
     if phase_progress < 0.34:
         return "explore"
@@ -63,5 +74,6 @@ __all__ = [
     "MAX_ROUND_BUDGET",
     "MIN_ROUND_BUDGET",
     "build_runtime_budget_state",
+    "derive_term_budget_range",
     "resolve_runtime_search_budget",
 ]

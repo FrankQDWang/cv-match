@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from seektalent.models import RuntimeSearchBudget
+from seektalent.models import RuntimeSearchBudget, RuntimeTermBudgetPolicy
 from seektalent.runtime_budget import (
     build_runtime_budget_state,
+    derive_term_budget_range,
     resolve_runtime_search_budget,
 )
 
@@ -100,3 +101,32 @@ def test_build_runtime_budget_state_switches_phase_at_fixed_boundaries() -> None
     assert balance.search_phase == "balance"
     assert harvest.phase_progress == 0.67
     assert harvest.search_phase == "harvest"
+
+
+def test_derive_term_budget_range_uses_phase_owner() -> None:
+    policy = RuntimeTermBudgetPolicy()
+
+    assert derive_term_budget_range(
+        build_runtime_budget_state(
+            initial_round_budget=12,
+            runtime_round_index=0,
+            remaining_budget=10,
+        ),
+        policy,
+    ) == (2, 6)
+    assert derive_term_budget_range(
+        build_runtime_budget_state(
+            initial_round_budget=12,
+            runtime_round_index=5,
+            remaining_budget=6,
+        ),
+        policy,
+    ) == (2, 5)
+    assert derive_term_budget_range(
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=4,
+            remaining_budget=4,
+        ),
+        policy,
+    ) == (2, 4)

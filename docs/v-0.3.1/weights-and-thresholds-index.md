@@ -257,16 +257,16 @@ max_target_new_candidate_count: 20
 owner: [[RuntimeTermBudgetPolicy]]
 
 ```yaml
-high_budget_range: [2, 6]
-medium_budget_range: [2, 5]
-low_budget_range: [2, 4]
+explore_budget_range: [2, 6]
+balance_budget_range: [2, 5]
+harvest_budget_range: [2, 4]
 ```
 
 分层规则：
 
-- `remaining_budget >= 4`：`high_budget_range`
-- `remaining_budget in [2, 3]`：`medium_budget_range`
-- `remaining_budget <= 1`：`low_budget_range`
+- `search_phase = explore`：`explore_budget_range`
+- `search_phase = balance`：`balance_budget_range`
+- `search_phase = harvest`：`harvest_budget_range`
 
 ### 3.4 Crossover Guard Thresholds
 

@@ -703,10 +703,15 @@ def test_select_active_frontier_node_keeps_coverage_and_repair_semantics_same_so
 
 
 @pytest.mark.parametrize(
-    ("remaining_budget", "expected_range"),
-    [(4, (2, 6)), (2, (2, 5)), (1, (2, 4))],
+    ("runtime_budget_state", "remaining_budget", "expected_range"),
+    [
+        (_runtime_budget_state(remaining_budget=10, initial_round_budget=12, runtime_round_index=0), 10, (2, 6)),
+        (_runtime_budget_state(remaining_budget=6, initial_round_budget=12, runtime_round_index=5), 6, (2, 5)),
+        (_runtime_budget_state(remaining_budget=4, initial_round_budget=5, runtime_round_index=4), 4, (2, 4)),
+    ],
 )
-def test_select_active_frontier_node_freezes_term_budget_ranges(
+def test_select_active_frontier_node_freezes_term_budget_ranges_by_phase(
+    runtime_budget_state,
     remaining_budget: int,
     expected_range: tuple[int, int],
 ) -> None:
@@ -724,10 +729,32 @@ def test_select_active_frontier_node_freezes_term_budget_ranges(
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
-        _runtime_budget_state(remaining_budget=remaining_budget),
+        runtime_budget_state,
     )
 
     assert context.term_budget_range == expected_range
+
+
+def test_select_active_frontier_node_term_budget_ignores_legacy_remaining_budget_thresholds() -> None:
+    node = FrontierNode_t(
+        frontier_node_id="seed",
+        selected_operator_name="must_have_alias",
+        node_query_term_pool=["python"],
+        knowledge_pack_ids=["llm_agent_rag_engineering"],
+        status="open",
+    )
+
+    context = select_active_frontier_node(
+        _frontier_state([node], remaining_budget=4),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4, initial_round_budget=5, runtime_round_index=4),
+    )
+
+    assert context.runtime_budget_state.search_phase == "harvest"
+    assert context.term_budget_range == (2, 4)
 
 
 def test_generate_search_controller_decision_normalizes_stop_and_falls_back_to_active_operator() -> None:
@@ -777,13 +804,13 @@ def test_generate_search_controller_decision_clamps_non_crossover_terms() -> Non
                     status="open",
                 )
             ],
-            remaining_budget=2,
+            remaining_budget=6,
         ),
         _requirement_sheet(),
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
-        _runtime_budget_state(remaining_budget=2),
+        _runtime_budget_state(remaining_budget=6, initial_round_budget=12, runtime_round_index=5),
     )
 
     decision = generate_search_controller_decision(
@@ -924,7 +951,7 @@ def test_frontier_search_path_connects_to_phase3_ops() -> None:
         state,
         _requirement_sheet(),
         decision,
-        RuntimeTermBudgetPolicy(),
+        context.term_budget_range,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )

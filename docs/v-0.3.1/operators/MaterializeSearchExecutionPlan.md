@@ -5,7 +5,7 @@
 ## Signature
 
 ```text
-MaterializeSearchExecutionPlan : (FrontierState_t, RequirementSheet, SearchControllerDecision_t, RuntimeTermBudgetPolicy, RuntimeSearchBudget, CrossoverGuardThresholds) -> SearchExecutionPlan_t
+MaterializeSearchExecutionPlan : (FrontierState_t, RequirementSheet, SearchControllerDecision_t, term_budget_range, RuntimeSearchBudget, CrossoverGuardThresholds) -> SearchExecutionPlan_t
 ```
 
 ## 当前规则
@@ -14,7 +14,7 @@ MaterializeSearchExecutionPlan : (FrontierState_t, RequirementSheet, SearchContr
 
 - 基于 parent node 的 `node_query_term_pool`
 - 追加 `additional_terms`
-- 按 term budget 保序去重后裁切
+- 按传入的冻结 `term_budget_range` 保序去重后裁切
 
 ### crossover
 
@@ -31,6 +31,13 @@ MaterializeSearchExecutionPlan : (FrontierState_t, RequirementSheet, SearchContr
 - `knowledge_pack_id` 直接沿用 parent node 的 provenance
 - `semantic_hash` 固定由 operator、query terms、filters、runtime constraints 生成
 
+## Term Budget Owner
+
+这里不再接收 `RuntimeTermBudgetPolicy`，也不再读取 `remaining_budget`。
+
+`term_budget_range` 必须来自 controller context 中已经冻结好的有效值。  
+也就是说，controller normalization 和 materialization 共享同一个 query budget owner。
+
 ## 关键边界
 
 - 这里只处理 `action = search_cts`
@@ -41,6 +48,5 @@ MaterializeSearchExecutionPlan : (FrontierState_t, RequirementSheet, SearchContr
 
 - [[SearchExecutionPlan_t]]
 - [[RuntimeSearchBudget]]
-- [[RuntimeTermBudgetPolicy]]
 - [[CrossoverGuardThresholds]]
 - [[cts-projection-policy]]

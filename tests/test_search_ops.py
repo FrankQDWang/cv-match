@@ -20,7 +20,6 @@ from seektalent.models import (
     RetrievedCandidate_t,
     RerankerCalibration,
     RuntimeSearchBudget,
-    RuntimeTermBudgetPolicy,
     ScoringCandidate_t,
     ScoringPolicy,
     SearchControllerDecision_t,
@@ -105,22 +104,22 @@ def _decision(*, selected_operator_name: str = "core_precision", operator_args: 
 
 
 @pytest.mark.parametrize(
-    ("remaining_budget", "expected_terms"),
+    ("term_budget_range", "expected_terms"),
     [
-        (5, ["python", "rag", "agent", "workflow", "backend", "ranking"]),
-        (2, ["python", "rag", "agent", "workflow", "backend"]),
-        (1, ["python", "rag", "agent", "workflow"]),
+        ((2, 6), ["python", "rag", "agent", "workflow", "backend", "ranking"]),
+        ((2, 5), ["python", "rag", "agent", "workflow", "backend"]),
+        ((2, 4), ["python", "rag", "agent", "workflow"]),
     ],
 )
-def test_materialize_search_execution_plan_clamps_terms_by_budget(
-    remaining_budget: int,
+def test_materialize_search_execution_plan_clamps_terms_by_frozen_budget(
+    term_budget_range: tuple[int, int],
     expected_terms: list[str],
 ) -> None:
     plan = materialize_search_execution_plan(
-        _frontier_state(remaining_budget=remaining_budget),
+        _frontier_state(remaining_budget=5),
         _requirement_sheet(),
         _decision(operator_args={"additional_terms": ["ranking", "python"], "target_new_candidate_count": 50}),
-        RuntimeTermBudgetPolicy(),
+        term_budget_range,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -152,7 +151,7 @@ def test_materialize_search_execution_plan_supports_crossover_compose() -> None:
                 "donor_terms_used": ["retrieval engineer", "ranking", "python"],
             },
         ),
-        RuntimeTermBudgetPolicy(),
+        (2, 6),
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -176,10 +175,23 @@ def test_materialize_search_execution_plan_fails_without_shared_anchor() -> None
                     "donor_terms_used": ["retrieval engineer", "ranking"],
                 },
             ),
-            RuntimeTermBudgetPolicy(),
+            (2, 6),
             RuntimeSearchBudget(),
             CrossoverGuardThresholds(),
         )
+
+
+def test_materialize_search_execution_plan_ignores_legacy_remaining_budget_thresholds() -> None:
+    plan = materialize_search_execution_plan(
+        _frontier_state(remaining_budget=5),
+        _requirement_sheet(),
+        _decision(operator_args={"additional_terms": ["ranking", "python"], "target_new_candidate_count": 50}),
+        (2, 4),
+        RuntimeSearchBudget(),
+        CrossoverGuardThresholds(),
+    )
+
+    assert plan.query_terms == ["python", "rag", "agent", "workflow"]
 
 
 def _candidate(
@@ -236,7 +248,7 @@ def test_execute_search_plan_uses_existing_candidate_projection_flow() -> None:
         _frontier_state(),
         _requirement_sheet(),
         _decision(operator_args={"additional_terms": ["ranking"], "target_new_candidate_count": 2}),
-        RuntimeTermBudgetPolicy(),
+        (2, 6),
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -266,7 +278,7 @@ def test_execute_search_plan_fails_when_cts_latency_is_missing() -> None:
         _frontier_state(),
         _requirement_sheet(),
         _decision(),
-        RuntimeTermBudgetPolicy(),
+        (2, 6),
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -299,7 +311,7 @@ def test_execute_search_plan_sidecar_preserves_runtime_audit_and_school_type_fal
         _frontier_state(),
         requirement_sheet,
         _decision(operator_args={"additional_terms": ["ranking"], "target_new_candidate_count": 2}),
-        RuntimeTermBudgetPolicy(),
+        (2, 6),
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -324,7 +336,7 @@ def test_execute_search_plan_sidecar_counts_empty_cts_request_as_zero_pages() ->
         _frontier_state(),
         _requirement_sheet(),
         _decision(operator_args={"additional_terms": ["ranking"], "target_new_candidate_count": 10}),
-        RuntimeTermBudgetPolicy(),
+        (2, 6),
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )

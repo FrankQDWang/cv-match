@@ -231,11 +231,17 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     assert result.finalization_audit.prompt_surface.surface_id == "search_run_finalization"
     assert result.rounds[0].controller_context.runtime_budget_state.search_phase == "explore"
     assert result.rounds[0].controller_context.runtime_budget_state.phase_progress == 0.0
+    assert result.rounds[0].controller_context.term_budget_range == (2, 6)
     assert result.rounds[0].controller_context.frontier_head_summary.highest_selection_score > 0.0
     assert result.rounds[0].controller_context.active_selection_breakdown.search_phase == "explore"
     assert result.rounds[0].controller_context.selection_ranking
     assert result.rounds[0].controller_context.operator_surface_override_reason == "none"
     assert result.rounds[0].controller_context.operator_surface_unmet_must_haves
+    assert result.rounds[0].execution_plan is not None
+    assert (
+        len(result.rounds[0].execution_plan.query_terms)
+        <= result.rounds[0].controller_context.term_budget_range[1]
+    )
     assert (
         result.rounds[0].controller_context.selection_ranking[0].frontier_node_id
         == result.rounds[0].controller_context.active_frontier_node_summary.frontier_node_id

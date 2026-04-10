@@ -158,16 +158,21 @@ phase_progress = runtime_round_index / max(1, initial_round_budget - 1)
 执行：
 
 1. 把 term budget owner 改成 phase-aware。
-2. 这轮先用固定三档，不上连续公式：
+2. `RuntimeTermBudgetPolicy` 字段直接切成：
+   - `explore_budget_range`
+   - `balance_budget_range`
+   - `harvest_budget_range`
+3. 这轮先用固定三档，不上连续公式：
    - `explore`: `[2, 6]`
    - `balance`: `[2, 5]`
    - `harvest`: `[2, 4]`
-3. `materialize_search_execution_plan()` 与 controller normalization 使用同一档位。
+4. `materialize_search_execution_plan()` 不再接收 policy；只接收 controller context 里已经冻结好的 `term_budget_range`。
 
 验收：
 
 - 同样 node，在后期 query terms 上限会更小。
 - `12` 轮运行时，不会长期停留在旧逻辑的“high budget range”。
+- controller normalization 与 materialization 不会再各自推一遍 term budget。
 
 ## Step 6: 改 Stop Policy
 

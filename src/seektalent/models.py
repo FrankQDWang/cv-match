@@ -489,9 +489,9 @@ class RuntimeSearchBudget(BaseModel):
 class RuntimeTermBudgetPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    high_budget_range: tuple[int, int] = (2, 6)
-    medium_budget_range: tuple[int, int] = (2, 5)
-    low_budget_range: tuple[int, int] = (2, 4)
+    explore_budget_range: tuple[int, int] = (2, 6)
+    balance_budget_range: tuple[int, int] = (2, 5)
+    harvest_budget_range: tuple[int, int] = (2, 4)
 
 
 class RuntimeRoundState(BaseModel):

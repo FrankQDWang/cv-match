@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 
+from seektalent.runtime_budget import derive_term_budget_range
 from seektalent.models import (
     CrossoverGuardThresholds,
     DonorCandidateNodeSummary,
@@ -107,8 +108,8 @@ def select_active_frontier_node(
         allowed_operator_names=allowed_operator_names,
         operator_surface_override_reason=override_reason,
         operator_surface_unmet_must_haves=unmet_must_haves,
-        term_budget_range=_term_budget_range(
-            frontier_state.remaining_budget,
+        term_budget_range=derive_term_budget_range(
+            runtime_budget_state,
             term_budget_policy,
         ),
         fit_gate_constraints=FitGateConstraints.model_validate(
@@ -451,17 +452,6 @@ def _allowed_operator_names(
     if has_legal_donors:
         operators.append("crossover_compose")
     return operators
-
-
-def _term_budget_range(
-    remaining_budget: int,
-    term_budget_policy: RuntimeTermBudgetPolicy,
-) -> tuple[int, int]:
-    if remaining_budget >= 4:
-        return term_budget_policy.high_budget_range
-    if remaining_budget >= 2:
-        return term_budget_policy.medium_budget_range
-    return term_budget_policy.low_budget_range
 
 
 def _normalized_operator_name(

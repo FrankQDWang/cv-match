@@ -122,7 +122,11 @@ seed 节点因 `reward_breakdown = null` 默认不能成为 donor。
 
 ## `derive_term_budget_range`
 
-- 直接读取 [[RuntimeTermBudgetPolicy]] 的预算分层
+- 只根据 `RuntimeBudgetState.search_phase` 读取 [[RuntimeTermBudgetPolicy]]
+- `explore -> explore_budget_range`
+- `balance -> balance_budget_range`
+- `harvest -> harvest_budget_range`
+- `MaterializeSearchExecutionPlan` 不得重新从 `remaining_budget` 推导
 
 ## `clamp_term_budget`
 
