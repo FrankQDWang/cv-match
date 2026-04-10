@@ -21,7 +21,10 @@ run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-stop-
 
 | round | action | operator | knowledge_pack_ids | stop_reason |
 | --- | --- | --- | --- | --- |
-| 0 | search_cts | core_precision | ['llm_agent_rag_engineering'] | exhausted_low_gain |
+| 0 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
+| 1 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
+| 2 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
+| 3 | search_cts | core_precision | ['llm_agent_rag_engineering'] | exhausted_low_gain |
 
 ## Final Result
 

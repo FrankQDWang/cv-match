@@ -15,7 +15,7 @@ from seektalent.runtime_budget import build_runtime_budget_state
 def _context(
     *,
     node_query_term_pool: list[str] | None = None,
-    term_budget_range: tuple[int, int] = (2, 5),
+    max_query_terms: int = 4,
 ) -> SearchControllerContext_t:
     return SearchControllerContext_t.model_validate(
         {
@@ -84,7 +84,7 @@ def _context(
             ],
             "operator_surface_override_reason": "none",
             "operator_surface_unmet_must_haves": ["ranking"],
-            "term_budget_range": list(term_budget_range),
+            "max_query_terms": max_query_terms,
             "fit_gate_constraints": FitGateConstraints().model_dump(mode="python"),
             "runtime_budget_state": build_runtime_budget_state(
                 initial_round_budget=5,
@@ -103,8 +103,8 @@ def test_request_search_controller_decision_draft_records_prompt_surface_audit()
                 custom_output_args={
                     "action": "search_cts",
                     "selected_operator_name": "core_precision",
-                    "operator_args": {"additional_terms": ["ranking"]},
-                    "expected_gain_hypothesis": "Expand ranking coverage.",
+                    "operator_args": {"query_terms": ["agent engineer", "python"]},
+                    "expected_gain_hypothesis": "Tighten the query.",
                 }
             ),
         )
@@ -130,48 +130,48 @@ def test_request_search_controller_decision_draft_records_prompt_surface_audit()
 def test_request_search_controller_decision_draft_retries_once_for_empty_non_crossover_patch() -> None:
     draft, audit = asyncio.run(
         request_search_controller_decision_draft(
-            _context(node_query_term_pool=[]),
+            _context(),
             model=TestModel(
                 custom_output_args=[
                     {
                         "action": "search_cts",
                         "selected_operator_name": "core_precision",
-                        "operator_args": {"additional_terms": ["", " "]},
-                        "expected_gain_hypothesis": "Expand ranking coverage.",
+                        "operator_args": {"query_terms": ["", " "]},
+                        "expected_gain_hypothesis": "Tighten the query.",
                     },
                     {
                         "action": "search_cts",
                         "selected_operator_name": "core_precision",
-                        "operator_args": {"additional_terms": ["ranking"]},
-                        "expected_gain_hypothesis": "Expand ranking coverage.",
+                        "operator_args": {"query_terms": ["agent engineer", "python"]},
+                        "expected_gain_hypothesis": "Tighten the query.",
                     },
                 ]
             ),
         )
     )
 
-    assert draft.operator_args == {"additional_terms": ["ranking"]}
+    assert draft.operator_args == {"query_terms": ["agent engineer", "python"]}
     assert audit.validator_retry_count == 1
 
 
 def test_request_search_controller_decision_draft_fails_after_single_validator_retry() -> None:
-    with pytest.raises(ModelRetry, match="requires materializable non-empty query terms"):
+    with pytest.raises(ModelRetry, match="requires materializable non-empty query_terms"):
         asyncio.run(
             request_search_controller_decision_draft(
-                _context(node_query_term_pool=[]),
+                _context(),
                 model=TestModel(
                     custom_output_args=[
                         {
                             "action": "search_cts",
                             "selected_operator_name": "core_precision",
-                            "operator_args": {"additional_terms": []},
-                            "expected_gain_hypothesis": "Expand ranking coverage.",
+                            "operator_args": {"query_terms": []},
+                            "expected_gain_hypothesis": "Tighten the query.",
                         },
                         {
                             "action": "search_cts",
                             "selected_operator_name": "core_precision",
-                            "operator_args": {"additional_terms": [""]},
-                            "expected_gain_hypothesis": "Expand ranking coverage.",
+                            "operator_args": {"query_terms": [""]},
+                            "expected_gain_hypothesis": "Tighten the query.",
                         },
                     ]
                 ),
@@ -182,7 +182,7 @@ def test_request_search_controller_decision_draft_fails_after_single_validator_r
 def test_request_search_controller_decision_draft_accepts_budget_clamped_non_crossover_query() -> None:
     context = _context(
         node_query_term_pool=["agent engineer", "python", "workflow", "backend"],
-        term_budget_range=(2, 4),
+        max_query_terms=2,
     )
     draft, audit = asyncio.run(
         request_search_controller_decision_draft(
@@ -191,7 +191,7 @@ def test_request_search_controller_decision_draft_accepts_budget_clamped_non_cro
                 custom_output_args={
                     "action": "search_cts",
                     "selected_operator_name": "core_precision",
-                    "operator_args": {"additional_terms": ["ranking"]},
+                    "operator_args": {"query_terms": ["agent engineer", "python", "workflow"]},
                     "expected_gain_hypothesis": "Keep the current core query intact.",
                 }
             ),
@@ -200,5 +200,5 @@ def test_request_search_controller_decision_draft_accepts_budget_clamped_non_cro
 
     normalized = generate_search_controller_decision(context, draft)
 
-    assert normalized.operator_args == {"additional_terms": []}
+    assert normalized.operator_args == {"query_terms": ["agent engineer", "python"]}
     assert audit.validator_retry_count == 0

@@ -54,7 +54,7 @@ def materialize_search_execution_plan(
     frontier_state: FrontierState_t,
     requirement_sheet: RequirementSheet,
     decision: SearchControllerDecision_t,
-    term_budget_range: tuple[int, int],
+    max_query_terms: int,
     search_budget: RuntimeSearchBudget,
     crossover_thresholds: CrossoverGuardThresholds,
 ) -> SearchExecutionPlan_t:
@@ -64,8 +64,6 @@ def materialize_search_execution_plan(
     parent_node = frontier_state.frontier_nodes.get(decision.target_frontier_node_id)
     if parent_node is None:
         raise ValueError(f"unknown_target_frontier_node_id: {decision.target_frontier_node_id}")
-
-    _, max_terms = term_budget_range
 
     donor_frontier_node_id: str | None = None
     knowledge_pack_ids = list(parent_node.knowledge_pack_ids)
@@ -87,13 +85,13 @@ def materialize_search_execution_plan(
         ]
         if len(shared_anchor_terms) < crossover_thresholds.min_shared_anchor_terms:
             raise ValueError("crossover_requires_shared_anchor")
-        query_terms = stable_deduplicate(shared_anchor_terms + donor_terms)[:max_terms]
+        query_terms = stable_deduplicate(shared_anchor_terms + donor_terms)[:max_query_terms]
         donor_negative_terms = donor_node.negative_terms
     else:
-        query_terms = stable_deduplicate(
-            parent_node.node_query_term_pool
-            + _required_string_list(decision.operator_args.get("additional_terms"), "additional_terms")
-        )[:max_terms]
+        query_terms = _required_string_list(
+            decision.operator_args.get("query_terms"),
+            "query_terms",
+        )[:max_query_terms]
 
     runtime_only_constraints = {
         "must_have_keywords": stable_deduplicate(requirement_sheet.must_have_capabilities + query_terms),

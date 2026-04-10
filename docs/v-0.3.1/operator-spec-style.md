@@ -75,7 +75,7 @@ k_explain = P.top_n_for_explanation
 如果某些默认范围或阈值是由上游 runtime policy 冻结后传入，也可以在这里显式命名：
 
 ```text
-term_budget_range_t = SearchControllerContext_t.term_budget_range
+max_query_terms_t = SearchControllerContext_t.max_query_terms
 ```
 
 ## 5. Fully Expanded 规则
@@ -183,8 +183,8 @@ y_t.explanation_candidate_ids = ...
 
 ```text
 α = P.fusion_weights.rerank                (default 0.55 from FreezeScoringPolicy)
-term_budget_range default comes from RuntimeTermBudgetPolicy:
-  high = [2, 6], medium = [2, 5], low = [2, 4]
+max_query_terms default comes from RuntimeTermBudgetPolicy:
+  explore = 3, balance = 4, harvest = 6
 ```
 
 禁止：

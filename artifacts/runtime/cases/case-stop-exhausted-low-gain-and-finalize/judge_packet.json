@@ -13,7 +13,7 @@
   "expected_stop_reason": "exhausted_low_gain",
   "observed_stop_reason": "exhausted_low_gain",
   "must_hold": [
-    "first search round has empty deduplicated candidates"
+    "round 3 stop_reason is exhausted_low_gain"
   ],
   "must_not_hold": [
     "stop_reason = controller_stop"

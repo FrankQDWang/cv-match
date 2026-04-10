@@ -51,15 +51,15 @@ def build_runtime_budget_state(
     )
 
 
-def derive_term_budget_range(
+def derive_max_query_terms(
     runtime_budget_state: RuntimeBudgetState,
     term_budget_policy: RuntimeTermBudgetPolicy,
-) -> tuple[int, int]:
+) -> int:
     if runtime_budget_state.search_phase == "explore":
-        return term_budget_policy.explore_budget_range
+        return term_budget_policy.explore_max_query_terms
     if runtime_budget_state.search_phase == "harvest":
-        return term_budget_policy.harvest_budget_range
-    return term_budget_policy.balance_budget_range
+        return term_budget_policy.harvest_max_query_terms
+    return term_budget_policy.balance_max_query_terms
 
 
 def _search_phase(phase_progress: float) -> str:
@@ -74,6 +74,6 @@ __all__ = [
     "MAX_ROUND_BUDGET",
     "MIN_ROUND_BUDGET",
     "build_runtime_budget_state",
-    "derive_term_budget_range",
+    "derive_max_query_terms",
     "resolve_runtime_search_budget",
 ]

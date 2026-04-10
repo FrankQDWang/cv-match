@@ -15,7 +15,7 @@
   "expected_fallback_reason": null,
   "observed_fallback_reason": null,
   "must_hold": [
-    "round 0 stop_reason is controller_stop"
+    "round 2 stop_reason is controller_stop"
   ],
   "must_not_hold": [
     "search_cts round exists"
@@ -47,7 +47,7 @@
     },
     {
       "name": "round_count",
-      "value": 1
+      "value": 3
     }
   ]
 }

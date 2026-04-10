@@ -21,7 +21,9 @@ run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-stop-
 
 | round | action | operator | knowledge_pack_ids | stop_reason |
 | --- | --- | --- | --- | --- |
-| 0 | stop | must_have_alias |  | controller_stop |
+| 0 | stop | must_have_alias |  |  |
+| 1 | stop | must_have_alias |  |  |
+| 2 | stop | must_have_alias |  | controller_stop |
 
 ## Final Result
 

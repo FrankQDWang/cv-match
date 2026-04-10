@@ -51,23 +51,22 @@ def _validate_controller_draft(
     draft: SearchControllerDecisionDraft_t,
     context: SearchControllerContext_t,
 ) -> SearchControllerDecisionDraft_t:
-    normalized = generate_search_controller_decision(context, draft)
+    try:
+        normalized = generate_search_controller_decision(context, draft)
+    except ValueError as exc:
+        raise ModelRetry(str(exc)) from exc
     if normalized.action == "stop":
         return draft
-    active_query_pool = context.active_frontier_node_summary.node_query_term_pool
     if normalized.selected_operator_name != "crossover_compose":
-        additional_terms = normalized.operator_args.get("additional_terms")
-        query_terms = stable_deduplicate(
-            list(active_query_pool)
-            + (
-                [term for term in additional_terms if isinstance(term, str)]
-                if isinstance(additional_terms, list)
-                else []
-            )
+        query_terms = normalized.operator_args.get("query_terms")
+        query_terms = (
+            [term for term in query_terms if isinstance(term, str)]
+            if isinstance(query_terms, list)
+            else []
         )
         if query_terms:
             return draft
-        raise ModelRetry("search_cts requires materializable non-empty query terms")
+        raise ModelRetry("search_cts requires materializable non-empty query_terms")
     donor_frontier_node_id = normalized.operator_args.get("donor_frontier_node_id")
     shared_anchor_terms = normalized.operator_args.get("shared_anchor_terms")
     donor_terms_used = normalized.operator_args.get("donor_terms_used")

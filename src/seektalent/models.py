@@ -350,6 +350,7 @@ class FrontierNode_t(BaseModel):
     parent_shortlist_candidate_ids: list[str] = Field(default_factory=list)
     node_shortlist_candidate_ids: list[str] = Field(default_factory=list)
     node_shortlist_score_snapshot: dict[str, float] = Field(default_factory=dict)
+    rewrite_term_candidates: list["RewriteTermCandidate"] = Field(default_factory=list)
     previous_branch_evaluation: BranchEvaluation_t | None = None
     reward_breakdown: NodeRewardBreakdown_t | None = None
     status: str
@@ -432,6 +433,30 @@ class RuntimeBudgetState(BaseModel):
     near_budget_end: bool
 
 
+class RewriteTermCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    term: str
+    source_candidate_ids: list[str] = Field(default_factory=list)
+    source_fields: list[str] = Field(default_factory=list)
+
+
+class RewriteTermRejected(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    term: str
+    source_candidate_ids: list[str] = Field(default_factory=list)
+    source_fields: list[str] = Field(default_factory=list)
+    reason: Literal["already_in_query", "generic_junk", "topic_drift", "low_support"]
+
+
+class RewriteTermPool(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: list[RewriteTermCandidate] = Field(default_factory=list)
+    rejected: list[RewriteTermRejected] = Field(default_factory=list)
+
+
 class UnmetRequirementWeight(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -454,7 +479,8 @@ class SearchControllerContext_t(BaseModel):
     allowed_operator_names: list[OperatorName] = Field(default_factory=list)
     operator_surface_override_reason: Literal["none", "harvest_unmet_must_have_repair"] = "none"
     operator_surface_unmet_must_haves: list[str] = Field(default_factory=list)
-    term_budget_range: tuple[int, int]
+    rewrite_term_candidates: list[RewriteTermCandidate] = Field(default_factory=list)
+    max_query_terms: int = Field(ge=1)
     fit_gate_constraints: FitGateConstraints
     runtime_budget_state: RuntimeBudgetState
 
@@ -489,9 +515,9 @@ class RuntimeSearchBudget(BaseModel):
 class RuntimeTermBudgetPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    explore_budget_range: tuple[int, int] = (2, 6)
-    balance_budget_range: tuple[int, int] = (2, 5)
-    harvest_budget_range: tuple[int, int] = (2, 4)
+    explore_max_query_terms: int = Field(default=3, ge=1)
+    balance_max_query_terms: int = Field(default=4, ge=1)
+    harvest_max_query_terms: int = Field(default=6, ge=1)
 
 
 class RuntimeRoundState(BaseModel):
@@ -514,7 +540,17 @@ class StopGuardThresholds(BaseModel):
     novelty_floor: float = Field(default=0.25, ge=0.0, le=1.0)
     usefulness_floor: float = Field(default=0.25, ge=0.0, le=1.0)
     reward_floor: float = 1.5
-    min_round_index: int = Field(default=2, ge=0)
+
+
+class EffectiveStopGuard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    search_phase: SearchPhase
+    controller_stop_allowed: bool
+    exhausted_low_gain_allowed: bool
+    novelty_floor: float = Field(ge=0.0, le=1.0)
+    usefulness_floor: float = Field(ge=0.0, le=1.0)
+    reward_floor: float
 
 
 class RuntimeOnlyConstraints(BaseModel):
@@ -715,11 +751,13 @@ class SearchRoundArtifact(BaseModel):
     execution_plan: SearchExecutionPlan_t | None = None
     execution_result: SearchExecutionResult_t | None = None
     runtime_audit_tags: dict[str, list[str]] = Field(default_factory=dict)
+    rewrite_term_pool: RewriteTermPool | None = None
     scoring_result: SearchScoringResult_t | None = None
     branch_evaluation_draft: BranchEvaluationDraft_t | None = None
     branch_evaluation_audit: LLMCallAudit | None = None
     branch_evaluation: BranchEvaluation_t | None = None
     reward_breakdown: NodeRewardBreakdown_t | None = None
+    effective_stop_guard: EffectiveStopGuard
     frontier_state_after: FrontierState_t1
     stop_reason: str | None = None
     continue_flag: bool

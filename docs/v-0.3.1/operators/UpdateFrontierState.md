@@ -73,7 +73,7 @@ child_frontier_node_t = {
   parent_frontier_node_id: child_stub_t.parent_frontier_node_id,
   donor_frontier_node_id: child_stub_t.donor_frontier_node_id,
   selected_operator_name: child_stub_t.selected_operator_name,
-  node_query_term_pool: stable_deduplicate(parent_node_t.node_query_term_pool + p_t.query_terms),
+  node_query_term_pool: stable_deduplicate(p_t.query_terms),
   knowledge_pack_id: p_t.knowledge_pack_id,
   seed_rationale: null,
   negative_terms: p_t.runtime_only_constraints.negative_keywords,

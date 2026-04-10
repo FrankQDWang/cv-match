@@ -414,6 +414,7 @@
           "parent_shortlist_candidate_ids": [],
           "node_shortlist_candidate_ids": [],
           "node_shortlist_score_snapshot": {},
+          "rewrite_term_candidates": [],
           "previous_branch_evaluation": null,
           "reward_breakdown": null,
           "status": "open"
@@ -443,6 +444,7 @@
           "parent_shortlist_candidate_ids": [],
           "node_shortlist_candidate_ids": [],
           "node_shortlist_score_snapshot": {},
+          "rewrite_term_candidates": [],
           "previous_branch_evaluation": null,
           "reward_breakdown": null,
           "status": "open"
@@ -471,6 +473,7 @@
           "parent_shortlist_candidate_ids": [],
           "node_shortlist_candidate_ids": [],
           "node_shortlist_score_snapshot": {},
+          "rewrite_term_candidates": [],
           "previous_branch_evaluation": null,
           "reward_breakdown": null,
           "status": "open"
@@ -500,6 +503,7 @@
           "parent_shortlist_candidate_ids": [],
           "node_shortlist_candidate_ids": [],
           "node_shortlist_score_snapshot": {},
+          "rewrite_term_candidates": [],
           "previous_branch_evaluation": null,
           "reward_breakdown": null,
           "status": "open"
@@ -529,6 +533,7 @@
           "parent_shortlist_candidate_ids": [],
           "node_shortlist_candidate_ids": [],
           "node_shortlist_score_snapshot": {},
+          "rewrite_term_candidates": [],
           "previous_branch_evaluation": null,
           "reward_breakdown": null,
           "status": "open"
@@ -620,6 +625,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -649,6 +655,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -677,6 +684,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -706,6 +714,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -735,6 +744,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -798,12 +808,11 @@
         "role_title": "Agent Search Engineer",
         "role_summary": "Build agent and ranking systems together.",
         "active_frontier_node_summary": {
-          "frontier_node_id": "seed_core_precision_87acf8a7",
-          "selected_operator_name": "core_precision",
+          "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+          "selected_operator_name": "relaxed_floor",
           "node_query_term_pool": [
-            "agent engineer",
-            "ranking",
-            "python backend"
+            "python backend",
+            "agent"
           ],
           "node_shortlist_candidate_ids": []
         },
@@ -825,8 +834,8 @@
         },
         "selection_ranking": [
           {
-            "frontier_node_id": "seed_core_precision_87acf8a7",
-            "selected_operator_name": "core_precision",
+            "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "selected_operator_name": "relaxed_floor",
             "breakdown": {
               "search_phase": "explore",
               "operator_exploitation_score": 0.0,
@@ -836,20 +845,6 @@
               "fresh_node_bonus": 1.0,
               "redundancy_penalty": 0.0,
               "final_selection_score": 3.4838560360247595
-            }
-          },
-          {
-            "frontier_node_id": "seed_relaxed_floor_72de7f4f",
-            "selected_operator_name": "relaxed_floor",
-            "breakdown": {
-              "search_phase": "explore",
-              "operator_exploitation_score": 0.0,
-              "operator_exploration_bonus": 1.1774100225154747,
-              "coverage_opportunity_score": 0.3333333333333333,
-              "incremental_value_score": 0.0,
-              "fresh_node_bonus": 1.0,
-              "redundancy_penalty": 0.0,
-              "final_selection_score": 3.08385603602476
             }
           },
           {
@@ -864,6 +859,20 @@
               "fresh_node_bonus": 1.0,
               "redundancy_penalty": 0.0,
               "final_selection_score": 3.08385603602476
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_87acf8a7",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.0,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 2.6838560360247596
             }
           },
           {
@@ -898,7 +907,7 @@
         "unmet_requirement_weights": [
           {
             "capability": "Python backend",
-            "weight": 1.0
+            "weight": 0.3
           },
           {
             "capability": "agent engineer",
@@ -906,7 +915,7 @@
           },
           {
             "capability": "ranking",
-            "weight": 0.3
+            "weight": 1.0
           }
         ],
         "operator_statistics_summary": {
@@ -949,12 +958,10 @@
         ],
         "operator_surface_override_reason": "none",
         "operator_surface_unmet_must_haves": [
-          "Python backend"
+          "ranking"
         ],
-        "term_budget_range": [
-          2,
-          6
-        ],
+        "rewrite_term_candidates": [],
+        "max_query_terms": 3,
         "fit_gate_constraints": {
           "locations": [
             "Shanghai"
@@ -999,9 +1006,9 @@
         "prompt_surface": {
           "surface_id": "search_controller_decision",
           "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
-          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Agent Search Engineer\n- Role focus: Build agent and ranking systems together.\n\n## Active Frontier Node\n- Frontier node id: seed_core_precision_87acf8a7\n- Current operator: core_precision\n- Query term pool: agent engineer, ranking, python backend\n- Current node shortlist ids: None\n\n## Donor Candidates\n- No legal donor candidates.\n\n## Allowed Operators\n- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: Python backend\n\n## Operator Statistics\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- core_precision: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- Term budget range: 2 to 6\n- Locations: Shanghai\n- Min years: 4\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- agent engineer: weight=0.30\n- ranking: weight=0.30\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 0\n- Remaining budget: 5\n- Used ratio: 0.00\n- Remaining ratio: 1.00\n- Phase progress: 0.00\n- Search phase: explore\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Agent Search Engineer\n- Role focus: Build agent and ranking systems together.\n\n## Active Frontier Node\n- Frontier node id: seed_relaxed_floor_72de7f4f\n- Current operator: relaxed_floor\n- Query term pool: python backend, agent\n- Current node shortlist ids: None\n\n## Donor Candidates\n- No legal donor candidates.\n\n## Allowed Operators\n- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: ranking\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- core_precision: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 3\n- Locations: Shanghai\n- Min years: 4\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- agent engineer: weight=0.30\n- ranking: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 0\n- Remaining budget: 5\n- Used ratio: 0.00\n- Remaining ratio: 1.00\n- Phase progress: 0.00\n- Search phase: explore\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
           "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
-          "input_sha1": "93826d43d8a54073636f17a760484b010e3dcb71",
+          "input_sha1": "7031fcbbd97b3e8e8f2471a00fb9e53974484c71",
           "sections": [
             {
               "title": "Task Contract",
@@ -1020,7 +1027,7 @@
             },
             {
               "title": "Active Frontier Node",
-              "body_text": "- Frontier node id: seed_core_precision_87acf8a7\n- Current operator: core_precision\n- Query term pool: agent engineer, ranking, python backend\n- Current node shortlist ids: None",
+              "body_text": "- Frontier node id: seed_relaxed_floor_72de7f4f\n- Current operator: relaxed_floor\n- Query term pool: python backend, agent\n- Current node shortlist ids: None",
               "source_paths": [
                 "SearchControllerContext_t.active_frontier_node_summary"
               ],
@@ -1036,11 +1043,19 @@
             },
             {
               "title": "Allowed Operators",
-              "body_text": "- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: Python backend",
+              "body_text": "- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: ranking",
               "source_paths": [
                 "SearchControllerContext_t.allowed_operator_names",
                 "SearchControllerContext_t.operator_surface_override_reason",
                 "SearchControllerContext_t.operator_surface_unmet_must_haves"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Rewrite Evidence",
+              "body_text": "- No rewrite evidence terms.",
+              "source_paths": [
+                "SearchControllerContext_t.rewrite_term_candidates"
               ],
               "is_dynamic": true
             },
@@ -1054,11 +1069,11 @@
             },
             {
               "title": "Fit Gates And Unmet Requirements",
-              "body_text": "- Term budget range: 2 to 6\n- Locations: Shanghai\n- Min years: 4\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- agent engineer: weight=0.30\n- ranking: weight=0.30",
+              "body_text": "- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 3\n- Locations: Shanghai\n- Min years: 4\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- agent engineer: weight=0.30\n- ranking: weight=1.00",
               "source_paths": [
                 "SearchControllerContext_t.fit_gate_constraints",
                 "SearchControllerContext_t.unmet_requirement_weights",
-                "SearchControllerContext_t.term_budget_range"
+                "SearchControllerContext_t.max_query_terms"
               ],
               "is_dynamic": true
             },
@@ -1081,7 +1096,7 @@
       },
       "controller_decision": {
         "action": "stop",
-        "target_frontier_node_id": "seed_core_precision_87acf8a7",
+        "target_frontier_node_id": "seed_relaxed_floor_72de7f4f",
         "selected_operator_name": "must_have_alias",
         "operator_args": {},
         "expected_gain_hypothesis": "Stop."
@@ -1089,11 +1104,20 @@
       "execution_plan": null,
       "execution_result": null,
       "runtime_audit_tags": {},
+      "rewrite_term_pool": null,
       "scoring_result": null,
       "branch_evaluation_draft": null,
       "branch_evaluation_audit": null,
       "branch_evaluation": null,
       "reward_breakdown": null,
+      "effective_stop_guard": {
+        "search_phase": "explore",
+        "controller_stop_allowed": false,
+        "exhausted_low_gain_allowed": false,
+        "novelty_floor": 0.25,
+        "usefulness_floor": 0.25,
+        "reward_floor": 1.5
+      },
       "frontier_state_after": {
         "frontier_nodes": {
           "seed_core_precision_87acf8a7": {
@@ -1122,6 +1146,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -1151,6 +1176,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -1179,6 +1205,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -1208,6 +1235,7 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -1237,6 +1265,1473 @@
             "parent_shortlist_candidate_ids": [],
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_core_precision_87acf8a7",
+          "seed_relaxed_floor_72de7f4f",
+          "seed_pack_expansion_0d92f929",
+          "seed_cross_pack_bridge_f0c14380",
+          "seed_generic_expansion_8690d463"
+        ],
+        "closed_frontier_node_ids": [],
+        "run_term_catalog": [
+          "agent engineer",
+          "ranking",
+          "python backend",
+          "agent",
+          "workflow orchestration",
+          "tool calling",
+          "agent ranking",
+          "retrieval workflow",
+          "search backend",
+          "reranker"
+        ],
+        "run_shortlist_candidate_ids": [],
+        "semantic_hashes_seen": [],
+        "operator_statistics": {
+          "core_precision": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "relaxed_floor": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "pack_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "cross_pack_bridge": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "generic_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 5
+      },
+      "stop_reason": null,
+      "continue_flag": true
+    },
+    {
+      "runtime_round_index": 1,
+      "frontier_state_before": {
+        "frontier_nodes": {
+          "seed_core_precision_87acf8a7": {
+            "frontier_node_id": "seed_core_precision_87acf8a7",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "core_precision",
+            "node_query_term_pool": [
+              "agent engineer",
+              "ranking",
+              "python backend"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "00:core_precision",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_relaxed_floor_72de7f4f": {
+            "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "relaxed_floor",
+            "node_query_term_pool": [
+              "python backend",
+              "agent"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "02:relaxed_floor",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_pack_expansion_0d92f929": {
+            "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "pack_expansion",
+            "node_query_term_pool": [
+              "workflow orchestration",
+              "tool calling"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "03:pack_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_cross_pack_bridge_f0c14380": {
+            "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "cross_pack_bridge",
+            "node_query_term_pool": [
+              "agent ranking",
+              "retrieval workflow"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "04:cross_pack_bridge",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_generic_expansion_8690d463": {
+            "frontier_node_id": "seed_generic_expansion_8690d463",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "generic_expansion",
+            "node_query_term_pool": [
+              "search backend",
+              "reranker"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "05:generic_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_core_precision_87acf8a7",
+          "seed_relaxed_floor_72de7f4f",
+          "seed_pack_expansion_0d92f929",
+          "seed_cross_pack_bridge_f0c14380",
+          "seed_generic_expansion_8690d463"
+        ],
+        "closed_frontier_node_ids": [],
+        "run_term_catalog": [
+          "agent engineer",
+          "ranking",
+          "python backend",
+          "agent",
+          "workflow orchestration",
+          "tool calling",
+          "agent ranking",
+          "retrieval workflow",
+          "search backend",
+          "reranker"
+        ],
+        "run_shortlist_candidate_ids": [],
+        "semantic_hashes_seen": [],
+        "operator_statistics": {
+          "core_precision": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "relaxed_floor": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "pack_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "cross_pack_bridge": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "generic_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 5
+      },
+      "controller_context": {
+        "role_title": "Agent Search Engineer",
+        "role_summary": "Build agent and ranking systems together.",
+        "active_frontier_node_summary": {
+          "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+          "selected_operator_name": "relaxed_floor",
+          "node_query_term_pool": [
+            "python backend",
+            "agent"
+          ],
+          "node_shortlist_candidate_ids": []
+        },
+        "donor_candidate_node_summaries": [],
+        "frontier_head_summary": {
+          "open_node_count": 5,
+          "remaining_budget": 5,
+          "highest_selection_score": 3.4838560360247595
+        },
+        "active_selection_breakdown": {
+          "search_phase": "explore",
+          "operator_exploitation_score": 0.0,
+          "operator_exploration_bonus": 1.1774100225154747,
+          "coverage_opportunity_score": 0.6666666666666666,
+          "incremental_value_score": 0.0,
+          "fresh_node_bonus": 1.0,
+          "redundancy_penalty": 0.0,
+          "final_selection_score": 3.4838560360247595
+        },
+        "selection_ranking": [
+          {
+            "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "selected_operator_name": "relaxed_floor",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.6666666666666666,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 3.4838560360247595
+            }
+          },
+          {
+            "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "selected_operator_name": "cross_pack_bridge",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 3.08385603602476
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_87acf8a7",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.0,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 2.6838560360247596
+            }
+          },
+          {
+            "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "selected_operator_name": "pack_expansion",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.0,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 2.6838560360247596
+            }
+          },
+          {
+            "frontier_node_id": "seed_generic_expansion_8690d463",
+            "selected_operator_name": "generic_expansion",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.0,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 2.6838560360247596
+            }
+          }
+        ],
+        "unmet_requirement_weights": [
+          {
+            "capability": "Python backend",
+            "weight": 0.3
+          },
+          {
+            "capability": "agent engineer",
+            "weight": 0.3
+          },
+          {
+            "capability": "ranking",
+            "weight": 1.0
+          }
+        ],
+        "operator_statistics_summary": {
+          "core_precision": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "relaxed_floor": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "pack_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "cross_pack_bridge": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "generic_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "allowed_operator_names": [
+          "must_have_alias",
+          "generic_expansion",
+          "core_precision",
+          "relaxed_floor",
+          "pack_expansion",
+          "cross_pack_bridge"
+        ],
+        "operator_surface_override_reason": "none",
+        "operator_surface_unmet_must_haves": [
+          "ranking"
+        ],
+        "rewrite_term_candidates": [],
+        "max_query_terms": 3,
+        "fit_gate_constraints": {
+          "locations": [
+            "Shanghai"
+          ],
+          "min_years": 4,
+          "max_years": 10,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        },
+        "runtime_budget_state": {
+          "initial_round_budget": 5,
+          "runtime_round_index": 1,
+          "remaining_budget": 5,
+          "used_ratio": 0.0,
+          "remaining_ratio": 1.0,
+          "phase_progress": 0.25,
+          "search_phase": "explore",
+          "near_budget_end": false
+        }
+      },
+      "controller_draft": {
+        "action": "stop",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop."
+      },
+      "controller_audit": {
+        "output_mode": "NativeOutput(strict=True)",
+        "retries": 0,
+        "output_retries": 1,
+        "validator_retry_count": 0,
+        "model_name": "test",
+        "model_settings_snapshot": {
+          "allow_text_output": false,
+          "allow_image_output": false,
+          "native_output_strict": true
+        },
+        "prompt_surface": {
+          "surface_id": "search_controller_decision",
+          "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Agent Search Engineer\n- Role focus: Build agent and ranking systems together.\n\n## Active Frontier Node\n- Frontier node id: seed_relaxed_floor_72de7f4f\n- Current operator: relaxed_floor\n- Query term pool: python backend, agent\n- Current node shortlist ids: None\n\n## Donor Candidates\n- No legal donor candidates.\n\n## Allowed Operators\n- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: ranking\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- core_precision: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 3\n- Locations: Shanghai\n- Min years: 4\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- agent engineer: weight=0.30\n- ranking: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 1\n- Remaining budget: 5\n- Used ratio: 0.00\n- Remaining ratio: 1.00\n- Phase progress: 0.25\n- Search phase: explore\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
+          "input_sha1": "ee7560c1b02ec52babd60c866c6bf4a3afa454be",
+          "sections": [
+            {
+              "title": "Task Contract",
+              "body_text": "- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.",
+              "source_paths": [],
+              "is_dynamic": false
+            },
+            {
+              "title": "Role Summary",
+              "body_text": "- Role title: Agent Search Engineer\n- Role focus: Build agent and ranking systems together.",
+              "source_paths": [
+                "SearchControllerContext_t.role_title",
+                "SearchControllerContext_t.role_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Active Frontier Node",
+              "body_text": "- Frontier node id: seed_relaxed_floor_72de7f4f\n- Current operator: relaxed_floor\n- Query term pool: python backend, agent\n- Current node shortlist ids: None",
+              "source_paths": [
+                "SearchControllerContext_t.active_frontier_node_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Donor Candidates",
+              "body_text": "- No legal donor candidates.",
+              "source_paths": [
+                "SearchControllerContext_t.donor_candidate_node_summaries"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Allowed Operators",
+              "body_text": "- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: ranking",
+              "source_paths": [
+                "SearchControllerContext_t.allowed_operator_names",
+                "SearchControllerContext_t.operator_surface_override_reason",
+                "SearchControllerContext_t.operator_surface_unmet_must_haves"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Rewrite Evidence",
+              "body_text": "- No rewrite evidence terms.",
+              "source_paths": [
+                "SearchControllerContext_t.rewrite_term_candidates"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Operator Statistics",
+              "body_text": "- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- core_precision: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0",
+              "source_paths": [
+                "SearchControllerContext_t.operator_statistics_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Fit Gates And Unmet Requirements",
+              "body_text": "- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 3\n- Locations: Shanghai\n- Min years: 4\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- agent engineer: weight=0.30\n- ranking: weight=1.00",
+              "source_paths": [
+                "SearchControllerContext_t.fit_gate_constraints",
+                "SearchControllerContext_t.unmet_requirement_weights",
+                "SearchControllerContext_t.max_query_terms"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Runtime Budget State",
+              "body_text": "- Initial round budget: 5\n- Runtime round index: 1\n- Remaining budget: 5\n- Used ratio: 0.00\n- Remaining ratio: 1.00\n- Phase progress: 0.25\n- Search phase: explore\n- Near budget end: no",
+              "source_paths": [
+                "SearchControllerContext_t.runtime_budget_state"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Decision Request",
+              "body_text": "- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+              "source_paths": [],
+              "is_dynamic": false
+            }
+          ]
+        }
+      },
+      "controller_decision": {
+        "action": "stop",
+        "target_frontier_node_id": "seed_relaxed_floor_72de7f4f",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop."
+      },
+      "execution_plan": null,
+      "execution_result": null,
+      "runtime_audit_tags": {},
+      "rewrite_term_pool": null,
+      "scoring_result": null,
+      "branch_evaluation_draft": null,
+      "branch_evaluation_audit": null,
+      "branch_evaluation": null,
+      "reward_breakdown": null,
+      "effective_stop_guard": {
+        "search_phase": "explore",
+        "controller_stop_allowed": false,
+        "exhausted_low_gain_allowed": false,
+        "novelty_floor": 0.25,
+        "usefulness_floor": 0.25,
+        "reward_floor": 1.5
+      },
+      "frontier_state_after": {
+        "frontier_nodes": {
+          "seed_core_precision_87acf8a7": {
+            "frontier_node_id": "seed_core_precision_87acf8a7",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "core_precision",
+            "node_query_term_pool": [
+              "agent engineer",
+              "ranking",
+              "python backend"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "00:core_precision",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_relaxed_floor_72de7f4f": {
+            "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "relaxed_floor",
+            "node_query_term_pool": [
+              "python backend",
+              "agent"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "02:relaxed_floor",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_pack_expansion_0d92f929": {
+            "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "pack_expansion",
+            "node_query_term_pool": [
+              "workflow orchestration",
+              "tool calling"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "03:pack_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_cross_pack_bridge_f0c14380": {
+            "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "cross_pack_bridge",
+            "node_query_term_pool": [
+              "agent ranking",
+              "retrieval workflow"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "04:cross_pack_bridge",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_generic_expansion_8690d463": {
+            "frontier_node_id": "seed_generic_expansion_8690d463",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "generic_expansion",
+            "node_query_term_pool": [
+              "search backend",
+              "reranker"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "05:generic_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_core_precision_87acf8a7",
+          "seed_relaxed_floor_72de7f4f",
+          "seed_pack_expansion_0d92f929",
+          "seed_cross_pack_bridge_f0c14380",
+          "seed_generic_expansion_8690d463"
+        ],
+        "closed_frontier_node_ids": [],
+        "run_term_catalog": [
+          "agent engineer",
+          "ranking",
+          "python backend",
+          "agent",
+          "workflow orchestration",
+          "tool calling",
+          "agent ranking",
+          "retrieval workflow",
+          "search backend",
+          "reranker"
+        ],
+        "run_shortlist_candidate_ids": [],
+        "semantic_hashes_seen": [],
+        "operator_statistics": {
+          "core_precision": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "relaxed_floor": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "pack_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "cross_pack_bridge": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "generic_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 5
+      },
+      "stop_reason": null,
+      "continue_flag": true
+    },
+    {
+      "runtime_round_index": 2,
+      "frontier_state_before": {
+        "frontier_nodes": {
+          "seed_core_precision_87acf8a7": {
+            "frontier_node_id": "seed_core_precision_87acf8a7",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "core_precision",
+            "node_query_term_pool": [
+              "agent engineer",
+              "ranking",
+              "python backend"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "00:core_precision",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_relaxed_floor_72de7f4f": {
+            "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "relaxed_floor",
+            "node_query_term_pool": [
+              "python backend",
+              "agent"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "02:relaxed_floor",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_pack_expansion_0d92f929": {
+            "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "pack_expansion",
+            "node_query_term_pool": [
+              "workflow orchestration",
+              "tool calling"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "03:pack_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_cross_pack_bridge_f0c14380": {
+            "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "cross_pack_bridge",
+            "node_query_term_pool": [
+              "agent ranking",
+              "retrieval workflow"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "04:cross_pack_bridge",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_generic_expansion_8690d463": {
+            "frontier_node_id": "seed_generic_expansion_8690d463",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "generic_expansion",
+            "node_query_term_pool": [
+              "search backend",
+              "reranker"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "05:generic_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          }
+        },
+        "open_frontier_node_ids": [
+          "seed_core_precision_87acf8a7",
+          "seed_relaxed_floor_72de7f4f",
+          "seed_pack_expansion_0d92f929",
+          "seed_cross_pack_bridge_f0c14380",
+          "seed_generic_expansion_8690d463"
+        ],
+        "closed_frontier_node_ids": [],
+        "run_term_catalog": [
+          "agent engineer",
+          "ranking",
+          "python backend",
+          "agent",
+          "workflow orchestration",
+          "tool calling",
+          "agent ranking",
+          "retrieval workflow",
+          "search backend",
+          "reranker"
+        ],
+        "run_shortlist_candidate_ids": [],
+        "semantic_hashes_seen": [],
+        "operator_statistics": {
+          "core_precision": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "relaxed_floor": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "pack_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "cross_pack_bridge": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "generic_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "remaining_budget": 5
+      },
+      "controller_context": {
+        "role_title": "Agent Search Engineer",
+        "role_summary": "Build agent and ranking systems together.",
+        "active_frontier_node_summary": {
+          "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+          "selected_operator_name": "relaxed_floor",
+          "node_query_term_pool": [
+            "python backend",
+            "agent"
+          ],
+          "node_shortlist_candidate_ids": []
+        },
+        "donor_candidate_node_summaries": [],
+        "frontier_head_summary": {
+          "open_node_count": 5,
+          "remaining_budget": 5,
+          "highest_selection_score": 2.010743355848808
+        },
+        "active_selection_breakdown": {
+          "search_phase": "balance",
+          "operator_exploitation_score": 0.0,
+          "operator_exploration_bonus": 1.1774100225154747,
+          "coverage_opportunity_score": 0.6666666666666666,
+          "incremental_value_score": 0.0,
+          "fresh_node_bonus": 1.0,
+          "redundancy_penalty": 0.0,
+          "final_selection_score": 2.010743355848808
+        },
+        "selection_ranking": [
+          {
+            "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "selected_operator_name": "relaxed_floor",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.6666666666666666,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 2.010743355848808
+            }
+          },
+          {
+            "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "selected_operator_name": "cross_pack_bridge",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 1.7440766891821413
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_87acf8a7",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.0,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 1.4774100225154747
+            }
+          },
+          {
+            "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "selected_operator_name": "pack_expansion",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.0,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 1.4774100225154747
+            }
+          },
+          {
+            "frontier_node_id": "seed_generic_expansion_8690d463",
+            "selected_operator_name": "generic_expansion",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.0,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 1.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 1.4774100225154747
+            }
+          }
+        ],
+        "unmet_requirement_weights": [
+          {
+            "capability": "Python backend",
+            "weight": 0.3
+          },
+          {
+            "capability": "agent engineer",
+            "weight": 0.3
+          },
+          {
+            "capability": "ranking",
+            "weight": 1.0
+          }
+        ],
+        "operator_statistics_summary": {
+          "core_precision": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "must_have_alias": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "relaxed_floor": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "pack_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "cross_pack_bridge": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "generic_expansion": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          },
+          "crossover_compose": {
+            "average_reward": 0.0,
+            "times_selected": 0
+          }
+        },
+        "allowed_operator_names": [
+          "core_precision",
+          "must_have_alias",
+          "relaxed_floor",
+          "generic_expansion",
+          "pack_expansion",
+          "cross_pack_bridge"
+        ],
+        "operator_surface_override_reason": "none",
+        "operator_surface_unmet_must_haves": [
+          "ranking"
+        ],
+        "rewrite_term_candidates": [],
+        "max_query_terms": 4,
+        "fit_gate_constraints": {
+          "locations": [
+            "Shanghai"
+          ],
+          "min_years": 4,
+          "max_years": 10,
+          "company_names": [],
+          "school_names": [],
+          "degree_requirement": null,
+          "gender_requirement": null,
+          "min_age": null,
+          "max_age": null
+        },
+        "runtime_budget_state": {
+          "initial_round_budget": 5,
+          "runtime_round_index": 2,
+          "remaining_budget": 5,
+          "used_ratio": 0.0,
+          "remaining_ratio": 1.0,
+          "phase_progress": 0.5,
+          "search_phase": "balance",
+          "near_budget_end": false
+        }
+      },
+      "controller_draft": {
+        "action": "stop",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop."
+      },
+      "controller_audit": {
+        "output_mode": "NativeOutput(strict=True)",
+        "retries": 0,
+        "output_retries": 1,
+        "validator_retry_count": 0,
+        "model_name": "test",
+        "model_settings_snapshot": {
+          "allow_text_output": false,
+          "allow_image_output": false,
+          "native_output_strict": true
+        },
+        "prompt_surface": {
+          "surface_id": "search_controller_decision",
+          "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Agent Search Engineer\n- Role focus: Build agent and ranking systems together.\n\n## Active Frontier Node\n- Frontier node id: seed_relaxed_floor_72de7f4f\n- Current operator: relaxed_floor\n- Query term pool: python backend, agent\n- Current node shortlist ids: None\n\n## Donor Candidates\n- No legal donor candidates.\n\n## Allowed Operators\n- Allowed operators: core_precision, must_have_alias, relaxed_floor, generic_expansion, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: ranking\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- core_precision: average_reward=0.00, times_selected=0\n- must_have_alias: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 4\n- Locations: Shanghai\n- Min years: 4\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- agent engineer: weight=0.30\n- ranking: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 2\n- Remaining budget: 5\n- Used ratio: 0.00\n- Remaining ratio: 1.00\n- Phase progress: 0.50\n- Search phase: balance\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
+          "input_sha1": "1faec6637eb87b50a13450136f9a5042687eeec0",
+          "sections": [
+            {
+              "title": "Task Contract",
+              "body_text": "- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.",
+              "source_paths": [],
+              "is_dynamic": false
+            },
+            {
+              "title": "Role Summary",
+              "body_text": "- Role title: Agent Search Engineer\n- Role focus: Build agent and ranking systems together.",
+              "source_paths": [
+                "SearchControllerContext_t.role_title",
+                "SearchControllerContext_t.role_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Active Frontier Node",
+              "body_text": "- Frontier node id: seed_relaxed_floor_72de7f4f\n- Current operator: relaxed_floor\n- Query term pool: python backend, agent\n- Current node shortlist ids: None",
+              "source_paths": [
+                "SearchControllerContext_t.active_frontier_node_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Donor Candidates",
+              "body_text": "- No legal donor candidates.",
+              "source_paths": [
+                "SearchControllerContext_t.donor_candidate_node_summaries"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Allowed Operators",
+              "body_text": "- Allowed operators: core_precision, must_have_alias, relaxed_floor, generic_expansion, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: ranking",
+              "source_paths": [
+                "SearchControllerContext_t.allowed_operator_names",
+                "SearchControllerContext_t.operator_surface_override_reason",
+                "SearchControllerContext_t.operator_surface_unmet_must_haves"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Rewrite Evidence",
+              "body_text": "- No rewrite evidence terms.",
+              "source_paths": [
+                "SearchControllerContext_t.rewrite_term_candidates"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Operator Statistics",
+              "body_text": "- core_precision: average_reward=0.00, times_selected=0\n- must_have_alias: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0",
+              "source_paths": [
+                "SearchControllerContext_t.operator_statistics_summary"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Fit Gates And Unmet Requirements",
+              "body_text": "- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 4\n- Locations: Shanghai\n- Min years: 4\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- agent engineer: weight=0.30\n- ranking: weight=1.00",
+              "source_paths": [
+                "SearchControllerContext_t.fit_gate_constraints",
+                "SearchControllerContext_t.unmet_requirement_weights",
+                "SearchControllerContext_t.max_query_terms"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Runtime Budget State",
+              "body_text": "- Initial round budget: 5\n- Runtime round index: 2\n- Remaining budget: 5\n- Used ratio: 0.00\n- Remaining ratio: 1.00\n- Phase progress: 0.50\n- Search phase: balance\n- Near budget end: no",
+              "source_paths": [
+                "SearchControllerContext_t.runtime_budget_state"
+              ],
+              "is_dynamic": true
+            },
+            {
+              "title": "Decision Request",
+              "body_text": "- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+              "source_paths": [],
+              "is_dynamic": false
+            }
+          ]
+        }
+      },
+      "controller_decision": {
+        "action": "stop",
+        "target_frontier_node_id": "seed_relaxed_floor_72de7f4f",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop."
+      },
+      "execution_plan": null,
+      "execution_result": null,
+      "runtime_audit_tags": {},
+      "rewrite_term_pool": null,
+      "scoring_result": null,
+      "branch_evaluation_draft": null,
+      "branch_evaluation_audit": null,
+      "branch_evaluation": null,
+      "reward_breakdown": null,
+      "effective_stop_guard": {
+        "search_phase": "balance",
+        "controller_stop_allowed": true,
+        "exhausted_low_gain_allowed": false,
+        "novelty_floor": 0.25,
+        "usefulness_floor": 0.25,
+        "reward_floor": 1.5
+      },
+      "frontier_state_after": {
+        "frontier_nodes": {
+          "seed_core_precision_87acf8a7": {
+            "frontier_node_id": "seed_core_precision_87acf8a7",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "core_precision",
+            "node_query_term_pool": [
+              "agent engineer",
+              "ranking",
+              "python backend"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "00:core_precision",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_relaxed_floor_72de7f4f": {
+            "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "relaxed_floor",
+            "node_query_term_pool": [
+              "python backend",
+              "agent"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "02:relaxed_floor",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_pack_expansion_0d92f929": {
+            "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "pack_expansion",
+            "node_query_term_pool": [
+              "workflow orchestration",
+              "tool calling"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering"
+            ],
+            "seed_rationale": "03:pack_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_cross_pack_bridge_f0c14380": {
+            "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "cross_pack_bridge",
+            "node_query_term_pool": [
+              "agent ranking",
+              "retrieval workflow"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "04:cross_pack_bridge",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
+            "previous_branch_evaluation": null,
+            "reward_breakdown": null,
+            "status": "open"
+          },
+          "seed_generic_expansion_8690d463": {
+            "frontier_node_id": "seed_generic_expansion_8690d463",
+            "parent_frontier_node_id": null,
+            "donor_frontier_node_id": null,
+            "selected_operator_name": "generic_expansion",
+            "node_query_term_pool": [
+              "search backend",
+              "reranker"
+            ],
+            "knowledge_pack_ids": [
+              "llm_agent_rag_engineering",
+              "search_ranking_retrieval_engineering"
+            ],
+            "seed_rationale": "05:generic_expansion",
+            "negative_terms": [
+              "sales",
+              "prompt operation",
+              "pure algorithm research",
+              "frontend",
+              "crm",
+              "hr operations"
+            ],
+            "parent_shortlist_candidate_ids": [],
+            "node_shortlist_candidate_ids": [],
+            "node_shortlist_score_snapshot": {},
+            "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
             "status": "open"
@@ -1389,7 +2884,7 @@
       },
       {
         "name": "round_count",
-        "value": 1
+        "value": 3
       },
       {
         "name": "search_round_count",
@@ -1433,7 +2928,7 @@
       },
       {
         "name": "prompt_surface_count",
-        "value": 4
+        "value": 6
       },
       {
         "name": "budget_warning_round_count",

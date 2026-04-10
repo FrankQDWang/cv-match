@@ -41,12 +41,14 @@ from seektalent.runtime_budget import (
     resolve_runtime_search_budget,
 )
 from seektalent.runtime_ops import (
+    build_effective_stop_guard,
     compute_node_reward_breakdown,
     evaluate_branch_outcome,
     evaluate_stop_condition,
     finalize_search_run,
     update_frontier_state,
 )
+from seektalent.rewrite_evidence import build_rewrite_term_pool
 from seektalent.search_ops import (
     AsyncRerankRequest,
     execute_search_plan_sidecar,
@@ -175,6 +177,10 @@ class WorkflowRuntime:
             )
             if controller_decision.action == "stop":
                 frontier_state_t1 = carry_forward_frontier_state(frontier_state)
+                effective_stop_guard = build_effective_stop_guard(
+                    active_assets.stop_guard_thresholds,
+                    runtime_budget_state,
+                )
                 stop_reason, continue_flag = evaluate_stop_condition(
                     frontier_state_t1,
                     controller_decision.action,
@@ -182,6 +188,7 @@ class WorkflowRuntime:
                     None,
                     active_assets.stop_guard_thresholds,
                     runtime_round_state,
+                    runtime_budget_state,
                 )
                 rounds.append(
                     SearchRoundArtifact(
@@ -191,6 +198,7 @@ class WorkflowRuntime:
                         controller_draft=controller_draft,
                         controller_audit=controller_audit,
                         controller_decision=controller_decision,
+                        effective_stop_guard=effective_stop_guard,
                         frontier_state_after=frontier_state_t1,
                         stop_reason=stop_reason,
                         continue_flag=continue_flag,
@@ -201,7 +209,7 @@ class WorkflowRuntime:
                     frontier_state,
                     bootstrap_artifacts.requirement_sheet,
                     controller_decision,
-                    controller_context.term_budget_range,
+                    controller_context.max_query_terms,
                     active_assets.runtime_search_budget,
                     active_assets.crossover_guard_thresholds,
                 )
@@ -214,6 +222,12 @@ class WorkflowRuntime:
                     execution_result,
                     bootstrap_artifacts.scoring_policy,
                     active_rerank_request,
+                )
+                rewrite_term_pool = build_rewrite_term_pool(
+                    bootstrap_artifacts.requirement_sheet,
+                    execution_plan,
+                    execution_result,
+                    scoring_result,
                 )
                 branch_evaluation_draft, branch_evaluation_audit = await request_branch_evaluation_draft(
                     bootstrap_artifacts.requirement_sheet,
@@ -245,6 +259,11 @@ class WorkflowRuntime:
                     scoring_result,
                     branch_evaluation,
                     reward_breakdown,
+                    rewrite_term_pool.accepted,
+                )
+                effective_stop_guard = build_effective_stop_guard(
+                    active_assets.stop_guard_thresholds,
+                    runtime_budget_state,
                 )
                 stop_reason, continue_flag = evaluate_stop_condition(
                     frontier_state_t1,
@@ -253,6 +272,7 @@ class WorkflowRuntime:
                     reward_breakdown,
                     active_assets.stop_guard_thresholds,
                     runtime_round_state,
+                    runtime_budget_state,
                 )
                 rounds.append(
                     SearchRoundArtifact(
@@ -265,11 +285,13 @@ class WorkflowRuntime:
                         execution_plan=execution_plan,
                         execution_result=execution_result,
                         runtime_audit_tags=execution_sidecar.runtime_audit_tags,
+                        rewrite_term_pool=rewrite_term_pool,
                         scoring_result=scoring_result,
                         branch_evaluation_draft=branch_evaluation_draft,
                         branch_evaluation_audit=branch_evaluation_audit,
                         branch_evaluation=branch_evaluation,
                         reward_breakdown=reward_breakdown,
+                        effective_stop_guard=effective_stop_guard,
                         frontier_state_after=frontier_state_t1,
                         stop_reason=stop_reason,
                         continue_flag=continue_flag,

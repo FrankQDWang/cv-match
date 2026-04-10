@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | `RequirementExtractionLLM` | `Task Contract / Job Description / Hiring Notes / Return Fields` | routing、frontier、候选、评分 |
 | `BootstrapKeywordGenerationLLM` | `Task Contract / Requirement Summary / Routing Result / Selected Knowledge Packs / Return Fields` | 后续轮次状态、候选、CTS 结果、reward |
-| `SearchControllerDecisionLLM` | `Task Contract / Role Summary / Active Frontier Node / Donor Candidates / Allowed Operators / Operator Statistics / Fit Gates And Unmet Requirements / Runtime Budget State / Budget Warning? / Decision Request` | 整份 frontier、原始候选文本、CTS payload |
+| `SearchControllerDecisionLLM` | `Task Contract / Role Summary / Active Frontier Node / Donor Candidates / Allowed Operators / Rewrite Evidence / Operator Statistics / Fit Gates And Unmet Requirements / Runtime Budget State / Budget Warning? / Decision Request` | 整份 frontier、原始候选文本、CTS payload |
 | `BranchOutcomeEvaluationLLM` | `Evaluation Contract / Role Summary / Branch Facts / Search And Scoring Summary / Runtime Budget State / Budget Warning? / Return Fields` | 全量运行历史、未来轮次状态、stop owner |
 | `SearchRunFinalizationLLM` | `Task Contract / Role Summary / Final Shortlist State / Stop Reason / Return Fields` | 排序改写权、CTS 原始观测 |
 
@@ -34,7 +34,14 @@
 - `operator_surface_override_reason`
 - `operator_surface_unmet_must_haves`
 
-也就是说，controller 看到的不是静态 operator catalog，而是已经过 phase-aware action surface 收口后的结果。
+`Rewrite Evidence` section 会显式列出 `rewrite_term_candidates`。这些 evidence terms 只作为 rewrite operator 的词源池，不会直接 append 到 CTS `keyword`。
+
+controller 的 runtime budget section 也不再使用 range 语义，而是会明确投影：
+
+- `CTS keyword terms are conjunctive. More terms tighten the search.`
+- `Max query terms: N`
+
+也就是说，controller 看到的不是静态 operator catalog，而是已经过 phase-aware action surface 收口后的结果；看到的也不是“可随意扩张的 recall budget”，而是 CTS 交集语义下冻结好的 query 上限。
 
 `search_phase` 与 `phase_progress` 当前只是 runtime 事实：
 

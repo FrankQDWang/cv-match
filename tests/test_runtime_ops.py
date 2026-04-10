@@ -24,12 +24,14 @@ from seektalent.models import (
     TopThreeStatistics,
 )
 from seektalent.runtime_ops import (
+    build_effective_stop_guard,
     compute_node_reward_breakdown,
     evaluate_branch_outcome,
     evaluate_stop_condition,
     finalize_search_run,
     update_frontier_state,
 )
+from seektalent.runtime_budget import build_runtime_budget_state
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -349,7 +351,7 @@ def test_update_frontier_state_fails_for_missing_operator_statistics_key() -> No
         )
 
 
-def test_evaluate_stop_condition_respects_priority_and_controller_guard() -> None:
+def test_evaluate_stop_condition_respects_priority_and_phase_gates() -> None:
     state = FrontierState_t1.model_validate(_frontier_state().model_dump(mode="python"))
     branch_evaluation = BranchEvaluation_t(
         novelty_score=0.1,
@@ -377,16 +379,26 @@ def test_evaluate_stop_condition_respects_priority_and_controller_guard() -> Non
         "stop",
         branch_evaluation,
         reward,
-        StopGuardThresholds(min_round_index=0),
+        StopGuardThresholds(),
         RuntimeRoundState(runtime_round_index=3),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=3,
+            remaining_budget=0,
+        ),
     ) == ("budget_exhausted", False)
     assert evaluate_stop_condition(
         state.model_copy(update={"open_frontier_node_ids": []}),
         "stop",
         branch_evaluation,
         reward,
-        StopGuardThresholds(min_round_index=0),
+        StopGuardThresholds(),
         RuntimeRoundState(runtime_round_index=3),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=3,
+            remaining_budget=2,
+        ),
     ) == ("no_open_node", False)
     assert evaluate_stop_condition(
         state,
@@ -395,23 +407,77 @@ def test_evaluate_stop_condition_respects_priority_and_controller_guard() -> Non
         reward,
         StopGuardThresholds(),
         RuntimeRoundState(runtime_round_index=1),
-    ) == ("exhausted_low_gain", False)
-    assert evaluate_stop_condition(
-        state,
-        "stop",
-        None,
-        None,
-        StopGuardThresholds(min_round_index=2),
-        RuntimeRoundState(runtime_round_index=1),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=1,
+            remaining_budget=3,
+        ),
     ) == (None, True)
     assert evaluate_stop_condition(
         state,
         "stop",
         None,
         None,
-        StopGuardThresholds(min_round_index=1),
+        StopGuardThresholds(),
         RuntimeRoundState(runtime_round_index=1),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=1,
+            remaining_budget=3,
+        ),
+    ) == (None, True)
+    assert evaluate_stop_condition(
+        state,
+        "stop",
+        None,
+        None,
+        StopGuardThresholds(),
+        RuntimeRoundState(runtime_round_index=2),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=2,
+            remaining_budget=2,
+        ),
     ) == ("controller_stop", False)
+    assert evaluate_stop_condition(
+        state,
+        "search_cts",
+        branch_evaluation,
+        reward,
+        StopGuardThresholds(),
+        RuntimeRoundState(runtime_round_index=4),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=4,
+            remaining_budget=1,
+        ),
+    ) == ("exhausted_low_gain", False)
+
+
+def test_build_effective_stop_guard_uses_phase_gate_owner() -> None:
+    explore_guard = build_effective_stop_guard(
+        StopGuardThresholds(),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=0,
+            remaining_budget=5,
+        ),
+    )
+    harvest_guard = build_effective_stop_guard(
+        StopGuardThresholds(),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=4,
+            remaining_budget=1,
+        ),
+    )
+
+    assert explore_guard.search_phase == "explore"
+    assert explore_guard.controller_stop_allowed is False
+    assert explore_guard.exhausted_low_gain_allowed is False
+    assert harvest_guard.search_phase == "harvest"
+    assert harvest_guard.controller_stop_allowed is True
+    assert harvest_guard.exhausted_low_gain_allowed is True
 
 
 def test_finalize_search_run_preserves_shortlist_fact() -> None:

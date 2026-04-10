@@ -13,7 +13,7 @@
   "expected_stop_reason": "controller_stop",
   "observed_stop_reason": "controller_stop",
   "must_hold": [
-    "round 0 stop_reason is controller_stop"
+    "round 2 stop_reason is controller_stop"
   ],
   "must_not_hold": [
     "search_cts round exists"

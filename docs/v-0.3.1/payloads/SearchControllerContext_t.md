@@ -16,7 +16,8 @@ SearchControllerContext_t = {
   allowed_operator_names,
   operator_surface_override_reason,
   operator_surface_unmet_must_haves,
-  term_budget_range,
+  rewrite_term_candidates,
+  max_query_terms,
   fit_gate_constraints,
   runtime_budget_state
 }
@@ -35,7 +36,8 @@ SearchControllerContext_t = {
 - 当前轮允许的 operator：`allowed_operator_names`
 - 当前轮 operator surface override 原因：`operator_surface_override_reason`
 - 当前 active node 的 must-have 缺口：`operator_surface_unmet_must_haves`
-- term 预算范围：`term_budget_range`
+- 当前轮 rewrite evidence term pool：`rewrite_term_candidates`
+- 当前轮 CTS keyword term 上限：`max_query_terms`
 - fit gate 约束：`fit_gate_constraints`
 - runtime 预算态：`runtime_budget_state`
 
@@ -66,17 +68,24 @@ SearchControllerContext_t = {
 3. `Active Frontier Node`
 4. `Donor Candidates`
 5. `Allowed Operators`
-6. `Operator Statistics`
-7. `Fit Gates And Unmet Requirements`
-8. `Runtime Budget State`
-9. `Budget Warning`，仅当 `runtime_budget_state.near_budget_end = true`
-10. `Decision Request`
+6. `Rewrite Evidence`
+7. `Operator Statistics`
+8. `Fit Gates And Unmet Requirements`
+9. `Runtime Budget State`
+10. `Budget Warning`，仅当 `runtime_budget_state.near_budget_end = true`
+11. `Decision Request`
 
 `Allowed Operators` section 会显式包含：
 
 - `Allowed operators: ...`
 - `Operator surface override: ...`
 - `Operator surface unmet must-haves: ...`
+
+`Rewrite Evidence` section 会显式列出每个 candidate term 的：
+
+- `term`
+- `source_candidate_ids`
+- `source_fields`
 
 `active_selection_breakdown` 与 `selection_ranking` 不会投影到 prompt text。
 
@@ -136,7 +145,11 @@ allowed_operator_names:
 operator_surface_override_reason: "harvest_unmet_must_have_repair"
 operator_surface_unmet_must_haves:
   - "retrieval_or_ranking_experience"
-term_budget_range: [2, 6]
+rewrite_term_candidates:
+  - term: "ranking"
+    source_candidate_ids: ["c32", "c44"]
+    source_fields: ["project_names", "work_summaries"]
+max_query_terms: 6
 fit_gate_constraints:
   locations: ["Shanghai"]
   min_years: 6

@@ -120,19 +120,13 @@ selection_score(n) =
 
 seed 节点因 `reward_breakdown = null` 默认不能成为 donor。
 
-## `derive_term_budget_range`
+## `derive_max_query_terms`
 
 - 只根据 `RuntimeBudgetState.search_phase` 读取 [[RuntimeTermBudgetPolicy]]
-- `explore -> explore_budget_range`
-- `balance -> balance_budget_range`
-- `harvest -> harvest_budget_range`
+- `explore -> explore_max_query_terms`
+- `balance -> balance_max_query_terms`
+- `harvest -> harvest_max_query_terms`
 - `MaterializeSearchExecutionPlan` 不得重新从 `remaining_budget` 推导
-
-## `clamp_term_budget`
-
-- 对输入 terms 保序去重
-- 若长度超过当前上界，裁到上界
-- 若长度低于当前下界，保持实际数量，不补词
 
 ## 相关
 

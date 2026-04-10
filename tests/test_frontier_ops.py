@@ -32,6 +32,7 @@ from seektalent.models import (
     RuntimeTermBudgetPolicy,
     ScoringPolicy,
     SearchControllerDecisionDraft_t,
+    RewriteTermCandidate,
 )
 from seektalent.search_ops import (
     execute_search_plan,
@@ -703,17 +704,17 @@ def test_select_active_frontier_node_keeps_coverage_and_repair_semantics_same_so
 
 
 @pytest.mark.parametrize(
-    ("runtime_budget_state", "remaining_budget", "expected_range"),
+    ("runtime_budget_state", "remaining_budget", "expected_max_query_terms"),
     [
-        (_runtime_budget_state(remaining_budget=10, initial_round_budget=12, runtime_round_index=0), 10, (2, 6)),
-        (_runtime_budget_state(remaining_budget=6, initial_round_budget=12, runtime_round_index=5), 6, (2, 5)),
-        (_runtime_budget_state(remaining_budget=4, initial_round_budget=5, runtime_round_index=4), 4, (2, 4)),
+        (_runtime_budget_state(remaining_budget=10, initial_round_budget=12, runtime_round_index=0), 10, 3),
+        (_runtime_budget_state(remaining_budget=6, initial_round_budget=12, runtime_round_index=5), 6, 4),
+        (_runtime_budget_state(remaining_budget=4, initial_round_budget=5, runtime_round_index=4), 4, 6),
     ],
 )
-def test_select_active_frontier_node_freezes_term_budget_ranges_by_phase(
+def test_select_active_frontier_node_freezes_max_query_terms_by_phase(
     runtime_budget_state,
     remaining_budget: int,
-    expected_range: tuple[int, int],
+    expected_max_query_terms: int,
 ) -> None:
     node = FrontierNode_t(
         frontier_node_id="seed",
@@ -732,10 +733,10 @@ def test_select_active_frontier_node_freezes_term_budget_ranges_by_phase(
         runtime_budget_state,
     )
 
-    assert context.term_budget_range == expected_range
+    assert context.max_query_terms == expected_max_query_terms
 
 
-def test_select_active_frontier_node_term_budget_ignores_legacy_remaining_budget_thresholds() -> None:
+def test_select_active_frontier_node_max_query_terms_ignores_legacy_remaining_budget_thresholds() -> None:
     node = FrontierNode_t(
         frontier_node_id="seed",
         selected_operator_name="must_have_alias",
@@ -754,7 +755,7 @@ def test_select_active_frontier_node_term_budget_ignores_legacy_remaining_budget
     )
 
     assert context.runtime_budget_state.search_phase == "harvest"
-    assert context.term_budget_range == (2, 4)
+    assert context.max_query_terms == 6
 
 
 def test_generate_search_controller_decision_normalizes_stop_and_falls_back_to_active_operator() -> None:
@@ -782,7 +783,7 @@ def test_generate_search_controller_decision_normalizes_stop_and_falls_back_to_a
         SearchControllerDecisionDraft_t(
             action="stop",
             selected_operator_name="unknown_operator",
-            operator_args={"additional_terms": ["ranking"]},
+            operator_args={"query_terms": ["ranking"]},
             expected_gain_hypothesis="Enough coverage.",
         ),
     )
@@ -792,7 +793,7 @@ def test_generate_search_controller_decision_normalizes_stop_and_falls_back_to_a
     assert decision.operator_args == {}
 
 
-def test_generate_search_controller_decision_clamps_non_crossover_terms() -> None:
+def test_generate_search_controller_decision_clamps_non_crossover_query_terms() -> None:
     context = select_active_frontier_node(
         _frontier_state(
             [
@@ -810,7 +811,7 @@ def test_generate_search_controller_decision_clamps_non_crossover_terms() -> Non
         _scoring_policy(),
         CrossoverGuardThresholds(),
         RuntimeTermBudgetPolicy(),
-        _runtime_budget_state(remaining_budget=6, initial_round_budget=12, runtime_round_index=5),
+        _runtime_budget_state(remaining_budget=10, initial_round_budget=12, runtime_round_index=0),
     )
 
     decision = generate_search_controller_decision(
@@ -818,14 +819,172 @@ def test_generate_search_controller_decision_clamps_non_crossover_terms() -> Non
         SearchControllerDecisionDraft_t(
             action="search_cts",
             selected_operator_name="core_precision",
-            operator_args={"additional_terms": [" ranking ", "", "ranking", "python"]},
+            operator_args={"query_terms": [" backend ", "", "backend", "python", "workflow"]},
             expected_gain_hypothesis="Tighten ranking coverage.",
         ),
     )
 
     assert decision.action == "search_cts"
     assert decision.selected_operator_name == "core_precision"
-    assert decision.operator_args == {"additional_terms": ["ranking"]}
+    assert decision.operator_args == {"query_terms": ["backend", "python", "workflow"]}
+
+
+def test_generate_search_controller_decision_rejects_core_precision_new_terms() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="must_have_alias",
+                    node_query_term_pool=["python", "agent", "workflow", "backend"],
+                    knowledge_pack_ids=["llm_agent_rag_engineering"],
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=10, initial_round_budget=12, runtime_round_index=0),
+    )
+
+    with pytest.raises(ValueError, match="core_precision_requires_non_empty_active_query_subset"):
+        generate_search_controller_decision(
+            context,
+            SearchControllerDecisionDraft_t(
+                action="search_cts",
+                selected_operator_name="core_precision",
+                operator_args={"query_terms": ["python", "ranking"]},
+                expected_gain_hypothesis="Add ranking.",
+            ),
+        )
+
+
+def test_generate_search_controller_decision_requires_strict_relaxed_floor_subset() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="must_have_alias",
+                    node_query_term_pool=["python", "agent", "workflow"],
+                    knowledge_pack_ids=["llm_agent_rag_engineering"],
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=10, initial_round_budget=12, runtime_round_index=0),
+    )
+
+    with pytest.raises(ValueError, match="relaxed_floor_requires_non_empty_strict_active_query_subset"):
+        generate_search_controller_decision(
+            context,
+            SearchControllerDecisionDraft_t(
+                action="search_cts",
+                selected_operator_name="relaxed_floor",
+                operator_args={"query_terms": ["python", "agent", "workflow"]},
+                expected_gain_hypothesis="Keep everything.",
+            ),
+        )
+
+
+def test_generate_search_controller_decision_requires_rewrite_for_must_have_alias() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="must_have_alias",
+                    node_query_term_pool=["python", "agent", "workflow", "backend"],
+                    knowledge_pack_ids=["llm_agent_rag_engineering"],
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=10, initial_round_budget=12, runtime_round_index=0),
+    )
+
+    decision = generate_search_controller_decision(
+        context,
+        SearchControllerDecisionDraft_t(
+            action="search_cts",
+            selected_operator_name="must_have_alias",
+            operator_args={"query_terms": ["python", "backend", "ranking"]},
+            expected_gain_hypothesis="Swap in ranking.",
+        ),
+    )
+
+    assert decision.operator_args == {"query_terms": ["python", "backend", "ranking"]}
+
+    with pytest.raises(
+        ValueError,
+        match="must_have_alias_requires_query_rewrite_with_shared_new_and_dropped_terms",
+    ):
+        generate_search_controller_decision(
+            context,
+            SearchControllerDecisionDraft_t(
+                action="search_cts",
+                selected_operator_name="must_have_alias",
+                operator_args={"query_terms": ["python", "agent", "workflow", "backend", "ranking"]},
+                expected_gain_hypothesis="Append ranking.",
+            ),
+        )
+
+
+def test_generate_search_controller_decision_uses_ga_lite_rewrite_terms() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="must_have_alias",
+                    node_query_term_pool=["python backend", "workflow", "agent"],
+                    knowledge_pack_ids=["llm_agent_rag_engineering"],
+                    rewrite_term_candidates=[
+                        RewriteTermCandidate(
+                            term="ranking",
+                            source_candidate_ids=["c1", "c2"],
+                            source_fields=["work_summaries"],
+                        ),
+                        RewriteTermCandidate(
+                            term="rag",
+                            source_candidate_ids=["c1"],
+                            source_fields=["project_names"],
+                        ),
+                    ],
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=5, runtime_round_index=4),
+    )
+
+    decision = generate_search_controller_decision(
+        context,
+        SearchControllerDecisionDraft_t(
+            action="search_cts",
+            selected_operator_name="generic_expansion",
+            operator_args={"query_terms": ["python backend", "workflow", "rag"]},
+            expected_gain_hypothesis="Use the strongest supported rewrite.",
+        ),
+    )
+
+    assert decision.operator_args == {
+        "query_terms": ["python backend", "workflow", "ranking"]
+    }
 
 
 def test_generate_search_controller_decision_normalizes_crossover_fields() -> None:
@@ -943,15 +1102,15 @@ def test_frontier_search_path_connects_to_phase3_ops() -> None:
         SearchControllerDecisionDraft_t(
             action="search_cts",
             selected_operator_name="core_precision",
-            operator_args={"additional_terms": ["ranking"]},
-            expected_gain_hypothesis="Expand ranking coverage.",
+            operator_args={"query_terms": ["python"]},
+            expected_gain_hypothesis="Tighten to the strongest anchor.",
         ),
     )
     plan = materialize_search_execution_plan(
         state,
         _requirement_sheet(),
         decision,
-        context.term_budget_range,
+        context.max_query_terms,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -982,7 +1141,7 @@ def test_frontier_search_path_connects_to_phase3_ops() -> None:
     )
 
     assert decision.action == "search_cts"
-    assert plan.query_terms[-1] == "ranking"
+    assert plan.query_terms == ["python"]
     assert scoring_result.node_shortlist_candidate_ids == ["keep"]
 
 

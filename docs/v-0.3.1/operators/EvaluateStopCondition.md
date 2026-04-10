@@ -5,7 +5,7 @@
 ## Signature
 
 ```text
-EvaluateStopCondition : (FrontierState_t1, SearchControllerDecision_t, BranchEvaluation_t | null, NodeRewardBreakdown_t | null, StopGuardThresholds, RuntimeRoundState) -> {stop_reason, continue_flag}
+EvaluateStopCondition : (FrontierState_t1, SearchControllerDecision_t, BranchEvaluation_t | null, NodeRewardBreakdown_t | null, StopGuardThresholds, RuntimeBudgetState) -> {stop_reason, continue_flag}
 ```
 
 ## Notation Legend
@@ -22,7 +22,7 @@ b_t := NodeRewardBreakdown_t | null
 ```text
 remaining_budget_t = F_{t+1}.remaining_budget
 open_node_ids_t = F_{t+1}.open_frontier_node_ids
-runtime_round_index_t = RuntimeRoundState.runtime_round_index
+search_phase_t = RuntimeBudgetState.search_phase
 ```
 
 ## Transformation
@@ -44,7 +44,11 @@ controller_stop_requested_t = (d_t.action = "stop")
 
 controller_stop_accepted_t =
   controller_stop_requested_t
-  and runtime_round_index_t >= StopGuardThresholds.min_round_index
+  and search_phase_t in {"balance", "harvest"}
+
+low_gain_stop_accepted_t =
+  low_gain_branch_t
+  and search_phase_t = "harvest"
 ```
 
 ### Field-Level Output Assembly
@@ -53,7 +57,7 @@ controller_stop_accepted_t =
 stop_reason =
   "budget_exhausted" if budget_exhausted_t
   else "no_open_node" if no_open_node_t
-  else "exhausted_low_gain" if low_gain_branch_t
+  else "exhausted_low_gain" if low_gain_stop_accepted_t
   else "controller_stop" if controller_stop_accepted_t
   else null
 
@@ -66,8 +70,7 @@ continue_flag = (stop_reason = null)
 StopGuardThresholds defaults = {
   novelty_floor: 0.25,
   usefulness_floor: 0.25,
-  reward_floor: 1.5,
-  min_round_index: 2
+  reward_floor: 1.5
 }
 ```
 
@@ -81,7 +84,7 @@ StopGuardThresholds defaults = {
 - `BranchEvaluation_t.usefulness_score` when `BranchEvaluation_t != null`
 - `NodeRewardBreakdown_t.reward_score` when `NodeRewardBreakdown_t != null`
 - `StopGuardThresholds`
-- `RuntimeRoundState.runtime_round_index`
+- `RuntimeBudgetState.search_phase`
 
 ## Write Set
 
@@ -95,7 +98,7 @@ StopGuardThresholds defaults = {
 - [[BranchEvaluation_t]] | `null`
 - [[NodeRewardBreakdown_t]] | `null`
 - [[StopGuardThresholds]]
-- [[RuntimeRoundState]]
+- [[RuntimeBudgetState]]
 
 ## 输出 payload
 
@@ -105,7 +108,8 @@ StopGuardThresholds defaults = {
 
 - `budget_exhausted` 与 `no_open_node` 永远先于控制器 stop 建议。
 - `direct-stop` 路径允许传入 `BranchEvaluation_t = null` 与 `NodeRewardBreakdown_t = null`；此时只评估 budget / open-node / controller-stop guard。
-- `exhausted_low_gain` 只在 branch evaluation 与 reward breakdown 都已存在时可触发。
+- `controller_stop` 只在 `search_phase ∈ {balance, harvest}` 时允许被 runtime 接受。
+- `exhausted_low_gain` 只在 branch evaluation 与 reward breakdown 都已存在，且 `search_phase = harvest` 时可触发。
 - stop 最终由 runtime guard 决定，控制器只能建议，不能直接终止 run。
 
 ## 相关
@@ -116,4 +120,4 @@ StopGuardThresholds defaults = {
 - [[BranchEvaluation_t]]
 - [[NodeRewardBreakdown_t]]
 - [[StopGuardThresholds]]
-- [[RuntimeRoundState]]
+- [[RuntimeBudgetState]]

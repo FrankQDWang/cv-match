@@ -3,7 +3,7 @@ from __future__ import annotations
 from seektalent.models import RuntimeSearchBudget, RuntimeTermBudgetPolicy
 from seektalent.runtime_budget import (
     build_runtime_budget_state,
-    derive_term_budget_range,
+    derive_max_query_terms,
     resolve_runtime_search_budget,
 )
 
@@ -103,30 +103,30 @@ def test_build_runtime_budget_state_switches_phase_at_fixed_boundaries() -> None
     assert harvest.search_phase == "harvest"
 
 
-def test_derive_term_budget_range_uses_phase_owner() -> None:
+def test_derive_max_query_terms_uses_phase_owner() -> None:
     policy = RuntimeTermBudgetPolicy()
 
-    assert derive_term_budget_range(
+    assert derive_max_query_terms(
         build_runtime_budget_state(
             initial_round_budget=12,
             runtime_round_index=0,
             remaining_budget=10,
         ),
         policy,
-    ) == (2, 6)
-    assert derive_term_budget_range(
+    ) == 3
+    assert derive_max_query_terms(
         build_runtime_budget_state(
             initial_round_budget=12,
             runtime_round_index=5,
             remaining_budget=6,
         ),
         policy,
-    ) == (2, 5)
-    assert derive_term_budget_range(
+    ) == 4
+    assert derive_max_query_terms(
         build_runtime_budget_state(
             initial_round_budget=5,
             runtime_round_index=4,
             remaining_budget=4,
         ),
         policy,
-    ) == (2, 4)
+    ) == 6

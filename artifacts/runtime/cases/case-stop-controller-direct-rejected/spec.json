@@ -1,7 +1,7 @@
 {
   "case_id": "case-stop-controller-direct-rejected",
   "scenario": "controller stop 先拒绝后接受",
-  "business_context": "未到 stop guard 门槛时，controller stop 先被拒绝，再在下一轮接受。",
+  "business_context": "在 explore 期 stop 会被拒绝，直到 balance 期才被 runtime 接受。",
   "expected_route": "inferred_single_pack",
   "expected_stop_reason": "controller_stop",
   "expected_knowledge_pack_ids": [
@@ -10,7 +10,8 @@
   "expected_fallback_reason": null,
   "must_hold": [
     "round 0 stop_reason is null",
-    "round 1 stop_reason is controller_stop"
+    "round 1 stop_reason is null",
+    "round 2 stop_reason is controller_stop"
   ],
   "must_not_hold": [
     "round count equals 1"

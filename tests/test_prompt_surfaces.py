@@ -114,7 +114,7 @@ def _controller_context(*, near_budget_end: bool = False) -> SearchControllerCon
             ],
             "operator_surface_override_reason": "none",
             "operator_surface_unmet_must_haves": ["ranking"],
-            "term_budget_range": [2, 5],
+            "max_query_terms": 4,
             "fit_gate_constraints": FitGateConstraints().model_dump(mode="python"),
             "runtime_budget_state": budget_state.model_dump(mode="python"),
         }
@@ -272,6 +272,7 @@ def test_controller_prompt_surface_orders_sections_and_delays_budget_warning() -
         "Active Frontier Node",
         "Donor Candidates",
         "Allowed Operators",
+        "Rewrite Evidence",
         "Operator Statistics",
         "Fit Gates And Unmet Requirements",
         "Runtime Budget State",
@@ -283,19 +284,23 @@ def test_controller_prompt_surface_orders_sections_and_delays_budget_warning() -
         "Active Frontier Node",
         "Donor Candidates",
         "Allowed Operators",
+        "Rewrite Evidence",
         "Operator Statistics",
         "Fit Gates And Unmet Requirements",
         "Runtime Budget State",
         "Budget Warning",
         "Decision Request",
     ]
-    assert warned_surface.sections[8].source_paths == [
+    assert warned_surface.sections[9].source_paths == [
         "SearchControllerContext_t.runtime_budget_state.near_budget_end"
     ]
     assert "Operator surface override: none" in regular_surface.sections[4].body_text
     assert "Operator surface unmet must-haves: ranking" in regular_surface.sections[4].body_text
-    assert "Phase progress:" in regular_surface.sections[7].body_text
-    assert "Search phase:" in regular_surface.sections[7].body_text
+    assert "No rewrite evidence terms." in regular_surface.sections[5].body_text
+    assert "CTS keyword terms are conjunctive. More terms tighten the search." in regular_surface.sections[7].body_text
+    assert "Max query terms: 4" in regular_surface.sections[7].body_text
+    assert "Phase progress:" in regular_surface.sections[8].body_text
+    assert "Search phase:" in regular_surface.sections[8].body_text
     assert "selection_ranking" not in regular_surface.input_text
 
 

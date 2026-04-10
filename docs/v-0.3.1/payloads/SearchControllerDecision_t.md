@@ -25,7 +25,7 @@ SearchControllerDecision_t = { action, target_frontier_node_id, selected_operato
 - `selected_operator_name` 必须来自 [[SearchControllerContext_t]].allowed_operator_names。
 - `action` 只能是 `search_cts` 或 `stop`。
 - 当 `action = "stop"` 时，`operator_args` 必须是 `{}`。
-- 当 `action != "stop"` 且 `selected_operator_name != "crossover_compose"` 时，`operator_args` 必须包含 `additional_terms`。
+- 当 `action != "stop"` 且 `selected_operator_name != "crossover_compose"` 时，`operator_args` 必须包含 `query_terms`。
 - 当 `action != "stop"` 且 `selected_operator_name = "crossover_compose"` 时，`operator_args` 必须包含 `donor_frontier_node_id`、`crossover_rationale`、`shared_anchor_terms`、`donor_terms_used`。
 
 ## 最小示例

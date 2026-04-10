@@ -3,13 +3,16 @@ from __future__ import annotations
 from seektalent.models import (
     BranchEvaluationDraft_t,
     BranchEvaluation_t,
+    EffectiveStopGuard,
     FrontierNode_t,
     FrontierState_t,
     FrontierState_t1,
     NodeRewardBreakdown_t,
     OperatorStatistics,
     RequirementSheet,
+    RewriteTermCandidate,
     RuntimeRoundState,
+    RuntimeBudgetState,
     SearchExecutionPlan_t,
     SearchExecutionResult_t,
     SearchRunResult,
@@ -162,6 +165,7 @@ def update_frontier_state(
     scoring_result: SearchScoringResult_t,
     branch_evaluation: BranchEvaluation_t,
     reward_breakdown: NodeRewardBreakdown_t,
+    rewrite_term_candidates: list[RewriteTermCandidate] | None = None,
 ) -> FrontierState_t1:
     parent_node = frontier_state.frontier_nodes.get(
         plan.child_frontier_node_stub.parent_frontier_node_id
@@ -210,15 +214,14 @@ def update_frontier_state(
         parent_frontier_node_id=plan.child_frontier_node_stub.parent_frontier_node_id,
         donor_frontier_node_id=plan.child_frontier_node_stub.donor_frontier_node_id,
         selected_operator_name=selected_operator_name,
-        node_query_term_pool=stable_deduplicate(
-            parent_node.node_query_term_pool + plan.query_terms
-        ),
+        node_query_term_pool=stable_deduplicate(list(plan.query_terms)),
         knowledge_pack_ids=list(plan.knowledge_pack_ids),
         seed_rationale=None,
         negative_terms=list(plan.runtime_only_constraints.negative_keywords),
         parent_shortlist_candidate_ids=list(parent_node.node_shortlist_candidate_ids),
         node_shortlist_candidate_ids=list(scoring_result.node_shortlist_candidate_ids),
         node_shortlist_score_snapshot=current_snapshot,
+        rewrite_term_candidates=list(rewrite_term_candidates or []),
         previous_branch_evaluation=branch_evaluation,
         reward_breakdown=reward_breakdown,
         status="closed" if branch_evaluation.branch_exhausted else "open",
@@ -296,27 +299,44 @@ def evaluate_stop_condition(
     reward_breakdown: NodeRewardBreakdown_t | None,
     stop_guard_thresholds: StopGuardThresholds,
     runtime_round_state: RuntimeRoundState,
+    runtime_budget_state: RuntimeBudgetState,
 ) -> tuple[str | None, bool]:
+    del runtime_round_state
+    effective_stop_guard = build_effective_stop_guard(
+        stop_guard_thresholds,
+        runtime_budget_state,
+    )
     if frontier_state.remaining_budget <= 0:
         return "budget_exhausted", False
     if not frontier_state.open_frontier_node_ids:
         return "no_open_node", False
     if (
-        branch_evaluation is not None
+        effective_stop_guard.exhausted_low_gain_allowed
+        and branch_evaluation is not None
         and reward_breakdown is not None
         and branch_evaluation.branch_exhausted
-        and branch_evaluation.novelty_score < stop_guard_thresholds.novelty_floor
-        and branch_evaluation.usefulness_score < stop_guard_thresholds.usefulness_floor
-        and reward_breakdown.reward_score < stop_guard_thresholds.reward_floor
+        and branch_evaluation.novelty_score < effective_stop_guard.novelty_floor
+        and branch_evaluation.usefulness_score < effective_stop_guard.usefulness_floor
+        and reward_breakdown.reward_score < effective_stop_guard.reward_floor
     ):
         return "exhausted_low_gain", False
-    if (
-        decision_action == "stop"
-        and runtime_round_state.runtime_round_index
-        >= stop_guard_thresholds.min_round_index
-    ):
+    if decision_action == "stop" and effective_stop_guard.controller_stop_allowed:
         return "controller_stop", False
     return None, True
+
+
+def build_effective_stop_guard(
+    stop_guard_thresholds: StopGuardThresholds,
+    runtime_budget_state: RuntimeBudgetState,
+) -> EffectiveStopGuard:
+    return EffectiveStopGuard(
+        search_phase=runtime_budget_state.search_phase,
+        controller_stop_allowed=runtime_budget_state.search_phase in {"balance", "harvest"},
+        exhausted_low_gain_allowed=runtime_budget_state.search_phase == "harvest",
+        novelty_floor=stop_guard_thresholds.novelty_floor,
+        usefulness_floor=stop_guard_thresholds.usefulness_floor,
+        reward_floor=stop_guard_thresholds.reward_floor,
+    )
 
 
 def finalize_search_run(
@@ -344,6 +364,7 @@ def _normalized_text(value: object) -> str:
 
 
 __all__ = [
+    "build_effective_stop_guard",
     "compute_node_reward_breakdown",
     "evaluate_branch_outcome",
     "evaluate_stop_condition",

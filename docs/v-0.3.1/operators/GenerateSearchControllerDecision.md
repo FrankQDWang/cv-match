@@ -19,11 +19,12 @@ GenerateSearchControllerDecision : SearchControllerContext_t -> SearchController
 3. `Active Frontier Node`
 4. `Donor Candidates`
 5. `Allowed Operators`
-6. `Operator Statistics`
-7. `Fit Gates And Unmet Requirements`
-8. `Runtime Budget State`
-9. `Budget Warning`，仅当 `runtime_budget_state.near_budget_end = true`
-10. `Decision Request`
+6. `Rewrite Evidence`
+7. `Operator Statistics`
+8. `Fit Gates And Unmet Requirements`
+9. `Runtime Budget State`
+10. `Budget Warning`，仅当 `runtime_budget_state.near_budget_end = true`
+11. `Decision Request`
 
 这个 prompt surface 会完整落入 `controller_audit.prompt_surface`。
 
@@ -33,6 +34,8 @@ GenerateSearchControllerDecision : SearchControllerContext_t -> SearchController
 - `Operator surface override: ...`
 - `Operator surface unmet must-haves: ...`
 
+`Rewrite Evidence` section 会显式列出 `rewrite_term_candidates`；它是 rewrite operator 的词源池，不会直接下推 CTS query。
+
 这里的 override 只是解释当前 phase-aware action surface 为什么被临时放宽；它不是第二套 selection policy。
 
 ## Deterministic Normalization
@@ -41,7 +44,10 @@ GenerateSearchControllerDecision : SearchControllerContext_t -> SearchController
 
 - `action` 只允许 `search_cts / stop`
 - `selected_operator_name` 只能来自 `allowed_operator_names`
-- 非 `crossover_compose` 的 `additional_terms` 会按 `term_budget_range` 裁剪
+- 非 `crossover_compose` 只接受最终 `query_terms`
+- `query_terms` 会保序去重并按 `max_query_terms` 裁剪
+- `core_precision / relaxed_floor / must_have_alias / generic_expansion / pack_expansion / cross_pack_bridge` 都按 query rewrite contract 校验，不允许退回追加词语义
+- rewrite 类 operator 在 contract 校验通过后，允许基于 `rewrite_term_candidates` 做 bounded local search；它只能改最终 `query_terms`，不能改 operator 选择
 - `crossover_compose` 的 donor 只能来自合法 donor candidate 列表
 - `target_frontier_node_id` 固定绑定 active node，不接受 LLM 改写
 
@@ -57,7 +63,8 @@ GenerateSearchControllerDecision : SearchControllerContext_t -> SearchController
 - `SearchControllerContext_t.allowed_operator_names`
 - `SearchControllerContext_t.operator_surface_override_reason`
 - `SearchControllerContext_t.operator_surface_unmet_must_haves`
-- `SearchControllerContext_t.term_budget_range`
+- `SearchControllerContext_t.rewrite_term_candidates`
+- `SearchControllerContext_t.max_query_terms`
 - `SearchControllerContext_t.fit_gate_constraints`
 - `SearchControllerContext_t.runtime_budget_state`
 

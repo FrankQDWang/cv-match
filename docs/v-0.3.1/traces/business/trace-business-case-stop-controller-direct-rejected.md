@@ -3,7 +3,7 @@
 ## 场景背景
 
 - 场景：controller stop 先拒绝后接受
-- 业务解释：未到 stop guard 门槛时，controller stop 先被拒绝，再在下一轮接受。
+- 业务解释：在 explore 期 stop 会被拒绝，直到 balance 期才被 runtime 接受。
 
 ## 关键信号
 
@@ -17,5 +17,5 @@
 
 - 该 case 期望走 `inferred_single_pack`，实际路由为 `inferred_single_pack`。
 - 该 case 期望 stop 为 `controller_stop`，实际 stop 为 `controller_stop`。
-- 必须保留的事实：round 0 stop_reason is null; round 1 stop_reason is controller_stop。
+- 必须保留的事实：round 0 stop_reason is null; round 1 stop_reason is null; round 2 stop_reason is controller_stop。
 - 不应出现的事实：round count equals 1。

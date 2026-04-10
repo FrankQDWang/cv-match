@@ -77,7 +77,7 @@ SearchControllerContext_t.operator_statistics_summary = FrontierState_t.operator
 SearchControllerContext_t.allowed_operator_names = current operator surface
 SearchControllerContext_t.operator_surface_override_reason = current operator surface override reason
 SearchControllerContext_t.operator_surface_unmet_must_haves = active node unmet must-have list
-SearchControllerContext_t.term_budget_range = current phase-frozen term budget range
+SearchControllerContext_t.max_query_terms = current phase-frozen max query terms
 SearchControllerContext_t.fit_gate_constraints = ScoringPolicy.fit_gate_constraints
 SearchControllerContext_t.runtime_budget_state = RuntimeBudgetState
 ```
@@ -191,7 +191,7 @@ base：
 - `SearchControllerContext_t.allowed_operator_names`
 - `SearchControllerContext_t.operator_surface_override_reason`
 - `SearchControllerContext_t.operator_surface_unmet_must_haves`
-- `SearchControllerContext_t.term_budget_range`
+- `SearchControllerContext_t.max_query_terms`
 - `SearchControllerContext_t.fit_gate_constraints`
 - `SearchControllerContext_t.runtime_budget_state`
 
@@ -203,13 +203,13 @@ base：
 
 ## Term Budget Freeze
 
-`term_budget_range` 现在只由 `RuntimeBudgetState.search_phase` 决定：
+`max_query_terms` 现在只由 `RuntimeBudgetState.search_phase` 决定：
 
-- `explore -> RuntimeTermBudgetPolicy.explore_budget_range`
-- `balance -> RuntimeTermBudgetPolicy.balance_budget_range`
-- `harvest -> RuntimeTermBudgetPolicy.harvest_budget_range`
+- `explore -> RuntimeTermBudgetPolicy.explore_max_query_terms`
+- `balance -> RuntimeTermBudgetPolicy.balance_max_query_terms`
+- `harvest -> RuntimeTermBudgetPolicy.harvest_max_query_terms`
 
-这里冻结出的 `term_budget_range` 会同时被：
+这里冻结出的 `max_query_terms` 会同时被：
 
 - `GenerateSearchControllerDecision`
 - `MaterializeSearchExecutionPlan`

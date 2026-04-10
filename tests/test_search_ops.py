@@ -98,28 +98,33 @@ def _decision(*, selected_operator_name: str = "core_precision", operator_args: 
         action="search_cts",
         target_frontier_node_id="seed_agent_core",
         selected_operator_name=selected_operator_name,
-        operator_args=operator_args or {"additional_terms": ["ranking"]},
+        operator_args=operator_args or {"query_terms": ["python", "rag", "agent"]},
         expected_gain_hypothesis="Expand relevant coverage.",
     )
 
 
 @pytest.mark.parametrize(
-    ("term_budget_range", "expected_terms"),
+    ("max_query_terms", "expected_terms"),
     [
-        ((2, 6), ["python", "rag", "agent", "workflow", "backend", "ranking"]),
-        ((2, 5), ["python", "rag", "agent", "workflow", "backend"]),
-        ((2, 4), ["python", "rag", "agent", "workflow"]),
+        (3, ["python", "rag", "agent"]),
+        (4, ["python", "rag", "agent", "workflow"]),
+        (6, ["python", "rag", "agent", "workflow"]),
     ],
 )
 def test_materialize_search_execution_plan_clamps_terms_by_frozen_budget(
-    term_budget_range: tuple[int, int],
+    max_query_terms: int,
     expected_terms: list[str],
 ) -> None:
     plan = materialize_search_execution_plan(
         _frontier_state(remaining_budget=5),
         _requirement_sheet(),
-        _decision(operator_args={"additional_terms": ["ranking", "python"], "target_new_candidate_count": 50}),
-        term_budget_range,
+        _decision(
+            operator_args={
+                "query_terms": ["python", "rag", "agent", "workflow"],
+                "target_new_candidate_count": 50,
+            }
+        ),
+        max_query_terms,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -151,7 +156,7 @@ def test_materialize_search_execution_plan_supports_crossover_compose() -> None:
                 "donor_terms_used": ["retrieval engineer", "ranking", "python"],
             },
         ),
-        (2, 6),
+        6,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -175,7 +180,7 @@ def test_materialize_search_execution_plan_fails_without_shared_anchor() -> None
                     "donor_terms_used": ["retrieval engineer", "ranking"],
                 },
             ),
-            (2, 6),
+            6,
             RuntimeSearchBudget(),
             CrossoverGuardThresholds(),
         )
@@ -185,13 +190,18 @@ def test_materialize_search_execution_plan_ignores_legacy_remaining_budget_thres
     plan = materialize_search_execution_plan(
         _frontier_state(remaining_budget=5),
         _requirement_sheet(),
-        _decision(operator_args={"additional_terms": ["ranking", "python"], "target_new_candidate_count": 50}),
-        (2, 4),
+        _decision(
+            operator_args={
+                "query_terms": ["python", "rag", "agent", "workflow", "backend", "ranking"],
+                "target_new_candidate_count": 50,
+            }
+        ),
+        6,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
 
-    assert plan.query_terms == ["python", "rag", "agent", "workflow"]
+    assert plan.query_terms == ["python", "rag", "agent", "workflow", "backend", "ranking"]
 
 
 def _candidate(
@@ -247,8 +257,8 @@ def test_execute_search_plan_uses_existing_candidate_projection_flow() -> None:
     plan = materialize_search_execution_plan(
         _frontier_state(),
         _requirement_sheet(),
-        _decision(operator_args={"additional_terms": ["ranking"], "target_new_candidate_count": 2}),
-        (2, 6),
+        _decision(operator_args={"query_terms": ["python", "ranking"], "target_new_candidate_count": 2}),
+        6,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -278,7 +288,7 @@ def test_execute_search_plan_fails_when_cts_latency_is_missing() -> None:
         _frontier_state(),
         _requirement_sheet(),
         _decision(),
-        (2, 6),
+        6,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -310,8 +320,8 @@ def test_execute_search_plan_sidecar_preserves_runtime_audit_and_school_type_fal
     plan = materialize_search_execution_plan(
         _frontier_state(),
         requirement_sheet,
-        _decision(operator_args={"additional_terms": ["ranking"], "target_new_candidate_count": 2}),
-        (2, 6),
+        _decision(operator_args={"query_terms": ["python", "ranking"], "target_new_candidate_count": 2}),
+        6,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )
@@ -335,8 +345,8 @@ def test_execute_search_plan_sidecar_counts_empty_cts_request_as_zero_pages() ->
     plan = materialize_search_execution_plan(
         _frontier_state(),
         _requirement_sheet(),
-        _decision(operator_args={"additional_terms": ["ranking"], "target_new_candidate_count": 10}),
-        (2, 6),
+        _decision(operator_args={"query_terms": ["python", "ranking"], "target_new_candidate_count": 10}),
+        6,
         RuntimeSearchBudget(),
         CrossoverGuardThresholds(),
     )

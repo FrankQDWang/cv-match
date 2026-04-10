@@ -173,31 +173,31 @@ def canonical_case_specs() -> tuple[CanonicalCaseSpec, ...]:
         CanonicalCaseSpec(
             case_id="case-stop-controller-direct-accepted",
             scenario="controller stop 直接接受",
-            business_context="达到最小 round 门槛后，controller stop 可以直接终止 run。",
+            business_context="进入 balance 期后，controller stop 第一次提出即可直接终止 run。",
             expected_route="inferred_single_pack",
             expected_stop_reason="controller_stop",
             expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
-            must_hold=["round 0 stop_reason is controller_stop"],
+            must_hold=["round 2 stop_reason is controller_stop"],
             must_not_hold=["search_cts round exists"],
         ),
         CanonicalCaseSpec(
             case_id="case-stop-controller-direct-rejected",
             scenario="controller stop 先拒绝后接受",
-            business_context="未到 stop guard 门槛时，controller stop 先被拒绝，再在下一轮接受。",
+            business_context="在 explore 期 stop 会被拒绝，直到 balance 期才被 runtime 接受。",
             expected_route="inferred_single_pack",
             expected_stop_reason="controller_stop",
             expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
-            must_hold=["round 0 stop_reason is null", "round 1 stop_reason is controller_stop"],
+            must_hold=["round 0 stop_reason is null", "round 1 stop_reason is null", "round 2 stop_reason is controller_stop"],
             must_not_hold=["round count equals 1"],
         ),
         CanonicalCaseSpec(
             case_id="case-stop-exhausted-low-gain-and-finalize",
             scenario="低增益 exhausted finalize",
-            business_context="空结果且 novelty/usefulness/reward 都偏低时，系统应以 exhausted_low_gain 收口。",
+            business_context="进入 harvest 后，空结果且 novelty/usefulness/reward 都偏低时，系统应以 exhausted_low_gain 收口。",
             expected_route="inferred_single_pack",
             expected_stop_reason="exhausted_low_gain",
             expected_knowledge_pack_ids=["llm_agent_rag_engineering"],
-            must_hold=["first search round has empty deduplicated candidates"],
+            must_hold=["round 3 stop_reason is exhausted_low_gain"],
             must_not_hold=["stop_reason = controller_stop"],
         ),
     )
@@ -288,11 +288,11 @@ def _build_explicit_pack_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-bootstrap-explicit-pack",
-        assets=_runtime_assets(knowledge_pack_id_override="llm_agent_rag_engineering", min_round_index=0),
+        assets=_runtime_assets(knowledge_pack_id_override="llm_agent_rag_engineering"),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
-        controller_outputs=[_stop_payload()],
+        controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Explicit pack bootstrap stopped cleanly.",
     )
 
@@ -301,11 +301,11 @@ def _build_inferred_single_pack_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-bootstrap-inferred-single-pack",
-        assets=_runtime_assets(min_round_index=0),
+        assets=_runtime_assets(),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
-        controller_outputs=[_stop_payload()],
+        controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Single-pack inferred bootstrap stopped cleanly.",
     )
 
@@ -314,7 +314,7 @@ def _build_close_high_score_multi_pack_bundle(*, repo_root: Path) -> SearchRunBu
     return _run_case(
         repo_root=repo_root,
         case_id="case-bootstrap-close-high-score-multi-pack",
-        assets=_runtime_assets(min_round_index=0),
+        assets=_runtime_assets(),
         requirement_payload=_hybrid_requirement_payload(),
         keyword_payload=_hybrid_keyword_payload(),
         pack_scores={
@@ -322,7 +322,7 @@ def _build_close_high_score_multi_pack_bundle(*, repo_root: Path) -> SearchRunBu
             "search_ranking_retrieval_engineering": 0.65,
             "finance_risk_control_ai": 0.1,
         },
-        controller_outputs=[_stop_payload()],
+        controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Close high scores triggered a multi-pack bootstrap.",
     )
 
@@ -331,7 +331,7 @@ def _build_out_of_domain_generic_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-bootstrap-out-of-domain-generic",
-        assets=_runtime_assets(min_round_index=0),
+        assets=_runtime_assets(),
         requirement_payload=_ops_requirement_payload(),
         keyword_payload=_ops_keyword_payload(),
         pack_scores={
@@ -339,13 +339,13 @@ def _build_out_of_domain_generic_bundle(*, repo_root: Path) -> SearchRunBundle:
             "search_ranking_retrieval_engineering": 0.1,
             "finance_risk_control_ai": 0.0,
         },
-        controller_outputs=[_stop_payload()],
+        controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Out-of-domain route fell back to generic bootstrap.",
     )
 
 
 def _build_legal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
-    assets = _runtime_assets(min_round_index=2)
+    assets = _runtime_assets()
     crossover_payload = _legal_crossover_round_two_payload(assets)
     return _run_case(
         repo_root=repo_root,
@@ -355,8 +355,8 @@ def _build_legal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
         keyword_payload=_crossover_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[
-            _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
-            _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
+            _search_payload("core_precision", query_terms=["Python backend", "retrieval"]),
+            _search_payload("must_have_alias", query_terms=["retrieval", "workflow"]),
             crossover_payload,
             _stop_payload(),
         ],
@@ -398,13 +398,13 @@ def _build_illegal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-crossover-illegal-reject",
-        assets=_runtime_assets(min_round_index=1),
+        assets=_runtime_assets(),
         requirement_payload=_crossover_requirement_payload(),
         keyword_payload=_crossover_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=[
-            _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
-            _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
+            _search_payload("core_precision", query_terms=["Python backend", "retrieval"]),
+            _search_payload("must_have_alias", query_terms=["retrieval", "workflow"]),
             [
                 _crossover_payload("missing-donor"),
                 _stop_payload(),
@@ -440,11 +440,11 @@ def _build_direct_stop_accepted_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-stop-controller-direct-accepted",
-        assets=_runtime_assets(min_round_index=0),
+        assets=_runtime_assets(),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
-        controller_outputs=[_stop_payload()],
+        controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Controller stop was accepted immediately.",
     )
 
@@ -453,33 +453,74 @@ def _build_direct_stop_rejected_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-stop-controller-direct-rejected",
-        assets=_runtime_assets(min_round_index=1),
+        assets=_runtime_assets(),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
-        controller_outputs=[_stop_payload(), _stop_payload()],
+        controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Controller stop was accepted after one retry round.",
     )
 
 
 def _build_exhausted_low_gain_bundle(*, repo_root: Path) -> SearchRunBundle:
+    keyword_payload = _llm_keyword_payload()
+    keyword_payload["candidate_seeds"] = [
+        {
+            "intent_type": "core_precision",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": [],
+            "reasoning": "deterministic core seed",
+        },
+        {
+            "intent_type": "relaxed_floor",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": [],
+            "reasoning": "deterministic relaxed seed",
+        },
+        {
+            "intent_type": "must_have_alias",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": [],
+            "reasoning": "deterministic alias seed",
+        },
+        {
+            "intent_type": "pack_expansion",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": ["llm_agent_rag_engineering"],
+            "reasoning": "deterministic pack seed",
+        },
+        {
+            "intent_type": "generic_expansion",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": [],
+            "reasoning": "deterministic generic seed",
+        },
+    ]
     return _run_case(
         repo_root=repo_root,
         case_id="case-stop-exhausted-low-gain-and-finalize",
-        assets=_runtime_assets(min_round_index=2),
+        assets=_runtime_assets(),
         requirement_payload=_llm_requirement_payload(),
-        keyword_payload=_llm_keyword_payload(),
+        keyword_payload=keyword_payload,
         pack_scores=_llm_pack_scores(),
-        controller_outputs=[_search_payload("core_precision", additional_terms=["ranking"])],
-        cts_results=[
-            CTSFetchResult(
-                request_payload={},
-                candidates=[],
-                raw_candidate_count=0,
-                latency_ms=5,
-            )
+        controller_outputs=[
+            _search_payload("core_precision", query_terms=["python backend"]),
+            _search_payload("core_precision", query_terms=["python backend"]),
+            _search_payload("core_precision", query_terms=["python backend"]),
+            _search_payload("core_precision", query_terms=["python backend"]),
         ],
-        branch_outputs=[_branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision")],
+        cts_results=[
+            CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
+            CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
+            CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
+            CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
+        ],
+        branch_outputs=[
+            _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
+            _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
+            _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
+            _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
+        ],
         final_summary="Low-gain branch was exhausted and finalized.",
     )
 
@@ -527,7 +568,6 @@ def _run_case(
 def _runtime_assets(
     *,
     knowledge_pack_id_override: str | None = None,
-    min_round_index: int = 0,
 ):
     base_assets = default_bootstrap_assets()
     return replace(
@@ -538,7 +578,7 @@ def _runtime_assets(
                 "knowledge_pack_id_override": knowledge_pack_id_override,
             }
         ),
-        stop_guard_thresholds=StopGuardThresholds(min_round_index=min_round_index),
+        stop_guard_thresholds=StopGuardThresholds(),
     )
 
 
@@ -580,8 +620,8 @@ def _legal_crossover_round_two_payload(assets) -> dict[str, object]:
         bootstrap_keyword_generation_model=TestModel(custom_output_args=_crossover_keyword_payload()),
         search_controller_decision_model=_SequentialTestModel(
             outputs=[
-                _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
-                _search_payload("core_precision", additional_terms=["workflow systems", "ranking"]),
+                _search_payload("core_precision", query_terms=["Python backend", "retrieval"]),
+                _search_payload("must_have_alias", query_terms=["retrieval", "workflow"]),
                 _stop_payload(),
             ]
         ),
@@ -888,13 +928,17 @@ def _stop_payload() -> dict[str, object]:
     }
 
 
-def _search_payload(operator_name: str, *, additional_terms: list[str]) -> dict[str, object]:
+def _search_payload(operator_name: str, *, query_terms: list[str]) -> dict[str, object]:
     return {
         "action": "search_cts",
         "selected_operator_name": operator_name,
-        "operator_args": {"additional_terms": additional_terms},
+        "operator_args": {"query_terms": query_terms},
         "expected_gain_hypothesis": "Expand coverage.",
     }
+
+
+def _phase_gated_stop_outputs() -> list[dict[str, object]]:
+    return [_stop_payload(), _stop_payload(), _stop_payload()]
 
 
 def _crossover_payload(

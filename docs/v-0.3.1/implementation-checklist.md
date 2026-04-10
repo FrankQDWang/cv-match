@@ -191,7 +191,7 @@
 
 对应 `4.2 主要工作`：
 
-1. `[[MaterializeSearchExecutionPlan]]` 已落地为稳定纯函数；当前实现会直接消费 `FrontierState_t`、`RequirementSheet`、`SearchControllerDecision_t`、`RuntimeTermBudgetPolicy`、`RuntimeSearchBudget` 与 `CrossoverGuardThresholds`，固定执行 query term materialization、runtime-only constraints 冻结、target-new clamp、semantic hash 与 stable child identity 生成，不再把这些规则散落在后续 runtime 中。
+1. `[[MaterializeSearchExecutionPlan]]` 已落地为稳定纯函数；当前实现会直接消费 `FrontierState_t`、`RequirementSheet`、`SearchControllerDecision_t`、冻结后的 `max_query_terms`、`RuntimeSearchBudget` 与 `CrossoverGuardThresholds`，固定执行 query rewrite materialization、runtime-only constraints 冻结、target-new clamp、semantic hash 与 stable child identity 生成，不再把这些规则散落在后续 runtime 中。
 2. `[[ExecuteSearchPlan]]` 已落地为“CTS 调用 + 现有候选投影 owner 复用”的薄执行层；它只读取 `SearchExecutionPlan_t` 并调用现有 `CTSClientProtocol.search(...)`，随后复用 `SearchExecutionResult_t.raw_candidates / deduplicated_candidates / scoring_candidates` 的既有投影逻辑，不再另起第二套候选转换 path。补充说明：`search_page_statistics.pages_fetched` 现已严格按 owner 语义 `ceil(|raw_candidates| / max(1, target_new_candidate_count))` 计算，空结果保持 `0`，作为后续 reward 成本事实的直接输入。
 3. `[[ScoreSearchResults]]` 已落地为稳定纯排序层；当前实现固定执行 `rerank -> calibration -> deterministic signal scoring -> deterministic fusion -> shortlist`，并直接产出稳定的 `[[SearchScoringResult_t]]`。
 4. reranker text conversion 与 text-only contract 已落实；rerank request surface 现已固定为 `instruction / query / documents[*].text`，其中文档文本直接读取 `ScoringCandidate_t.scoring_text`，明确不做 JSON dump，也不把结构化 metadata 序列化进 rerank 面。
@@ -257,7 +257,7 @@
 对应 `5.2 主要工作`：
 
 1. `[[SelectActiveFrontierNode]]` 已落地为稳定纯函数；当前实现固定执行 active node priority scoring、donor candidate packing、generic provenance 下 `pack_expansion / cross_pack_bridge` 禁用、term budget range 冻结与 unmet requirement weight 投影，不再把这些规则散落在 runtime 其他位置。
-2. `[[GenerateSearchControllerDecision]]` 已落地为 deterministic normalization 层；当前实现固定把控制器草稿收口为 `search_cts / stop`、operator 白名单回退、non-crossover `additional_terms` 裁剪与 crossover donor whitelist，不允许 LLM 自由改写 `target_frontier_node_id` 或旁路 donor。补充说明：controller validator 当前只校验“归一化后是否仍可物化出合法且非空的 query terms”以及 crossover donor / shared-anchor 合法性，不再额外要求 non-crossover `additional_terms` 在裁剪后仍保持非空。
+2. `[[GenerateSearchControllerDecision]]` 已落地为 deterministic normalization 层；当前实现固定把控制器草稿收口为 `search_cts / stop`、operator 白名单回退、non-crossover `query_terms` rewrite 校验与 crossover donor whitelist，不允许 LLM 自由改写 `target_frontier_node_id` 或旁路 donor。补充说明：controller validator 当前只校验“归一化后是否仍可物化出合法且非空的 query terms”以及 crossover donor / shared-anchor 合法性，并显式拒绝退回旧的追加词语义。
 3. `[[CarryForwardFrontierState]]` 已落地为 identity carry-forward；direct-stop 路径当前会直接把 `FrontierState_t` 原样投影为 `FrontierState_t1`，不新增 child node、不消耗 budget、不写旁路状态。
 4. `crossover_compose` 已在 Phase 4 / Phase 3 接缝上落地：controller 侧会限制合法 donor id 与 crossover args，plan materialization 侧继续负责 shared-anchor guard、donor lineage 与 `knowledge_pack_id` provenance 传递，不再有第二套 crossover path。
 5. donor legality 与 shared-anchor guard 已落地并由新增测试覆盖；Phase 4 自身冻结了 `SearchExecutionPlan_t.semantic_hash` 与 stable child identity，随后由当前 HEAD 的 Phase 5 `[[UpdateFrontierState]]` 继续把 `semantic_hashes_seen` 推进成真实 run-state。

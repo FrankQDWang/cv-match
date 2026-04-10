@@ -32,12 +32,15 @@
 
 当前真正的问题不是“没有搜索框架”，而是 runtime 仍然默认按 `5` 轮心智来工作：
 
-- `initial_round_budget` 默认仍是 `5`。
-- term budget policy 按 `remaining_budget` 的绝对值切档。
-- frontier selection 还没有 phase-aware 行为。
-- stop policy 还没有区分“探索期”和“收割期”。
+- `initial_round_budget` 现在已经是 run 级输入，并会 clamp 到 `5~12`。
+- `phase_progress / search_phase` 已经是稳定 owner。
+- frontier selection 已经 phase-aware。
+- allowed operator surface 已经 phase-aware。
+- term budget 已经切到 phase-frozen `max_query_terms`。
+- non-crossover operator 已经切到 final `query_terms` rewrite。
+- 当前剩下的主要 gap 是 stop policy 还没有按 phase 收口。
 
-当 round budget 提升到 `5~12` 时，这些默认语义会失真。
+也就是说，当前设计文档的重点不再是“把 phase 引入 runtime”，而是“在 CTS 交集语义已经纠正后，把 stop policy 和后续局部优化补齐”。
 
 ## Design Decision
 
@@ -131,26 +134,163 @@ operator whitelist 不应在全程保持同一语义。
 
 都共用同一个 capability-hit helper。
 
-### 3. Term Budget Policy
+### 3. Step 5R: Term Budget Policy
 
-term budget 不应继续只靠 `remaining_budget >= 4 / >= 2 / else` 这种绝对阈值。
+在真实 CTS 上，keyword 用空格拼接后是交集语义。  
+所以 term budget 不应继续只靠 `remaining_budget >= 4 / >= 2 / else` 这种绝对阈值，也不应继续沿用“更多词=更探索”的旧假设。
 
 建议改为 phase owner：
 
-- `explore`: `[2, 6]`
-- `balance`: `[2, 5]`
-- `harvest`: `[2, 4]`
+- `explore`: `3`
+- `balance`: `4`
+- `harvest`: `6`
 
 语义很直接：
 
-- 前期允许更宽 query 扩张，制造支路和 donor。
-- 后期主动收窄，减少 query bloat。
+- 前期 query 更短，降低交集约束，便于探索。
+- 后期 query 更长，在已知高价值方向上做提纯。
 
 实现上要再加一条硬约束：
 
-- `SelectActiveFrontierNode` 先冻结 `term_budget_range`
+- `SelectActiveFrontierNode` 先冻结 `max_query_terms`
 - `MaterializeSearchExecutionPlan` 只消费这个冻结值
 - 不允许 materialization 再次根据 `remaining_budget` 自行推导
+
+### 3.5 Step 5.5: Non-Crossover Query Rewrite
+
+真实 CTS 是交集语义后，non-crossover operator 不能再按“`active_pool + additional_terms` 追加词”理解。
+
+正确语义应改为：
+
+- non-crossover 直接产出最终 `query_terms`
+- `GenerateSearchControllerDecision` 只做 rewrite normalization
+- `MaterializeSearchExecutionPlan` 不再把 parent pool 自动拼回去
+- `UpdateFrontierState` 让 child node 直接继承本轮最终 query
+
+operator contract 也要跟着切换：
+
+- `core_precision`: active pool 的非空子集
+- `relaxed_floor`: active pool 的非空真子集
+- `must_have_alias / generic_expansion / pack_expansion / cross_pack_bridge`: 必须同时存在共享词、新增词、被替换掉的旧词
+
+这一步的目的不是改 operator 名称，而是把它们的物化语义从 append 改成 rewrite。
+
+### 3.6 Step 5.6: GA-lite Rewrite Candidate Search
+
+如果后续要继续提高 non-crossover rewrite 的质量，最合适的方向不是把整场 runtime 改成 GA，而是在 query rewrite 内部增加一个 **GA-lite**。
+
+这里的 GA-lite 只表示：
+
+- 单 active node
+- 单 operator
+- 少量 rewrite 候选
+- 1~2 轮局部搜索
+
+它不是：
+
+- 全局 population runtime
+- 替代 `search_phase`
+- 替代 `active node selection`
+- 替代 `allowed operator surface`
+
+最小设计如下：
+
+1. 只作用于：
+   - `must_have_alias`
+   - `generic_expansion`
+   - `pack_expansion`
+   - `cross_pack_bridge`
+2. 染色体直接定义为最终 `query_terms: list[str]`
+3. 初始种群固定 `4~6` 个，并且必须包含 controller 已给出的合法 rewrite
+4. mutation 只允许：
+   - `replace_one_term`
+   - `drop_one_term`
+   - `swap_one_term`
+5. 所有候选先过 contract filter：
+   - `len(query_terms) <= max_query_terms`
+   - 至少保留 `1` 个 active anchor
+   - rewrite operator 必须同时满足“共享旧词 + 新增词 + 删除旧词”
+   - pack operator 必须有合法 provenance
+6. 不做真 CTS probe；第一版只做 deterministic surrogate fitness
+
+fitness 至少应包含：
+
+- `must_have_repair_score`
+- `anchor_preservation_score`
+- `rewrite_coherence_score`
+- `provenance_coherence_score`
+- `query_length_penalty`
+- `redundancy_penalty`
+
+其中最关键的不是 `must_have_repair_score`，而是 `rewrite_coherence_score`。  
+如果没有好的 coherence 评分，GA-lite 很容易学会“为了拿分而凑词”，形式合法但语义违和。
+
+因此更稳的工程顺序是：
+
+1. 先保留 Step 5.5 的 deterministic rewrite 作为 baseline
+2. 再在 rewrite operator 内部引入 bounded local search
+3. 最终只输出一个 best `query_terms`
+4. 后续仍然走现有 materialization / CTS / scoring / frontier update
+
+### 3.7 Step 5.7: Evidence-Mining Rewrite Term Pool
+
+真实业务里，从本轮高质量候选中提取共性技能词是有价值的，但在当前 CTS 上必须改造成 **evidence mining for rewrite**，不能做成传统的“高频词直接扩搜”。
+
+原因很简单：
+
+- 真实 CTS 的 keyword 用空格拼接后是交集语义
+- 新词一旦直接追加进 query，只会让检索更紧
+- 因此共性词只能进入 rewrite 候选池，不能直接进入 CTS keyword
+
+正确的位置是：
+
+```text
+high-quality candidates
+  -> evidence term extraction
+  -> rewrite_term_candidates
+  -> Step 5.5 / 5.6 rewrite selection
+  -> final query_terms
+```
+
+而不是：
+
+```text
+high-quality candidates
+  -> common terms
+  -> append to CTS keyword
+```
+
+第一版建议保持克制：
+
+1. 只读取高质量小集合：
+   - 当前 round 中 `fit == 1` 且 `fusion_score` 高的候选
+   - 数量控制在 `top 3 ~ top 5`
+2. 只从强信号字段提词：
+   - `work_summaries`
+   - `project_names`
+   - `work_experience_summaries`
+   - title / job category
+   - `search_text` 中的技能短语
+3. 只提“技能 / 工具 / 专有名词”，不提泛化动作词和软素质词
+4. evidence term 必须通过至少一条 relevance gate：
+   - 能补当前 unmet must-have
+   - 与 active anchor 语义一致
+   - 与 pack provenance 一致
+
+这样它扮演的是：
+
+- rewrite operator 的词源池
+- GA-lite 的候选弹药库
+
+而不是：
+
+- 新一轮 CTS 搜索的直接 query patch
+
+当前实现里，trace 至少能解释：
+
+- evidence term 从哪些候选、哪些字段提出来
+- 为什么被保留
+- 为什么没有直接下推 CTS
 
 ### 4. Stop Policy
 
@@ -159,13 +299,15 @@ stop policy 必须区分探索期和收割期。
 建议：
 
 - `explore` 期禁止整个 run 因 `exhausted_low_gain` 提前结束。
-- `balance` 期恢复当前 stop guard。
+- `balance` 期允许 `controller_stop`，但仍不允许 `exhausted_low_gain` 提前结束整次 run。
 - `harvest` 期允许更积极地因为低收益而收口。
 
 更具体地说：
 
-- `controller_stop` 的允许轮次不再写死成固定数字，而是按预算比例决定。
-- `exhausted_low_gain` 至少要等 runtime 进入 `balance` 期才具备 run-level 终止资格。
+- `budget_exhausted` 和 `no_open_node` 继续保持最高优先级。
+- `controller_stop` 不再写死成 `min_round_index`，而是按 phase gate 决定：`balance / harvest` 可接受。
+- `exhausted_low_gain` 不再在 `explore / balance` 生效；只在 `harvest` 具备 run-level 终止资格。
+- 这一步先不调 `novelty / usefulness / reward` floors，只改“何时允许 stop”。
 
 ### 5. Reward Policy
 
@@ -200,6 +342,15 @@ stop policy 必须区分探索期和收割期。
 - 选点已经切到 `operator-level UCB + branch utility`
 - 后续继续补 operator surface / term budget / stop policy
 
+如果后面真的要引入 GA-lite，它也不该接管整场 runtime。
+
+更合适的位置是：
+
+- 只放在 non-crossover query rewrite 内部
+- 只在单个 active node 上生成少量 rewrite 候选
+- 只作为 operator-internal candidate generator
+- 不替换 `search_phase`、`active node selection`、`allowed operator surface` 这些 deterministic owner
+
 ## Trace Requirements
 
 phase policy 必须进入真实 run trace，也就是 `runs/<run_id>/bundle.json`。
@@ -211,14 +362,16 @@ phase policy 必须进入真实 run trace，也就是 `runs/<run_id>/bundle.json
 - `search_phase`
 - `active_selection_breakdown`
 - `selection_ranking`
-- `effective_term_budget_range`
+- `max_query_terms`
 - `effective_stop_guard`
+- non-crossover `operator_args.query_terms`
 
 要求：
 
 - 同一轮为什么选了某个 node，必须能从 trace 解释。
 - 同一轮为什么禁用了某个 operator，必须能从 trace 解释。
 - 同一轮为什么没有提前 stop，也必须能从 trace 解释。
+- trace 中不应再出现 non-crossover `additional_terms`。
 
 ## Non-Goals
 

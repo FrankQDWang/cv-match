@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from seektalent.runtime_budget import derive_term_budget_range
+from seektalent.runtime_budget import derive_max_query_terms
 from seektalent.models import (
     CrossoverGuardThresholds,
     DonorCandidateNodeSummary,
@@ -18,12 +18,14 @@ from seektalent.models import (
     RuntimeBudgetState,
     RuntimeTermBudgetPolicy,
     ScoringPolicy,
+    RewriteTermCandidate,
     SearchControllerContext_t,
     SearchControllerDecisionDraft_t,
     SearchControllerDecision_t,
     UnmetRequirementWeight,
     stable_deduplicate,
 )
+from seektalent.query_terms import query_terms_hit
 
 
 def select_active_frontier_node(
@@ -108,7 +110,8 @@ def select_active_frontier_node(
         allowed_operator_names=allowed_operator_names,
         operator_surface_override_reason=override_reason,
         operator_surface_unmet_must_haves=unmet_must_haves,
-        term_budget_range=derive_term_budget_range(
+        rewrite_term_candidates=list(active_node.rewrite_term_candidates),
+        max_query_terms=derive_max_query_terms(
             runtime_budget_state,
             term_budget_policy,
         ),
@@ -135,14 +138,13 @@ def generate_search_controller_decision(
     if action == "stop":
         operator_args: dict[str, object] = {}
     elif normalized_operator_name != "crossover_compose":
-        requested_terms = stable_deduplicate(
-            _string_list(_operator_args(draft).get("additional_terms"))
-        )
-        max_additional_terms = max(
-            0,
-            context.term_budget_range[1] - len(active_node.node_query_term_pool),
-        )
-        operator_args = {"additional_terms": requested_terms[:max_additional_terms]}
+        operator_args = {
+            "query_terms": _normalized_non_crossover_query_terms(
+                normalized_operator_name,
+                context,
+                _operator_args(draft).get("query_terms"),
+            )
+        }
     else:
         donor_candidate_ids = {
             donor.frontier_node_id
@@ -318,6 +320,20 @@ def _unmet_must_haves(
     ]
 
 
+def _normalized_non_crossover_query_terms(
+    operator_name: OperatorName,
+    context: SearchControllerContext_t,
+    raw_query_terms: object,
+) -> list[str]:
+    query_terms = _normalized_string_list(raw_query_terms)[: context.max_query_terms]
+    if not query_terms:
+        raise ValueError("search_cts requires materializable non-empty query_terms")
+    _validate_non_crossover_query_terms(operator_name, context, query_terms)
+    if operator_name not in _REWRITE_OPERATORS or not context.rewrite_term_candidates:
+        return query_terms
+    return _ga_lite_query_rewrite(operator_name, context, query_terms)
+
+
 def _incremental_value_score(node: FrontierNode_t) -> float:
     if node.reward_breakdown is None:
         return 0.0
@@ -336,19 +352,7 @@ def _redundancy_penalty(node: FrontierNode_t, frontier_state: FrontierState_t) -
 
 
 def _query_pool_hit(node: FrontierNode_t, capability: str) -> int:
-    normalized_capability = _normalized_text(capability)
-    for term in node.node_query_term_pool:
-        normalized_term = _normalized_text(term)
-        if (
-            normalized_term
-            and normalized_capability
-            and (
-                normalized_term in normalized_capability
-                or normalized_capability in normalized_term
-            )
-        ):
-            return 1
-    return 0
+    return query_terms_hit(node.node_query_term_pool, capability)
 
 
 def _donor_candidate_summaries(
@@ -476,10 +480,220 @@ def _string_list(value: object) -> list[str]:
     return [item for item in value if isinstance(item, str)]
 
 
+def _normalized_string_list(value: object) -> list[str]:
+    return stable_deduplicate(
+        [
+            clean
+            for clean in (_normalized_text(item) for item in _string_list(value))
+            if clean
+        ]
+    )
+
+
 def _normalized_text(value: object) -> str:
     if not isinstance(value, str):
         return ""
     return " ".join(value.split()).strip()
+
+
+_REWRITE_OPERATORS = {
+    "must_have_alias",
+    "generic_expansion",
+    "pack_expansion",
+    "cross_pack_bridge",
+}
+
+
+def _validate_non_crossover_query_terms(
+    operator_name: OperatorName,
+    context: SearchControllerContext_t,
+    query_terms: list[str],
+) -> None:
+    active_terms = _normalized_string_list(
+        context.active_frontier_node_summary.node_query_term_pool
+    )
+    active_term_set = set(active_terms)
+    query_term_set = set(query_terms)
+    shared_terms = active_term_set & query_term_set
+    new_terms = query_term_set - active_term_set
+    dropped_terms = active_term_set - query_term_set
+
+    if operator_name == "core_precision":
+        if new_terms or not shared_terms:
+            raise ValueError("core_precision_requires_non_empty_active_query_subset")
+        return
+
+    if operator_name == "relaxed_floor":
+        if new_terms or not shared_terms or not dropped_terms:
+            raise ValueError("relaxed_floor_requires_non_empty_strict_active_query_subset")
+        return
+
+    if operator_name == "must_have_alias" and not context.operator_surface_unmet_must_haves:
+        raise ValueError("must_have_alias_requires_unmet_must_have")
+
+    if not shared_terms or not new_terms or not dropped_terms:
+        raise ValueError(f"{operator_name}_requires_query_rewrite_with_shared_new_and_dropped_terms")
+
+
+def _ga_lite_query_rewrite(
+    operator_name: OperatorName,
+    context: SearchControllerContext_t,
+    seed_query_terms: list[str],
+) -> list[str]:
+    candidates = _rewrite_population(context, seed_query_terms)[:6]
+    legal_candidates: list[list[str]] = []
+    for candidate in candidates:
+        try:
+            _validate_non_crossover_query_terms(operator_name, context, candidate)
+        except ValueError:
+            continue
+        legal_candidates.append(candidate)
+    if not legal_candidates:
+        return seed_query_terms
+    scored = sorted(
+        legal_candidates,
+        key=lambda candidate: (
+            -_rewrite_fitness(candidate, context),
+            candidate,
+        ),
+    )
+    return scored[0]
+
+
+def _rewrite_population(
+    context: SearchControllerContext_t,
+    seed_query_terms: list[str],
+) -> list[list[str]]:
+    evidence_terms = [
+        candidate.term
+        for candidate in context.rewrite_term_candidates
+        if candidate.term not in set(seed_query_terms)
+    ][:3]
+    if not evidence_terms:
+        return [seed_query_terms]
+    active_terms = _normalized_string_list(
+        context.active_frontier_node_summary.node_query_term_pool
+    )
+    anchor_terms = [term for term in seed_query_terms if term in set(active_terms)] or seed_query_terms[:1]
+    replaceable_terms = [
+        term for term in seed_query_terms if term not in set(anchor_terms)
+    ] or seed_query_terms[-1:]
+    population = [seed_query_terms]
+    for evidence_term in evidence_terms:
+        for dropped_term in replaceable_terms[:2]:
+            candidate = stable_deduplicate(
+                [term for term in seed_query_terms if term != dropped_term]
+                + [evidence_term]
+            )[: context.max_query_terms]
+            if candidate:
+                population.append(candidate)
+    top_seed_candidates = sorted(
+        _deduplicate_term_lists(population),
+        key=lambda candidate: (-_rewrite_fitness(candidate, context), candidate),
+    )[:2]
+    for candidate in top_seed_candidates:
+        for evidence_term in evidence_terms:
+            if evidence_term in set(candidate):
+                continue
+            dropped_term = next(
+                (
+                    term
+                    for term in reversed(candidate)
+                    if term not in set(anchor_terms)
+                ),
+                candidate[-1],
+            )
+            population.append(
+                stable_deduplicate(
+                    [term for term in candidate if term != dropped_term]
+                    + [evidence_term]
+                )[: context.max_query_terms]
+            )
+    return _deduplicate_term_lists(population)
+
+
+def _rewrite_fitness(
+    query_terms: list[str],
+    context: SearchControllerContext_t,
+) -> float:
+    active_terms = _normalized_string_list(
+        context.active_frontier_node_summary.node_query_term_pool
+    )
+    active_term_set = set(active_terms)
+    query_term_set = set(query_terms)
+    evidence_lookup = {
+        candidate.term: candidate
+        for candidate in context.rewrite_term_candidates
+    }
+    new_terms = [term for term in query_terms if term not in active_term_set]
+    must_have_repair_score = _must_have_repair_score(query_terms, context)
+    anchor_preservation_score = min(
+        1.0,
+        len(active_term_set & query_term_set) / max(1, min(2, len(active_term_set))),
+    )
+    rewrite_coherence_score = (
+        0.0
+        if not new_terms
+        else sum(
+            min(1.0, len(evidence_lookup.get(term, RewriteTermCandidate(term=term)).source_candidate_ids) / 2.0)
+            for term in new_terms
+        )
+        / len(new_terms)
+    )
+    provenance_coherence_score = (
+        0.0
+        if not new_terms
+        else sum(
+            _rewrite_provenance_weight(evidence_lookup.get(term))
+            for term in new_terms
+        )
+        / len(new_terms)
+    )
+    query_length_penalty = len(query_terms) / max(1, context.max_query_terms)
+    redundancy_penalty = len(active_term_set & query_term_set) / max(1, len(query_term_set))
+    return (
+        1.4 * must_have_repair_score
+        + 1.0 * anchor_preservation_score
+        + 1.2 * rewrite_coherence_score
+        + 0.8 * provenance_coherence_score
+        - 0.35 * query_length_penalty
+        - 0.45 * redundancy_penalty
+    )
+
+
+def _must_have_repair_score(
+    query_terms: list[str],
+    context: SearchControllerContext_t,
+) -> float:
+    unmet = context.operator_surface_unmet_must_haves
+    if not unmet:
+        return 0.0
+    return sum(query_terms_hit(query_terms, capability) for capability in unmet) / len(unmet)
+
+
+def _rewrite_provenance_weight(candidate: RewriteTermCandidate | None) -> float:
+    if candidate is None:
+        return 0.0
+    field_weights = {
+        "project_names": 1.0,
+        "work_summaries": 0.9,
+        "work_experience_summaries": 0.8,
+        "title": 0.7,
+        "search_text": 0.5,
+    }
+    return max((field_weights.get(field, 0.0) for field in candidate.source_fields), default=0.0)
+
+
+def _deduplicate_term_lists(values: list[list[str]]) -> list[list[str]]:
+    seen: set[tuple[str, ...]] = set()
+    output: list[list[str]] = []
+    for value in values:
+        key = tuple(value)
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(value)
+    return output
 
 
 __all__ = [

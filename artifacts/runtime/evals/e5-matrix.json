@@ -49,7 +49,7 @@
       },
       {
         "name": "round_count",
-        "value": 1
+        "value": 3
       }
     ]
   },
@@ -102,7 +102,7 @@
       },
       {
         "name": "round_count",
-        "value": 1
+        "value": 3
       }
     ]
   },
@@ -158,7 +158,7 @@
       },
       {
         "name": "round_count",
-        "value": 1
+        "value": 3
       }
     ]
   },
@@ -208,7 +208,7 @@
       },
       {
         "name": "round_count",
-        "value": 1
+        "value": 3
       }
     ]
   },
@@ -335,7 +335,7 @@
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
-      "round 0 stop_reason is controller_stop"
+      "round 2 stop_reason is controller_stop"
     ],
     "must_not_hold": [
       "search_cts round exists"
@@ -367,7 +367,7 @@
       },
       {
         "name": "round_count",
-        "value": 1
+        "value": 3
       }
     ]
   },
@@ -389,7 +389,8 @@
     "observed_fallback_reason": null,
     "must_hold": [
       "round 0 stop_reason is null",
-      "round 1 stop_reason is controller_stop"
+      "round 1 stop_reason is null",
+      "round 2 stop_reason is controller_stop"
     ],
     "must_not_hold": [
       "round count equals 1"
@@ -421,7 +422,7 @@
       },
       {
         "name": "round_count",
-        "value": 2
+        "value": 3
       }
     ]
   },
@@ -442,7 +443,7 @@
     "expected_fallback_reason": null,
     "observed_fallback_reason": null,
     "must_hold": [
-      "first search round has empty deduplicated candidates"
+      "round 3 stop_reason is exhausted_low_gain"
     ],
     "must_not_hold": [
       "stop_reason = controller_stop"
@@ -462,7 +463,7 @@
       },
       {
         "name": "include_keyword_adoption",
-        "value": 1.0
+        "value": 0.16666666666666666
       },
       {
         "name": "exclude_keyword_leak",
@@ -474,7 +475,7 @@
       },
       {
         "name": "round_count",
-        "value": 1
+        "value": 4
       }
     ]
   }

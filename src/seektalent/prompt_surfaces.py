@@ -233,6 +233,12 @@ def build_controller_prompt_surface(
             is_dynamic=True,
         ),
         _section(
+            "Rewrite Evidence",
+            _controller_rewrite_evidence_lines(context),
+            ["SearchControllerContext_t.rewrite_term_candidates"],
+            is_dynamic=True,
+        ),
+        _section(
             "Operator Statistics",
             _controller_operator_stat_lines(context),
             ["SearchControllerContext_t.operator_statistics_summary"],
@@ -241,13 +247,13 @@ def build_controller_prompt_surface(
         _section(
             "Fit Gates And Unmet Requirements",
             _controller_fit_and_requirement_lines(context),
-            [
-                "SearchControllerContext_t.fit_gate_constraints",
-                "SearchControllerContext_t.unmet_requirement_weights",
-                "SearchControllerContext_t.term_budget_range",
-            ],
-            is_dynamic=True,
-        ),
+                [
+                    "SearchControllerContext_t.fit_gate_constraints",
+                    "SearchControllerContext_t.unmet_requirement_weights",
+                    "SearchControllerContext_t.max_query_terms",
+                ],
+                is_dynamic=True,
+            ),
         _section(
             "Runtime Budget State",
             _controller_budget_lines(context.runtime_budget_state),
@@ -524,7 +530,8 @@ def _controller_operator_stat_lines(context: SearchControllerContext_t) -> list[
 def _controller_fit_and_requirement_lines(context: SearchControllerContext_t) -> list[str]:
     fit_gate = context.fit_gate_constraints
     lines = [
-        f"Term budget range: {context.term_budget_range[0]} to {context.term_budget_range[1]}",
+        "CTS keyword terms are conjunctive. More terms tighten the search.",
+        f"Max query terms: {context.max_query_terms}",
         f"Locations: {_comma_list(fit_gate.locations)}",
         f"Min years: {_or_none(fit_gate.min_years)}",
         f"Max years: {_or_none(fit_gate.max_years)}",
@@ -556,6 +563,18 @@ def _controller_budget_lines(runtime_budget_state: RuntimeBudgetState) -> list[s
         f"Phase progress: {runtime_budget_state.phase_progress:.2f}",
         f"Search phase: {runtime_budget_state.search_phase}",
         f"Near budget end: {_bool_text(runtime_budget_state.near_budget_end)}",
+    ]
+
+
+def _controller_rewrite_evidence_lines(context: SearchControllerContext_t) -> list[str]:
+    if not context.rewrite_term_candidates:
+        return ["No rewrite evidence terms."]
+    return [
+        (
+            f"{candidate.term}: source_candidate_ids={_comma_list(candidate.source_candidate_ids)}; "
+            f"source_fields={_comma_list(candidate.source_fields)}"
+        )
+        for candidate in context.rewrite_term_candidates
     ]
 
 

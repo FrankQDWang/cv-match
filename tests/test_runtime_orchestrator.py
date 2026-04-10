@@ -142,15 +142,24 @@ class SequentialTestModel:
         return self.outputs.pop(0)
 
 
-def _runtime_assets(*, min_round_index: int):
+def _runtime_assets():
     return replace(
         default_bootstrap_assets(),
-        stop_guard_thresholds=StopGuardThresholds(min_round_index=min_round_index),
+        stop_guard_thresholds=StopGuardThresholds(),
     )
 
 
 def _settings(tmp_path: Path) -> AppSettings:
     return AppSettings(_env_file=None, mock_cts=True, runs_dir=str(tmp_path / "runs"))
+
+
+def _stop_payload() -> dict[str, object]:
+    return {
+        "action": "stop",
+        "selected_operator_name": "must_have_alias",
+        "operator_args": {},
+        "expected_gain_hypothesis": "Stop now.",
+    }
 
 
 def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(tmp_path: Path) -> None:
@@ -164,7 +173,7 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     )
     runtime = WorkflowRuntime(
         _settings(tmp_path),
-        assets=_runtime_assets(min_round_index=1),
+        assets=_runtime_assets(),
         cts_client=FakeCTSClient(
             results=[
                 CTSFetchResult(
@@ -185,15 +194,13 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
                 {
                     "action": "search_cts",
                     "selected_operator_name": "core_precision",
-                    "operator_args": {"additional_terms": ["ranking"]},
-                    "expected_gain_hypothesis": "Expand ranking coverage.",
+                    "operator_args": {"query_terms": ["retrieval"]},
+                    "expected_gain_hypothesis": "Tighten around the strongest terms.",
                 },
-                {
-                    "action": "stop",
-                    "selected_operator_name": "core_precision",
-                    "operator_args": {},
-                    "expected_gain_hypothesis": "Enough evidence.",
-                },
+                _stop_payload(),
+                _stop_payload(),
+                _stop_payload(),
+                _stop_payload(),
             ]
         ),
         branch_outcome_evaluation_model=TestModel(
@@ -223,7 +230,7 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     assert result.bootstrap.frontier_state.remaining_budget == 12
     assert result.final_result.stop_reason == "controller_stop"
     assert result.final_result.final_shortlist_candidate_ids == ["candidate-1"]
-    assert set(result.rounds[0].runtime_audit_tags["candidate-1"]) == {"retrieval", "ranking"}
+    assert set(result.rounds[0].runtime_audit_tags["candidate-1"]) == {"retrieval"}
     assert result.bootstrap.requirement_extraction_audit.prompt_surface.surface_id == "requirement_extraction"
     assert result.rounds[0].controller_audit.prompt_surface.surface_id == "search_controller_decision"
     assert result.rounds[0].branch_evaluation_audit is not None
@@ -231,7 +238,10 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     assert result.finalization_audit.prompt_surface.surface_id == "search_run_finalization"
     assert result.rounds[0].controller_context.runtime_budget_state.search_phase == "explore"
     assert result.rounds[0].controller_context.runtime_budget_state.phase_progress == 0.0
-    assert result.rounds[0].controller_context.term_budget_range == (2, 6)
+    assert result.rounds[0].controller_context.max_query_terms == 3
+    assert result.rounds[0].effective_stop_guard.search_phase == "explore"
+    assert result.rounds[0].effective_stop_guard.controller_stop_allowed is False
+    assert result.rounds[0].effective_stop_guard.exhausted_low_gain_allowed is False
     assert result.rounds[0].controller_context.frontier_head_summary.highest_selection_score > 0.0
     assert result.rounds[0].controller_context.active_selection_breakdown.search_phase == "explore"
     assert result.rounds[0].controller_context.selection_ranking
@@ -240,7 +250,7 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     assert result.rounds[0].execution_plan is not None
     assert (
         len(result.rounds[0].execution_plan.query_terms)
-        <= result.rounds[0].controller_context.term_budget_range[1]
+        <= result.rounds[0].controller_context.max_query_terms
     )
     assert (
         result.rounds[0].controller_context.selection_ranking[0].frontier_node_id
@@ -253,23 +263,54 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     ]
     assert [document.id for document in rerank.seen_requests[1].documents] == ["candidate-1"]
     metrics = {metric.name: metric.value for metric in result.eval.metrics}
-    assert metrics["prompt_surface_count"] == 6
+    assert metrics["prompt_surface_count"] == 9
     assert metrics["budget_warning_round_count"] == 0
     assert Path(result.run_dir).joinpath("bundle.json").exists()
 
 
 def test_workflow_runtime_stops_on_exhausted_low_gain(tmp_path: Path) -> None:
+    keyword_payload = _bootstrap_keyword_draft_payload()
+    keyword_payload["candidate_seeds"] = [
+        {
+            "intent_type": "core_precision",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": [],
+            "reasoning": "deterministic core seed",
+        },
+        {
+            "intent_type": "relaxed_floor",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": [],
+            "reasoning": "deterministic relaxed seed",
+        },
+        {
+            "intent_type": "must_have_alias",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": [],
+            "reasoning": "deterministic alias seed",
+        },
+        {
+            "intent_type": "pack_expansion",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": ["llm_agent_rag_engineering"],
+            "reasoning": "deterministic pack seed",
+        },
+        {
+            "intent_type": "generic_expansion",
+            "keywords": ["python backend"],
+            "source_knowledge_pack_ids": [],
+            "reasoning": "deterministic generic seed",
+        },
+    ]
     runtime = WorkflowRuntime(
         _settings(tmp_path),
-        assets=_runtime_assets(min_round_index=2),
+        assets=_runtime_assets(),
         cts_client=FakeCTSClient(
             results=[
-                CTSFetchResult(
-                    request_payload={},
-                    candidates=[],
-                    raw_candidate_count=0,
-                    latency_ms=5,
-                )
+                CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
+                CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
+                CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
+                CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
             ]
         ),
         rerank_request=FakeRerankRequest(
@@ -282,24 +323,67 @@ def test_workflow_runtime_stops_on_exhausted_low_gain(tmp_path: Path) -> None:
         ),
         requirement_extraction_model=TestModel(custom_output_args=_requirement_draft_payload()),
         bootstrap_keyword_generation_model=TestModel(
-            custom_output_args=_bootstrap_keyword_draft_payload()
+            custom_output_args=keyword_payload
         ),
-        search_controller_decision_model=TestModel(
-            custom_output_args={
-                "action": "search_cts",
-                "selected_operator_name": "core_precision",
-                "operator_args": {"additional_terms": ["ranking"]},
-                "expected_gain_hypothesis": "Try one more search.",
-            }
+        search_controller_decision_model=SequentialTestModel(
+            outputs=[
+                {
+                    "action": "search_cts",
+                    "selected_operator_name": "core_precision",
+                    "operator_args": {"query_terms": ["python backend"]},
+                    "expected_gain_hypothesis": "Try one more focused search.",
+                },
+                {
+                    "action": "search_cts",
+                    "selected_operator_name": "core_precision",
+                    "operator_args": {"query_terms": ["python backend"]},
+                    "expected_gain_hypothesis": "Try one more focused search.",
+                },
+                {
+                    "action": "search_cts",
+                    "selected_operator_name": "core_precision",
+                    "operator_args": {"query_terms": ["python backend"]},
+                    "expected_gain_hypothesis": "Try one more focused search.",
+                },
+                {
+                    "action": "search_cts",
+                    "selected_operator_name": "core_precision",
+                    "operator_args": {"query_terms": ["python backend"]},
+                    "expected_gain_hypothesis": "Try one more focused search.",
+                },
+            ]
         ),
-        branch_outcome_evaluation_model=TestModel(
-            custom_output_args={
-                "novelty_score": 0.1,
-                "usefulness_score": 0.1,
-                "branch_exhausted": False,
-                "repair_operator_hint": "core_precision",
-                "evaluation_notes": "No useful new fit.",
-            }
+        branch_outcome_evaluation_model=SequentialTestModel(
+            outputs=[
+                {
+                    "novelty_score": 0.1,
+                    "usefulness_score": 0.1,
+                    "branch_exhausted": False,
+                    "repair_operator_hint": "core_precision",
+                    "evaluation_notes": "No useful new fit.",
+                },
+                {
+                    "novelty_score": 0.1,
+                    "usefulness_score": 0.1,
+                    "branch_exhausted": False,
+                    "repair_operator_hint": "core_precision",
+                    "evaluation_notes": "No useful new fit.",
+                },
+                {
+                    "novelty_score": 0.1,
+                    "usefulness_score": 0.1,
+                    "branch_exhausted": False,
+                    "repair_operator_hint": "core_precision",
+                    "evaluation_notes": "No useful new fit.",
+                },
+                {
+                    "novelty_score": 0.1,
+                    "usefulness_score": 0.1,
+                    "branch_exhausted": False,
+                    "repair_operator_hint": "core_precision",
+                    "evaluation_notes": "No useful new fit.",
+                },
+            ]
         ),
         search_run_finalization_model=TestModel(
             custom_output_args={"run_summary": "The latest branch added too little value."}
@@ -315,7 +399,9 @@ def test_workflow_runtime_stops_on_exhausted_low_gain(tmp_path: Path) -> None:
 
     assert result.final_result.stop_reason == "exhausted_low_gain"
     assert result.final_result.final_shortlist_candidate_ids == []
-    assert result.rounds[0].reward_breakdown is not None
+    assert result.rounds[-1].reward_breakdown is not None
+    assert result.rounds[-1].effective_stop_guard.search_phase == "harvest"
+    assert result.rounds[-1].effective_stop_guard.exhausted_low_gain_allowed is True
 
 
 def test_workflow_runtime_rejects_direct_stop_then_accepts_next_round(tmp_path: Path) -> None:
@@ -329,7 +415,7 @@ def test_workflow_runtime_rejects_direct_stop_then_accepts_next_round(tmp_path: 
     )
     runtime = WorkflowRuntime(
         _settings(tmp_path),
-        assets=_runtime_assets(min_round_index=1),
+        assets=_runtime_assets(),
         cts_client=FakeCTSClient(results=[]),
         rerank_request=rerank,
         requirement_extraction_model=TestModel(custom_output_args=_requirement_draft_payload()),
@@ -337,20 +423,7 @@ def test_workflow_runtime_rejects_direct_stop_then_accepts_next_round(tmp_path: 
             custom_output_args=_bootstrap_keyword_draft_payload()
         ),
         search_controller_decision_model=TestModel(
-            custom_output_args=[
-                {
-                    "action": "stop",
-                    "selected_operator_name": "must_have_alias",
-                    "operator_args": {},
-                    "expected_gain_hypothesis": "Stop now.",
-                },
-                {
-                    "action": "stop",
-                    "selected_operator_name": "must_have_alias",
-                    "operator_args": {},
-                    "expected_gain_hypothesis": "Stop now.",
-                },
-            ]
+            custom_output_args=[_stop_payload(), _stop_payload(), _stop_payload()]
         ),
         search_run_finalization_model=TestModel(
             custom_output_args={"run_summary": "Stopped after controller confirmation."}
@@ -366,6 +439,7 @@ def test_workflow_runtime_rejects_direct_stop_then_accepts_next_round(tmp_path: 
 
     assert result.final_result.stop_reason == "controller_stop"
     assert [round_artifact.stop_reason for round_artifact in result.rounds] == [
+        None,
         None,
         "controller_stop",
     ]

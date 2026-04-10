@@ -257,16 +257,16 @@ max_target_new_candidate_count: 20
 owner: [[RuntimeTermBudgetPolicy]]
 
 ```yaml
-explore_budget_range: [2, 6]
-balance_budget_range: [2, 5]
-harvest_budget_range: [2, 4]
+explore_max_query_terms: 3
+balance_max_query_terms: 4
+harvest_max_query_terms: 6
 ```
 
 分层规则：
 
-- `search_phase = explore`：`explore_budget_range`
-- `search_phase = balance`：`balance_budget_range`
-- `search_phase = harvest`：`harvest_budget_range`
+- `search_phase = explore`：`explore_max_query_terms`
+- `search_phase = balance`：`balance_max_query_terms`
+- `search_phase = harvest`：`harvest_max_query_terms`
 
 ### 3.4 Crossover Guard Thresholds
 
@@ -286,8 +286,12 @@ owner: [[StopGuardThresholds]]
 novelty_floor: 0.25
 usefulness_floor: 0.25
 reward_floor: 1.5
-min_round_index: 2
 ```
+
+phase gate：
+
+- `controller_stop`：仅 `balance / harvest`
+- `exhausted_low_gain`：仅 `harvest`
 
 ## 4. run 级可配置项
 

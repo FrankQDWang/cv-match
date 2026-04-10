@@ -14,9 +14,10 @@
 2. runtime 每轮都有显式 `phase_progress` 和 `search_phase`。
 3. active node selection 变成 phase-aware。
 4. allowed operator surface 变成 phase-aware。
-5. term budget policy 改成 phase-aware。
-6. stop policy 改成 phase-aware。
-7. trace 能解释这些行为。
+5. `Step 5R`：term budget 改成 phase-frozen `max_query_terms`。
+6. `Step 5.5`：non-crossover operator 改成完整 query rewrite。
+7. stop policy 改成 phase-aware。
+8. trace 能解释这些行为。
 
 ## Files To Change
 
@@ -151,28 +152,160 @@ phase_progress = runtime_round_index / max(1, initial_round_budget - 1)
 - `explore` 期不会过早把预算打到 crossover 上。
 - `harvest` 期不会因为 pack provenance 自动重新开放发散型 pack operator。
 
-## Step 5: 改 Term Budget Policy
+## Step 5R: 改 Term Budget Policy
 
-目标：不要再用绝对 `remaining_budget` 切 term budget。
+目标：不要再用绝对 `remaining_budget` 切 term budget，并明确 CTS keyword 是交集语义。
 
 执行：
 
 1. 把 term budget owner 改成 phase-aware。
 2. `RuntimeTermBudgetPolicy` 字段直接切成：
-   - `explore_budget_range`
-   - `balance_budget_range`
-   - `harvest_budget_range`
+   - `explore_max_query_terms`
+   - `balance_max_query_terms`
+   - `harvest_max_query_terms`
 3. 这轮先用固定三档，不上连续公式：
-   - `explore`: `[2, 6]`
-   - `balance`: `[2, 5]`
-   - `harvest`: `[2, 4]`
-4. `materialize_search_execution_plan()` 不再接收 policy；只接收 controller context 里已经冻结好的 `term_budget_range`。
+   - `explore`: `3`
+   - `balance`: `4`
+   - `harvest`: `6`
+4. `SelectActiveFrontierNode` 先冻结 `max_query_terms`。
+5. `materialize_search_execution_plan()` 不再接收 policy；只接收 controller context 里已经冻结好的 `max_query_terms`。
 
 验收：
 
-- 同样 node，在后期 query terms 上限会更小。
-- `12` 轮运行时，不会长期停留在旧逻辑的“high budget range”。
+- 同样 node，在后期 query terms 上限会更大，因为 CTS 多词更紧。
+- `12` 轮运行时，不会继续沿用“更多词=更探索”的旧假设。
 - controller normalization 与 materialization 不会再各自推一遍 term budget。
+
+## Step 5.5: 改 Non-Crossover Query Rewrite
+
+目标：把 non-crossover operator 从“追加词”改成“直接产出最终 query_terms”。
+
+执行：
+
+1. 废弃 non-crossover `operator_args.additional_terms`。
+2. 改成 non-crossover `operator_args.query_terms`。
+3. `GenerateSearchControllerDecision` 只做最终 query rewrite normalization：
+   - 去空
+   - 去重
+   - 保序
+   - 按 `max_query_terms` 截断
+4. `MaterializeSearchExecutionPlan` 对 non-crossover 不再把 parent `node_query_term_pool` 自动拼回去。
+5. `UpdateFrontierState` 让 child node 直接继承本轮最终 query，而不是旧的 append 语义。
+6. 各 operator contract 改成 rewrite：
+   - `core_precision`: active pool 非空子集
+   - `relaxed_floor`: active pool 非空真子集
+   - `must_have_alias / generic_expansion / pack_expansion / cross_pack_bridge`: 必须既有共享词，也有新增词和移除词
+
+验收：
+
+- non-crossover 再也不会出现 `additional_terms`。
+- `MaterializeSearchExecutionPlan` 不会把 parent pool 自动加回去。
+- canonical bundles 和 trace 中，non-crossover 决策统一只出现 `query_terms`。
+
+## Step 5.6: 引入 GA-lite Rewrite Candidate Search
+
+目标：在不改 runtime 主框架的前提下，为 non-crossover rewrite operator 增加一个有界的局部候选搜索器。
+
+原则：
+
+1. 这不是整场 runtime 的 GA。
+2. 它只在单个 active node 内工作。
+3. 它只服务 non-crossover rewrite operator。
+4. 它必须先过 contract，再算 fitness。
+
+执行：
+
+1. 只对下面 4 个 operator 启用：
+   - `must_have_alias`
+   - `generic_expansion`
+   - `pack_expansion`
+   - `cross_pack_bridge`
+2. `core_precision / relaxed_floor / crossover_compose` 继续保持纯 deterministic，不接入 GA-lite。
+3. 染色体直接定义为最终 `query_terms: list[str]`，不是 `additional_terms`，也不是 query patch。
+4. 初始种群固定为 `4~6` 个候选，且必须包含 controller 已给出的合法 `query_terms` 作为 seed candidate。
+5. mutation 只允许 3 类：
+   - `replace_one_term`
+   - `drop_one_term`
+   - `swap_one_term`
+6. 最多只跑 `1~2` 轮局部搜索，不做无限迭代，不做复杂 population crossover。
+7. 所有候选先走硬约束过滤：
+   - 长度 `<= max_query_terms`
+   - 至少保留 `1` 个 active anchor
+   - rewrite operator 必须同时满足“共享旧词 + 新增词 + 删除旧词”
+   - pack operator 必须有合法 pack provenance
+8. fitness 只用 deterministic surrogate，不做真 CTS probe。第一版固定分量为：
+   - `must_have_repair_score`
+   - `anchor_preservation_score`
+   - `rewrite_coherence_score`
+   - `provenance_coherence_score`
+   - `query_length_penalty`
+   - `redundancy_penalty`
+9. 第一版推荐总分：
+   - `1.2 * must_have_repair_score`
+   - `1.0 * anchor_preservation_score`
+   - `1.0 * rewrite_coherence_score`
+   - `0.8 * provenance_coherence_score`
+   - `-0.7 * query_length_penalty`
+   - `-0.9 * redundancy_penalty`
+10. 最终只输出 1 个 best `query_terms`，继续走现有 `MaterializeSearchExecutionPlan` 与后续 runtime。
+
+验收：
+
+- GA-lite 不会改变 `search_phase`、`active node selection`、`allowed operator surface`、`stop policy` 的 owner。
+- 任一时刻 population size 都保持在 `<= 6`。
+- trace 能解释为什么某个 rewrite 候选被选中。
+- 如果 fitness 缺少 coherence，Step 5.6 不应继续推进到代码实现。
+
+## Step 5.7: 引入 Evidence-Mining Rewrite Term Pool
+
+目标：从本轮高质量候选中提取可复用的专有技能词，作为后续 rewrite operator 的候选词源，而不是直接追加到 CTS keyword。
+
+原则：
+
+1. 这不是传统 PRF 的“高频词直接扩搜”。
+2. 在真实 CTS 交集语义下，新词绝不能直接拼进下一轮 query。
+3. 它只产出 `rewrite_term_candidates`，供 Step 5.5 / 5.6 使用。
+4. 它不改 `search_phase`、`selection`、`allowed operator surface`、`stop policy`。
+
+执行：
+
+1. 输入只取当前 round 的高质量小集合：
+   - `fit == 1`
+   - 且 `fusion_score` 较高
+   - 数量上限建议 `top 3 ~ top 5`
+2. 优先从强信号字段提词，不做整篇自由摘要：
+   - `work_summaries`
+   - `project_names`
+   - `work_experience_summaries`
+   - title / expected job category
+   - `search_text` 中的技能短语
+3. 第一版只抽“技能 / 工具 / 专有名词”，不抽泛化动词和软素质词。
+4. 对候选词做轻量去噪：
+   - 去重
+   - 去停用泛词
+   - 去明显无业务区分度词
+5. 对候选词做 relevance gate，至少满足一条才保留：
+   - 能补当前 `unmet must-have`
+   - 与 active node 保留锚点语义一致
+   - 与当前 pack provenance 一致
+6. 输出 sidecar：
+   - `rewrite_term_candidates: list[RewriteTermCandidate]`
+7. 这个 sidecar 只允许喂给：
+   - `must_have_alias`
+   - `generic_expansion`
+   - `pack_expansion`
+   - `cross_pack_bridge`
+8. 明确禁止：
+   - 直接把 `rewrite_term_candidates` 追加到 CTS `keyword`
+   - 把这些词提升成 CTS 侧硬过滤
+   - 把整篇简历交给 LLM 在线概括后直接改 query
+
+验收：
+
+- 新 feature 不会直接改变 `SearchExecutionPlan_t.query_terms` 的 owner。
+- 任一 evidence term 都能解释其来源候选和来源字段。
+- topic drift 风险被 gate 在 rewrite 候选池内部，而不是直接污染 CTS query。
+- trace 能看出哪些 evidence terms 被采纳，哪些被丢弃。
 
 ## Step 6: 改 Stop Policy
 
@@ -184,7 +317,7 @@ phase_progress = runtime_round_index / max(1, initial_round_budget - 1)
 2. `controller_stop` 允许阈值改成与预算比例相关，而不是固定 `min_round_index = 2`。
 3. 建议规则：
    - `controller_stop` 至少要到 `balance` 期才可能生效。
-   - `exhausted_low_gain` 至少要到 `balance` 期才可能生效。
+   - `exhausted_low_gain` 只在 `harvest` 期才可能生效。
 4. `harvest` 期允许比现在更积极地收口。
 
 验收：
@@ -202,7 +335,7 @@ phase_progress = runtime_round_index / max(1, initial_round_budget - 1)
    - `initial_round_budget`
    - `phase_progress`
    - `search_phase`
-   - `effective_term_budget_range`
+   - `max_query_terms`
    - `active_selection_breakdown`
    - `selection_ranking`
    - `effective_stop_guard`
