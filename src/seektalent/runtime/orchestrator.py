@@ -320,6 +320,7 @@ class WorkflowRuntime:
             final_result = finalize_search_run(
                 bootstrap_artifacts.requirement_sheet,
                 frontier_state_t1,
+                rounds,
                 stop_reason,
                 run_summary_draft,
             )

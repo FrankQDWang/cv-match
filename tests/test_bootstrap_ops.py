@@ -322,7 +322,10 @@ def test_generate_bootstrap_output_projects_exclude_keywords_into_negative_terms
         "knowledge_pack_ids",
         "negative_terms",
         "target_location",
+        "branch_role",
+        "root_anchor_frontier_node_id",
     }
+    assert all(seed.branch_role == "root_anchor" for seed in output.frontier_seed_specifications)
 
 
 def test_generate_bootstrap_output_keeps_multi_pack_bridge_provenance() -> None:

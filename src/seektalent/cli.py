@@ -16,7 +16,7 @@ from seektalent.resources import read_default_env_template, resolve_user_path, r
 from seektalent.run_artifacts import RUNTIME_STATUS
 
 ROOT_HELP_EPILOG = """Runtime status:
-  `run` now executes the full v0.3.2 runtime loop and returns SearchRunBundle.
+  `run` now executes the full v0.3.3 runtime loop and returns SearchRunBundle.
   Each run writes bundle.json, final_result.json, and eval.json under runs/<run_id>/.
   Start `seektalent-rerank-api` before running searches.
 
@@ -138,7 +138,7 @@ def _doctor_checks(settings: AppSettings) -> list[DoctorCheck]:
                     name="runtime_manifest",
                     ok=True,
                     message=(
-                        "Active runtime manifest loaded: "
+                "Active runtime manifest loaded: "
                         f"knowledge_packs={list(assets.knowledge_pack_ids)}, "
                         f"policy={assets.policy_id}, calibration={assets.calibration_id}"
                     ),
@@ -175,9 +175,10 @@ def _doctor_checks(settings: AppSettings) -> list[DoctorCheck]:
             name="phase",
             ok=True,
             message=(
-                "v0.3.2 offline artifacts active. `run` emits SearchRunBundle, writes "
-                "run artifacts under SEEKTALENT_RUNS_DIR, and expects a rerank API at "
-                "SEEKTALENT_RERANK_BASE_URL."
+                "v0.3.3 active. `run` emits SearchRunBundle, writes run artifacts under "
+                "SEEKTALENT_RUNS_DIR, and expects a rerank API at "
+                "SEEKTALENT_RERANK_BASE_URL. Final output includes shortlist ids, "
+                "candidate evidence cards, reviewer_summary, and run_summary."
             ),
         )
     )
@@ -187,7 +188,7 @@ def _doctor_checks(settings: AppSettings) -> list[DoctorCheck]:
 def _inspect_payload() -> dict[str, object]:
     commands = {
         "run": {
-            "description": "Execute the full v0.3.2 runtime loop, persist run artifacts, and return SearchRunBundle.",
+            "description": "Execute the full v0.3.3 runtime loop, persist run artifacts, and return SearchRunBundle.",
             "machine_readable": False,
             "arguments": [
                 _arg_spec("--jd", "string", "Inline job description text.", mutually_exclusive_with=["--jd-file"]),
@@ -219,7 +220,7 @@ def _inspect_payload() -> dict[str, object]:
         "version": {"description": "Print the installed package version.", "machine_readable": False, "arguments": []},
         "update": {"description": "Print upgrade instructions.", "machine_readable": False, "arguments": []},
         "inspect": {
-            "description": "Describe the current v0.3.2 offline artifact surface.",
+            "description": "Describe the current v0.3.3 runtime surface.",
             "machine_readable": False,
             "arguments": [_arg_spec("--json", "flag", "Emit one JSON object describing the CLI.")],
         },
@@ -229,9 +230,9 @@ def _inspect_payload() -> dict[str, object]:
         "version": __version__,
         "phase": RUNTIME_STATUS,
         "summary": (
-            "v0.3.2 offline artifacts active: runtime returns SearchRunBundle, "
-            "writes bundle/final_result/eval artifacts, and binds bootstrap assets from "
-            "artifacts/runtime/active.json."
+            "v0.3.3 active: runtime returns SearchRunBundle, writes "
+            "bundle/final_result/eval artifacts, binds bootstrap assets from "
+            "artifacts/runtime/active.json, and exposes reviewer-ready final output."
         ),
         "recommended_workflow": [
             "seektalent doctor",
@@ -303,6 +304,7 @@ def _handle_run(args: argparse.Namespace) -> int:
     print(result.run_dir)
     print(result.final_result.stop_reason)
     print(", ".join(result.final_result.final_shortlist_candidate_ids))
+    print(result.final_result.reviewer_summary)
     print(result.final_result.run_summary)
     return 0
 
@@ -352,7 +354,7 @@ def _handle_inspect(args: argparse.Namespace) -> int:
     if args.json:
         _emit_json(sys.stdout, payload)
         return 0
-    print("SeekTalent v0.3.2 CLI inspection summary")
+    print("SeekTalent v0.3.3 CLI inspection summary")
     print("Use `seektalent inspect --json` for the machine-readable contract.")
     print(f"Current phase: {payload['phase']}")
     print(f"Run behavior: {payload['summary']}")
@@ -364,7 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command")
 
-    run_parser = subparsers.add_parser("run", help="Run the full v0.3.2 runtime loop and write artifacts.")
+    run_parser = subparsers.add_parser("run", help="Run the full v0.3.3 runtime loop and write artifacts.")
     run_parser.add_argument("--jd")
     run_parser.add_argument("--jd-file")
     run_parser.add_argument("--notes")

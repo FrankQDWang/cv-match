@@ -5,6 +5,7 @@ import pytest
 from seektalent.models import (
     BranchEvaluationDraft_t,
     BranchEvaluation_t,
+    CandidateEvidenceCard_t,
     FrontierNode_t,
     FrontierState_t,
     FrontierState_t1,
@@ -54,6 +55,8 @@ def _frontier_state() -> FrontierState_t:
                 selected_operator_name="must_have_alias",
                 node_query_term_pool=["python"],
                 knowledge_pack_ids=["llm_agent_rag_engineering"],
+                branch_role="root_anchor",
+                root_anchor_frontier_node_id="seed",
                 node_shortlist_candidate_ids=["legacy-a", "legacy-b"],
                 node_shortlist_score_snapshot={"legacy-a": 0.92, "legacy-b": 0.81},
                 status="open",
@@ -63,6 +66,8 @@ def _frontier_state() -> FrontierState_t:
                 selected_operator_name="core_precision",
                 node_query_term_pool=["ranking"],
                 knowledge_pack_ids=["search_ranking_retrieval_engineering"],
+                branch_role="repair_hypothesis",
+                root_anchor_frontier_node_id="sibling",
                 node_shortlist_candidate_ids=["legacy-c"],
                 node_shortlist_score_snapshot={"legacy-c": 0.88},
                 reward_breakdown=NodeRewardBreakdown_t(
@@ -113,6 +118,8 @@ def _plan() -> SearchExecutionPlan_t:
                 "parent_frontier_node_id": "seed",
                 "donor_frontier_node_id": None,
                 "selected_operator_name": "core_precision",
+                "branch_role": "repair_hypothesis",
+                "root_anchor_frontier_node_id": "seed",
             },
         }
     )
@@ -184,6 +191,17 @@ def _scoring_result(*, shortlist_ids: list[str] | None = None, top_three_average
         ],
         node_shortlist_candidate_ids=shortlist_ids,
         explanation_candidate_ids=["new-fit"],
+        candidate_evidence_cards=[
+            CandidateEvidenceCard_t(
+                candidate_id="new-fit",
+                review_recommendation="advance",
+                must_have_matrix=[],
+                preferred_evidence=[],
+                gap_signals=[],
+                risk_signals=[],
+                card_summary="new-fit looks strong",
+            )
+        ],
         top_three_statistics=TopThreeStatistics(
             average_fusion_score_top_three=top_three_average
         ),
@@ -238,7 +256,7 @@ def test_compute_node_reward_breakdown_allows_negative_delta_top_three() -> None
     assert reward.reward_score == pytest.approx(0.2216666666666668, rel=1e-3)
 
 
-def test_update_frontier_state_closes_parent_and_sorts_run_shortlist() -> None:
+def test_update_frontier_state_keeps_root_anchor_open_and_sorts_run_shortlist() -> None:
     branch_evaluation = BranchEvaluation_t(
         novelty_score=0.7,
         usefulness_score=0.6,
@@ -268,13 +286,18 @@ def test_update_frontier_state_closes_parent_and_sorts_run_shortlist() -> None:
         reward,
     )
 
-    assert updated.frontier_nodes["seed"].status == "closed"
+    assert updated.frontier_nodes["seed"].status == "open"
+    assert updated.frontier_nodes["seed"].previous_branch_evaluation == branch_evaluation
+    assert updated.frontier_nodes["seed"].reward_breakdown == reward
+    assert updated.frontier_nodes["seed"].node_shortlist_candidate_ids == ["new-fit", "legacy-c"]
     assert updated.frontier_nodes["child_seed_hash"].status == "open"
+    assert updated.frontier_nodes["child_seed_hash"].branch_role == "repair_hypothesis"
+    assert updated.frontier_nodes["child_seed_hash"].root_anchor_frontier_node_id == "seed"
     assert updated.frontier_nodes["child_seed_hash"].knowledge_pack_ids == [
         "llm_agent_rag_engineering"
     ]
-    assert updated.open_frontier_node_ids == ["sibling", "child_seed_hash"]
-    assert updated.closed_frontier_node_ids == ["seed"]
+    assert updated.open_frontier_node_ids == ["seed", "sibling", "child_seed_hash"]
+    assert updated.closed_frontier_node_ids == []
     assert updated.run_shortlist_candidate_ids == ["new-fit", "legacy-a", "legacy-c"]
     assert updated.semantic_hashes_seen == ["hash-seed", "hash-child"]
     assert updated.operator_statistics["core_precision"].average_reward == pytest.approx(
@@ -311,8 +334,52 @@ def test_update_frontier_state_adds_closed_child_when_branch_is_exhausted() -> N
         ),
     )
 
+    assert updated.frontier_nodes["seed"].status == "open"
     assert updated.frontier_nodes["child_seed_hash"].status == "closed"
-    assert updated.closed_frontier_node_ids == ["seed", "child_seed_hash"]
+    assert updated.closed_frontier_node_ids == ["child_seed_hash"]
+
+
+def test_update_frontier_state_closes_repair_parent_and_opens_child() -> None:
+    base_state = _frontier_state()
+    updated = update_frontier_state(
+        base_state.model_copy(
+            update={
+                "frontier_nodes": {
+                    **base_state.frontier_nodes,
+                    "seed": base_state.frontier_nodes["seed"].model_copy(
+                        update={"branch_role": "repair_hypothesis"}
+                    ),
+                }
+            }
+        ),
+        _plan(),
+        _scoring_result(),
+        BranchEvaluation_t(
+            novelty_score=0.3,
+            usefulness_score=0.4,
+            branch_exhausted=False,
+            repair_operator_hint="core_precision",
+            evaluation_notes="continue",
+        ),
+        NodeRewardBreakdown_t(
+            delta_top_three=0.0,
+            must_have_gain=0.0,
+            new_fit_yield=0.0,
+            novelty=0.3,
+            usefulness=0.4,
+            diversity=0.0,
+            stability_risk_penalty=0.0,
+            hard_constraint_violation=0.0,
+            duplicate_penalty=0.0,
+            cost_penalty=0.0,
+            reward_score=1.0,
+        ),
+    )
+
+    assert updated.frontier_nodes["seed"].status == "closed"
+    assert updated.frontier_nodes["child_seed_hash"].status == "open"
+    assert updated.open_frontier_node_ids == ["sibling", "child_seed_hash"]
+    assert updated.closed_frontier_node_ids == ["seed"]
 
 
 def test_update_frontier_state_fails_for_missing_operator_statistics_key() -> None:
@@ -447,6 +514,97 @@ def test_evaluate_stop_condition_respects_priority_and_phase_gates() -> None:
     ) == ("exhausted_low_gain", False)
 
 
+def test_evaluate_stop_condition_returns_no_productive_open_path() -> None:
+    base_state = _frontier_state()
+    state = FrontierState_t1.model_validate(
+        base_state.model_copy(
+            update={
+                "frontier_nodes": {
+                    "seed": base_state.frontier_nodes["seed"].model_copy(
+                        update={
+                            "previous_branch_evaluation": BranchEvaluation_t(
+                                novelty_score=0.1,
+                                usefulness_score=0.1,
+                                branch_exhausted=True,
+                                repair_operator_hint=None,
+                                evaluation_notes="done",
+                            ),
+                            "reward_breakdown": NodeRewardBreakdown_t(
+                                delta_top_three=0.0,
+                                must_have_gain=0.0,
+                                new_fit_yield=0.0,
+                                novelty=0.1,
+                                usefulness=0.1,
+                                diversity=0.0,
+                                stability_risk_penalty=0.0,
+                                hard_constraint_violation=0.0,
+                                duplicate_penalty=0.0,
+                                cost_penalty=0.0,
+                                reward_score=0.5,
+                            ),
+                        }
+                    ),
+                    "sibling": base_state.frontier_nodes["sibling"].model_copy(
+                        update={
+                            "previous_branch_evaluation": BranchEvaluation_t(
+                                novelty_score=0.1,
+                                usefulness_score=0.1,
+                                branch_exhausted=True,
+                                repair_operator_hint=None,
+                                evaluation_notes="done",
+                            ),
+                            "reward_breakdown": NodeRewardBreakdown_t(
+                                delta_top_three=0.0,
+                                must_have_gain=0.0,
+                                new_fit_yield=0.0,
+                                novelty=0.1,
+                                usefulness=0.1,
+                                diversity=0.0,
+                                stability_risk_penalty=0.0,
+                                hard_constraint_violation=0.0,
+                                duplicate_penalty=0.0,
+                                cost_penalty=0.0,
+                                reward_score=0.5,
+                            ),
+                        }
+                    ),
+                }
+            }
+        ).model_dump(mode="python")
+    )
+
+    assert evaluate_stop_condition(
+        state,
+        "search_cts",
+        BranchEvaluation_t(
+            novelty_score=0.1,
+            usefulness_score=0.1,
+            branch_exhausted=True,
+            repair_operator_hint=None,
+            evaluation_notes="done",
+        ),
+        NodeRewardBreakdown_t(
+            delta_top_three=0.0,
+            must_have_gain=0.0,
+            new_fit_yield=0.0,
+            novelty=0.1,
+            usefulness=0.1,
+            diversity=0.0,
+            stability_risk_penalty=0.0,
+            hard_constraint_violation=0.0,
+            duplicate_penalty=0.0,
+            cost_penalty=0.0,
+            reward_score=0.5,
+        ),
+        StopGuardThresholds(),
+        build_runtime_budget_state(
+            initial_round_budget=5,
+            runtime_round_index=2,
+            remaining_budget=2,
+        ),
+    ) == ("no_productive_open_path", False)
+
+
 def test_build_effective_stop_guard_uses_phase_gate_owner() -> None:
     explore_guard = build_effective_stop_guard(
         StopGuardThresholds(),
@@ -487,6 +645,8 @@ def test_finalize_search_run_preserves_shortlist_fact() -> None:
 
     assert result.model_dump(mode="python") == {
         "final_shortlist_candidate_ids": ["c-2", "c-1"],
+        "final_candidate_cards": [],
+        "reviewer_summary": "No final shortlist candidate cards.",
         "run_summary": "shortlist ready",
         "stop_reason": "controller_stop",
     }

@@ -1,8 +1,6 @@
 # SeekTalent System Model
 
-Status note. `docs/v-0.3.3` describes the next target-state model for SeekTalent. The active `HEAD` runtime remains documented under `docs/v-0.3.2`. The current implementation may not yet satisfy every contract or invariant named below. `docs/v-0.3.3/IMPLEMENTATION_OWNERS.md` maps each model section to the smallest current code owner responsible for convergence.
-
-This document is the target canonical model for the planned `v0.3.3` convergence. It is written as a compact algorithm note rather than an implementation guide. Symbols are logical, not code-shaped.
+This document is the active canonical model for `SeekTalent v0.3.3`. It is written as a compact algorithm note rather than an implementation guide. Symbols are logical, not code-shaped.
 
 Let the raw input be a job description and hiring notes,
 

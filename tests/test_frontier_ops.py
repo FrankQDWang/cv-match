@@ -438,27 +438,28 @@ def test_select_active_frontier_node_keeps_high_yield_branch_despite_overlap() -
     assert context.active_selection_breakdown.incremental_value_score > 0.0
 
 
-def test_select_active_frontier_node_rejects_open_exhausted_nodes() -> None:
-    with pytest.raises(ValueError, match="open_frontier_node_marked_exhausted"):
-        select_active_frontier_node(
-            _frontier_state(
-                [
-                    FrontierNode_t(
-                        frontier_node_id="child_exhausted",
-                        parent_frontier_node_id="seed",
-                        selected_operator_name="core_precision",
-                        node_query_term_pool=["python"],
-                        previous_branch_evaluation=_branch_evaluation(exhausted=True),
-                        status="open",
-                    )
-                ]
-            ),
-            _requirement_sheet(),
-            _scoring_policy(),
-            CrossoverGuardThresholds(),
-            RuntimeTermBudgetPolicy(),
-            _runtime_budget_state(remaining_budget=3),
-        )
+def test_select_active_frontier_node_allows_open_exhausted_nodes_for_persistent_anchor_runtime() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="child_exhausted",
+                    parent_frontier_node_id="seed",
+                    selected_operator_name="core_precision",
+                    node_query_term_pool=["python"],
+                    previous_branch_evaluation=_branch_evaluation(exhausted=True),
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=3),
+    )
+
+    assert context.active_frontier_node_summary.frontier_node_id == "child_exhausted"
 
 
 def test_select_active_frontier_node_uses_explore_surface_for_generic_provenance() -> None:

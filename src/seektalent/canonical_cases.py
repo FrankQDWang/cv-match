@@ -1153,8 +1153,8 @@ def _clear_generated_outputs(repo_root: Path) -> None:
     for path in (
         repo_root / "artifacts" / "runtime" / "cases",
         repo_root / "artifacts" / "runtime" / "evals",
-        repo_root / "docs" / "v-0.3.2" / "traces" / "agent",
-        repo_root / "docs" / "v-0.3.2" / "traces" / "business",
+        repo_root / "docs" / "v-0.3.3" / "traces" / "agent",
+        repo_root / "docs" / "v-0.3.3" / "traces" / "business",
     ):
         if path.exists():
             shutil.rmtree(path)
@@ -1182,8 +1182,8 @@ def _write_case_artifacts(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> N
 
 
 def _write_trace_docs(spec: CanonicalCaseSpec, bundle: SearchRunBundle, *, repo_root: Path) -> None:
-    agent_dir = repo_root / "docs" / "v-0.3.2" / "traces" / "agent"
-    business_dir = repo_root / "docs" / "v-0.3.2" / "traces" / "business"
+    agent_dir = repo_root / "docs" / "v-0.3.3" / "traces" / "agent"
+    business_dir = repo_root / "docs" / "v-0.3.3" / "traces" / "business"
     agent_dir.mkdir(parents=True, exist_ok=True)
     business_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / f"trace-agent-{spec.case_id}.md").write_text(
@@ -1315,14 +1315,14 @@ def _write_trace_index(specs: tuple[CanonicalCaseSpec, ...], *, repo_root: Path)
         for spec in specs
     )
     content = (
-        "# SeekTalent v0.3.2 Trace Index\n\n"
+        "# SeekTalent v0.3.3 Trace Index\n\n"
         "> 本页由 phase6 canonical case builder 生成。Agent Trace 由 canonical bundle 渲染；Business Trace 由 canonical bundle 与 case spec 共同渲染。\n\n"
         "## Case Matrix\n\n"
         "| case_id | 场景 | Agent Trace | Business Trace |\n"
         "| --- | --- | --- | --- |\n"
         f"{rows}\n"
     )
-    (repo_root / "docs" / "v-0.3.2" / "trace-index.md").write_text(content, encoding="utf-8")
+    (repo_root / "docs" / "v-0.3.3" / "trace-index.md").write_text(content, encoding="utf-8")
 
 
 def _round_outcome(round_artifact) -> str:

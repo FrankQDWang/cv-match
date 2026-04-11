@@ -12,7 +12,7 @@ Explicit subcommands are required. There is no implicit `run` mode.
 
 ## Current phase
 
-This CLI is a `v0.3.2 offline artifacts active` surface.
+This CLI is a `v0.3.3 active` surface.
 
 - `doctor`, `init`, `version`, `update`, `inspect`, and `run` work
 
@@ -82,7 +82,7 @@ Current behavior:
 
 - runs the full runtime loop and writes run artifacts
 - `--round-budget` overrides `SEEKTALENT_ROUND_BUDGET`
-- prints `run_dir`, `stop_reason`, comma-joined shortlist ids, and `run_summary` in human mode
+- prints `run_dir`, `stop_reason`, comma-joined shortlist ids, `reviewer_summary`, and `run_summary` in human mode
 - prints `SearchRunBundle.model_dump(mode="json")` to stdout in `--json` mode
 
 Failures still emit one JSON object on stderr.

@@ -9,7 +9,7 @@ from seektalent.models import SearchRunBundle, SearchRunEval, SearchRunEvalMetri
 from seektalent.query_terms import query_terms_hit
 
 
-RUNTIME_STATUS = "v0.3.2_offline_artifacts_active"
+RUNTIME_STATUS = "v0.3.3_active"
 
 
 def utc_now() -> datetime:
@@ -86,6 +86,12 @@ def build_search_run_eval(bundle: SearchRunBundle) -> SearchRunEval:
         )
         for phase in ("explore", "balance", "harvest")
     }
+    total_pages_fetched = sum(
+        round_artifact.execution_result.search_page_statistics.pages_fetched
+        for round_artifact in search_rounds
+    )
+    unique_advance_candidate_ids = _unique_advance_candidate_ids(search_rounds)
+    review_burden_candidate_ids = _review_burden_candidate_ids(search_rounds)
     metrics = [
         SearchRunEvalMetric(
             name="routing_mode",
@@ -163,10 +169,7 @@ def build_search_run_eval(bundle: SearchRunBundle) -> SearchRunEval:
         ),
         SearchRunEvalMetric(
             name="total_pages_fetched",
-            value=sum(
-                round_artifact.execution_result.search_page_statistics.pages_fetched
-                for round_artifact in search_rounds
-            ),
+            value=total_pages_fetched,
         ),
         SearchRunEvalMetric(
             name="deduplicated_candidate_count",
@@ -259,6 +262,30 @@ def build_search_run_eval(bundle: SearchRunBundle) -> SearchRunEval:
                 )
             ),
         ),
+        SearchRunEvalMetric(
+            name="time_to_first_advance_round",
+            value=_time_to_first_advance_round(search_rounds),
+        ),
+        SearchRunEvalMetric(
+            name="pages_per_advance_candidate",
+            value=total_pages_fetched / max(1, len(unique_advance_candidate_ids)),
+        ),
+        SearchRunEvalMetric(
+            name="advance_candidates_per_query",
+            value=len(unique_advance_candidate_ids) / max(1, len(search_rounds)),
+        ),
+        SearchRunEvalMetric(
+            name="query_churn_rate",
+            value=_query_churn_rate(search_rounds),
+        ),
+        SearchRunEvalMetric(
+            name="review_burden_candidate_count",
+            value=len(review_burden_candidate_ids),
+        ),
+        SearchRunEvalMetric(
+            name="review_burden_per_advance",
+            value=len(review_burden_candidate_ids) / max(1, len(unique_advance_candidate_ids)),
+        ),
     ]
     return SearchRunEval(experiment_id="E5", run_id=bundle.run_id, metrics=metrics)
 
@@ -308,6 +335,57 @@ def _net_new_shortlist_gain(round_artifact: object) -> int:
     node_shortlist_ids = set(round_artifact.scoring_result.node_shortlist_candidate_ids)
     run_shortlist_ids_before = set(round_artifact.frontier_state_before.run_shortlist_candidate_ids)
     return len(node_shortlist_ids - run_shortlist_ids_before)
+
+
+def _unique_advance_candidate_ids(search_rounds: list[object]) -> list[str]:
+    candidate_ids = {
+        card.candidate_id
+        for round_artifact in search_rounds
+        if round_artifact.scoring_result is not None
+        for card in round_artifact.scoring_result.candidate_evidence_cards
+        if card.review_recommendation == "advance"
+    }
+    return sorted(candidate_ids)
+
+
+def _review_burden_candidate_ids(search_rounds: list[object]) -> list[str]:
+    candidate_ids = {
+        card.candidate_id
+        for round_artifact in search_rounds
+        if round_artifact.scoring_result is not None
+        for card in round_artifact.scoring_result.candidate_evidence_cards
+    }
+    return sorted(candidate_ids)
+
+
+def _time_to_first_advance_round(search_rounds: list[object]) -> int | None:
+    for round_artifact in search_rounds:
+        if round_artifact.scoring_result is None:
+            continue
+        if any(
+            card.review_recommendation == "advance"
+            for card in round_artifact.scoring_result.candidate_evidence_cards
+        ):
+            return round_artifact.runtime_round_index
+    return None
+
+
+def _query_churn_rate(search_rounds: list[object]) -> float:
+    query_sequences = [
+        round_artifact.execution_plan.query_terms
+        for round_artifact in search_rounds
+        if round_artifact.execution_plan is not None
+    ]
+    if len(query_sequences) < 2:
+        return 0.0
+    churn_values = []
+    for previous_query, current_query in zip(query_sequences, query_sequences[1:]):
+        previous_terms = set(previous_query)
+        current_terms = set(current_query)
+        churn_values.append(
+            len(previous_terms ^ current_terms) / max(1, len(previous_terms | current_terms))
+        )
+    return sum(churn_values) / len(churn_values)
 
 
 __all__ = [

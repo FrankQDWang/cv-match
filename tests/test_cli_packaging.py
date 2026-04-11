@@ -63,7 +63,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         text=True,
     )
     inspect_payload = json.loads(inspect_result.stdout)
-    assert inspect_payload["phase"] == "v0.3.2_offline_artifacts_active"
+    assert inspect_payload["phase"] == "v0.3.3_active"
 
     subprocess.run(
         [str(cli), "init"],

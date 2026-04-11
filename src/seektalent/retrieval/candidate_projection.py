@@ -124,6 +124,8 @@ def build_scoring_candidates(candidates: list[RetrievedCandidate_t]) -> list[Sco
             candidate_id=candidate.candidate_id,
             scoring_text=candidate.search_text,
             capability_signals=stable_deduplicate(candidate.project_names + candidate.work_summaries),
+            project_names=list(candidate.project_names),
+            work_summaries=list(candidate.work_summaries),
             years_of_experience=candidate.years_of_experience_raw,
             age=candidate.age,
             gender=candidate.gender,

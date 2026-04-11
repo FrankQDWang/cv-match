@@ -1,5 +1,5 @@
 {
-  "phase": "v0.3.2_offline_artifacts_active",
+  "phase": "v0.3.3_active",
   "run_id": "case-stop-exhausted-low-gain-and-finalize",
   "run_dir": "/Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-stop-exhausted-low-gain-and-finalize",
   "created_at_utc": "2026-04-09T00:00:00Z",
@@ -265,6 +265,8 @@
       "frontier_seed_specifications": [
         {
           "operator_name": "core_precision",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
           "seed_terms": [
             "python backend"
           ],
@@ -281,6 +283,8 @@
         },
         {
           "operator_name": "relaxed_floor",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
           "seed_terms": [
             "python backend"
           ],
@@ -297,6 +301,8 @@
         },
         {
           "operator_name": "pack_expansion",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
           "seed_terms": [
             "python backend"
           ],
@@ -313,6 +319,8 @@
         },
         {
           "operator_name": "must_have_alias",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
           "seed_terms": [
             "python backend"
           ],
@@ -329,6 +337,8 @@
         },
         {
           "operator_name": "generic_expansion",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
           "seed_terms": [
             "python backend"
           ],
@@ -349,6 +359,8 @@
       "frontier_nodes": {
         "seed_core_precision_e391b822": {
           "frontier_node_id": "seed_core_precision_e391b822",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision",
@@ -374,6 +386,8 @@
         },
         "seed_relaxed_floor_e391b822": {
           "frontier_node_id": "seed_relaxed_floor_e391b822",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "relaxed_floor",
@@ -399,6 +413,8 @@
         },
         "seed_pack_expansion_e391b822": {
           "frontier_node_id": "seed_pack_expansion_e391b822",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "pack_expansion",
@@ -424,6 +440,8 @@
         },
         "seed_must_have_alias_e391b822": {
           "frontier_node_id": "seed_must_have_alias_e391b822",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "must_have_alias",
@@ -449,6 +467,8 @@
         },
         "seed_generic_expansion_e391b822": {
           "frontier_node_id": "seed_generic_expansion_e391b822",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "generic_expansion",
@@ -526,6 +546,8 @@
         "frontier_nodes": {
           "seed_core_precision_e391b822": {
             "frontier_node_id": "seed_core_precision_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -551,6 +573,8 @@
           },
           "seed_relaxed_floor_e391b822": {
             "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -576,6 +600,8 @@
           },
           "seed_pack_expansion_e391b822": {
             "frontier_node_id": "seed_pack_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -601,6 +627,8 @@
           },
           "seed_must_have_alias_e391b822": {
             "frontier_node_id": "seed_must_have_alias_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -626,6 +654,8 @@
           },
           "seed_generic_expansion_e391b822": {
             "frontier_node_id": "seed_generic_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -1037,6 +1067,8 @@
         ],
         "child_frontier_node_stub": {
           "frontier_node_id": "child_seed_core_precision_e391b822_14860cb6",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
           "parent_frontier_node_id": "seed_core_precision_e391b822",
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision"
@@ -1068,6 +1100,7 @@
         "scored_candidates": [],
         "node_shortlist_candidate_ids": [],
         "explanation_candidate_ids": [],
+        "candidate_evidence_cards": [],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.0
         }
@@ -1186,6 +1219,8 @@
         "frontier_nodes": {
           "seed_core_precision_e391b822": {
             "frontier_node_id": "seed_core_precision_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1205,12 +1240,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_e391b822": {
             "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -1236,6 +1291,8 @@
           },
           "seed_pack_expansion_e391b822": {
             "frontier_node_id": "seed_pack_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -1261,6 +1318,8 @@
           },
           "seed_must_have_alias_e391b822": {
             "frontier_node_id": "seed_must_have_alias_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -1286,6 +1345,8 @@
           },
           "seed_generic_expansion_e391b822": {
             "frontier_node_id": "seed_generic_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -1311,6 +1372,8 @@
           },
           "child_seed_core_precision_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_core_precision_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": "seed_core_precision_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1354,13 +1417,13 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_e391b822",
           "seed_relaxed_floor_e391b822",
           "seed_pack_expansion_e391b822",
           "seed_must_have_alias_e391b822",
           "seed_generic_expansion_e391b822"
         ],
         "closed_frontier_node_ids": [
-          "seed_core_precision_e391b822",
           "child_seed_core_precision_e391b822_14860cb6"
         ],
         "run_term_catalog": [
@@ -1411,6 +1474,8 @@
         "frontier_nodes": {
           "seed_core_precision_e391b822": {
             "frontier_node_id": "seed_core_precision_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1430,12 +1495,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_e391b822": {
             "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -1461,6 +1546,8 @@
           },
           "seed_pack_expansion_e391b822": {
             "frontier_node_id": "seed_pack_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -1486,6 +1573,8 @@
           },
           "seed_must_have_alias_e391b822": {
             "frontier_node_id": "seed_must_have_alias_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -1511,6 +1600,8 @@
           },
           "seed_generic_expansion_e391b822": {
             "frontier_node_id": "seed_generic_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -1536,6 +1627,8 @@
           },
           "child_seed_core_precision_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_core_precision_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": "seed_core_precision_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1579,13 +1672,13 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_e391b822",
           "seed_relaxed_floor_e391b822",
           "seed_pack_expansion_e391b822",
           "seed_must_have_alias_e391b822",
           "seed_generic_expansion_e391b822"
         ],
         "closed_frontier_node_ids": [
-          "seed_core_precision_e391b822",
           "child_seed_core_precision_e391b822_14860cb6"
         ],
         "run_term_catalog": [
@@ -1640,7 +1733,7 @@
         },
         "donor_candidate_node_summaries": [],
         "frontier_head_summary": {
-          "open_node_count": 4,
+          "open_node_count": 5,
           "remaining_budget": 4,
           "highest_selection_score": 3.5716860917880178
         },
@@ -1709,6 +1802,20 @@
               "fresh_node_bonus": 1.0,
               "redundancy_penalty": 0.0,
               "final_selection_score": 3.5716860917880178
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_e391b822",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.09090909090909091,
+              "operator_exploration_bonus": 1.048147073968205,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 2.1315807728945826
             }
           }
         ],
@@ -1955,6 +2062,8 @@
         ],
         "child_frontier_node_stub": {
           "frontier_node_id": "child_seed_relaxed_floor_e391b822_14860cb6",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
           "parent_frontier_node_id": "seed_relaxed_floor_e391b822",
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision"
@@ -1986,6 +2095,7 @@
         "scored_candidates": [],
         "node_shortlist_candidate_ids": [],
         "explanation_candidate_ids": [],
+        "candidate_evidence_cards": [],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.0
         }
@@ -2104,6 +2214,8 @@
         "frontier_nodes": {
           "seed_core_precision_e391b822": {
             "frontier_node_id": "seed_core_precision_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2123,12 +2235,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_e391b822": {
             "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -2148,12 +2280,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_pack_expansion_e391b822": {
             "frontier_node_id": "seed_pack_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -2179,6 +2331,8 @@
           },
           "seed_must_have_alias_e391b822": {
             "frontier_node_id": "seed_must_have_alias_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -2204,6 +2358,8 @@
           },
           "seed_generic_expansion_e391b822": {
             "frontier_node_id": "seed_generic_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -2229,6 +2385,8 @@
           },
           "child_seed_core_precision_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_core_precision_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": "seed_core_precision_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2272,6 +2430,8 @@
           },
           "child_seed_relaxed_floor_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_relaxed_floor_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": "seed_relaxed_floor_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2315,14 +2475,14 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_e391b822",
+          "seed_relaxed_floor_e391b822",
           "seed_pack_expansion_e391b822",
           "seed_must_have_alias_e391b822",
           "seed_generic_expansion_e391b822"
         ],
         "closed_frontier_node_ids": [
-          "seed_core_precision_e391b822",
           "child_seed_core_precision_e391b822_14860cb6",
-          "seed_relaxed_floor_e391b822",
           "child_seed_relaxed_floor_e391b822_14860cb6"
         ],
         "run_term_catalog": [
@@ -2373,6 +2533,8 @@
         "frontier_nodes": {
           "seed_core_precision_e391b822": {
             "frontier_node_id": "seed_core_precision_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2392,12 +2554,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_e391b822": {
             "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -2417,12 +2599,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_pack_expansion_e391b822": {
             "frontier_node_id": "seed_pack_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -2448,6 +2650,8 @@
           },
           "seed_must_have_alias_e391b822": {
             "frontier_node_id": "seed_must_have_alias_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -2473,6 +2677,8 @@
           },
           "seed_generic_expansion_e391b822": {
             "frontier_node_id": "seed_generic_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -2498,6 +2704,8 @@
           },
           "child_seed_core_precision_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_core_precision_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": "seed_core_precision_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2541,6 +2749,8 @@
           },
           "child_seed_relaxed_floor_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_relaxed_floor_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": "seed_relaxed_floor_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2584,14 +2794,14 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_e391b822",
+          "seed_relaxed_floor_e391b822",
           "seed_pack_expansion_e391b822",
           "seed_must_have_alias_e391b822",
           "seed_generic_expansion_e391b822"
         ],
         "closed_frontier_node_ids": [
-          "seed_core_precision_e391b822",
           "child_seed_core_precision_e391b822_14860cb6",
-          "seed_relaxed_floor_e391b822",
           "child_seed_relaxed_floor_e391b822_14860cb6"
         ],
         "run_term_catalog": [
@@ -2646,7 +2856,7 @@
         },
         "donor_candidate_node_summaries": [],
         "frontier_head_summary": {
-          "open_node_count": 3,
+          "open_node_count": 5,
           "remaining_budget": 3,
           "highest_selection_score": 2.231775888982062
         },
@@ -2701,6 +2911,34 @@
               "fresh_node_bonus": 1.0,
               "redundancy_penalty": 0.0,
               "final_selection_score": 2.231775888982062
+            }
+          },
+          {
+            "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "selected_operator_name": "relaxed_floor",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.6651092223153954,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 1.931775888982062
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_e391b822",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.09090909090909091,
+              "operator_exploration_bonus": 0.9613512577339219,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 1.3189270153096795
             }
           }
         ],
@@ -2947,6 +3185,8 @@
         ],
         "child_frontier_node_stub": {
           "frontier_node_id": "child_seed_pack_expansion_e391b822_14860cb6",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
           "parent_frontier_node_id": "seed_pack_expansion_e391b822",
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision"
@@ -2978,6 +3218,7 @@
         "scored_candidates": [],
         "node_shortlist_candidate_ids": [],
         "explanation_candidate_ids": [],
+        "candidate_evidence_cards": [],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.0
         }
@@ -3096,6 +3337,8 @@
         "frontier_nodes": {
           "seed_core_precision_e391b822": {
             "frontier_node_id": "seed_core_precision_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3115,12 +3358,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_e391b822": {
             "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -3140,12 +3403,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_pack_expansion_e391b822": {
             "frontier_node_id": "seed_pack_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -3165,12 +3448,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_must_have_alias_e391b822": {
             "frontier_node_id": "seed_must_have_alias_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3196,6 +3499,8 @@
           },
           "seed_generic_expansion_e391b822": {
             "frontier_node_id": "seed_generic_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -3221,6 +3526,8 @@
           },
           "child_seed_core_precision_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_core_precision_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": "seed_core_precision_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3264,6 +3571,8 @@
           },
           "child_seed_relaxed_floor_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_relaxed_floor_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": "seed_relaxed_floor_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3307,6 +3616,8 @@
           },
           "child_seed_pack_expansion_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_pack_expansion_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": "seed_pack_expansion_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3350,15 +3661,15 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_e391b822",
+          "seed_relaxed_floor_e391b822",
+          "seed_pack_expansion_e391b822",
           "seed_must_have_alias_e391b822",
           "seed_generic_expansion_e391b822"
         ],
         "closed_frontier_node_ids": [
-          "seed_core_precision_e391b822",
           "child_seed_core_precision_e391b822_14860cb6",
-          "seed_relaxed_floor_e391b822",
           "child_seed_relaxed_floor_e391b822_14860cb6",
-          "seed_pack_expansion_e391b822",
           "child_seed_pack_expansion_e391b822_14860cb6"
         ],
         "run_term_catalog": [
@@ -3409,6 +3720,8 @@
         "frontier_nodes": {
           "seed_core_precision_e391b822": {
             "frontier_node_id": "seed_core_precision_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3428,12 +3741,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_e391b822": {
             "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -3453,12 +3786,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_pack_expansion_e391b822": {
             "frontier_node_id": "seed_pack_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -3478,12 +3831,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_must_have_alias_e391b822": {
             "frontier_node_id": "seed_must_have_alias_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3509,6 +3882,8 @@
           },
           "seed_generic_expansion_e391b822": {
             "frontier_node_id": "seed_generic_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -3534,6 +3909,8 @@
           },
           "child_seed_core_precision_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_core_precision_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": "seed_core_precision_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3577,6 +3954,8 @@
           },
           "child_seed_relaxed_floor_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_relaxed_floor_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": "seed_relaxed_floor_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3620,6 +3999,8 @@
           },
           "child_seed_pack_expansion_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_pack_expansion_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": "seed_pack_expansion_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3663,15 +4044,15 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_e391b822",
+          "seed_relaxed_floor_e391b822",
+          "seed_pack_expansion_e391b822",
           "seed_must_have_alias_e391b822",
           "seed_generic_expansion_e391b822"
         ],
         "closed_frontier_node_ids": [
-          "seed_core_precision_e391b822",
           "child_seed_core_precision_e391b822_14860cb6",
-          "seed_relaxed_floor_e391b822",
           "child_seed_relaxed_floor_e391b822_14860cb6",
-          "seed_pack_expansion_e391b822",
           "child_seed_pack_expansion_e391b822_14860cb6"
         ],
         "run_term_catalog": [
@@ -3717,8 +4098,8 @@
         "role_title": "Senior Python / LLM Engineer",
         "role_summary": "Build Python, LLM, and retrieval systems.",
         "active_frontier_node_summary": {
-          "frontier_node_id": "seed_must_have_alias_e391b822",
-          "selected_operator_name": "must_have_alias",
+          "frontier_node_id": "seed_relaxed_floor_e391b822",
+          "selected_operator_name": "relaxed_floor",
           "node_query_term_pool": [
             "python backend"
           ],
@@ -3726,7 +4107,7 @@
         },
         "donor_candidate_node_summaries": [],
         "frontier_head_summary": {
-          "open_node_count": 2,
+          "open_node_count": 5,
           "remaining_budget": 2,
           "highest_selection_score": 0.604903440064897
         },
@@ -3736,11 +4117,39 @@
           "operator_exploration_bonus": 1.7941225779941015,
           "coverage_opportunity_score": 0.3333333333333333,
           "incremental_value_score": 0.0,
-          "fresh_node_bonus": 1.0,
+          "fresh_node_bonus": 0.0,
           "redundancy_penalty": 0.0,
           "final_selection_score": 0.604903440064897
         },
         "selection_ranking": [
+          {
+            "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "selected_operator_name": "relaxed_floor",
+            "breakdown": {
+              "search_phase": "harvest",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.7941225779941015,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 0.604903440064897
+            }
+          },
+          {
+            "frontier_node_id": "seed_pack_expansion_e391b822",
+            "selected_operator_name": "pack_expansion",
+            "breakdown": {
+              "search_phase": "harvest",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.7941225779941015,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 0.604903440064897
+            }
+          },
           {
             "frontier_node_id": "seed_must_have_alias_e391b822",
             "selected_operator_name": "must_have_alias",
@@ -3767,6 +4176,20 @@
               "fresh_node_bonus": 1.0,
               "redundancy_penalty": 0.0,
               "final_selection_score": 0.604903440064897
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_e391b822",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "harvest",
+              "operator_exploitation_score": 0.09090909090909093,
+              "operator_exploration_bonus": 0.8970612889970507,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.0,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 0.0,
+              "final_selection_score": 0.4630577806385091
             }
           }
         ],
@@ -3874,9 +4297,9 @@
         "prompt_surface": {
           "surface_id": "search_controller_decision",
           "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
-          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n\n## Active Frontier Node\n- Frontier node id: seed_must_have_alias_e391b822\n- Current operator: must_have_alias\n- Query term pool: python backend\n- Current node shortlist ids: None\n\n## Donor Candidates\n- No legal donor candidates.\n\n## Allowed Operators\n- Allowed operators: core_precision, must_have_alias, generic_expansion\n- Operator surface override: harvest_unmet_must_have_repair\n- Operator surface unmet must-haves: LLM application, retrieval pipeline\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- core_precision: average_reward=0.10, times_selected=3\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 6\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- LLM application: weight=1.00\n- retrieval pipeline: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 3\n- Remaining budget: 2\n- Used ratio: 0.60\n- Remaining ratio: 0.40\n- Phase progress: 0.75\n- Search phase: harvest\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n\n## Active Frontier Node\n- Frontier node id: seed_relaxed_floor_e391b822\n- Current operator: relaxed_floor\n- Query term pool: python backend\n- Current node shortlist ids: None\n\n## Donor Candidates\n- No legal donor candidates.\n\n## Allowed Operators\n- Allowed operators: core_precision, must_have_alias, generic_expansion\n- Operator surface override: harvest_unmet_must_have_repair\n- Operator surface unmet must-haves: LLM application, retrieval pipeline\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- core_precision: average_reward=0.10, times_selected=3\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 6\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- LLM application: weight=1.00\n- retrieval pipeline: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 3\n- Remaining budget: 2\n- Used ratio: 0.60\n- Remaining ratio: 0.40\n- Phase progress: 0.75\n- Search phase: harvest\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
           "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
-          "input_sha1": "857114b41696b9ddecbe5aae9a4e0f8453deec3d",
+          "input_sha1": "e1ae7f94d4588bb518992a48a8e5faf33fc2de5f",
           "sections": [
             {
               "title": "Task Contract",
@@ -3895,7 +4318,7 @@
             },
             {
               "title": "Active Frontier Node",
-              "body_text": "- Frontier node id: seed_must_have_alias_e391b822\n- Current operator: must_have_alias\n- Query term pool: python backend\n- Current node shortlist ids: None",
+              "body_text": "- Frontier node id: seed_relaxed_floor_e391b822\n- Current operator: relaxed_floor\n- Query term pool: python backend\n- Current node shortlist ids: None",
               "source_paths": [
                 "SearchControllerContext_t.active_frontier_node_summary"
               ],
@@ -3964,7 +4387,7 @@
       },
       "controller_decision": {
         "action": "search_cts",
-        "target_frontier_node_id": "seed_must_have_alias_e391b822",
+        "target_frontier_node_id": "seed_relaxed_floor_e391b822",
         "selected_operator_name": "core_precision",
         "operator_args": {
           "query_terms": [
@@ -4009,8 +4432,10 @@
           "llm_agent_rag_engineering"
         ],
         "child_frontier_node_stub": {
-          "frontier_node_id": "child_seed_must_have_alias_e391b822_14860cb6",
-          "parent_frontier_node_id": "seed_must_have_alias_e391b822",
+          "frontier_node_id": "child_seed_relaxed_floor_e391b822_14860cb6",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
+          "parent_frontier_node_id": "seed_relaxed_floor_e391b822",
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision"
         },
@@ -4041,6 +4466,7 @@
         "scored_candidates": [],
         "node_shortlist_candidate_ids": [],
         "explanation_candidate_ids": [],
+        "candidate_evidence_cards": [],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.0
         }
@@ -4066,9 +4492,9 @@
         "prompt_surface": {
           "surface_id": "branch_outcome_evaluation",
           "instructions_text": "Generate a strict structured branch evaluation draft for the current search expansion.\n\nUse only the provided branch evaluation packet.\nDo not rewrite runtime facts outside the draft fields.",
-          "input_text": "## Evaluation Contract\n- Use only the provided branch evaluation packet.\n- Do not rewrite runtime facts outside the draft fields.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Preferred capabilities: workflow orchestration, tool calling\n\n## Branch Facts\n- Parent frontier node id: seed_must_have_alias_e391b822\n- Previous node shortlist ids: None\n- Donor frontier node id: None\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: python backend\n- Semantic hash: 14860cb6b90ef10a98968d11999d1c14c90c7b14\n\n## Search And Scoring Summary\n- Pages fetched: 0\n- Duplicate rate: 0.00\n- Latency ms: 5\n- Node shortlist ids: None\n- Average fusion score top three: 0.00\n\n## Runtime Budget State\n- Runtime round index: 3\n- Remaining budget: 2\n- Remaining ratio: 0.40\n- Phase progress: 0.75\n- Search phase: harvest\n- Near budget end: no\n\n## Return Fields\n- Return novelty_score, usefulness_score, branch_exhausted, repair_operator_hint, and evaluation_notes.",
+          "input_text": "## Evaluation Contract\n- Use only the provided branch evaluation packet.\n- Do not rewrite runtime facts outside the draft fields.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Preferred capabilities: workflow orchestration, tool calling\n\n## Branch Facts\n- Parent frontier node id: seed_relaxed_floor_e391b822\n- Previous node shortlist ids: None\n- Donor frontier node id: None\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: python backend\n- Semantic hash: 14860cb6b90ef10a98968d11999d1c14c90c7b14\n\n## Search And Scoring Summary\n- Pages fetched: 0\n- Duplicate rate: 0.00\n- Latency ms: 5\n- Node shortlist ids: None\n- Average fusion score top three: 0.00\n\n## Runtime Budget State\n- Runtime round index: 3\n- Remaining budget: 2\n- Remaining ratio: 0.40\n- Phase progress: 0.75\n- Search phase: harvest\n- Near budget end: no\n\n## Return Fields\n- Return novelty_score, usefulness_score, branch_exhausted, repair_operator_hint, and evaluation_notes.",
           "instructions_sha1": "c642ef71b75c5f757b150a200ce01ede319d049a",
-          "input_sha1": "73d029c31c6d3ab04c6bb1a1fb386c3272767238",
+          "input_sha1": "0af1a75f11c111f24943e6c94924d363ab1bab87",
           "sections": [
             {
               "title": "Evaluation Contract",
@@ -4089,7 +4515,7 @@
             },
             {
               "title": "Branch Facts",
-              "body_text": "- Parent frontier node id: seed_must_have_alias_e391b822\n- Previous node shortlist ids: None\n- Donor frontier node id: None\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: python backend\n- Semantic hash: 14860cb6b90ef10a98968d11999d1c14c90c7b14",
+              "body_text": "- Parent frontier node id: seed_relaxed_floor_e391b822\n- Previous node shortlist ids: None\n- Donor frontier node id: None\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: python backend\n- Semantic hash: 14860cb6b90ef10a98968d11999d1c14c90c7b14",
               "source_paths": [
                 "FrontierNode_t.frontier_node_id",
                 "FrontierNode_t.node_shortlist_candidate_ids",
@@ -4159,6 +4585,8 @@
         "frontier_nodes": {
           "seed_core_precision_e391b822": {
             "frontier_node_id": "seed_core_precision_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -4178,12 +4606,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_e391b822": {
             "frontier_node_id": "seed_relaxed_floor_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -4203,12 +4651,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_pack_expansion_e391b822": {
             "frontier_node_id": "seed_pack_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -4228,12 +4696,32 @@
             "node_shortlist_candidate_ids": [],
             "node_shortlist_score_snapshot": {},
             "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "previous_branch_evaluation": {
+              "novelty_score": 0.1,
+              "usefulness_score": 0.1,
+              "branch_exhausted": true,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.0,
+              "must_have_gain": 0.0,
+              "new_fit_yield": 0.0,
+              "novelty": 0.1,
+              "usefulness": 0.1,
+              "diversity": 0.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.0,
+              "reward_score": 0.1
+            },
+            "status": "open"
           },
           "seed_must_have_alias_e391b822": {
             "frontier_node_id": "seed_must_have_alias_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -4255,10 +4743,12 @@
             "rewrite_term_candidates": [],
             "previous_branch_evaluation": null,
             "reward_breakdown": null,
-            "status": "closed"
+            "status": "open"
           },
           "seed_generic_expansion_e391b822": {
             "frontier_node_id": "seed_generic_expansion_e391b822",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_e391b822",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -4284,6 +4774,8 @@
           },
           "child_seed_core_precision_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_core_precision_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_e391b822",
             "parent_frontier_node_id": "seed_core_precision_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -4327,6 +4819,8 @@
           },
           "child_seed_relaxed_floor_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_relaxed_floor_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_e391b822",
             "parent_frontier_node_id": "seed_relaxed_floor_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -4370,50 +4864,9 @@
           },
           "child_seed_pack_expansion_e391b822_14860cb6": {
             "frontier_node_id": "child_seed_pack_expansion_e391b822_14860cb6",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_e391b822",
             "parent_frontier_node_id": "seed_pack_expansion_e391b822",
-            "donor_frontier_node_id": null,
-            "selected_operator_name": "core_precision",
-            "node_query_term_pool": [
-              "python backend"
-            ],
-            "knowledge_pack_ids": [
-              "llm_agent_rag_engineering"
-            ],
-            "seed_rationale": null,
-            "negative_terms": [
-              "frontend",
-              "prompt operation",
-              "pure algorithm research"
-            ],
-            "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": {
-              "novelty_score": 0.1,
-              "usefulness_score": 0.1,
-              "branch_exhausted": true,
-              "repair_operator_hint": "core_precision",
-              "evaluation_notes": "Canonical branch evaluation."
-            },
-            "reward_breakdown": {
-              "delta_top_three": 0.0,
-              "must_have_gain": 0.0,
-              "new_fit_yield": 0.0,
-              "novelty": 0.1,
-              "usefulness": 0.1,
-              "diversity": 0.0,
-              "stability_risk_penalty": 0.0,
-              "hard_constraint_violation": 0.0,
-              "duplicate_penalty": 0.0,
-              "cost_penalty": 0.0,
-              "reward_score": 0.1
-            },
-            "status": "closed"
-          },
-          "child_seed_must_have_alias_e391b822_14860cb6": {
-            "frontier_node_id": "child_seed_must_have_alias_e391b822_14860cb6",
-            "parent_frontier_node_id": "seed_must_have_alias_e391b822",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
             "node_query_term_pool": [
@@ -4456,17 +4909,16 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_e391b822",
+          "seed_relaxed_floor_e391b822",
+          "seed_pack_expansion_e391b822",
+          "seed_must_have_alias_e391b822",
           "seed_generic_expansion_e391b822"
         ],
         "closed_frontier_node_ids": [
-          "seed_core_precision_e391b822",
           "child_seed_core_precision_e391b822_14860cb6",
-          "seed_relaxed_floor_e391b822",
           "child_seed_relaxed_floor_e391b822_14860cb6",
-          "seed_pack_expansion_e391b822",
-          "child_seed_pack_expansion_e391b822_14860cb6",
-          "seed_must_have_alias_e391b822",
-          "child_seed_must_have_alias_e391b822_14860cb6"
+          "child_seed_pack_expansion_e391b822_14860cb6"
         ],
         "run_term_catalog": [
           "python backend"
@@ -4525,9 +4977,9 @@
     "prompt_surface": {
       "surface_id": "search_run_finalization",
       "instructions_text": "Generate a strict structured final run summary draft.\n\nUse only the provided finalization context.\nDo not rewrite shortlist ordering or stop facts.",
-      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 4\n- Final shortlist count: 0\n- Final must-have query coverage: 0.33\n- Operators used: core_precision\n\n## Final Shortlist State\n- Final shortlist candidate ids: None\n- Remaining budget: 1\n- Open frontier node ids: seed_generic_expansion_e391b822\n- Closed frontier node ids: seed_core_precision_e391b822, child_seed_core_precision_e391b822_14860cb6, seed_relaxed_floor_e391b822, child_seed_relaxed_floor_e391b822_14860cb6, seed_pack_expansion_e391b822, child_seed_pack_expansion_e391b822_14860cb6, seed_must_have_alias_e391b822, child_seed_must_have_alias_e391b822_14860cb6\n\n## Stop Reason\n- exhausted_low_gain\n\n## Return Fields\n- Return run_summary.",
+      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 4\n- Final shortlist count: 0\n- Final must-have query coverage: 0.33\n- Operators used: core_precision\n\n## Final Shortlist State\n- Final shortlist candidate ids: None\n- Remaining budget: 1\n- Open frontier node ids: seed_core_precision_e391b822, seed_relaxed_floor_e391b822, seed_pack_expansion_e391b822, seed_must_have_alias_e391b822, seed_generic_expansion_e391b822\n- Closed frontier node ids: child_seed_core_precision_e391b822_14860cb6, child_seed_relaxed_floor_e391b822_14860cb6, child_seed_pack_expansion_e391b822_14860cb6\n\n## Stop Reason\n- exhausted_low_gain\n\n## Return Fields\n- Return run_summary.",
       "instructions_sha1": "8e78c48e227a8a26cadc04d211f4bc7c5b210c19",
-      "input_sha1": "b51fbd3223b37f76a40ea1e568e9b7fc4e2a20f5",
+      "input_sha1": "7e12d178549d63a3d7f6f13ef3d24d5acd2ac69c",
       "sections": [
         {
           "title": "Task Contract",
@@ -4558,7 +5010,7 @@
         },
         {
           "title": "Final Shortlist State",
-          "body_text": "- Final shortlist candidate ids: None\n- Remaining budget: 1\n- Open frontier node ids: seed_generic_expansion_e391b822\n- Closed frontier node ids: seed_core_precision_e391b822, child_seed_core_precision_e391b822_14860cb6, seed_relaxed_floor_e391b822, child_seed_relaxed_floor_e391b822_14860cb6, seed_pack_expansion_e391b822, child_seed_pack_expansion_e391b822_14860cb6, seed_must_have_alias_e391b822, child_seed_must_have_alias_e391b822_14860cb6",
+          "body_text": "- Final shortlist candidate ids: None\n- Remaining budget: 1\n- Open frontier node ids: seed_core_precision_e391b822, seed_relaxed_floor_e391b822, seed_pack_expansion_e391b822, seed_must_have_alias_e391b822, seed_generic_expansion_e391b822\n- Closed frontier node ids: child_seed_core_precision_e391b822_14860cb6, child_seed_relaxed_floor_e391b822_14860cb6, child_seed_pack_expansion_e391b822_14860cb6",
           "source_paths": [
             "FrontierState_t1.run_shortlist_candidate_ids",
             "FrontierState_t1.remaining_budget",
@@ -4586,6 +5038,8 @@
   },
   "final_result": {
     "final_shortlist_candidate_ids": [],
+    "final_candidate_cards": [],
+    "reviewer_summary": "No final shortlist candidate cards.",
     "run_summary": "Low-gain branch was exhausted and finalized.",
     "stop_reason": "exhausted_low_gain"
   },
@@ -4646,9 +5100,9 @@
         "name": "eligible_open_node_count_by_search_round",
         "value": [
           5,
-          4,
-          3,
-          2
+          5,
+          5,
+          5
         ]
       },
       {
@@ -4752,6 +5206,30 @@
       {
         "name": "llm_validator_retry_count",
         "value": 0
+      },
+      {
+        "name": "time_to_first_advance_round",
+        "value": null
+      },
+      {
+        "name": "pages_per_advance_candidate",
+        "value": 0.0
+      },
+      {
+        "name": "advance_candidates_per_query",
+        "value": 0.0
+      },
+      {
+        "name": "query_churn_rate",
+        "value": 0.0
+      },
+      {
+        "name": "review_burden_candidate_count",
+        "value": 0
+      },
+      {
+        "name": "review_burden_per_advance",
+        "value": 0.0
       }
     ]
   }

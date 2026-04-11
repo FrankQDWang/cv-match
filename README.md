@@ -7,14 +7,14 @@
 
 ## English
 
-`SeekTalent` is currently on the `v0.3.2 offline artifacts` baseline. `docs/v-0.3.2/` describes the active `HEAD` runtime. `docs/v-0.3.3/` captures the next target-state model for planned code convergence. `HEAD` ships deterministic requirement normalization, the bootstrap core, execution/ranking, frontier control, a live CLI/API runtime surface, and checked-in offline artifacts.
+`SeekTalent` is currently on the `v0.3.3 active` runtime. `docs/v-0.3.3/` describes the active `HEAD` runtime and trace surfaces. `docs/v-0.3.2/` is kept as the frozen pre-cutover baseline for comparison. `HEAD` ships deterministic requirement normalization, the bootstrap core, persistent-anchor frontier control, reviewer-ready output, and checked-in offline artifacts.
 
 What exists today:
 
-- `docs/v-0.3.2/SYSTEM_MODEL.md` is the active canonical spec for `HEAD`
-- `docs/v-0.3.2/IMPLEMENTATION_OWNERS.md` is the active implementation anchor for `HEAD`
-- `docs/v-0.3.3/SYSTEM_MODEL.md` is the target-state spec for the next model revision
-- `docs/v-0.3.3/IMPLEMENTATION_OWNERS.md` maps current owners and traces onto that target
+- `docs/v-0.3.3/SYSTEM_MODEL.md` is the active canonical spec for `HEAD`
+- `docs/v-0.3.3/IMPLEMENTATION_OWNERS.md` is the active implementation anchor for `HEAD`
+- `docs/v-0.3.3/RUNTIME_SEQUENCE.md` is the active timing view of the runtime
+- `docs/v-0.3.2/` remains frozen as the pre-cutover baseline
 - `src/seektalent/models.py` holds the stable runtime contracts
 - `src/seektalent/requirements/normalization.py` builds `SearchInputTruth` and normalized `RequirementSheet`
 - `src/seektalent/bootstrap.py` runs the internal round-0 bootstrap flow
@@ -79,7 +79,7 @@ Run a case:
 seektalent run --jd-file ./jd.md
 ```
 
-Default stdout is four lines: `run_dir`, `stop_reason`, comma-joined shortlist ids, and `run_summary`.
+Default stdout is five lines: `run_dir`, `stop_reason`, comma-joined shortlist ids, `reviewer_summary`, and `run_summary`.
 
 ## Python API
 
@@ -109,10 +109,11 @@ print(result.run_dir)
 
 ## Docs
 
-- [docs/v-0.3.2/SYSTEM_MODEL.md](docs/v-0.3.2/SYSTEM_MODEL.md)
-- [docs/v-0.3.2/IMPLEMENTATION_OWNERS.md](docs/v-0.3.2/IMPLEMENTATION_OWNERS.md)
 - [docs/v-0.3.3/SYSTEM_MODEL.md](docs/v-0.3.3/SYSTEM_MODEL.md)
 - [docs/v-0.3.3/IMPLEMENTATION_OWNERS.md](docs/v-0.3.3/IMPLEMENTATION_OWNERS.md)
+- [docs/v-0.3.3/RUNTIME_SEQUENCE.md](docs/v-0.3.3/RUNTIME_SEQUENCE.md)
+- [docs/v-0.3.2/SYSTEM_MODEL.md](docs/v-0.3.2/SYSTEM_MODEL.md)
+- [docs/v-0.3.2/IMPLEMENTATION_OWNERS.md](docs/v-0.3.2/IMPLEMENTATION_OWNERS.md)
 - [docs/architecture.md](docs/architecture.md)
 - [docs/configuration.md](docs/configuration.md)
 - [docs/cli.md](docs/cli.md)

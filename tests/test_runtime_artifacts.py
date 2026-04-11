@@ -73,8 +73,8 @@ def test_runtime_artifact_builder_is_stable() -> None:
     tracked_paths = [
         repo_root / "artifacts" / "runtime" / "cases",
         repo_root / "artifacts" / "runtime" / "evals",
-        repo_root / "docs" / "v-0.3.2" / "traces",
-        repo_root / "docs" / "v-0.3.2" / "trace-index.md",
+        repo_root / "docs" / "v-0.3.3" / "traces",
+        repo_root / "docs" / "v-0.3.3" / "trace-index.md",
     ]
     before = _snapshot_files(tracked_paths)
     subprocess.run(
@@ -123,7 +123,7 @@ def test_agent_trace_marks_phase_gate_rejected_stop_rounds() -> None:
     trace_text = (
         repo_root
         / "docs"
-        / "v-0.3.2"
+        / "v-0.3.3"
         / "traces"
         / "agent"
         / "trace-agent-case-stop-controller-direct-rejected.md"
@@ -142,7 +142,7 @@ def test_business_trace_separates_observed_facts_from_case_expectations() -> Non
     trace_text = (
         repo_root
         / "docs"
-        / "v-0.3.2"
+        / "v-0.3.3"
         / "traces"
         / "business"
         / "trace-business-case-stop-controller-direct-accepted.md"
@@ -158,7 +158,7 @@ def test_business_trace_separates_observed_facts_from_case_expectations() -> Non
 def test_trace_index_describes_trace_sources_precisely() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     trace_index = (
-        repo_root / "docs" / "v-0.3.2" / "trace-index.md"
+        repo_root / "docs" / "v-0.3.3" / "trace-index.md"
     ).read_text(encoding="utf-8")
 
     assert "Agent Trace 由 canonical bundle 渲染" in trace_index
@@ -186,7 +186,7 @@ def test_generated_trace_round_rows_match_sample_case_bundles() -> None:
         trace_text = (
             repo_root
             / "docs"
-            / "v-0.3.2"
+            / "v-0.3.3"
             / "traces"
             / "agent"
             / f"trace-agent-{case_id}.md"

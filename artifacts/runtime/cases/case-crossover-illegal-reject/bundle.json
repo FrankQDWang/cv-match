@@ -1,5 +1,5 @@
 {
-  "phase": "v0.3.2_offline_artifacts_active",
+  "phase": "v0.3.3_active",
   "run_id": "case-crossover-illegal-reject",
   "run_dir": "/Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-crossover-illegal-reject",
   "created_at_utc": "2026-04-09T00:00:00Z",
@@ -265,6 +265,8 @@
       "frontier_seed_specifications": [
         {
           "operator_name": "core_precision",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
           "seed_terms": [
             "Python backend",
             "LLM",
@@ -283,6 +285,8 @@
         },
         {
           "operator_name": "relaxed_floor",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "seed_terms": [
             "Python backend",
             "workflow"
@@ -300,6 +304,8 @@
         },
         {
           "operator_name": "pack_expansion",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
           "seed_terms": [
             "agent",
             "ranking"
@@ -317,6 +323,8 @@
         },
         {
           "operator_name": "generic_expansion",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
           "seed_terms": [
             "retrieval engineer",
             "workflow systems"
@@ -334,6 +342,8 @@
         },
         {
           "operator_name": "must_have_alias",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
           "seed_terms": [
             "workflow",
             "ranking"
@@ -355,6 +365,8 @@
       "frontier_nodes": {
         "seed_core_precision_7b085415": {
           "frontier_node_id": "seed_core_precision_7b085415",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision",
@@ -382,6 +394,8 @@
         },
         "seed_relaxed_floor_a7280d07": {
           "frontier_node_id": "seed_relaxed_floor_a7280d07",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "relaxed_floor",
@@ -408,6 +422,8 @@
         },
         "seed_pack_expansion_901291cb": {
           "frontier_node_id": "seed_pack_expansion_901291cb",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "pack_expansion",
@@ -434,6 +450,8 @@
         },
         "seed_generic_expansion_b92f6cb7": {
           "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "generic_expansion",
@@ -460,6 +478,8 @@
         },
         "seed_must_have_alias_ff46b687": {
           "frontier_node_id": "seed_must_have_alias_ff46b687",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "must_have_alias",
@@ -545,6 +565,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -572,6 +594,8 @@
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -598,6 +622,8 @@
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -624,6 +650,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -650,6 +678,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -1090,6 +1120,8 @@
         ],
         "child_frontier_node_stub": {
           "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
           "parent_frontier_node_id": "seed_core_precision_7b085415",
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision"
@@ -1160,6 +1192,13 @@
             "scoring_text": "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
             "capability_signals": [
               "retrieval platform",
+              "python",
+              "ranking"
+            ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
               "python",
               "ranking"
             ],
@@ -1544,6 +1583,7 @@
           {
             "candidate_id": "candidate-illegal-1",
             "fit": 1,
+            "fit_gate_failures": [],
             "rerank_raw": 2.0,
             "rerank_normalized": 0.6970592839654074,
             "must_have_match_score_raw": 50,
@@ -1561,6 +1601,86 @@
         ],
         "explanation_candidate_ids": [
           "candidate-illegal-1"
+        ],
+        "candidate_evidence_cards": [
+          {
+            "candidate_id": "candidate-illegal-1",
+            "review_recommendation": "hold",
+            "must_have_matrix": [
+              {
+                "capability": "Python backend",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                ],
+                "source_fields": [
+                  "scoring_text"
+                ]
+              },
+              {
+                "capability": "LLM",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "capability": "retrieval",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "workflow",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "capability": "ranking",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "agent",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "preferred_evidence": [],
+            "gap_signals": [
+              {
+                "signal": "LLM",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "signal": "workflow",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "signal": "agent",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "risk_signals": [],
+            "card_summary": "hold: explicit must-have coverage 3/6; gaps LLM, workflow"
+          }
         ],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.5083826061809741
@@ -1680,6 +1800,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1698,15 +1820,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-illegal-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-illegal-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -1733,6 +1922,8 @@
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -1759,6 +1950,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -1785,6 +1978,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -1811,6 +2006,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1902,15 +2099,14 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
           "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -1968,6 +2164,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1986,15 +2184,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-illegal-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-illegal-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -2021,6 +2286,8 @@
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -2047,6 +2314,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -2073,6 +2342,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -2099,6 +2370,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2190,15 +2463,14 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
           "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -2261,6 +2533,17 @@
         },
         "donor_candidate_node_summaries": [
           {
+            "frontier_node_id": "seed_core_precision_7b085415",
+            "shared_anchor_terms": [
+              "Python backend"
+            ],
+            "expected_incremental_coverage": [
+              "LLM",
+              "retrieval"
+            ],
+            "reward_score": 3.456765212361948
+          },
+          {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
             "shared_anchor_terms": [
               "Python backend"
@@ -2272,7 +2555,7 @@
           }
         ],
         "frontier_head_summary": {
-          "open_node_count": 5,
+          "open_node_count": 6,
           "remaining_budget": 4,
           "highest_selection_score": 3.5716860917880178
         },
@@ -2341,6 +2624,20 @@
               "fresh_node_bonus": 1.0,
               "redundancy_penalty": 0.0,
               "final_selection_score": 3.5716860917880178
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_7b085415",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.775622014544035,
+              "operator_exploration_bonus": 1.048147073968205,
+              "coverage_opportunity_score": 0.5,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 2.472408527075549
             }
           },
           {
@@ -2480,9 +2777,9 @@
         "prompt_surface": {
           "surface_id": "search_controller_decision",
           "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
-          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: seed_relaxed_floor_a7280d07\n- Current operator: relaxed_floor\n- Query term pool: Python backend, workflow\n- Current node shortlist ids: None\n\n## Donor Candidates\n- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=Python backend; expected_incremental_coverage=retrieval; reward_score=3.46\n\n## Allowed Operators\n- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: LLM, retrieval, ranking, agent\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- core_precision: average_reward=3.46, times_selected=1\n- relaxed_floor: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 3\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=1.00\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 1\n- Remaining budget: 4\n- Used ratio: 0.20\n- Remaining ratio: 0.80\n- Phase progress: 0.25\n- Search phase: explore\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: seed_relaxed_floor_a7280d07\n- Current operator: relaxed_floor\n- Query term pool: Python backend, workflow\n- Current node shortlist ids: None\n\n## Donor Candidates\n- seed_core_precision_7b085415: shared_anchor_terms=Python backend; expected_incremental_coverage=LLM, retrieval; reward_score=3.46\n- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=Python backend; expected_incremental_coverage=retrieval; reward_score=3.46\n\n## Allowed Operators\n- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: LLM, retrieval, ranking, agent\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- core_precision: average_reward=3.46, times_selected=1\n- relaxed_floor: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 3\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=1.00\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 1\n- Remaining budget: 4\n- Used ratio: 0.20\n- Remaining ratio: 0.80\n- Phase progress: 0.25\n- Search phase: explore\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
           "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
-          "input_sha1": "7b8bcb03063224dd6444a3fcb7ffa4e2c9a823e7",
+          "input_sha1": "d1ba5955bf0d7bcbae814dd451567d51ecc93d2e",
           "sections": [
             {
               "title": "Task Contract",
@@ -2509,7 +2806,7 @@
             },
             {
               "title": "Donor Candidates",
-              "body_text": "- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=Python backend; expected_incremental_coverage=retrieval; reward_score=3.46",
+              "body_text": "- seed_core_precision_7b085415: shared_anchor_terms=Python backend; expected_incremental_coverage=LLM, retrieval; reward_score=3.46\n- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=Python backend; expected_incremental_coverage=retrieval; reward_score=3.46",
               "source_paths": [
                 "SearchControllerContext_t.donor_candidate_node_summaries"
               ],
@@ -2621,6 +2918,8 @@
         ],
         "child_frontier_node_stub": {
           "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "donor_frontier_node_id": null,
           "selected_operator_name": "must_have_alias"
@@ -2691,6 +2990,13 @@
             "scoring_text": "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
             "capability_signals": [
               "retrieval platform",
+              "python",
+              "ranking"
+            ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
               "python",
               "ranking"
             ],
@@ -3059,6 +3365,7 @@
           {
             "candidate_id": "candidate-illegal-2",
             "fit": 1,
+            "fit_gate_failures": [],
             "rerank_raw": 1.8,
             "rerank_normalized": 0.679178699175393,
             "must_have_match_score_raw": 67,
@@ -3076,6 +3383,85 @@
         ],
         "explanation_candidate_ids": [
           "candidate-illegal-2"
+        ],
+        "candidate_evidence_cards": [
+          {
+            "candidate_id": "candidate-illegal-2",
+            "review_recommendation": "hold",
+            "must_have_matrix": [
+              {
+                "capability": "Python backend",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                ],
+                "source_fields": [
+                  "scoring_text"
+                ]
+              },
+              {
+                "capability": "LLM",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "capability": "retrieval",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "workflow",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                ],
+                "source_fields": [
+                  "scoring_text"
+                ]
+              },
+              {
+                "capability": "ranking",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "agent",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "preferred_evidence": [],
+            "gap_signals": [
+              {
+                "signal": "LLM",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "signal": "agent",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "risk_signals": [],
+            "card_summary": "hold: explicit must-have coverage 4/6; gaps LLM, agent"
+          }
         ],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.5410482845464661
@@ -3195,6 +3581,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3213,15 +3601,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-illegal-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-illegal-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -3239,15 +3694,105 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-illegal-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-illegal-2": 0.5410482845464661
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "Python",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "title",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 4.041048284546466,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 1.0,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.841048284546466,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "backend",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.4410482845464663,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5410482845464661,
+              "must_have_gain": 0.67,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.6770965690929325
+            },
+            "status": "open"
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -3274,6 +3819,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -3300,6 +3847,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3326,6 +3875,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3417,6 +3968,8 @@
           },
           "child_seed_relaxed_floor_a7280d07_ed18184f": {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3531,16 +4084,15 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
+          "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d",
           "child_seed_relaxed_floor_a7280d07_ed18184f"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415",
-          "seed_relaxed_floor_a7280d07"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -3600,6 +4152,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3618,15 +4172,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-illegal-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-illegal-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -3644,15 +4265,105 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-illegal-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-illegal-2": 0.5410482845464661
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "Python",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "title",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 4.041048284546466,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 1.0,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.841048284546466,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "backend",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.4410482845464663,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5410482845464661,
+              "must_have_gain": 0.67,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.6770965690929325
+            },
+            "status": "open"
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -3679,6 +4390,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -3705,6 +4418,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3731,6 +4446,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3822,6 +4539,8 @@
           },
           "child_seed_relaxed_floor_a7280d07_ed18184f": {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3936,16 +4655,15 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
+          "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d",
           "child_seed_relaxed_floor_a7280d07_ed18184f"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415",
-          "seed_relaxed_floor_a7280d07"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -4010,6 +4728,16 @@
         },
         "donor_candidate_node_summaries": [
           {
+            "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "shared_anchor_terms": [
+              "workflow"
+            ],
+            "expected_incremental_coverage": [
+              "Python backend"
+            ],
+            "reward_score": 3.6770965690929325
+          },
+          {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
             "shared_anchor_terms": [
               "workflow"
@@ -4021,7 +4749,7 @@
           }
         ],
         "frontier_head_summary": {
-          "open_node_count": 5,
+          "open_node_count": 7,
           "remaining_budget": 3,
           "highest_selection_score": 2.530268830989053
         },
@@ -4079,6 +4807,20 @@
             }
           },
           {
+            "frontier_node_id": "seed_core_precision_7b085415",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.775622014544035,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.5,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 2.0730320370595097
+            }
+          },
+          {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
             "selected_operator_name": "must_have_alias",
             "breakdown": {
@@ -4104,6 +4846,20 @@
               "fresh_node_bonus": 0.0,
               "redundancy_penalty": 1.0,
               "final_selection_score": 1.9396987037261761
+            }
+          },
+          {
+            "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "selected_operator_name": "relaxed_floor",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.6651092223153954,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 1.6517758889820617
             }
           }
         ],
@@ -4225,9 +4981,9 @@
         "prompt_surface": {
           "surface_id": "search_controller_decision",
           "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
-          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: seed_must_have_alias_ff46b687\n- Current operator: must_have_alias\n- Query term pool: workflow, ranking\n- Current node shortlist ids: None\n\n## Donor Candidates\n- child_seed_relaxed_floor_a7280d07_ed18184f: shared_anchor_terms=workflow; expected_incremental_coverage=retrieval; reward_score=3.68\n\n## Allowed Operators\n- Allowed operators: core_precision, must_have_alias, relaxed_floor, generic_expansion, pack_expansion, cross_pack_bridge, crossover_compose\n- Operator surface override: none\n- Operator surface unmet must-haves: Python backend, LLM, retrieval, agent\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- core_precision: average_reward=3.46, times_selected=1\n- must_have_alias: average_reward=3.68, times_selected=1\n- relaxed_floor: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 4\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=0.30\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 2\n- Remaining budget: 3\n- Used ratio: 0.40\n- Remaining ratio: 0.60\n- Phase progress: 0.50\n- Search phase: balance\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: seed_must_have_alias_ff46b687\n- Current operator: must_have_alias\n- Query term pool: workflow, ranking\n- Current node shortlist ids: None\n\n## Donor Candidates\n- seed_relaxed_floor_a7280d07: shared_anchor_terms=workflow; expected_incremental_coverage=Python backend; reward_score=3.68\n- child_seed_relaxed_floor_a7280d07_ed18184f: shared_anchor_terms=workflow; expected_incremental_coverage=retrieval; reward_score=3.68\n\n## Allowed Operators\n- Allowed operators: core_precision, must_have_alias, relaxed_floor, generic_expansion, pack_expansion, cross_pack_bridge, crossover_compose\n- Operator surface override: none\n- Operator surface unmet must-haves: Python backend, LLM, retrieval, agent\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- core_precision: average_reward=3.46, times_selected=1\n- must_have_alias: average_reward=3.68, times_selected=1\n- relaxed_floor: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 4\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=0.30\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 2\n- Remaining budget: 3\n- Used ratio: 0.40\n- Remaining ratio: 0.60\n- Phase progress: 0.50\n- Search phase: balance\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
           "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
-          "input_sha1": "f32eb2ea56c28f6223a58be826fff75ba1ecf636",
+          "input_sha1": "f3a5e9090397a747b605c036c7acaa12b724fca0",
           "sections": [
             {
               "title": "Task Contract",
@@ -4254,7 +5010,7 @@
             },
             {
               "title": "Donor Candidates",
-              "body_text": "- child_seed_relaxed_floor_a7280d07_ed18184f: shared_anchor_terms=workflow; expected_incremental_coverage=retrieval; reward_score=3.68",
+              "body_text": "- seed_relaxed_floor_a7280d07: shared_anchor_terms=workflow; expected_incremental_coverage=Python backend; reward_score=3.68\n- child_seed_relaxed_floor_a7280d07_ed18184f: shared_anchor_terms=workflow; expected_incremental_coverage=retrieval; reward_score=3.68",
               "source_paths": [
                 "SearchControllerContext_t.donor_candidate_node_summaries"
               ],
@@ -4342,6 +5098,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -4360,15 +5118,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-illegal-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-illegal-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-illegal-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -4386,15 +5211,105 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-illegal-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-illegal-2": 0.5410482845464661
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "Python",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "title",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 4.041048284546466,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 1.0,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.841048284546466,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "backend",
+                "source_candidate_ids": [
+                  "candidate-illegal-2"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.4410482845464663,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5410482845464661,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5410482845464661,
+              "must_have_gain": 0.67,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.6770965690929325
+            },
+            "status": "open"
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -4421,6 +5336,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -4447,6 +5364,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -4473,6 +5392,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -4564,6 +5485,8 @@
           },
           "child_seed_relaxed_floor_a7280d07_ed18184f": {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -4678,16 +5601,15 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
+          "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d",
           "child_seed_relaxed_floor_a7280d07_ed18184f"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415",
-          "seed_relaxed_floor_a7280d07"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -4756,9 +5678,9 @@
     "prompt_surface": {
       "surface_id": "search_run_finalization",
       "instructions_text": "Generate a strict structured final run summary draft.\n\nUse only the provided finalization context.\nDo not rewrite shortlist ordering or stop facts.",
-      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n- Must-have capabilities: Python backend, LLM, retrieval, workflow, ranking, agent\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 2\n- Final shortlist count: 2\n- Final must-have query coverage: 0.33\n- Operators used: core_precision, must_have_alias\n\n## Final Shortlist State\n- Final shortlist candidate ids: candidate-illegal-2, candidate-illegal-1\n- Remaining budget: 3\n- Open frontier node ids: seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, seed_must_have_alias_ff46b687, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f\n- Closed frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07\n\n## Stop Reason\n- controller_stop\n\n## Return Fields\n- Return run_summary.",
+      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n- Must-have capabilities: Python backend, LLM, retrieval, workflow, ranking, agent\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 2\n- Final shortlist count: 2\n- Final must-have query coverage: 0.33\n- Operators used: core_precision, must_have_alias\n\n## Final Shortlist State\n- Final shortlist candidate ids: candidate-illegal-2, candidate-illegal-1\n- Remaining budget: 3\n- Open frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07, seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, seed_must_have_alias_ff46b687, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f\n- Closed frontier node ids: None\n\n## Stop Reason\n- controller_stop\n\n## Return Fields\n- Return run_summary.",
       "instructions_sha1": "8e78c48e227a8a26cadc04d211f4bc7c5b210c19",
-      "input_sha1": "f23b3b7879af56baeb4dba9794c2ebb6a338956f",
+      "input_sha1": "6bd3e1052b61f7bc59a240f2ecaad77cdfa1a665",
       "sections": [
         {
           "title": "Task Contract",
@@ -4789,7 +5711,7 @@
         },
         {
           "title": "Final Shortlist State",
-          "body_text": "- Final shortlist candidate ids: candidate-illegal-2, candidate-illegal-1\n- Remaining budget: 3\n- Open frontier node ids: seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, seed_must_have_alias_ff46b687, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f\n- Closed frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07",
+          "body_text": "- Final shortlist candidate ids: candidate-illegal-2, candidate-illegal-1\n- Remaining budget: 3\n- Open frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07, seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, seed_must_have_alias_ff46b687, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f\n- Closed frontier node ids: None",
           "source_paths": [
             "FrontierState_t1.run_shortlist_candidate_ids",
             "FrontierState_t1.remaining_budget",
@@ -4820,6 +5742,164 @@
       "candidate-illegal-2",
       "candidate-illegal-1"
     ],
+    "final_candidate_cards": [
+      {
+        "candidate_id": "candidate-illegal-2",
+        "review_recommendation": "hold",
+        "must_have_matrix": [
+          {
+            "capability": "Python backend",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+            ],
+            "source_fields": [
+              "scoring_text"
+            ]
+          },
+          {
+            "capability": "LLM",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "capability": "retrieval",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "workflow",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+            ],
+            "source_fields": [
+              "scoring_text"
+            ]
+          },
+          {
+            "capability": "ranking",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "agent",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "preferred_evidence": [],
+        "gap_signals": [
+          {
+            "signal": "LLM",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "signal": "agent",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "risk_signals": [],
+        "card_summary": "hold: explicit must-have coverage 4/6; gaps LLM, agent"
+      },
+      {
+        "candidate_id": "candidate-illegal-1",
+        "review_recommendation": "hold",
+        "must_have_matrix": [
+          {
+            "capability": "Python backend",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+            ],
+            "source_fields": [
+              "scoring_text"
+            ]
+          },
+          {
+            "capability": "LLM",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "capability": "retrieval",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "workflow",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "capability": "ranking",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "agent",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "preferred_evidence": [],
+        "gap_signals": [
+          {
+            "signal": "LLM",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "signal": "workflow",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "signal": "agent",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "risk_signals": [],
+        "card_summary": "hold: explicit must-have coverage 3/6; gaps LLM, workflow"
+      }
+    ],
+    "reviewer_summary": "Reviewer summary: 0 advance, 2 hold, 0 reject; main gaps: LLM, agent",
     "run_summary": "Illegal crossover was rejected and the run stopped on retry.",
     "stop_reason": "controller_stop"
   },
@@ -4874,7 +5954,7 @@
         "name": "eligible_open_node_count_by_search_round",
         "value": [
           5,
-          5
+          6
         ]
       },
       {
@@ -4967,6 +6047,30 @@
       {
         "name": "llm_validator_retry_count",
         "value": 1
+      },
+      {
+        "name": "time_to_first_advance_round",
+        "value": null
+      },
+      {
+        "name": "pages_per_advance_candidate",
+        "value": 2.0
+      },
+      {
+        "name": "advance_candidates_per_query",
+        "value": 0.0
+      },
+      {
+        "name": "query_churn_rate",
+        "value": 0.6666666666666666
+      },
+      {
+        "name": "review_burden_candidate_count",
+        "value": 2
+      },
+      {
+        "name": "review_burden_per_advance",
+        "value": 2.0
       }
     ]
   }

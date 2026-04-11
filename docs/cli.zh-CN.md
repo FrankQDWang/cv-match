@@ -10,7 +10,7 @@ seektalent --help
 
 ## 当前阶段
 
-这个 CLI 现在是 `v0.3.2 offline artifacts active` 表面。
+这个 CLI 现在是 `v0.3.3 active` 表面。
 
 - `doctor`、`init`、`version`、`update`、`inspect`、`run` 可用
 
@@ -80,7 +80,7 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 
 - 执行完整 runtime loop，并写出 run artifacts
 - `--round-budget` 会覆盖 `SEEKTALENT_ROUND_BUDGET`
-- human 模式下打印 `run_dir`、`stop_reason`、逗号拼接的 shortlist ids、以及 `run_summary`
+- human 模式下打印 `run_dir`、`stop_reason`、逗号拼接的 shortlist ids、`reviewer_summary`、以及 `run_summary`
 - `--json` 模式下把 `SearchRunBundle.model_dump(mode="json")` 直接写到 stdout
 
 失败仍会以一个 JSON 对象写到 stderr。

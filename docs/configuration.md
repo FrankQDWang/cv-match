@@ -1,6 +1,6 @@
 # Configuration
 
-`SeekTalent v0.3.2 offline artifacts active` keeps CTS, rerank API, local path settings, and an active runtime manifest. Old phase-specific wording is gone.
+`SeekTalent v0.3.3 active` keeps CTS, rerank API, local path settings, and an active runtime manifest.
 
 ## Starter env
 

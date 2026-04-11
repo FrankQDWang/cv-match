@@ -153,12 +153,13 @@ def test_run_match_returns_search_run_bundle(tmp_path: Path) -> None:
         ),
     )
 
-    assert result.phase == "v0.3.2_offline_artifacts_active"
+    assert result.phase == "v0.3.3_active"
     assert result.bootstrap.routing_result.routing_mode == "inferred_single_pack"
     assert result.bootstrap.runtime_search_budget.initial_round_budget == 5
     assert result.bootstrap.frontier_state.remaining_budget == 5
     assert result.final_result.stop_reason == "controller_stop"
     assert result.final_result.run_summary == "Controller stop accepted."
+    assert result.final_result.reviewer_summary == "No final shortlist candidate cards."
     assert Path(result.run_dir).joinpath("bundle.json").exists()
     assert result.eval is not None
 

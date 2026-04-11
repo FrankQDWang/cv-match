@@ -1,10 +1,10 @@
 # Outputs
 
-`SeekTalent v0.3.2 offline artifacts active` returns a structured `SearchRunBundle` and persists run artifacts.
+`SeekTalent v0.3.3 active` returns a structured `SearchRunBundle` and persists run artifacts.
 
 `seektalent run` writes:
 
-- human mode: `run_dir`, `stop_reason`, comma-joined shortlist ids, `run_summary`
+- human mode: `run_dir`, `stop_reason`, comma-joined shortlist ids, `reviewer_summary`, `run_summary`
 - `--json` mode: `SearchRunBundle.model_dump(mode="json")`
 
 Python API returns the same bundle as `run_match(...)`.
@@ -91,6 +91,12 @@ This is the compact GA-lite choice trace owner. It does not log the full rewrite
 - `operator_distribution_explore`
 - `operator_distribution_balance`
 - `operator_distribution_harvest`
+- `time_to_first_advance_round`
+- `pages_per_advance_candidate`
+- `advance_candidates_per_query`
+- `query_churn_rate`
+- `review_burden_candidate_count`
+- `review_burden_per_advance`
 
 These metrics live only in `bundle.eval` / `eval.json`. They do not change the business-case `artifacts/runtime/evals/e5-matrix.json` schema.
 
@@ -102,7 +108,7 @@ These metrics live only in `bundle.eval` / `eval.json`. They do not change the b
 
 ## Related docs
 
-- [System Model](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.2/SYSTEM_MODEL.md)
+- [System Model](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.3/SYSTEM_MODEL.md)
 - [CLI](/Users/frankqdwang/Agents/SeekTalent/docs/cli.md)
 - [Configuration](/Users/frankqdwang/Agents/SeekTalent/docs/configuration.md)
 - [Archived Implementation Checklist](/Users/frankqdwang/Agents/SeekTalent/docs/_archive/v-0.3.1/implementation-checklist.md)

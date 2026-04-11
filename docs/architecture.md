@@ -2,8 +2,8 @@
 
 `HEAD` uses a versioned model-first documentation system:
 
-- `docs/v-0.3.2/` describes the active runtime and current trace surfaces
-- `docs/v-0.3.3/` captures the next target-state model for planned convergence
+- `docs/v-0.3.3/` describes the active runtime and current trace surfaces
+- `docs/v-0.3.2/` is the frozen pre-cutover baseline
 - `docs/_archive/v-0.3.1/` is historical implementation reference only
 
 ## 当前代码主结构
@@ -53,17 +53,16 @@
 
 ## Spec ownership
 
-- `docs/v-0.3.2/` 是当前 `HEAD` 的有效 spec 和实现锚点
-- `docs/v-0.3.3/` 是下一阶段收敛目标文档
+- `docs/v-0.3.3/` 是当前 `HEAD` 的有效 spec 和实现锚点
+- `docs/v-0.3.2/` 保留为切换前基线对照
 - `docs/_archive/v-0.3.1/`、`docs/_archive/v-0.2/` 和 `docs/_archive/v-0.1/` 只保留归档价值
 
 ## Related docs
 
-- [System Model](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.2/SYSTEM_MODEL.md)
-- [Runtime Sequence](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.2/RUNTIME_SEQUENCE.md)
-- [Implementation Owners](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.2/IMPLEMENTATION_OWNERS.md)
-- [Target System Model](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.3/SYSTEM_MODEL.md)
-- [Target Implementation Owners](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.3/IMPLEMENTATION_OWNERS.md)
+- [System Model](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.3/SYSTEM_MODEL.md)
+- [Runtime Sequence](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.3/RUNTIME_SEQUENCE.md)
+- [Implementation Owners](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.3/IMPLEMENTATION_OWNERS.md)
+- [Frozen v0.3.2 System Model](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.2/SYSTEM_MODEL.md)
 - [Configuration](/Users/frankqdwang/Agents/SeekTalent/docs/configuration.md)
 - [CLI](/Users/frankqdwang/Agents/SeekTalent/docs/cli.md)
 - [Archived Implementation Checklist](/Users/frankqdwang/Agents/SeekTalent/docs/_archive/v-0.3.1/implementation-checklist.md)

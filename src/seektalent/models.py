@@ -34,6 +34,9 @@ OperatorName = Literal[
 ]
 SearchControllerAction = Literal["search_cts", "stop"]
 SearchPhase = Literal["explore", "balance", "harvest"]
+BranchRole = Literal["root_anchor", "repair_hypothesis"]
+MustHaveEvidenceVerdict = Literal["explicit_hit", "weak_inference", "missing"]
+ReviewRecommendation = Literal["advance", "hold", "reject"]
 
 
 def stable_deduplicate(values: list[str]) -> list[str]:
@@ -253,6 +256,8 @@ class FrontierSeedSpecification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     operator_name: Round0OperatorName
+    branch_role: BranchRole = "root_anchor"
+    root_anchor_frontier_node_id: str = ""
     seed_terms: list[str] = Field(default_factory=list)
     seed_rationale: str
     knowledge_pack_ids: list[str] = Field(default_factory=list)
@@ -339,6 +344,8 @@ class FrontierNode_t(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     frontier_node_id: str
+    branch_role: BranchRole = "repair_hypothesis"
+    root_anchor_frontier_node_id: str = ""
     parent_frontier_node_id: str | None = None
     donor_frontier_node_id: str | None = None
     selected_operator_name: OperatorName
@@ -660,6 +667,8 @@ class ChildFrontierNodeStub(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     frontier_node_id: str
+    branch_role: BranchRole = "repair_hypothesis"
+    root_anchor_frontier_node_id: str = ""
     parent_frontier_node_id: str
     donor_frontier_node_id: str | None = None
     selected_operator_name: OperatorName
@@ -724,6 +733,8 @@ class ScoringCandidate_t(BaseModel):
     candidate_id: str
     scoring_text: str
     capability_signals: list[str] = Field(default_factory=list)
+    project_names: list[str] = Field(default_factory=list)
+    work_summaries: list[str] = Field(default_factory=list)
     years_of_experience: int | None = None
     age: int | None = None
     gender: str | None = None
@@ -763,6 +774,7 @@ class ScoredCandidate_t(BaseModel):
 
     candidate_id: str
     fit: int
+    fit_gate_failures: list[str] = Field(default_factory=list)
     rerank_raw: float
     rerank_normalized: float = Field(ge=0.0, le=1.0)
     must_have_match_score_raw: int = Field(ge=0, le=100)
@@ -781,12 +793,42 @@ class TopThreeStatistics(BaseModel):
     average_fusion_score_top_three: float
 
 
+class MustHaveEvidenceRow_t(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capability: str
+    verdict: MustHaveEvidenceVerdict
+    evidence_snippets: list[str] = Field(default_factory=list)
+    source_fields: list[str] = Field(default_factory=list)
+
+
+class EvidenceSignal_t(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    signal: str
+    evidence_snippets: list[str] = Field(default_factory=list)
+    source_fields: list[str] = Field(default_factory=list)
+
+
+class CandidateEvidenceCard_t(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str
+    review_recommendation: ReviewRecommendation
+    must_have_matrix: list[MustHaveEvidenceRow_t] = Field(default_factory=list)
+    preferred_evidence: list[EvidenceSignal_t] = Field(default_factory=list)
+    gap_signals: list[EvidenceSignal_t] = Field(default_factory=list)
+    risk_signals: list[EvidenceSignal_t] = Field(default_factory=list)
+    card_summary: str
+
+
 class SearchScoringResult_t(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     scored_candidates: list[ScoredCandidate_t] = Field(default_factory=list)
     node_shortlist_candidate_ids: list[str] = Field(default_factory=list)
     explanation_candidate_ids: list[str] = Field(default_factory=list)
+    candidate_evidence_cards: list[CandidateEvidenceCard_t] = Field(default_factory=list)
     top_three_statistics: TopThreeStatistics
 
 
@@ -794,6 +836,8 @@ class SearchRunResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     final_shortlist_candidate_ids: list[str] = Field(default_factory=list)
+    final_candidate_cards: list[CandidateEvidenceCard_t] = Field(default_factory=list)
+    reviewer_summary: str = ""
     run_summary: str
     stop_reason: str
 
@@ -807,7 +851,7 @@ class SearchRunSummaryDraft_t(BaseModel):
 class RuntimeActiveManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    phase: Literal["v0.3.2_offline_artifacts_active"]
+    phase: Literal["v0.3.3_active"]
     knowledge_pack_ids: list[str] = Field(default_factory=list)
     policy_id: str
     calibration_id: str
@@ -864,7 +908,7 @@ class SearchRunEvalMetric(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    value: bool | int | float | str | list[int] | list[float] | list[str] | dict[str, int]
+    value: bool | int | float | str | None | list[int] | list[float] | list[str] | dict[str, int | float | str]
 
 
 class SearchRunEval(BaseModel):
@@ -878,7 +922,7 @@ class SearchRunEval(BaseModel):
 class SearchRunBundle(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    phase: Literal["v0.3.2_offline_artifacts_active"]
+    phase: Literal["v0.3.3_active"]
     run_id: str
     run_dir: str
     created_at_utc: str

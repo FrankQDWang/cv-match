@@ -3,6 +3,8 @@ from __future__ import annotations
 from seektalent.models import (
     BranchEvaluationDraft_t,
     BranchEvaluation_t,
+    CandidateEvidenceCard_t,
+    EvidenceSignal_t,
     EffectiveStopGuard,
     FrontierNode_t,
     FrontierState_t,
@@ -12,6 +14,7 @@ from seektalent.models import (
     RequirementSheet,
     RewriteTermCandidate,
     RuntimeBudgetState,
+    SearchRoundArtifact,
     SearchExecutionPlan_t,
     SearchExecutionResult_t,
     SearchRunResult,
@@ -210,6 +213,12 @@ def update_frontier_state(
     }
     child_node = FrontierNode_t(
         frontier_node_id=plan.child_frontier_node_stub.frontier_node_id,
+        branch_role=plan.child_frontier_node_stub.branch_role,
+        root_anchor_frontier_node_id=(
+            plan.child_frontier_node_stub.root_anchor_frontier_node_id
+            or parent_node.root_anchor_frontier_node_id
+            or parent_node.frontier_node_id
+        ),
         parent_frontier_node_id=plan.child_frontier_node_stub.parent_frontier_node_id,
         donor_frontier_node_id=plan.child_frontier_node_stub.donor_frontier_node_id,
         selected_operator_name=selected_operator_name,
@@ -225,15 +234,26 @@ def update_frontier_state(
         reward_breakdown=reward_breakdown,
         status="closed" if branch_evaluation.branch_exhausted else "open",
     )
-
+    parent_stays_open = parent_node.branch_role == "root_anchor"
     updated_frontier_nodes = {
-        node_id: (
-            node.model_copy(update={"status": "closed"})
-            if node_id == parent_node.frontier_node_id
-            else node.model_copy()
-        )
+        node_id: node.model_copy()
         for node_id, node in frontier_state.frontier_nodes.items()
     }
+    if parent_stays_open:
+        updated_frontier_nodes[parent_node.frontier_node_id] = parent_node.model_copy(
+            update={
+                "node_shortlist_candidate_ids": list(scoring_result.node_shortlist_candidate_ids),
+                "node_shortlist_score_snapshot": current_snapshot,
+                "rewrite_term_candidates": list(rewrite_term_candidates or []),
+                "previous_branch_evaluation": branch_evaluation,
+                "reward_breakdown": reward_breakdown,
+                "status": "open",
+            }
+        )
+    else:
+        updated_frontier_nodes[parent_node.frontier_node_id] = parent_node.model_copy(
+            update={"status": "closed"}
+        )
     updated_frontier_nodes[child_node.frontier_node_id] = child_node
     updated_run_shortlist = stable_deduplicate(
         frontier_state.run_shortlist_candidate_ids
@@ -264,15 +284,19 @@ def update_frontier_state(
     }
     closed_ids = stable_deduplicate(
         frontier_state.closed_frontier_node_ids
-        + [parent_node.frontier_node_id]
+        + ([] if parent_stays_open else [parent_node.frontier_node_id])
         + ([child_node.frontier_node_id] if child_node.status == "closed" else [])
     )
     open_ids = stable_deduplicate(
-        [
-            node_id
-            for node_id in frontier_state.open_frontier_node_ids
-            if node_id != parent_node.frontier_node_id
-        ]
+        (
+            list(frontier_state.open_frontier_node_ids)
+            if parent_stays_open
+            else [
+                node_id
+                for node_id in frontier_state.open_frontier_node_ids
+                if node_id != parent_node.frontier_node_id
+            ]
+        )
         + ([child_node.frontier_node_id] if child_node.status == "open" else [])
     )
     return FrontierState_t1(
@@ -319,6 +343,8 @@ def evaluate_stop_condition(
         return "exhausted_low_gain", False
     if decision_action == "stop" and effective_stop_guard.controller_stop_allowed:
         return "controller_stop", False
+    if not _has_productive_open_path(frontier_state, effective_stop_guard):
+        return "no_productive_open_path", False
     return None, True
 
 
@@ -339,15 +365,140 @@ def build_effective_stop_guard(
 def finalize_search_run(
     requirement_sheet: RequirementSheet,
     frontier_state: FrontierState_t1,
-    stop_reason: str,
-    draft: SearchRunSummaryDraft_t,
+    rounds: list[SearchRoundArtifact] | str | None,
+    stop_reason: str | SearchRunSummaryDraft_t,
+    draft: SearchRunSummaryDraft_t | None = None,
 ) -> SearchRunResult:
     del requirement_sheet
+    if isinstance(rounds, list):
+        resolved_rounds = rounds
+        resolved_stop_reason = stop_reason
+        resolved_draft = draft
+    else:
+        resolved_rounds = []
+        resolved_stop_reason = rounds
+        resolved_draft = stop_reason
+    if not isinstance(resolved_stop_reason, str):
+        raise TypeError("stop_reason must be a string")
+    if not isinstance(resolved_draft, SearchRunSummaryDraft_t):
+        raise TypeError("draft must be SearchRunSummaryDraft_t")
+    final_candidate_cards = _final_candidate_cards(
+        frontier_state=frontier_state,
+        rounds=resolved_rounds,
+    )
     return SearchRunResult(
         final_shortlist_candidate_ids=list(frontier_state.run_shortlist_candidate_ids),
-        run_summary=_normalized_text(draft.run_summary),
-        stop_reason=stop_reason,
+        final_candidate_cards=final_candidate_cards,
+        reviewer_summary=_reviewer_summary(final_candidate_cards),
+        run_summary=_normalized_text(resolved_draft.run_summary),
+        stop_reason=resolved_stop_reason,
     )
+
+
+def _has_productive_open_path(
+    frontier_state: FrontierState_t1,
+    effective_stop_guard: EffectiveStopGuard,
+) -> bool:
+    for node_id in frontier_state.open_frontier_node_ids:
+        node = frontier_state.frontier_nodes.get(node_id)
+        if node is None:
+            continue
+        if _node_is_productive(node, effective_stop_guard):
+            return True
+    return False
+
+
+def _node_is_productive(
+    node: FrontierNode_t,
+    effective_stop_guard: EffectiveStopGuard,
+) -> bool:
+    if node.previous_branch_evaluation is None:
+        return True
+    if not node.previous_branch_evaluation.branch_exhausted:
+        return True
+    if node.previous_branch_evaluation.novelty_score >= effective_stop_guard.novelty_floor:
+        return True
+    if node.previous_branch_evaluation.usefulness_score >= effective_stop_guard.usefulness_floor:
+        return True
+    if (
+        node.reward_breakdown is not None
+        and node.reward_breakdown.reward_score >= effective_stop_guard.reward_floor
+    ):
+        return True
+    return False
+
+
+def _final_candidate_cards(
+    *,
+    frontier_state: FrontierState_t1,
+    rounds: list[SearchRoundArtifact],
+) -> list[CandidateEvidenceCard_t]:
+    best_card_by_candidate_id: dict[str, tuple[float, CandidateEvidenceCard_t]] = {}
+    for round_artifact in rounds:
+        if round_artifact.scoring_result is None:
+            continue
+        scored_by_candidate_id = {
+            row.candidate_id: row.fusion_score
+            for row in round_artifact.scoring_result.scored_candidates
+        }
+        for card in round_artifact.scoring_result.candidate_evidence_cards:
+            fusion_score = scored_by_candidate_id.get(card.candidate_id)
+            if fusion_score is None:
+                continue
+            best = best_card_by_candidate_id.get(card.candidate_id)
+            if best is None or fusion_score > best[0]:
+                best_card_by_candidate_id[card.candidate_id] = (fusion_score, card)
+    return [
+        best_card_by_candidate_id[candidate_id][1]
+        for candidate_id in frontier_state.run_shortlist_candidate_ids
+        if candidate_id in best_card_by_candidate_id
+    ]
+
+
+def _reviewer_summary(final_candidate_cards: list[CandidateEvidenceCard_t]) -> str:
+    if not final_candidate_cards:
+        return "No final shortlist candidate cards."
+    recommendation_counts = {
+        recommendation: sum(
+            1
+            for card in final_candidate_cards
+            if card.review_recommendation == recommendation
+        )
+        for recommendation in ("advance", "hold", "reject")
+    }
+    gap_counts = _signal_counts(
+        signal
+        for card in final_candidate_cards
+        for signal in card.gap_signals
+    )
+    risk_counts = _signal_counts(
+        signal
+        for card in final_candidate_cards
+        for signal in card.risk_signals
+    )
+    parts = [
+        (
+            "Reviewer summary: "
+            f"{recommendation_counts['advance']} advance, "
+            f"{recommendation_counts['hold']} hold, "
+            f"{recommendation_counts['reject']} reject"
+        )
+    ]
+    if gap_counts:
+        parts.append(f"main gaps: {', '.join(gap_counts[:2])}")
+    if risk_counts:
+        parts.append(f"main risks: {', '.join(risk_counts[:2])}")
+    return "; ".join(parts)
+
+
+def _signal_counts(signals: list[EvidenceSignal_t] | tuple[EvidenceSignal_t, ...] | object) -> list[str]:
+    counts: dict[str, int] = {}
+    for signal in signals:
+        counts[signal.signal] = counts.get(signal.signal, 0) + 1
+    return [
+        signal
+        for signal, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
 
 
 def _clamp_score(value: float) -> float:

@@ -1,5 +1,5 @@
 {
-  "phase": "v0.3.2_offline_artifacts_active",
+  "phase": "v0.3.3_active",
   "run_id": "case-bootstrap-close-high-score-multi-pack",
   "run_dir": "/Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-bootstrap-close-high-score-multi-pack",
   "created_at_utc": "2026-04-09T00:00:00Z",
@@ -264,6 +264,8 @@
       "frontier_seed_specifications": [
         {
           "operator_name": "core_precision",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_core_precision_87acf8a7",
           "seed_terms": [
             "agent engineer",
             "ranking",
@@ -286,6 +288,8 @@
         },
         {
           "operator_name": "relaxed_floor",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_72de7f4f",
           "seed_terms": [
             "python backend",
             "agent"
@@ -307,6 +311,8 @@
         },
         {
           "operator_name": "pack_expansion",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_0d92f929",
           "seed_terms": [
             "workflow orchestration",
             "tool calling"
@@ -327,6 +333,8 @@
         },
         {
           "operator_name": "cross_pack_bridge",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_cross_pack_bridge_f0c14380",
           "seed_terms": [
             "agent ranking",
             "retrieval workflow"
@@ -348,6 +356,8 @@
         },
         {
           "operator_name": "generic_expansion",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_generic_expansion_8690d463",
           "seed_terms": [
             "search backend",
             "reranker"
@@ -373,6 +383,8 @@
       "frontier_nodes": {
         "seed_core_precision_87acf8a7": {
           "frontier_node_id": "seed_core_precision_87acf8a7",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_core_precision_87acf8a7",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision",
@@ -404,6 +416,8 @@
         },
         "seed_relaxed_floor_72de7f4f": {
           "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_72de7f4f",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "relaxed_floor",
@@ -434,6 +448,8 @@
         },
         "seed_pack_expansion_0d92f929": {
           "frontier_node_id": "seed_pack_expansion_0d92f929",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_0d92f929",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "pack_expansion",
@@ -463,6 +479,8 @@
         },
         "seed_cross_pack_bridge_f0c14380": {
           "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_cross_pack_bridge_f0c14380",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "cross_pack_bridge",
@@ -493,6 +511,8 @@
         },
         "seed_generic_expansion_8690d463": {
           "frontier_node_id": "seed_generic_expansion_8690d463",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_generic_expansion_8690d463",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "generic_expansion",
@@ -584,6 +604,8 @@
         "frontier_nodes": {
           "seed_core_precision_87acf8a7": {
             "frontier_node_id": "seed_core_precision_87acf8a7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_87acf8a7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -615,6 +637,8 @@
           },
           "seed_relaxed_floor_72de7f4f": {
             "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_72de7f4f",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -645,6 +669,8 @@
           },
           "seed_pack_expansion_0d92f929": {
             "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_0d92f929",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -674,6 +700,8 @@
           },
           "seed_cross_pack_bridge_f0c14380": {
             "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_cross_pack_bridge_f0c14380",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "cross_pack_bridge",
@@ -704,6 +732,8 @@
           },
           "seed_generic_expansion_8690d463": {
             "frontier_node_id": "seed_generic_expansion_8690d463",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_8690d463",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -1106,6 +1136,8 @@
         "frontier_nodes": {
           "seed_core_precision_87acf8a7": {
             "frontier_node_id": "seed_core_precision_87acf8a7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_87acf8a7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1137,6 +1169,8 @@
           },
           "seed_relaxed_floor_72de7f4f": {
             "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_72de7f4f",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -1167,6 +1201,8 @@
           },
           "seed_pack_expansion_0d92f929": {
             "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_0d92f929",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -1196,6 +1232,8 @@
           },
           "seed_cross_pack_bridge_f0c14380": {
             "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_cross_pack_bridge_f0c14380",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "cross_pack_bridge",
@@ -1226,6 +1264,8 @@
           },
           "seed_generic_expansion_8690d463": {
             "frontier_node_id": "seed_generic_expansion_8690d463",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_8690d463",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -1318,6 +1358,8 @@
         "frontier_nodes": {
           "seed_core_precision_87acf8a7": {
             "frontier_node_id": "seed_core_precision_87acf8a7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_87acf8a7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1349,6 +1391,8 @@
           },
           "seed_relaxed_floor_72de7f4f": {
             "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_72de7f4f",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -1379,6 +1423,8 @@
           },
           "seed_pack_expansion_0d92f929": {
             "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_0d92f929",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -1408,6 +1454,8 @@
           },
           "seed_cross_pack_bridge_f0c14380": {
             "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_cross_pack_bridge_f0c14380",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "cross_pack_bridge",
@@ -1438,6 +1486,8 @@
           },
           "seed_generic_expansion_8690d463": {
             "frontier_node_id": "seed_generic_expansion_8690d463",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_8690d463",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -1840,6 +1890,8 @@
         "frontier_nodes": {
           "seed_core_precision_87acf8a7": {
             "frontier_node_id": "seed_core_precision_87acf8a7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_87acf8a7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1871,6 +1923,8 @@
           },
           "seed_relaxed_floor_72de7f4f": {
             "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_72de7f4f",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -1901,6 +1955,8 @@
           },
           "seed_pack_expansion_0d92f929": {
             "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_0d92f929",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -1930,6 +1986,8 @@
           },
           "seed_cross_pack_bridge_f0c14380": {
             "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_cross_pack_bridge_f0c14380",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "cross_pack_bridge",
@@ -1960,6 +2018,8 @@
           },
           "seed_generic_expansion_8690d463": {
             "frontier_node_id": "seed_generic_expansion_8690d463",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_8690d463",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -2052,6 +2112,8 @@
         "frontier_nodes": {
           "seed_core_precision_87acf8a7": {
             "frontier_node_id": "seed_core_precision_87acf8a7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_87acf8a7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2083,6 +2145,8 @@
           },
           "seed_relaxed_floor_72de7f4f": {
             "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_72de7f4f",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -2113,6 +2177,8 @@
           },
           "seed_pack_expansion_0d92f929": {
             "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_0d92f929",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -2142,6 +2208,8 @@
           },
           "seed_cross_pack_bridge_f0c14380": {
             "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_cross_pack_bridge_f0c14380",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "cross_pack_bridge",
@@ -2172,6 +2240,8 @@
           },
           "seed_generic_expansion_8690d463": {
             "frontier_node_id": "seed_generic_expansion_8690d463",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_8690d463",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -2574,6 +2644,8 @@
         "frontier_nodes": {
           "seed_core_precision_87acf8a7": {
             "frontier_node_id": "seed_core_precision_87acf8a7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_87acf8a7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2605,6 +2677,8 @@
           },
           "seed_relaxed_floor_72de7f4f": {
             "frontier_node_id": "seed_relaxed_floor_72de7f4f",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_72de7f4f",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -2635,6 +2709,8 @@
           },
           "seed_pack_expansion_0d92f929": {
             "frontier_node_id": "seed_pack_expansion_0d92f929",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_0d92f929",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -2664,6 +2740,8 @@
           },
           "seed_cross_pack_bridge_f0c14380": {
             "frontier_node_id": "seed_cross_pack_bridge_f0c14380",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_cross_pack_bridge_f0c14380",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "cross_pack_bridge",
@@ -2694,6 +2772,8 @@
           },
           "seed_generic_expansion_8690d463": {
             "frontier_node_id": "seed_generic_expansion_8690d463",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_8690d463",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -2856,6 +2936,8 @@
   },
   "final_result": {
     "final_shortlist_candidate_ids": [],
+    "final_candidate_cards": [],
+    "reviewer_summary": "No final shortlist candidate cards.",
     "run_summary": "Close high scores triggered a multi-pack bootstrap.",
     "stop_reason": "controller_stop"
   },
@@ -2977,6 +3059,30 @@
       {
         "name": "llm_validator_retry_count",
         "value": 0
+      },
+      {
+        "name": "time_to_first_advance_round",
+        "value": null
+      },
+      {
+        "name": "pages_per_advance_candidate",
+        "value": 0.0
+      },
+      {
+        "name": "advance_candidates_per_query",
+        "value": 0.0
+      },
+      {
+        "name": "query_churn_rate",
+        "value": 0.0
+      },
+      {
+        "name": "review_burden_candidate_count",
+        "value": 0
+      },
+      {
+        "name": "review_burden_per_advance",
+        "value": 0.0
       }
     ]
   }

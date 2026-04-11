@@ -12,7 +12,7 @@ from seektalent.cli import main
 
 def _fake_bundle() -> object:
     payload = {
-        "phase": "v0.3.2_offline_artifacts_active",
+        "phase": "v0.3.3_active",
         "run_id": "20260409T120000Z_deadbeef",
         "run_dir": "/tmp/runs/20260409T120000Z_deadbeef",
         "bootstrap": {"input_truth": {"job_description": "JD"}},
@@ -20,6 +20,8 @@ def _fake_bundle() -> object:
         "finalization_audit": {"model_name": "test"},
         "final_result": {
             "final_shortlist_candidate_ids": ["c-1", "c-2"],
+            "final_candidate_cards": [],
+            "reviewer_summary": "Reviewer summary: 1 advance, 1 hold, 0 reject",
             "run_summary": "Ready for review.",
             "stop_reason": "controller_stop",
         },
@@ -29,6 +31,8 @@ def _fake_bundle() -> object:
         run_dir=payload["run_dir"],
         final_result=SimpleNamespace(
             final_shortlist_candidate_ids=payload["final_result"]["final_shortlist_candidate_ids"],
+            final_candidate_cards=payload["final_result"]["final_candidate_cards"],
+            reviewer_summary=payload["final_result"]["reviewer_summary"],
             run_summary=payload["final_result"]["run_summary"],
             stop_reason=payload["final_result"]["stop_reason"],
         ),
@@ -62,7 +66,7 @@ def test_update_command_prints_upgrade_instructions(capsys: pytest.CaptureFixtur
 def test_inspect_command_points_to_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["inspect"]) == 0
     output = capsys.readouterr().out
-    assert "v0.3.2 CLI inspection summary" in output
+    assert "v0.3.3 CLI inspection summary" in output
     assert "inspect --json" in output
 
 
@@ -71,7 +75,7 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     payload = json.loads(capsys.readouterr().out)
     assert payload["tool"] == "seektalent"
     assert payload["version"] == __version__
-    assert payload["phase"] == "v0.3.2_offline_artifacts_active"
+    assert payload["phase"] == "v0.3.3_active"
     assert payload["recommended_workflow"][-1] == "seektalent run --jd-file ./jd.md"
     assert "seektalent-rerank-api" in payload["recommended_workflow"]
     assert "run" in payload["commands"]
@@ -149,12 +153,12 @@ def test_run_json_success_emits_search_run_bundle(
 
     assert main(["run", "--jd", "JD", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["phase"] == "v0.3.2_offline_artifacts_active"
+    assert payload["phase"] == "v0.3.3_active"
     assert payload["final_result"]["final_shortlist_candidate_ids"] == ["c-1", "c-2"]
     assert payload["eval"]["experiment_id"] == "E5"
 
 
-def test_run_human_success_prints_four_lines(
+def test_run_human_success_prints_five_lines(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -168,6 +172,7 @@ def test_run_human_success_prints_four_lines(
         "/tmp/runs/20260409T120000Z_deadbeef",
         "controller_stop",
         "c-1, c-2",
+        "Reviewer summary: 1 advance, 1 hold, 0 reject",
         "Ready for review.",
     ]
 

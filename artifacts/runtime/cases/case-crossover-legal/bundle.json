@@ -1,5 +1,5 @@
 {
-  "phase": "v0.3.2_offline_artifacts_active",
+  "phase": "v0.3.3_active",
   "run_id": "case-crossover-legal",
   "run_dir": "/Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-crossover-legal",
   "created_at_utc": "2026-04-09T00:00:00Z",
@@ -265,6 +265,8 @@
       "frontier_seed_specifications": [
         {
           "operator_name": "core_precision",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
           "seed_terms": [
             "Python backend",
             "LLM",
@@ -283,6 +285,8 @@
         },
         {
           "operator_name": "relaxed_floor",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "seed_terms": [
             "Python backend",
             "workflow"
@@ -300,6 +304,8 @@
         },
         {
           "operator_name": "pack_expansion",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
           "seed_terms": [
             "agent",
             "ranking"
@@ -317,6 +323,8 @@
         },
         {
           "operator_name": "generic_expansion",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
           "seed_terms": [
             "retrieval engineer",
             "workflow systems"
@@ -334,6 +342,8 @@
         },
         {
           "operator_name": "must_have_alias",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
           "seed_terms": [
             "workflow",
             "ranking"
@@ -355,6 +365,8 @@
       "frontier_nodes": {
         "seed_core_precision_7b085415": {
           "frontier_node_id": "seed_core_precision_7b085415",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision",
@@ -382,6 +394,8 @@
         },
         "seed_relaxed_floor_a7280d07": {
           "frontier_node_id": "seed_relaxed_floor_a7280d07",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "relaxed_floor",
@@ -408,6 +422,8 @@
         },
         "seed_pack_expansion_901291cb": {
           "frontier_node_id": "seed_pack_expansion_901291cb",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "pack_expansion",
@@ -434,6 +450,8 @@
         },
         "seed_generic_expansion_b92f6cb7": {
           "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "generic_expansion",
@@ -460,6 +478,8 @@
         },
         "seed_must_have_alias_ff46b687": {
           "frontier_node_id": "seed_must_have_alias_ff46b687",
+          "branch_role": "root_anchor",
+          "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
           "parent_frontier_node_id": null,
           "donor_frontier_node_id": null,
           "selected_operator_name": "must_have_alias",
@@ -545,6 +565,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -572,6 +594,8 @@
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -598,6 +622,8 @@
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -624,6 +650,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -650,6 +678,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -1090,6 +1120,8 @@
         ],
         "child_frontier_node_stub": {
           "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
           "parent_frontier_node_id": "seed_core_precision_7b085415",
           "donor_frontier_node_id": null,
           "selected_operator_name": "core_precision"
@@ -1160,6 +1192,13 @@
             "scoring_text": "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
             "capability_signals": [
               "retrieval platform",
+              "python",
+              "ranking"
+            ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
               "python",
               "ranking"
             ],
@@ -1544,6 +1583,7 @@
           {
             "candidate_id": "candidate-crossover-1",
             "fit": 1,
+            "fit_gate_failures": [],
             "rerank_raw": 2.0,
             "rerank_normalized": 0.6970592839654074,
             "must_have_match_score_raw": 50,
@@ -1561,6 +1601,86 @@
         ],
         "explanation_candidate_ids": [
           "candidate-crossover-1"
+        ],
+        "candidate_evidence_cards": [
+          {
+            "candidate_id": "candidate-crossover-1",
+            "review_recommendation": "hold",
+            "must_have_matrix": [
+              {
+                "capability": "Python backend",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                ],
+                "source_fields": [
+                  "scoring_text"
+                ]
+              },
+              {
+                "capability": "LLM",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "capability": "retrieval",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "workflow",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "capability": "ranking",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "agent",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "preferred_evidence": [],
+            "gap_signals": [
+              {
+                "signal": "LLM",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "signal": "workflow",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "signal": "agent",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "risk_signals": [],
+            "card_summary": "hold: explicit must-have coverage 3/6; gaps LLM, workflow"
+          }
         ],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.5083826061809741
@@ -1680,6 +1800,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1698,15 +1820,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -1733,6 +1922,8 @@
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -1759,6 +1950,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -1785,6 +1978,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -1811,6 +2006,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1902,15 +2099,14 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
           "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -1968,6 +2164,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -1986,15 +2184,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -2021,6 +2286,8 @@
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -2047,6 +2314,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -2073,6 +2342,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -2099,6 +2370,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -2190,15 +2463,14 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
           "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -2261,6 +2533,17 @@
         },
         "donor_candidate_node_summaries": [
           {
+            "frontier_node_id": "seed_core_precision_7b085415",
+            "shared_anchor_terms": [
+              "Python backend"
+            ],
+            "expected_incremental_coverage": [
+              "LLM",
+              "retrieval"
+            ],
+            "reward_score": 3.456765212361948
+          },
+          {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
             "shared_anchor_terms": [
               "Python backend"
@@ -2272,7 +2555,7 @@
           }
         ],
         "frontier_head_summary": {
-          "open_node_count": 5,
+          "open_node_count": 6,
           "remaining_budget": 4,
           "highest_selection_score": 3.5716860917880178
         },
@@ -2341,6 +2624,20 @@
               "fresh_node_bonus": 1.0,
               "redundancy_penalty": 0.0,
               "final_selection_score": 3.5716860917880178
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_7b085415",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "explore",
+              "operator_exploitation_score": 0.775622014544035,
+              "operator_exploration_bonus": 1.048147073968205,
+              "coverage_opportunity_score": 0.5,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 2.472408527075549
             }
           },
           {
@@ -2480,9 +2777,9 @@
         "prompt_surface": {
           "surface_id": "search_controller_decision",
           "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
-          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: seed_relaxed_floor_a7280d07\n- Current operator: relaxed_floor\n- Query term pool: Python backend, workflow\n- Current node shortlist ids: None\n\n## Donor Candidates\n- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=Python backend; expected_incremental_coverage=retrieval; reward_score=3.46\n\n## Allowed Operators\n- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: LLM, retrieval, ranking, agent\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- core_precision: average_reward=3.46, times_selected=1\n- relaxed_floor: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 3\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=1.00\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 1\n- Remaining budget: 4\n- Used ratio: 0.20\n- Remaining ratio: 0.80\n- Phase progress: 0.25\n- Search phase: explore\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: seed_relaxed_floor_a7280d07\n- Current operator: relaxed_floor\n- Query term pool: Python backend, workflow\n- Current node shortlist ids: None\n\n## Donor Candidates\n- seed_core_precision_7b085415: shared_anchor_terms=Python backend; expected_incremental_coverage=LLM, retrieval; reward_score=3.46\n- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=Python backend; expected_incremental_coverage=retrieval; reward_score=3.46\n\n## Allowed Operators\n- Allowed operators: must_have_alias, generic_expansion, core_precision, relaxed_floor, pack_expansion, cross_pack_bridge\n- Operator surface override: none\n- Operator surface unmet must-haves: LLM, retrieval, ranking, agent\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- must_have_alias: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- core_precision: average_reward=3.46, times_selected=1\n- relaxed_floor: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 3\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=1.00\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 1\n- Remaining budget: 4\n- Used ratio: 0.20\n- Remaining ratio: 0.80\n- Phase progress: 0.25\n- Search phase: explore\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
           "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
-          "input_sha1": "7b8bcb03063224dd6444a3fcb7ffa4e2c9a823e7",
+          "input_sha1": "d1ba5955bf0d7bcbae814dd451567d51ecc93d2e",
           "sections": [
             {
               "title": "Task Contract",
@@ -2509,7 +2806,7 @@
             },
             {
               "title": "Donor Candidates",
-              "body_text": "- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=Python backend; expected_incremental_coverage=retrieval; reward_score=3.46",
+              "body_text": "- seed_core_precision_7b085415: shared_anchor_terms=Python backend; expected_incremental_coverage=LLM, retrieval; reward_score=3.46\n- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=Python backend; expected_incremental_coverage=retrieval; reward_score=3.46",
               "source_paths": [
                 "SearchControllerContext_t.donor_candidate_node_summaries"
               ],
@@ -2621,6 +2918,8 @@
         ],
         "child_frontier_node_stub": {
           "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "donor_frontier_node_id": null,
           "selected_operator_name": "must_have_alias"
@@ -2691,6 +2990,13 @@
             "scoring_text": "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend ranking workflow. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
             "capability_signals": [
               "retrieval platform",
+              "python",
+              "ranking"
+            ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
               "python",
               "ranking"
             ],
@@ -3049,6 +3355,7 @@
           {
             "candidate_id": "candidate-crossover-2",
             "fit": 1,
+            "fit_gate_failures": [],
             "rerank_raw": 1.7,
             "rerank_normalized": 0.6700327828664843,
             "must_have_match_score_raw": 50,
@@ -3066,6 +3373,86 @@
         ],
         "explanation_candidate_ids": [
           "candidate-crossover-2"
+        ],
+        "candidate_evidence_cards": [
+          {
+            "candidate_id": "candidate-crossover-2",
+            "review_recommendation": "hold",
+            "must_have_matrix": [
+              {
+                "capability": "Python backend",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend ranking workflow. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                ],
+                "source_fields": [
+                  "scoring_text"
+                ]
+              },
+              {
+                "capability": "LLM",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "capability": "retrieval",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend ranking workflow. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "workflow",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "capability": "ranking",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend ranking workflow. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "agent",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "preferred_evidence": [],
+            "gap_signals": [
+              {
+                "signal": "LLM",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "signal": "workflow",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "signal": "agent",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "risk_signals": [],
+            "card_summary": "hold: explicit must-have coverage 3/6; gaps LLM, workflow"
+          }
         ],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.4935180305765664
@@ -3185,6 +3572,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3203,15 +3592,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -3229,15 +3685,105 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-2": 0.4935180305765664
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "Python",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "title",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.9935180305765665,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 1.0,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.793518030576567,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "backend",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.3935180305765664,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.4935180305765664,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.3270360611531324
+            },
+            "status": "open"
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -3264,6 +3810,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -3290,6 +3838,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3316,6 +3866,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3407,6 +3959,8 @@
           },
           "child_seed_relaxed_floor_a7280d07_ed18184f": {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3521,16 +4075,15 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
+          "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d",
           "child_seed_relaxed_floor_a7280d07_ed18184f"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415",
-          "seed_relaxed_floor_a7280d07"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -3590,6 +4143,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3608,15 +4163,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -3634,15 +4256,105 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-2": 0.4935180305765664
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "Python",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "title",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.9935180305765665,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 1.0,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.793518030576567,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "backend",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.3935180305765664,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.4935180305765664,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.3270360611531324
+            },
+            "status": "open"
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -3669,6 +4381,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -3695,6 +4409,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3721,6 +4437,8 @@
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -3812,6 +4530,8 @@
           },
           "child_seed_relaxed_floor_a7280d07_ed18184f": {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -3926,16 +4646,15 @@
           }
         },
         "open_frontier_node_ids": [
+          "seed_core_precision_7b085415",
+          "seed_relaxed_floor_a7280d07",
           "seed_pack_expansion_901291cb",
           "seed_generic_expansion_b92f6cb7",
           "seed_must_have_alias_ff46b687",
           "child_seed_core_precision_7b085415_730e220d",
           "child_seed_relaxed_floor_a7280d07_ed18184f"
         ],
-        "closed_frontier_node_ids": [
-          "seed_core_precision_7b085415",
-          "seed_relaxed_floor_a7280d07"
-        ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -4000,6 +4719,16 @@
         },
         "donor_candidate_node_summaries": [
           {
+            "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "shared_anchor_terms": [
+              "workflow"
+            ],
+            "expected_incremental_coverage": [
+              "Python backend"
+            ],
+            "reward_score": 3.3270360611531324
+          },
+          {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
             "shared_anchor_terms": [
               "workflow"
@@ -4011,7 +4740,7 @@
           }
         ],
         "frontier_head_summary": {
-          "open_node_count": 5,
+          "open_node_count": 7,
           "remaining_budget": 3,
           "highest_selection_score": 2.5129716126662074
         },
@@ -4069,6 +4798,20 @@
             }
           },
           {
+            "frontier_node_id": "seed_core_precision_7b085415",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.775622014544035,
+              "operator_exploration_bonus": 1.1774100225154747,
+              "coverage_opportunity_score": 0.5,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 2.0730320370595097
+            }
+          },
+          {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
             "selected_operator_name": "core_precision",
             "breakdown": {
@@ -4094,6 +4837,20 @@
               "fresh_node_bonus": 0.0,
               "redundancy_penalty": 1.0,
               "final_selection_score": 1.9329716126662075
+            }
+          },
+          {
+            "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "selected_operator_name": "relaxed_floor",
+            "breakdown": {
+              "search_phase": "balance",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.6651092223153954,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 1.6517758889820617
             }
           }
         ],
@@ -4199,12 +4956,12 @@
         "action": "search_cts",
         "selected_operator_name": "crossover_compose",
         "operator_args": {
-          "donor_frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+          "donor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "shared_anchor_terms": [
             "workflow"
           ],
           "donor_terms_used": [
-            "retrieval"
+            "Python backend"
           ],
           "crossover_rationale": "reuse donor workflow-ranking signal from the relaxed floor branch"
         },
@@ -4224,9 +4981,9 @@
         "prompt_surface": {
           "surface_id": "search_controller_decision",
           "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
-          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: seed_must_have_alias_ff46b687\n- Current operator: must_have_alias\n- Query term pool: workflow, ranking\n- Current node shortlist ids: None\n\n## Donor Candidates\n- child_seed_relaxed_floor_a7280d07_ed18184f: shared_anchor_terms=workflow; expected_incremental_coverage=retrieval; reward_score=3.33\n\n## Allowed Operators\n- Allowed operators: core_precision, must_have_alias, relaxed_floor, generic_expansion, pack_expansion, cross_pack_bridge, crossover_compose\n- Operator surface override: none\n- Operator surface unmet must-haves: Python backend, LLM, retrieval, agent\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- core_precision: average_reward=3.46, times_selected=1\n- must_have_alias: average_reward=3.33, times_selected=1\n- relaxed_floor: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 4\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=0.30\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 2\n- Remaining budget: 3\n- Used ratio: 0.40\n- Remaining ratio: 0.60\n- Phase progress: 0.50\n- Search phase: balance\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: seed_must_have_alias_ff46b687\n- Current operator: must_have_alias\n- Query term pool: workflow, ranking\n- Current node shortlist ids: None\n\n## Donor Candidates\n- seed_relaxed_floor_a7280d07: shared_anchor_terms=workflow; expected_incremental_coverage=Python backend; reward_score=3.33\n- child_seed_relaxed_floor_a7280d07_ed18184f: shared_anchor_terms=workflow; expected_incremental_coverage=retrieval; reward_score=3.33\n\n## Allowed Operators\n- Allowed operators: core_precision, must_have_alias, relaxed_floor, generic_expansion, pack_expansion, cross_pack_bridge, crossover_compose\n- Operator surface override: none\n- Operator surface unmet must-haves: Python backend, LLM, retrieval, agent\n\n## Rewrite Evidence\n- No rewrite evidence terms.\n\n## Operator Statistics\n- core_precision: average_reward=3.46, times_selected=1\n- must_have_alias: average_reward=3.33, times_selected=1\n- relaxed_floor: average_reward=0.00, times_selected=0\n- generic_expansion: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- crossover_compose: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 4\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=0.30\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 2\n- Remaining budget: 3\n- Used ratio: 0.40\n- Remaining ratio: 0.60\n- Phase progress: 0.50\n- Search phase: balance\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
           "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
-          "input_sha1": "c649e5b66bc1f440dd6868aee54396b4b9519de5",
+          "input_sha1": "682c3582a0a316a116334592c67deb490a287629",
           "sections": [
             {
               "title": "Task Contract",
@@ -4253,7 +5010,7 @@
             },
             {
               "title": "Donor Candidates",
-              "body_text": "- child_seed_relaxed_floor_a7280d07_ed18184f: shared_anchor_terms=workflow; expected_incremental_coverage=retrieval; reward_score=3.33",
+              "body_text": "- seed_relaxed_floor_a7280d07: shared_anchor_terms=workflow; expected_incremental_coverage=Python backend; reward_score=3.33\n- child_seed_relaxed_floor_a7280d07_ed18184f: shared_anchor_terms=workflow; expected_incremental_coverage=retrieval; reward_score=3.33",
               "source_paths": [
                 "SearchControllerContext_t.donor_candidate_node_summaries"
               ],
@@ -4317,13 +5074,13 @@
         "target_frontier_node_id": "seed_must_have_alias_ff46b687",
         "selected_operator_name": "crossover_compose",
         "operator_args": {
-          "donor_frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+          "donor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "crossover_rationale": "reuse donor workflow-ranking signal from the relaxed floor branch",
           "shared_anchor_terms": [
             "workflow"
           ],
           "donor_terms_used": [
-            "retrieval"
+            "Python backend"
           ]
         },
         "expected_gain_hypothesis": "Fuse donor coverage."
@@ -4331,7 +5088,7 @@
       "execution_plan": {
         "query_terms": [
           "workflow",
-          "retrieval"
+          "Python backend"
         ],
         "projected_filters": {
           "locations": [
@@ -4363,14 +5120,16 @@
           ]
         },
         "target_new_candidate_count": 10,
-        "semantic_hash": "c069edc08bf3d4e17600ebc78e90aa312acddabf",
+        "semantic_hash": "55a79b7d87ff475ccbf4cadd129c55c38f0183de",
         "knowledge_pack_ids": [
           "llm_agent_rag_engineering"
         ],
         "child_frontier_node_stub": {
-          "frontier_node_id": "child_seed_must_have_alias_ff46b687_c069edc0",
+          "frontier_node_id": "child_seed_must_have_alias_ff46b687_55a79b7d",
+          "branch_role": "repair_hypothesis",
+          "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
           "parent_frontier_node_id": "seed_must_have_alias_ff46b687",
-          "donor_frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+          "donor_frontier_node_id": "seed_relaxed_floor_a7280d07",
           "selected_operator_name": "crossover_compose"
         },
         "derived_position": "Workflow Search Engineer",
@@ -4442,6 +5201,13 @@
               "python",
               "ranking"
             ],
+            "project_names": [
+              "retrieval platform"
+            ],
+            "work_summaries": [
+              "python",
+              "ranking"
+            ],
             "years_of_experience": 6,
             "age": null,
             "gender": null,
@@ -4488,22 +5254,41 @@
       "rewrite_term_pool": {
         "accepted": [
           {
-            "term": "Python",
+            "term": "retrieval",
             "source_candidate_ids": [
               "candidate-crossover-3"
             ],
             "source_fields": [
+              "project_names",
               "search_text",
-              "title",
-              "work_experience_summaries",
-              "work_summaries"
+              "work_experience_summaries"
             ],
             "support_count": 1,
-            "accepted_term_score": 4.086003996286109,
+            "accepted_term_score": 3.98600399628611,
             "score_breakdown": {
               "support_score": 1.0,
               "candidate_quality_score": 0.5860039962861099,
-              "field_weight_score": 1.0,
+              "field_weight_score": 0.9,
+              "must_have_bonus": 1.5,
+              "anchor_bonus": 0.0,
+              "pack_bonus": 0.0,
+              "generic_penalty": 0.0
+            }
+          },
+          {
+            "term": "retrieval platform",
+            "source_candidate_ids": [
+              "candidate-crossover-3"
+            ],
+            "source_fields": [
+              "project_names"
+            ],
+            "support_count": 1,
+            "accepted_term_score": 3.98600399628611,
+            "score_breakdown": {
+              "support_score": 1.0,
+              "candidate_quality_score": 0.5860039962861099,
+              "field_weight_score": 0.9,
               "must_have_bonus": 1.5,
               "anchor_bonus": 0.0,
               "pack_bonus": 0.0,
@@ -4533,19 +5318,19 @@
             }
           },
           {
-            "term": "agent",
+            "term": "Built retrieval ranking systems.",
             "source_candidate_ids": [
               "candidate-crossover-3"
             ],
             "source_fields": [
-              "search_text"
+              "work_experience_summaries"
             ],
             "support_count": 1,
-            "accepted_term_score": 3.48600399628611,
+            "accepted_term_score": 3.7860039962861096,
             "score_breakdown": {
               "support_score": 1.0,
               "candidate_quality_score": 0.5860039962861099,
-              "field_weight_score": 0.4,
+              "field_weight_score": 0.7,
               "must_have_bonus": 1.5,
               "anchor_bonus": 0.0,
               "pack_bonus": 0.0,
@@ -4553,7 +5338,7 @@
             }
           },
           {
-            "term": "backend",
+            "term": "agent",
             "source_candidate_ids": [
               "candidate-crossover-3"
             ],
@@ -4575,37 +5360,7 @@
         ],
         "rejected": [
           {
-            "term": "Built retrieval ranking systems.",
-            "source_candidate_ids": [
-              "candidate-crossover-3"
-            ],
-            "source_fields": [
-              "work_experience_summaries"
-            ],
-            "reason": "already_in_query"
-          },
-          {
-            "term": "retrieval",
-            "source_candidate_ids": [
-              "candidate-crossover-3"
-            ],
-            "source_fields": [
-              "project_names"
-            ],
-            "reason": "already_in_query"
-          },
-          {
-            "term": "retrieval",
-            "source_candidate_ids": [
-              "candidate-crossover-3"
-            ],
-            "source_fields": [
-              "work_experience_summaries"
-            ],
-            "reason": "already_in_query"
-          },
-          {
-            "term": "retrieval",
+            "term": "backend",
             "source_candidate_ids": [
               "candidate-crossover-3"
             ],
@@ -4615,12 +5370,42 @@
             "reason": "already_in_query"
           },
           {
-            "term": "retrieval platform",
+            "term": "Python",
             "source_candidate_ids": [
               "candidate-crossover-3"
             ],
             "source_fields": [
-              "project_names"
+              "title"
+            ],
+            "reason": "already_in_query"
+          },
+          {
+            "term": "python",
+            "source_candidate_ids": [
+              "candidate-crossover-3"
+            ],
+            "source_fields": [
+              "work_summaries"
+            ],
+            "reason": "already_in_query"
+          },
+          {
+            "term": "Python",
+            "source_candidate_ids": [
+              "candidate-crossover-3"
+            ],
+            "source_fields": [
+              "work_experience_summaries"
+            ],
+            "reason": "already_in_query"
+          },
+          {
+            "term": "Python",
+            "source_candidate_ids": [
+              "candidate-crossover-3"
+            ],
+            "source_fields": [
+              "search_text"
             ],
             "reason": "already_in_query"
           },
@@ -4828,6 +5613,7 @@
           {
             "candidate_id": "candidate-crossover-3",
             "fit": 1,
+            "fit_gate_failures": [],
             "rerank_raw": 1.9,
             "rerank_normalized": 0.6881890841565633,
             "must_have_match_score_raw": 83,
@@ -4845,6 +5631,84 @@
         ],
         "explanation_candidate_ids": [
           "candidate-crossover-3"
+        ],
+        "candidate_evidence_cards": [
+          {
+            "candidate_id": "candidate-crossover-3",
+            "review_recommendation": "hold",
+            "must_have_matrix": [
+              {
+                "capability": "Python backend",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                ],
+                "source_fields": [
+                  "scoring_text"
+                ]
+              },
+              {
+                "capability": "LLM",
+                "verdict": "missing",
+                "evidence_snippets": [],
+                "source_fields": []
+              },
+              {
+                "capability": "retrieval",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "workflow",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                ],
+                "source_fields": [
+                  "scoring_text"
+                ]
+              },
+              {
+                "capability": "ranking",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                ],
+                "source_fields": [
+                  "scoring_text",
+                  "work_experience_summaries"
+                ]
+              },
+              {
+                "capability": "agent",
+                "verdict": "explicit_hit",
+                "evidence_snippets": [
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                ],
+                "source_fields": [
+                  "scoring_text"
+                ]
+              }
+            ],
+            "preferred_evidence": [],
+            "gap_signals": [
+              {
+                "signal": "LLM",
+                "evidence_snippets": [],
+                "source_fields": []
+              }
+            ],
+            "risk_signals": [],
+            "card_summary": "hold: explicit must-have coverage 5/6; gaps LLM"
+          }
         ],
         "top_three_statistics": {
           "average_fusion_score_top_three": 0.5860039962861099
@@ -4871,9 +5735,9 @@
         "prompt_surface": {
           "surface_id": "branch_outcome_evaluation",
           "instructions_text": "Generate a strict structured branch evaluation draft for the current search expansion.\n\nUse only the provided branch evaluation packet.\nDo not rewrite runtime facts outside the draft fields.",
-          "input_text": "## Evaluation Contract\n- Use only the provided branch evaluation packet.\n- Do not rewrite runtime facts outside the draft fields.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n- Must-have capabilities: Python backend, LLM, retrieval, workflow, ranking, agent\n- Preferred capabilities: None\n\n## Branch Facts\n- Parent frontier node id: seed_must_have_alias_ff46b687\n- Previous node shortlist ids: None\n- Donor frontier node id: child_seed_relaxed_floor_a7280d07_ed18184f\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: workflow, retrieval\n- Semantic hash: c069edc08bf3d4e17600ebc78e90aa312acddabf\n\n## Search And Scoring Summary\n- Pages fetched: 1\n- Duplicate rate: 0.00\n- Latency ms: 5\n- Node shortlist ids: candidate-crossover-3\n- Average fusion score top three: 0.59\n\n## Runtime Budget State\n- Runtime round index: 2\n- Remaining budget: 3\n- Remaining ratio: 0.60\n- Phase progress: 0.50\n- Search phase: balance\n- Near budget end: no\n\n## Return Fields\n- Return novelty_score, usefulness_score, branch_exhausted, repair_operator_hint, and evaluation_notes.",
+          "input_text": "## Evaluation Contract\n- Use only the provided branch evaluation packet.\n- Do not rewrite runtime facts outside the draft fields.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n- Must-have capabilities: Python backend, LLM, retrieval, workflow, ranking, agent\n- Preferred capabilities: None\n\n## Branch Facts\n- Parent frontier node id: seed_must_have_alias_ff46b687\n- Previous node shortlist ids: None\n- Donor frontier node id: seed_relaxed_floor_a7280d07\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: workflow, Python backend\n- Semantic hash: 55a79b7d87ff475ccbf4cadd129c55c38f0183de\n\n## Search And Scoring Summary\n- Pages fetched: 1\n- Duplicate rate: 0.00\n- Latency ms: 5\n- Node shortlist ids: candidate-crossover-3\n- Average fusion score top three: 0.59\n\n## Runtime Budget State\n- Runtime round index: 2\n- Remaining budget: 3\n- Remaining ratio: 0.60\n- Phase progress: 0.50\n- Search phase: balance\n- Near budget end: no\n\n## Return Fields\n- Return novelty_score, usefulness_score, branch_exhausted, repair_operator_hint, and evaluation_notes.",
           "instructions_sha1": "c642ef71b75c5f757b150a200ce01ede319d049a",
-          "input_sha1": "a824d4a1c4e9d9a6711ee504e62e31dc526893bb",
+          "input_sha1": "3f029012f40a72397ee6334735984745d02fec99",
           "sections": [
             {
               "title": "Evaluation Contract",
@@ -4894,7 +5758,7 @@
             },
             {
               "title": "Branch Facts",
-              "body_text": "- Parent frontier node id: seed_must_have_alias_ff46b687\n- Previous node shortlist ids: None\n- Donor frontier node id: child_seed_relaxed_floor_a7280d07_ed18184f\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: workflow, retrieval\n- Semantic hash: c069edc08bf3d4e17600ebc78e90aa312acddabf",
+              "body_text": "- Parent frontier node id: seed_must_have_alias_ff46b687\n- Previous node shortlist ids: None\n- Donor frontier node id: seed_relaxed_floor_a7280d07\n- Knowledge pack ids: llm_agent_rag_engineering\n- Query terms: workflow, Python backend\n- Semantic hash: 55a79b7d87ff475ccbf4cadd129c55c38f0183de",
               "source_paths": [
                 "FrontierNode_t.frontier_node_id",
                 "FrontierNode_t.node_shortlist_candidate_ids",
@@ -4964,6 +5828,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -4982,15 +5848,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -5008,15 +5941,105 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-2": 0.4935180305765664
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "Python",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "title",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.9935180305765665,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 1.0,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.793518030576567,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "backend",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.3935180305765664,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.4935180305765664,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.3270360611531324
+            },
+            "status": "open"
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -5043,6 +6066,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -5069,6 +6094,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -5086,15 +6113,144 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-3"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-3": 0.5860039962861099
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "retrieval",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names",
+                  "search_text",
+                  "work_experience_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "retrieval platform",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.88600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "Built retrieval ranking systems.",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "work_experience_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.7860039962861096,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.7,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "agent",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.48600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "crossover_compose",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5860039962861099,
+              "must_have_gain": 0.83,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 4.007007992572221
+            },
+            "status": "open"
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -5186,6 +6342,8 @@
           },
           "child_seed_relaxed_floor_a7280d07_ed18184f": {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -5298,14 +6456,16 @@
             },
             "status": "open"
           },
-          "child_seed_must_have_alias_ff46b687_c069edc0": {
-            "frontier_node_id": "child_seed_must_have_alias_ff46b687_c069edc0",
+          "child_seed_must_have_alias_ff46b687_55a79b7d": {
+            "frontier_node_id": "child_seed_must_have_alias_ff46b687_55a79b7d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": "seed_must_have_alias_ff46b687",
-            "donor_frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "donor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "selected_operator_name": "crossover_compose",
             "node_query_term_pool": [
               "workflow",
-              "retrieval"
+              "Python backend"
             ],
             "knowledge_pack_ids": [
               "llm_agent_rag_engineering"
@@ -5325,22 +6485,41 @@
             },
             "rewrite_term_candidates": [
               {
-                "term": "Python",
+                "term": "retrieval",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
                 "source_fields": [
+                  "project_names",
                   "search_text",
-                  "title",
-                  "work_experience_summaries",
-                  "work_summaries"
+                  "work_experience_summaries"
                 ],
                 "support_count": 1,
-                "accepted_term_score": 4.086003996286109,
+                "accepted_term_score": 3.98600399628611,
                 "score_breakdown": {
                   "support_score": 1.0,
                   "candidate_quality_score": 0.5860039962861099,
-                  "field_weight_score": 1.0,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "retrieval platform",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
                   "must_have_bonus": 1.5,
                   "anchor_bonus": 0.0,
                   "pack_bonus": 0.0,
@@ -5370,19 +6549,19 @@
                 }
               },
               {
-                "term": "agent",
+                "term": "Built retrieval ranking systems.",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
                 "source_fields": [
-                  "search_text"
+                  "work_experience_summaries"
                 ],
                 "support_count": 1,
-                "accepted_term_score": 3.48600399628611,
+                "accepted_term_score": 3.7860039962861096,
                 "score_breakdown": {
                   "support_score": 1.0,
                   "candidate_quality_score": 0.5860039962861099,
-                  "field_weight_score": 0.4,
+                  "field_weight_score": 0.7,
                   "must_have_bonus": 1.5,
                   "anchor_bonus": 0.0,
                   "pack_bonus": 0.0,
@@ -5390,7 +6569,7 @@
                 }
               },
               {
-                "term": "backend",
+                "term": "agent",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
@@ -5434,17 +6613,16 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_pack_expansion_901291cb",
-          "seed_generic_expansion_b92f6cb7",
-          "child_seed_core_precision_7b085415_730e220d",
-          "child_seed_relaxed_floor_a7280d07_ed18184f",
-          "child_seed_must_have_alias_ff46b687_c069edc0"
-        ],
-        "closed_frontier_node_ids": [
           "seed_core_precision_7b085415",
           "seed_relaxed_floor_a7280d07",
-          "seed_must_have_alias_ff46b687"
+          "seed_pack_expansion_901291cb",
+          "seed_generic_expansion_b92f6cb7",
+          "seed_must_have_alias_ff46b687",
+          "child_seed_core_precision_7b085415_730e220d",
+          "child_seed_relaxed_floor_a7280d07_ed18184f",
+          "child_seed_must_have_alias_ff46b687_55a79b7d"
         ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -5463,7 +6641,7 @@
         "semantic_hashes_seen": [
           "730e220d7ec3cf81bc58d38e3a0be13265e6c4d2",
           "ed18184fcb4ac27de1fdea08855d2622cd6e938a",
-          "c069edc08bf3d4e17600ebc78e90aa312acddabf"
+          "55a79b7d87ff475ccbf4cadd129c55c38f0183de"
         ],
         "operator_statistics": {
           "core_precision": {
@@ -5506,6 +6684,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -5524,15 +6704,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -5550,15 +6797,105 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-2": 0.4935180305765664
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "Python",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "title",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.9935180305765665,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 1.0,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.793518030576567,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "backend",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.3935180305765664,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.4935180305765664,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.3270360611531324
+            },
+            "status": "open"
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -5585,6 +6922,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -5611,6 +6950,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -5628,15 +6969,144 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-3"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-3": 0.5860039962861099
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "retrieval",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names",
+                  "search_text",
+                  "work_experience_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "retrieval platform",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.88600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "Built retrieval ranking systems.",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "work_experience_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.7860039962861096,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.7,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "agent",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.48600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "crossover_compose",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5860039962861099,
+              "must_have_gain": 0.83,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 4.007007992572221
+            },
+            "status": "open"
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -5728,6 +7198,8 @@
           },
           "child_seed_relaxed_floor_a7280d07_ed18184f": {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -5840,14 +7312,16 @@
             },
             "status": "open"
           },
-          "child_seed_must_have_alias_ff46b687_c069edc0": {
-            "frontier_node_id": "child_seed_must_have_alias_ff46b687_c069edc0",
+          "child_seed_must_have_alias_ff46b687_55a79b7d": {
+            "frontier_node_id": "child_seed_must_have_alias_ff46b687_55a79b7d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": "seed_must_have_alias_ff46b687",
-            "donor_frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "donor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "selected_operator_name": "crossover_compose",
             "node_query_term_pool": [
               "workflow",
-              "retrieval"
+              "Python backend"
             ],
             "knowledge_pack_ids": [
               "llm_agent_rag_engineering"
@@ -5867,22 +7341,41 @@
             },
             "rewrite_term_candidates": [
               {
-                "term": "Python",
+                "term": "retrieval",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
                 "source_fields": [
+                  "project_names",
                   "search_text",
-                  "title",
-                  "work_experience_summaries",
-                  "work_summaries"
+                  "work_experience_summaries"
                 ],
                 "support_count": 1,
-                "accepted_term_score": 4.086003996286109,
+                "accepted_term_score": 3.98600399628611,
                 "score_breakdown": {
                   "support_score": 1.0,
                   "candidate_quality_score": 0.5860039962861099,
-                  "field_weight_score": 1.0,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "retrieval platform",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
                   "must_have_bonus": 1.5,
                   "anchor_bonus": 0.0,
                   "pack_bonus": 0.0,
@@ -5912,19 +7405,19 @@
                 }
               },
               {
-                "term": "agent",
+                "term": "Built retrieval ranking systems.",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
                 "source_fields": [
-                  "search_text"
+                  "work_experience_summaries"
                 ],
                 "support_count": 1,
-                "accepted_term_score": 3.48600399628611,
+                "accepted_term_score": 3.7860039962861096,
                 "score_breakdown": {
                   "support_score": 1.0,
                   "candidate_quality_score": 0.5860039962861099,
-                  "field_weight_score": 0.4,
+                  "field_weight_score": 0.7,
                   "must_have_bonus": 1.5,
                   "anchor_bonus": 0.0,
                   "pack_bonus": 0.0,
@@ -5932,7 +7425,7 @@
                 }
               },
               {
-                "term": "backend",
+                "term": "agent",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
@@ -5976,17 +7469,16 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_pack_expansion_901291cb",
-          "seed_generic_expansion_b92f6cb7",
-          "child_seed_core_precision_7b085415_730e220d",
-          "child_seed_relaxed_floor_a7280d07_ed18184f",
-          "child_seed_must_have_alias_ff46b687_c069edc0"
-        ],
-        "closed_frontier_node_ids": [
           "seed_core_precision_7b085415",
           "seed_relaxed_floor_a7280d07",
-          "seed_must_have_alias_ff46b687"
+          "seed_pack_expansion_901291cb",
+          "seed_generic_expansion_b92f6cb7",
+          "seed_must_have_alias_ff46b687",
+          "child_seed_core_precision_7b085415_730e220d",
+          "child_seed_relaxed_floor_a7280d07_ed18184f",
+          "child_seed_must_have_alias_ff46b687_55a79b7d"
         ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -6005,7 +7497,7 @@
         "semantic_hashes_seen": [
           "730e220d7ec3cf81bc58d38e3a0be13265e6c4d2",
           "ed18184fcb4ac27de1fdea08855d2622cd6e938a",
-          "c069edc08bf3d4e17600ebc78e90aa312acddabf"
+          "55a79b7d87ff475ccbf4cadd129c55c38f0183de"
         ],
         "operator_statistics": {
           "core_precision": {
@@ -6043,11 +7535,11 @@
         "role_title": "Workflow Search Engineer",
         "role_summary": "Build workflow-aware search systems.",
         "active_frontier_node_summary": {
-          "frontier_node_id": "child_seed_must_have_alias_ff46b687_c069edc0",
+          "frontier_node_id": "child_seed_must_have_alias_ff46b687_55a79b7d",
           "selected_operator_name": "crossover_compose",
           "node_query_term_pool": [
             "workflow",
-            "retrieval"
+            "Python backend"
           ],
           "node_shortlist_candidate_ids": [
             "candidate-crossover-3"
@@ -6055,18 +7547,29 @@
         },
         "donor_candidate_node_summaries": [
           {
-            "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "frontier_node_id": "seed_core_precision_7b085415",
             "shared_anchor_terms": [
-              "retrieval"
-            ],
-            "expected_incremental_coverage": [
               "Python backend"
             ],
+            "expected_incremental_coverage": [
+              "LLM",
+              "retrieval"
+            ],
             "reward_score": 3.456765212361948
+          },
+          {
+            "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "shared_anchor_terms": [
+              "workflow"
+            ],
+            "expected_incremental_coverage": [
+              "ranking"
+            ],
+            "reward_score": 4.007007992572221
           }
         ],
         "frontier_head_summary": {
-          "open_node_count": 5,
+          "open_node_count": 8,
           "remaining_budget": 2,
           "highest_selection_score": 1.1476494373204915
         },
@@ -6082,7 +7585,7 @@
         },
         "selection_ranking": [
           {
-            "frontier_node_id": "child_seed_must_have_alias_ff46b687_c069edc0",
+            "frontier_node_id": "child_seed_must_have_alias_ff46b687_55a79b7d",
             "selected_operator_name": "crossover_compose",
             "breakdown": {
               "search_phase": "harvest",
@@ -6093,6 +7596,20 @@
               "fresh_node_bonus": 0.0,
               "redundancy_penalty": 1.0,
               "final_selection_score": 1.1476494373204915
+            }
+          },
+          {
+            "frontier_node_id": "seed_core_precision_7b085415",
+            "selected_operator_name": "core_precision",
+            "breakdown": {
+              "search_phase": "harvest",
+              "operator_exploitation_score": 0.775622014544035,
+              "operator_exploration_bonus": 1.2686362411795196,
+              "coverage_opportunity_score": 0.5,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 1.1464616927155047
             }
           },
           {
@@ -6107,6 +7624,20 @@
               "fresh_node_bonus": 0.0,
               "redundancy_penalty": 1.0,
               "final_selection_score": 1.1131283593821715
+            }
+          },
+          {
+            "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "selected_operator_name": "must_have_alias",
+            "breakdown": {
+              "search_phase": "harvest",
+              "operator_exploitation_score": 0.7688949234840662,
+              "operator_exploration_bonus": 1.2686362411795196,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 1.1037104318982152
             }
           },
           {
@@ -6150,12 +7681,26 @@
               "redundancy_penalty": 0.0,
               "final_selection_score": 0.604903440064897
             }
+          },
+          {
+            "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "selected_operator_name": "relaxed_floor",
+            "breakdown": {
+              "search_phase": "harvest",
+              "operator_exploitation_score": 0.0,
+              "operator_exploration_bonus": 1.7941225779941015,
+              "coverage_opportunity_score": 0.3333333333333333,
+              "incremental_value_score": 0.6499999999999999,
+              "fresh_node_bonus": 0.0,
+              "redundancy_penalty": 1.0,
+              "final_selection_score": 0.184903440064897
+            }
           }
         ],
         "unmet_requirement_weights": [
           {
             "capability": "Python backend",
-            "weight": 1.0
+            "weight": 0.3
           },
           {
             "capability": "LLM",
@@ -6163,7 +7708,7 @@
           },
           {
             "capability": "retrieval",
-            "weight": 0.3
+            "weight": 1.0
           },
           {
             "capability": "workflow",
@@ -6216,29 +7761,48 @@
         ],
         "operator_surface_override_reason": "harvest_unmet_must_have_repair",
         "operator_surface_unmet_must_haves": [
-          "Python backend",
           "LLM",
+          "retrieval",
           "ranking",
           "agent"
         ],
         "rewrite_term_candidates": [
           {
-            "term": "Python",
+            "term": "retrieval",
             "source_candidate_ids": [
               "candidate-crossover-3"
             ],
             "source_fields": [
+              "project_names",
               "search_text",
-              "title",
-              "work_experience_summaries",
-              "work_summaries"
+              "work_experience_summaries"
             ],
             "support_count": 1,
-            "accepted_term_score": 4.086003996286109,
+            "accepted_term_score": 3.98600399628611,
             "score_breakdown": {
               "support_score": 1.0,
               "candidate_quality_score": 0.5860039962861099,
-              "field_weight_score": 1.0,
+              "field_weight_score": 0.9,
+              "must_have_bonus": 1.5,
+              "anchor_bonus": 0.0,
+              "pack_bonus": 0.0,
+              "generic_penalty": 0.0
+            }
+          },
+          {
+            "term": "retrieval platform",
+            "source_candidate_ids": [
+              "candidate-crossover-3"
+            ],
+            "source_fields": [
+              "project_names"
+            ],
+            "support_count": 1,
+            "accepted_term_score": 3.98600399628611,
+            "score_breakdown": {
+              "support_score": 1.0,
+              "candidate_quality_score": 0.5860039962861099,
+              "field_weight_score": 0.9,
               "must_have_bonus": 1.5,
               "anchor_bonus": 0.0,
               "pack_bonus": 0.0,
@@ -6268,19 +7832,19 @@
             }
           },
           {
-            "term": "agent",
+            "term": "Built retrieval ranking systems.",
             "source_candidate_ids": [
               "candidate-crossover-3"
             ],
             "source_fields": [
-              "search_text"
+              "work_experience_summaries"
             ],
             "support_count": 1,
-            "accepted_term_score": 3.48600399628611,
+            "accepted_term_score": 3.7860039962861096,
             "score_breakdown": {
               "support_score": 1.0,
               "candidate_quality_score": 0.5860039962861099,
-              "field_weight_score": 0.4,
+              "field_weight_score": 0.7,
               "must_have_bonus": 1.5,
               "anchor_bonus": 0.0,
               "pack_bonus": 0.0,
@@ -6288,7 +7852,7 @@
             }
           },
           {
-            "term": "backend",
+            "term": "agent",
             "source_candidate_ids": [
               "candidate-crossover-3"
             ],
@@ -6353,9 +7917,9 @@
         "prompt_surface": {
           "surface_id": "search_controller_decision",
           "instructions_text": "Generate a strict structured controller decision draft for the active frontier node.\n\nUse only the provided controller context.\nPick a legal operator from `allowed_operator_names`.\nDo not invent unsupported operators or donor ids outside the provided candidate list.",
-          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: child_seed_must_have_alias_ff46b687_c069edc0\n- Current operator: crossover_compose\n- Query term pool: workflow, retrieval\n- Current node shortlist ids: candidate-crossover-3\n\n## Donor Candidates\n- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=retrieval; expected_incremental_coverage=Python backend; reward_score=3.46\n\n## Allowed Operators\n- Allowed operators: core_precision, crossover_compose, must_have_alias, generic_expansion\n- Operator surface override: harvest_unmet_must_have_repair\n- Operator surface unmet must-haves: Python backend, LLM, ranking, agent\n\n## Rewrite Evidence\n- Python: support_count=1; source_fields=search_text, title, work_experience_summaries, work_summaries; signal=must_have\n- ranking: support_count=1; source_fields=search_text, work_experience_summaries, work_summaries; signal=must_have\n- agent: support_count=1; source_fields=search_text; signal=must_have\n- backend: support_count=1; source_fields=search_text; signal=must_have\n\n## Operator Statistics\n- core_precision: average_reward=3.46, times_selected=1\n- crossover_compose: average_reward=4.01, times_selected=1\n- must_have_alias: average_reward=3.33, times_selected=1\n- generic_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 6\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- LLM: weight=1.00\n- retrieval: weight=0.30\n- workflow: weight=0.30\n- ranking: weight=1.00\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 3\n- Remaining budget: 2\n- Used ratio: 0.60\n- Remaining ratio: 0.40\n- Phase progress: 0.75\n- Search phase: harvest\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
+          "input_text": "## Task Contract\n- Use only the provided controller context.\n- Pick a legal operator from allowed_operator_names.\n- Do not invent unsupported operators or donor ids outside the provided candidate list.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n\n## Active Frontier Node\n- Frontier node id: child_seed_must_have_alias_ff46b687_55a79b7d\n- Current operator: crossover_compose\n- Query term pool: workflow, Python backend\n- Current node shortlist ids: candidate-crossover-3\n\n## Donor Candidates\n- seed_core_precision_7b085415: shared_anchor_terms=Python backend; expected_incremental_coverage=LLM, retrieval; reward_score=3.46\n- seed_must_have_alias_ff46b687: shared_anchor_terms=workflow; expected_incremental_coverage=ranking; reward_score=4.01\n\n## Allowed Operators\n- Allowed operators: core_precision, crossover_compose, must_have_alias, generic_expansion\n- Operator surface override: harvest_unmet_must_have_repair\n- Operator surface unmet must-haves: LLM, retrieval, ranking, agent\n\n## Rewrite Evidence\n- retrieval: support_count=1; source_fields=project_names, search_text, work_experience_summaries; signal=must_have\n- retrieval platform: support_count=1; source_fields=project_names; signal=must_have\n- ranking: support_count=1; source_fields=search_text, work_experience_summaries, work_summaries; signal=must_have\n- Built retrieval ranking systems.: support_count=1; source_fields=work_experience_summaries; signal=must_have\n- agent: support_count=1; source_fields=search_text; signal=must_have\n\n## Operator Statistics\n- core_precision: average_reward=3.46, times_selected=1\n- crossover_compose: average_reward=4.01, times_selected=1\n- must_have_alias: average_reward=3.33, times_selected=1\n- generic_expansion: average_reward=0.00, times_selected=0\n- cross_pack_bridge: average_reward=0.00, times_selected=0\n- pack_expansion: average_reward=0.00, times_selected=0\n- relaxed_floor: average_reward=0.00, times_selected=0\n\n## Fit Gates And Unmet Requirements\n- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 6\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=1.00\n- agent: weight=1.00\n\n## Runtime Budget State\n- Initial round budget: 5\n- Runtime round index: 3\n- Remaining budget: 2\n- Used ratio: 0.60\n- Remaining ratio: 0.40\n- Phase progress: 0.75\n- Search phase: harvest\n- Near budget end: no\n\n## Decision Request\n- Return action, selected_operator_name, operator_args, and expected_gain_hypothesis.\n- The answer must target the active frontier node only.",
           "instructions_sha1": "ec1833921ed269a04ba89af17021e143e63e5f16",
-          "input_sha1": "01d9e87e3c4b176801fc9c4c16efeb6cb41c773a",
+          "input_sha1": "72022b10dac259245eb44ca19f9a94cadb2fd131",
           "sections": [
             {
               "title": "Task Contract",
@@ -6374,7 +7938,7 @@
             },
             {
               "title": "Active Frontier Node",
-              "body_text": "- Frontier node id: child_seed_must_have_alias_ff46b687_c069edc0\n- Current operator: crossover_compose\n- Query term pool: workflow, retrieval\n- Current node shortlist ids: candidate-crossover-3",
+              "body_text": "- Frontier node id: child_seed_must_have_alias_ff46b687_55a79b7d\n- Current operator: crossover_compose\n- Query term pool: workflow, Python backend\n- Current node shortlist ids: candidate-crossover-3",
               "source_paths": [
                 "SearchControllerContext_t.active_frontier_node_summary"
               ],
@@ -6382,7 +7946,7 @@
             },
             {
               "title": "Donor Candidates",
-              "body_text": "- child_seed_core_precision_7b085415_730e220d: shared_anchor_terms=retrieval; expected_incremental_coverage=Python backend; reward_score=3.46",
+              "body_text": "- seed_core_precision_7b085415: shared_anchor_terms=Python backend; expected_incremental_coverage=LLM, retrieval; reward_score=3.46\n- seed_must_have_alias_ff46b687: shared_anchor_terms=workflow; expected_incremental_coverage=ranking; reward_score=4.01",
               "source_paths": [
                 "SearchControllerContext_t.donor_candidate_node_summaries"
               ],
@@ -6390,7 +7954,7 @@
             },
             {
               "title": "Allowed Operators",
-              "body_text": "- Allowed operators: core_precision, crossover_compose, must_have_alias, generic_expansion\n- Operator surface override: harvest_unmet_must_have_repair\n- Operator surface unmet must-haves: Python backend, LLM, ranking, agent",
+              "body_text": "- Allowed operators: core_precision, crossover_compose, must_have_alias, generic_expansion\n- Operator surface override: harvest_unmet_must_have_repair\n- Operator surface unmet must-haves: LLM, retrieval, ranking, agent",
               "source_paths": [
                 "SearchControllerContext_t.allowed_operator_names",
                 "SearchControllerContext_t.operator_surface_override_reason",
@@ -6400,7 +7964,7 @@
             },
             {
               "title": "Rewrite Evidence",
-              "body_text": "- Python: support_count=1; source_fields=search_text, title, work_experience_summaries, work_summaries; signal=must_have\n- ranking: support_count=1; source_fields=search_text, work_experience_summaries, work_summaries; signal=must_have\n- agent: support_count=1; source_fields=search_text; signal=must_have\n- backend: support_count=1; source_fields=search_text; signal=must_have",
+              "body_text": "- retrieval: support_count=1; source_fields=project_names, search_text, work_experience_summaries; signal=must_have\n- retrieval platform: support_count=1; source_fields=project_names; signal=must_have\n- ranking: support_count=1; source_fields=search_text, work_experience_summaries, work_summaries; signal=must_have\n- Built retrieval ranking systems.: support_count=1; source_fields=work_experience_summaries; signal=must_have\n- agent: support_count=1; source_fields=search_text; signal=must_have",
               "source_paths": [
                 "SearchControllerContext_t.rewrite_term_candidates"
               ],
@@ -6416,7 +7980,7 @@
             },
             {
               "title": "Fit Gates And Unmet Requirements",
-              "body_text": "- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 6\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=1.00\n- LLM: weight=1.00\n- retrieval: weight=0.30\n- workflow: weight=0.30\n- ranking: weight=1.00\n- agent: weight=1.00",
+              "body_text": "- CTS keyword terms are conjunctive. More terms tighten the search.\n- Max query terms: 6\n- Locations: Shanghai\n- Min years: 5\n- Max years: 10\n- Companies: None\n- Schools: None\n- Degree requirement: None\n- Gender requirement: None\n- Min age: None\n- Max age: None\n- Unmet requirement weights:\n- Python backend: weight=0.30\n- LLM: weight=1.00\n- retrieval: weight=1.00\n- workflow: weight=0.30\n- ranking: weight=1.00\n- agent: weight=1.00",
               "source_paths": [
                 "SearchControllerContext_t.fit_gate_constraints",
                 "SearchControllerContext_t.unmet_requirement_weights",
@@ -6443,7 +8007,7 @@
       },
       "controller_decision": {
         "action": "stop",
-        "target_frontier_node_id": "child_seed_must_have_alias_ff46b687_c069edc0",
+        "target_frontier_node_id": "child_seed_must_have_alias_ff46b687_55a79b7d",
         "selected_operator_name": "must_have_alias",
         "operator_args": {},
         "expected_gain_hypothesis": "Stop."
@@ -6470,6 +8034,8 @@
         "frontier_nodes": {
           "seed_core_precision_7b085415": {
             "frontier_node_id": "seed_core_precision_7b085415",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -6488,15 +8054,82 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-1"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-1": 0.5083826061809741
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.808382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "rag",
+                "source_candidate_ids": [
+                  "candidate-crossover-1"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 2.408382606180974,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5083826061809741,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 0.0,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.5,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.8,
+              "usefulness_score": 0.7,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5083826061809741,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.8,
+              "usefulness": 0.7,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.456765212361948
+            },
+            "status": "open"
           },
           "seed_relaxed_floor_a7280d07": {
             "frontier_node_id": "seed_relaxed_floor_a7280d07",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "relaxed_floor",
@@ -6514,15 +8147,105 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-2"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-2": 0.4935180305765664
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "Python",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "title",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.9935180305765665,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 1.0,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.793518030576567,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "backend",
+                "source_candidate_ids": [
+                  "candidate-crossover-2"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.3935180305765664,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.4935180305765664,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "core_precision",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.4935180305765664,
+              "must_have_gain": 0.5,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 3.3270360611531324
+            },
+            "status": "open"
           },
           "seed_pack_expansion_901291cb": {
             "frontier_node_id": "seed_pack_expansion_901291cb",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_pack_expansion_901291cb",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "pack_expansion",
@@ -6549,6 +8272,8 @@
           },
           "seed_generic_expansion_b92f6cb7": {
             "frontier_node_id": "seed_generic_expansion_b92f6cb7",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_generic_expansion_b92f6cb7",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "generic_expansion",
@@ -6575,6 +8300,8 @@
           },
           "seed_must_have_alias_ff46b687": {
             "frontier_node_id": "seed_must_have_alias_ff46b687",
+            "branch_role": "root_anchor",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": null,
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -6592,15 +8319,144 @@
               "pure algorithm research"
             ],
             "parent_shortlist_candidate_ids": [],
-            "node_shortlist_candidate_ids": [],
-            "node_shortlist_score_snapshot": {},
-            "rewrite_term_candidates": [],
-            "previous_branch_evaluation": null,
-            "reward_breakdown": null,
-            "status": "closed"
+            "node_shortlist_candidate_ids": [
+              "candidate-crossover-3"
+            ],
+            "node_shortlist_score_snapshot": {
+              "candidate-crossover-3": 0.5860039962861099
+            },
+            "rewrite_term_candidates": [
+              {
+                "term": "retrieval",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names",
+                  "search_text",
+                  "work_experience_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "retrieval platform",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "ranking",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "search_text",
+                  "work_experience_summaries",
+                  "work_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.88600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.8,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "Built retrieval ranking systems.",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "work_experience_summaries"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.7860039962861096,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.7,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "agent",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "search_text"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.48600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.4,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              }
+            ],
+            "previous_branch_evaluation": {
+              "novelty_score": 0.7,
+              "usefulness_score": 0.6,
+              "branch_exhausted": false,
+              "repair_operator_hint": "crossover_compose",
+              "evaluation_notes": "Canonical branch evaluation."
+            },
+            "reward_breakdown": {
+              "delta_top_three": 0.5860039962861099,
+              "must_have_gain": 0.83,
+              "new_fit_yield": 1.0,
+              "novelty": 0.7,
+              "usefulness": 0.6,
+              "diversity": 1.0,
+              "stability_risk_penalty": 0.0,
+              "hard_constraint_violation": 0.0,
+              "duplicate_penalty": 0.0,
+              "cost_penalty": 0.15,
+              "reward_score": 4.007007992572221
+            },
+            "status": "open"
           },
           "child_seed_core_precision_7b085415_730e220d": {
             "frontier_node_id": "child_seed_core_precision_7b085415_730e220d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_core_precision_7b085415",
             "parent_frontier_node_id": "seed_core_precision_7b085415",
             "donor_frontier_node_id": null,
             "selected_operator_name": "core_precision",
@@ -6692,6 +8548,8 @@
           },
           "child_seed_relaxed_floor_a7280d07_ed18184f": {
             "frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "parent_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "donor_frontier_node_id": null,
             "selected_operator_name": "must_have_alias",
@@ -6804,14 +8662,16 @@
             },
             "status": "open"
           },
-          "child_seed_must_have_alias_ff46b687_c069edc0": {
-            "frontier_node_id": "child_seed_must_have_alias_ff46b687_c069edc0",
+          "child_seed_must_have_alias_ff46b687_55a79b7d": {
+            "frontier_node_id": "child_seed_must_have_alias_ff46b687_55a79b7d",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": "seed_must_have_alias_ff46b687",
             "parent_frontier_node_id": "seed_must_have_alias_ff46b687",
-            "donor_frontier_node_id": "child_seed_relaxed_floor_a7280d07_ed18184f",
+            "donor_frontier_node_id": "seed_relaxed_floor_a7280d07",
             "selected_operator_name": "crossover_compose",
             "node_query_term_pool": [
               "workflow",
-              "retrieval"
+              "Python backend"
             ],
             "knowledge_pack_ids": [
               "llm_agent_rag_engineering"
@@ -6831,22 +8691,41 @@
             },
             "rewrite_term_candidates": [
               {
-                "term": "Python",
+                "term": "retrieval",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
                 "source_fields": [
+                  "project_names",
                   "search_text",
-                  "title",
-                  "work_experience_summaries",
-                  "work_summaries"
+                  "work_experience_summaries"
                 ],
                 "support_count": 1,
-                "accepted_term_score": 4.086003996286109,
+                "accepted_term_score": 3.98600399628611,
                 "score_breakdown": {
                   "support_score": 1.0,
                   "candidate_quality_score": 0.5860039962861099,
-                  "field_weight_score": 1.0,
+                  "field_weight_score": 0.9,
+                  "must_have_bonus": 1.5,
+                  "anchor_bonus": 0.0,
+                  "pack_bonus": 0.0,
+                  "generic_penalty": 0.0
+                }
+              },
+              {
+                "term": "retrieval platform",
+                "source_candidate_ids": [
+                  "candidate-crossover-3"
+                ],
+                "source_fields": [
+                  "project_names"
+                ],
+                "support_count": 1,
+                "accepted_term_score": 3.98600399628611,
+                "score_breakdown": {
+                  "support_score": 1.0,
+                  "candidate_quality_score": 0.5860039962861099,
+                  "field_weight_score": 0.9,
                   "must_have_bonus": 1.5,
                   "anchor_bonus": 0.0,
                   "pack_bonus": 0.0,
@@ -6876,19 +8755,19 @@
                 }
               },
               {
-                "term": "agent",
+                "term": "Built retrieval ranking systems.",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
                 "source_fields": [
-                  "search_text"
+                  "work_experience_summaries"
                 ],
                 "support_count": 1,
-                "accepted_term_score": 3.48600399628611,
+                "accepted_term_score": 3.7860039962861096,
                 "score_breakdown": {
                   "support_score": 1.0,
                   "candidate_quality_score": 0.5860039962861099,
-                  "field_weight_score": 0.4,
+                  "field_weight_score": 0.7,
                   "must_have_bonus": 1.5,
                   "anchor_bonus": 0.0,
                   "pack_bonus": 0.0,
@@ -6896,7 +8775,7 @@
                 }
               },
               {
-                "term": "backend",
+                "term": "agent",
                 "source_candidate_ids": [
                   "candidate-crossover-3"
                 ],
@@ -6940,17 +8819,16 @@
           }
         },
         "open_frontier_node_ids": [
-          "seed_pack_expansion_901291cb",
-          "seed_generic_expansion_b92f6cb7",
-          "child_seed_core_precision_7b085415_730e220d",
-          "child_seed_relaxed_floor_a7280d07_ed18184f",
-          "child_seed_must_have_alias_ff46b687_c069edc0"
-        ],
-        "closed_frontier_node_ids": [
           "seed_core_precision_7b085415",
           "seed_relaxed_floor_a7280d07",
-          "seed_must_have_alias_ff46b687"
+          "seed_pack_expansion_901291cb",
+          "seed_generic_expansion_b92f6cb7",
+          "seed_must_have_alias_ff46b687",
+          "child_seed_core_precision_7b085415_730e220d",
+          "child_seed_relaxed_floor_a7280d07_ed18184f",
+          "child_seed_must_have_alias_ff46b687_55a79b7d"
         ],
+        "closed_frontier_node_ids": [],
         "run_term_catalog": [
           "Python backend",
           "LLM",
@@ -6969,7 +8847,7 @@
         "semantic_hashes_seen": [
           "730e220d7ec3cf81bc58d38e3a0be13265e6c4d2",
           "ed18184fcb4ac27de1fdea08855d2622cd6e938a",
-          "c069edc08bf3d4e17600ebc78e90aa312acddabf"
+          "55a79b7d87ff475ccbf4cadd129c55c38f0183de"
         ],
         "operator_statistics": {
           "core_precision": {
@@ -7021,9 +8899,9 @@
     "prompt_surface": {
       "surface_id": "search_run_finalization",
       "instructions_text": "Generate a strict structured final run summary draft.\n\nUse only the provided finalization context.\nDo not rewrite shortlist ordering or stop facts.",
-      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n- Must-have capabilities: Python backend, LLM, retrieval, workflow, ranking, agent\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 3\n- Final shortlist count: 3\n- Final must-have query coverage: 0.33\n- Operators used: core_precision, must_have_alias, crossover_compose\n\n## Final Shortlist State\n- Final shortlist candidate ids: candidate-crossover-3, candidate-crossover-1, candidate-crossover-2\n- Remaining budget: 2\n- Open frontier node ids: seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f, child_seed_must_have_alias_ff46b687_c069edc0\n- Closed frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07, seed_must_have_alias_ff46b687\n\n## Stop Reason\n- controller_stop\n\n## Return Fields\n- Return run_summary.",
+      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n- Must-have capabilities: Python backend, LLM, retrieval, workflow, ranking, agent\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 3\n- Final shortlist count: 3\n- Final must-have query coverage: 0.33\n- Operators used: core_precision, must_have_alias, crossover_compose\n\n## Final Shortlist State\n- Final shortlist candidate ids: candidate-crossover-3, candidate-crossover-1, candidate-crossover-2\n- Remaining budget: 2\n- Open frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07, seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, seed_must_have_alias_ff46b687, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f, child_seed_must_have_alias_ff46b687_55a79b7d\n- Closed frontier node ids: None\n\n## Stop Reason\n- controller_stop\n\n## Return Fields\n- Return run_summary.",
       "instructions_sha1": "8e78c48e227a8a26cadc04d211f4bc7c5b210c19",
-      "input_sha1": "a7cabb75c27f65e00d3235109a5f5b11e04afd94",
+      "input_sha1": "4a99500416fbc85df3512dabc903ad5827243411",
       "sections": [
         {
           "title": "Task Contract",
@@ -7054,7 +8932,7 @@
         },
         {
           "title": "Final Shortlist State",
-          "body_text": "- Final shortlist candidate ids: candidate-crossover-3, candidate-crossover-1, candidate-crossover-2\n- Remaining budget: 2\n- Open frontier node ids: seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f, child_seed_must_have_alias_ff46b687_c069edc0\n- Closed frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07, seed_must_have_alias_ff46b687",
+          "body_text": "- Final shortlist candidate ids: candidate-crossover-3, candidate-crossover-1, candidate-crossover-2\n- Remaining budget: 2\n- Open frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07, seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, seed_must_have_alias_ff46b687, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f, child_seed_must_have_alias_ff46b687_55a79b7d\n- Closed frontier node ids: None",
           "source_paths": [
             "FrontierState_t1.run_shortlist_candidate_ids",
             "FrontierState_t1.remaining_budget",
@@ -7086,6 +8964,241 @@
       "candidate-crossover-1",
       "candidate-crossover-2"
     ],
+    "final_candidate_cards": [
+      {
+        "candidate_id": "candidate-crossover-3",
+        "review_recommendation": "hold",
+        "must_have_matrix": [
+          {
+            "capability": "Python backend",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+            ],
+            "source_fields": [
+              "scoring_text"
+            ]
+          },
+          {
+            "capability": "LLM",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "capability": "retrieval",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "workflow",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+            ],
+            "source_fields": [
+              "scoring_text"
+            ]
+          },
+          {
+            "capability": "ranking",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "agent",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow agent ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+            ],
+            "source_fields": [
+              "scoring_text"
+            ]
+          }
+        ],
+        "preferred_evidence": [],
+        "gap_signals": [
+          {
+            "signal": "LLM",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "risk_signals": [],
+        "card_summary": "hold: explicit must-have coverage 5/6; gaps LLM"
+      },
+      {
+        "candidate_id": "candidate-crossover-1",
+        "review_recommendation": "hold",
+        "must_have_matrix": [
+          {
+            "capability": "Python backend",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+            ],
+            "source_fields": [
+              "scoring_text"
+            ]
+          },
+          {
+            "capability": "LLM",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "capability": "retrieval",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "workflow",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "capability": "ranking",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "agent",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "preferred_evidence": [],
+        "gap_signals": [
+          {
+            "signal": "LLM",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "signal": "workflow",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "signal": "agent",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "risk_signals": [],
+        "card_summary": "hold: explicit must-have coverage 3/6; gaps LLM, workflow"
+      },
+      {
+        "candidate_id": "candidate-crossover-2",
+        "review_recommendation": "hold",
+        "must_have_matrix": [
+          {
+            "capability": "Python backend",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend ranking workflow. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+            ],
+            "source_fields": [
+              "scoring_text"
+            ]
+          },
+          {
+            "capability": "LLM",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "capability": "retrieval",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend ranking workflow. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "workflow",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "capability": "ranking",
+            "verdict": "explicit_hit",
+            "evidence_snippets": [
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend ranking workflow. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
+              "TestCo | Python Engineer | Built retrieval ranking systems."
+            ],
+            "source_fields": [
+              "scoring_text",
+              "work_experience_summaries"
+            ]
+          },
+          {
+            "capability": "agent",
+            "verdict": "missing",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "preferred_evidence": [],
+        "gap_signals": [
+          {
+            "signal": "LLM",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "signal": "workflow",
+            "evidence_snippets": [],
+            "source_fields": []
+          },
+          {
+            "signal": "agent",
+            "evidence_snippets": [],
+            "source_fields": []
+          }
+        ],
+        "risk_signals": [],
+        "card_summary": "hold: explicit must-have coverage 3/6; gaps LLM, workflow"
+      }
+    ],
+    "reviewer_summary": "Reviewer summary: 0 advance, 3 hold, 0 reject; main gaps: LLM, agent",
     "run_summary": "Legal crossover produced an expanded shortlist.",
     "stop_reason": "controller_stop"
   },
@@ -7143,8 +9256,8 @@
         "name": "eligible_open_node_count_by_search_round",
         "value": [
           5,
-          5,
-          5
+          6,
+          7
         ]
       },
       {
@@ -7243,6 +9356,30 @@
       {
         "name": "llm_validator_retry_count",
         "value": 0
+      },
+      {
+        "name": "time_to_first_advance_round",
+        "value": null
+      },
+      {
+        "name": "pages_per_advance_candidate",
+        "value": 3.0
+      },
+      {
+        "name": "advance_candidates_per_query",
+        "value": 0.0
+      },
+      {
+        "name": "query_churn_rate",
+        "value": 0.6666666666666666
+      },
+      {
+        "name": "review_burden_candidate_count",
+        "value": 3
+      },
+      {
+        "name": "review_burden_per_advance",
+        "value": 3.0
       }
     ]
   }

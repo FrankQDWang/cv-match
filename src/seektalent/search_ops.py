@@ -7,10 +7,14 @@ from typing import Protocol
 
 from seektalent.clients.cts_client import CTSClientProtocol
 from seektalent.models import (
+    CandidateEvidenceCard_t,
     CrossoverGuardThresholds,
+    EvidenceSignal_t,
     FitGateConstraints,
     FrontierState_t,
+    MustHaveEvidenceRow_t,
     RequirementSheet,
+    ReviewRecommendation,
     RuntimeSearchBudget,
     ScoredCandidate_t,
     ScoringCandidate_t,
@@ -129,6 +133,10 @@ def materialize_search_execution_plan(
         knowledge_pack_ids=knowledge_pack_ids,
         child_frontier_node_stub={
             "frontier_node_id": f"child_{parent_node.frontier_node_id}_{semantic_hash[:8]}",
+            "branch_role": "repair_hypothesis",
+            "root_anchor_frontier_node_id": (
+                parent_node.root_anchor_frontier_node_id or parent_node.frontier_node_id
+            ),
             "parent_frontier_node_id": parent_node.frontier_node_id,
             "donor_frontier_node_id": donor_frontier_node_id,
             "selected_operator_name": decision.selected_operator_name,
@@ -189,6 +197,7 @@ async def score_search_results(
             scored_candidates=[],
             node_shortlist_candidate_ids=[],
             explanation_candidate_ids=[],
+            candidate_evidence_cards=[],
             top_three_statistics=TopThreeStatistics(average_fusion_score_top_three=0.0),
         )
 
@@ -221,12 +230,28 @@ async def score_search_results(
         candidate.candidate_id
         for candidate in ranked_candidates[: scoring_policy.top_n_for_explanation]
     ]
+    candidates_by_id = {
+        candidate.candidate_id: candidate
+        for candidate in candidates
+    }
+    scored_by_id = {
+        candidate.candidate_id: candidate
+        for candidate in ranked_candidates
+    }
     top_three = ranked_candidates[:3]
     average_top_three = 0.0 if not top_three else sum(candidate.fusion_score for candidate in top_three) / len(top_three)
     return SearchScoringResult_t(
         scored_candidates=ranked_candidates,
         node_shortlist_candidate_ids=node_shortlist_candidate_ids,
         explanation_candidate_ids=explanation_candidate_ids,
+        candidate_evidence_cards=[
+            _build_candidate_evidence_card(
+                candidate=candidates_by_id[candidate_id],
+                scored_candidate=scored_by_id[candidate_id],
+                scoring_policy=scoring_policy,
+            )
+            for candidate_id in explanation_candidate_ids
+        ],
         top_three_statistics=TopThreeStatistics(average_fusion_score_top_three=average_top_three),
     )
 
@@ -284,7 +309,7 @@ def _score_candidate(
     must_raw = round(100 * _match_fraction(candidate, scoring_policy.must_have_capabilities_snapshot))
     preferred_raw = round(100 * _match_fraction(candidate, scoring_policy.preferred_capabilities_snapshot))
     risk_score, risk_raw, risk_flags = _risk_score(candidate, scoring_policy)
-    fit = _fit_score(candidate, scoring_policy.fit_gate_constraints)
+    fit, fit_gate_failures = _fit_score(candidate, scoring_policy.fit_gate_constraints)
     fusion_score = (
         scoring_policy.fusion_weights.rerank * rerank_normalized
         + scoring_policy.fusion_weights.must_have * (must_raw / 100)
@@ -294,6 +319,7 @@ def _score_candidate(
     return ScoredCandidate_t(
         candidate_id=candidate.candidate_id,
         fit=fit,
+        fit_gate_failures=fit_gate_failures,
         rerank_raw=rerank_raw,
         rerank_normalized=rerank_normalized,
         must_have_match_score_raw=must_raw,
@@ -359,21 +385,231 @@ def _risk_score(
     return risk_raw / 100, risk_raw, risk_flags
 
 
-def _fit_score(candidate: ScoringCandidate_t, fit_gates: FitGateConstraints) -> int:
+def _fit_score(candidate: ScoringCandidate_t, fit_gates: FitGateConstraints) -> tuple[int, list[str]]:
+    fit_gate_failures: list[str] = []
     checks = [
-        _allowlist_match(candidate.location_signals, fit_gates.locations) if fit_gates.locations else 1,
-        1 if fit_gates.min_years is None or candidate.years_of_experience is None or candidate.years_of_experience >= fit_gates.min_years else 0,
-        1 if fit_gates.max_years is None or candidate.years_of_experience is None or candidate.years_of_experience <= fit_gates.max_years else 0,
-        1 if fit_gates.min_age is None or candidate.age is None or candidate.age >= fit_gates.min_age else 0,
-        1 if fit_gates.max_age is None or candidate.age is None or candidate.age <= fit_gates.max_age else 0,
-        1
-        if fit_gates.gender_requirement is None or candidate.gender is None
-        else int(_normalized_text(candidate.gender) == _normalized_text(fit_gates.gender_requirement)),
-        _allowlist_match(candidate.work_experience_summaries, fit_gates.company_names) if fit_gates.company_names else 1,
-        _allowlist_match(candidate.education_summaries, fit_gates.school_names) if fit_gates.school_names else 1,
-        _degree_fit(candidate.education_summaries, fit_gates.degree_requirement),
+        (
+            "location",
+            _allowlist_match(candidate.location_signals, fit_gates.locations)
+            if fit_gates.locations
+            else 1,
+        ),
+        (
+            "min_years",
+            1
+            if fit_gates.min_years is None
+            or candidate.years_of_experience is None
+            or candidate.years_of_experience >= fit_gates.min_years
+            else 0,
+        ),
+        (
+            "max_years",
+            1
+            if fit_gates.max_years is None
+            or candidate.years_of_experience is None
+            or candidate.years_of_experience <= fit_gates.max_years
+            else 0,
+        ),
+        (
+            "min_age",
+            1 if fit_gates.min_age is None or candidate.age is None or candidate.age >= fit_gates.min_age else 0,
+        ),
+        (
+            "max_age",
+            1 if fit_gates.max_age is None or candidate.age is None or candidate.age <= fit_gates.max_age else 0,
+        ),
+        (
+            "gender",
+            1
+            if fit_gates.gender_requirement is None or candidate.gender is None
+            else int(_normalized_text(candidate.gender) == _normalized_text(fit_gates.gender_requirement)),
+        ),
+        (
+            "company",
+            _allowlist_match(candidate.work_experience_summaries, fit_gates.company_names)
+            if fit_gates.company_names
+            else 1,
+        ),
+        (
+            "school",
+            _allowlist_match(candidate.education_summaries, fit_gates.school_names)
+            if fit_gates.school_names
+            else 1,
+        ),
+        (
+            "degree",
+            _degree_fit(candidate.education_summaries, fit_gates.degree_requirement),
+        ),
     ]
-    return 1 if all(checks) else 0
+    for label, passed in checks:
+        if not passed:
+            fit_gate_failures.append(label)
+    return (1 if not fit_gate_failures else 0), fit_gate_failures
+
+
+def _build_candidate_evidence_card(
+    *,
+    candidate: ScoringCandidate_t,
+    scored_candidate: ScoredCandidate_t,
+    scoring_policy: ScoringPolicy,
+) -> CandidateEvidenceCard_t:
+    must_have_matrix = [
+        _must_have_evidence_row(candidate, capability)
+        for capability in scoring_policy.must_have_capabilities_snapshot
+    ]
+    preferred_evidence = [
+        EvidenceSignal_t(
+            signal=capability,
+            evidence_snippets=evidence_snippets,
+            source_fields=source_fields,
+        )
+        for capability in scoring_policy.preferred_capabilities_snapshot
+        for evidence_snippets, source_fields in [_signal_evidence(candidate, capability)]
+        if evidence_snippets
+    ]
+    gap_signals = [
+        EvidenceSignal_t(
+            signal=row.capability,
+            evidence_snippets=row.evidence_snippets,
+            source_fields=row.source_fields,
+        )
+        for row in must_have_matrix
+        if row.verdict != "explicit_hit"
+    ]
+    risk_signals = [
+        EvidenceSignal_t(
+            signal=signal,
+            evidence_snippets=[],
+            source_fields=["career_stability_profile"],
+        )
+        for signal in scored_candidate.risk_flags
+    ] + [
+        EvidenceSignal_t(
+            signal=signal,
+            evidence_snippets=[],
+            source_fields=["fit_gate"],
+        )
+        for signal in scored_candidate.fit_gate_failures
+    ]
+    review_recommendation = _review_recommendation(
+        scored_candidate=scored_candidate,
+        must_have_matrix=must_have_matrix,
+    )
+    return CandidateEvidenceCard_t(
+        candidate_id=candidate.candidate_id,
+        review_recommendation=review_recommendation,
+        must_have_matrix=must_have_matrix,
+        preferred_evidence=preferred_evidence,
+        gap_signals=gap_signals,
+        risk_signals=risk_signals,
+        card_summary=_card_summary(
+            review_recommendation=review_recommendation,
+            must_have_matrix=must_have_matrix,
+            risk_signals=risk_signals,
+        ),
+    )
+
+
+def _must_have_evidence_row(
+    candidate: ScoringCandidate_t,
+    capability: str,
+) -> MustHaveEvidenceRow_t:
+    evidence_snippets, source_fields = _explicit_evidence(candidate, capability)
+    if evidence_snippets:
+        verdict = "explicit_hit"
+    else:
+        evidence_snippets, source_fields = _weak_evidence(candidate, capability)
+        verdict = "weak_inference" if evidence_snippets else "missing"
+    return MustHaveEvidenceRow_t(
+        capability=capability,
+        verdict=verdict,
+        evidence_snippets=evidence_snippets,
+        source_fields=source_fields,
+    )
+
+
+def _explicit_evidence(
+    candidate: ScoringCandidate_t,
+    capability: str,
+) -> tuple[list[str], list[str]]:
+    return _collect_evidence(
+        [
+            ("scoring_text", [candidate.scoring_text]),
+            ("work_experience_summaries", candidate.work_experience_summaries),
+        ],
+        capability,
+    )
+
+
+def _weak_evidence(
+    candidate: ScoringCandidate_t,
+    capability: str,
+) -> tuple[list[str], list[str]]:
+    return _collect_evidence(
+        [
+            ("project_names", candidate.project_names),
+            ("work_summaries", candidate.work_summaries),
+        ],
+        capability,
+    )
+
+
+def _signal_evidence(
+    candidate: ScoringCandidate_t,
+    capability: str,
+) -> tuple[list[str], list[str]]:
+    evidence_snippets, source_fields = _explicit_evidence(candidate, capability)
+    if evidence_snippets:
+        return evidence_snippets, source_fields
+    return _weak_evidence(candidate, capability)
+
+
+def _collect_evidence(
+    candidates_by_field: list[tuple[str, list[str]]],
+    capability: str,
+) -> tuple[list[str], list[str]]:
+    evidence_snippets: list[str] = []
+    source_fields: list[str] = []
+    for field_name, values in candidates_by_field:
+        for value in values:
+            if not value or not query_terms_hit([value], capability):
+                continue
+            evidence_snippets.append(value)
+            source_fields.append(field_name)
+            if len(evidence_snippets) >= 2:
+                return evidence_snippets, stable_deduplicate(source_fields)
+    return evidence_snippets, stable_deduplicate(source_fields)
+
+
+def _review_recommendation(
+    *,
+    scored_candidate: ScoredCandidate_t,
+    must_have_matrix: list[MustHaveEvidenceRow_t],
+) -> ReviewRecommendation:
+    if scored_candidate.fit == 0:
+        return "reject"
+    if all(row.verdict == "explicit_hit" for row in must_have_matrix):
+        return "advance"
+    return "hold"
+
+
+def _card_summary(
+    *,
+    review_recommendation: ReviewRecommendation,
+    must_have_matrix: list[MustHaveEvidenceRow_t],
+    risk_signals: list[EvidenceSignal_t],
+) -> str:
+    explicit_hits = sum(1 for row in must_have_matrix if row.verdict == "explicit_hit")
+    total = len(must_have_matrix)
+    gaps = [row.capability for row in must_have_matrix if row.verdict != "explicit_hit"]
+    summary_parts = [
+        f"{review_recommendation}: explicit must-have coverage {explicit_hits}/{total}",
+    ]
+    if gaps:
+        summary_parts.append(f"gaps {', '.join(gaps[:2])}")
+    if risk_signals:
+        summary_parts.append(f"risks {', '.join(signal.signal for signal in risk_signals[:2])}")
+    return "; ".join(summary_parts)
 
 
 def _degree_fit(education_summaries: list[str], degree_requirement: str | None) -> int:

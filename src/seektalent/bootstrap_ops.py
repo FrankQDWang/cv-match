@@ -247,6 +247,8 @@ def initialize_frontier_state(
         for frontier_node in (
             FrontierNode_t(
                 frontier_node_id=_seed_id(seed_spec),
+                branch_role=seed_spec.branch_role,
+                root_anchor_frontier_node_id=seed_spec.root_anchor_frontier_node_id,
                 parent_frontier_node_id=None,
                 donor_frontier_node_id=None,
                 selected_operator_name=seed_spec.operator_name,
@@ -342,6 +344,16 @@ def _materialize_seed_spec(
     seed_terms = _bounded_terms(list(candidate_seed.keywords), max_seed_terms)
     if not seed_terms:
         return None
+    seed_frontier_node_id = _seed_frontier_node_id(
+        operator_name=candidate_seed.intent_type,
+        seed_terms=seed_terms,
+        knowledge_pack_ids=_materialized_pack_ids(
+            routing_result,
+            selected_knowledge_pack_ids=selected_knowledge_pack_ids,
+            source_knowledge_pack_ids=candidate_seed.source_knowledge_pack_ids,
+        ),
+        target_location=target_location,
+    )
     knowledge_pack_ids = _materialized_pack_ids(
         routing_result,
         selected_knowledge_pack_ids=selected_knowledge_pack_ids,
@@ -349,6 +361,8 @@ def _materialize_seed_spec(
     )
     return FrontierSeedSpecification(
         operator_name=candidate_seed.intent_type,
+        branch_role="root_anchor",
+        root_anchor_frontier_node_id=seed_frontier_node_id,
         seed_terms=seed_terms,
         seed_rationale=f"{intent_index:02d}:{candidate_seed.intent_type}",
         knowledge_pack_ids=knowledge_pack_ids,
@@ -472,18 +486,35 @@ def _unique_seed_specs(seed_specs: Sequence[FrontierSeedSpecification]) -> list[
 
 
 def _seed_id(seed_spec: FrontierSeedSpecification) -> str:
+    if seed_spec.root_anchor_frontier_node_id:
+        return seed_spec.root_anchor_frontier_node_id
+    return _seed_frontier_node_id(
+        operator_name=seed_spec.operator_name,
+        seed_terms=seed_spec.seed_terms,
+        knowledge_pack_ids=seed_spec.knowledge_pack_ids,
+        target_location=seed_spec.target_location,
+    )
+
+
+def _seed_frontier_node_id(
+    *,
+    operator_name: str,
+    seed_terms: Sequence[str],
+    knowledge_pack_ids: Sequence[str],
+    target_location: str | None,
+) -> str:
     digest = sha1(
         json.dumps(
             {
-                "knowledge_pack_ids": seed_spec.knowledge_pack_ids,
-                "seed_terms": seed_spec.seed_terms,
-                "target_location": seed_spec.target_location,
+                "knowledge_pack_ids": list(knowledge_pack_ids),
+                "seed_terms": list(seed_terms),
+                "target_location": target_location,
             },
             ensure_ascii=False,
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()[:8]
-    return f"seed_{seed_spec.operator_name}_{digest}"
+    return f"seed_{operator_name}_{digest}"
 
 
 def _merged_allowlist(truth_values: Sequence[str], override_values: Sequence[str]) -> list[str]:

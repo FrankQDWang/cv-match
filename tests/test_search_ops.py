@@ -57,6 +57,8 @@ def _frontier_state(*, remaining_budget: int = 5) -> FrontierState_t:
         selected_operator_name="must_have_alias",
         node_query_term_pool=["python", "rag", "agent", "workflow", "backend"],
         knowledge_pack_ids=["llm_agent_rag_engineering"],
+        branch_role="root_anchor",
+        root_anchor_frontier_node_id="seed_agent_core",
         negative_terms=["frontend"],
         status="open",
     )
@@ -67,6 +69,8 @@ def _frontier_state(*, remaining_budget: int = 5) -> FrontierState_t:
         selected_operator_name="core_precision",
         node_query_term_pool=["rag", "retrieval engineer", "ranking"],
         knowledge_pack_ids=["search_ranking_retrieval_engineering"],
+        branch_role="repair_hypothesis",
+        root_anchor_frontier_node_id="child_search_domain_01",
         negative_terms=["sales"],
         reward_breakdown=NodeRewardBreakdown_t(
             delta_top_three=0.0,
@@ -142,6 +146,8 @@ def test_materialize_search_execution_plan_clamps_terms_by_frozen_budget(
     assert plan.derived_position == "Senior Python Agent Engineer"
     assert plan.derived_work_content == "Python backend | retrieval | ranking | LLM application"
     assert plan.child_frontier_node_stub.frontier_node_id == f"child_seed_agent_core_{plan.semantic_hash[:8]}"
+    assert plan.child_frontier_node_stub.branch_role == "repair_hypothesis"
+    assert plan.child_frontier_node_stub.root_anchor_frontier_node_id == "seed_agent_core"
 
 
 def test_materialize_search_execution_plan_supports_crossover_compose() -> None:
@@ -407,6 +413,8 @@ def _scoring_candidate(
         location_signals=location_signals or ["上海"],
         work_experience_summaries=work_experience_summaries or ["TestCo | Senior Engineer | Built ranking"],
         education_summaries=education_summaries or ["复旦大学 计算机 硕士"],
+        project_names=["retrieval platform"],
+        work_summaries=capability_signals,
         career_stability_profile=profile
         or CareerStabilityProfile(
             job_count_last_5y=2,
@@ -476,6 +484,8 @@ def test_score_search_results_uses_text_only_request_and_keeps_stable_ties() -> 
     assert [candidate.candidate_id for candidate in result.scored_candidates] == ["c-1", "c-2", "c-3"]
     assert result.node_shortlist_candidate_ids == ["c-1", "c-2"]
     assert result.explanation_candidate_ids == ["c-1", "c-2"]
+    assert [card.candidate_id for card in result.candidate_evidence_cards] == ["c-1", "c-2"]
+    assert all(card.review_recommendation == "advance" for card in result.candidate_evidence_cards)
 
 
 def test_score_search_results_skips_risk_penalty_below_confidence_floor() -> None:
@@ -635,6 +645,8 @@ def test_score_search_results_fit_gate_uses_token_aware_allowlist_matching() -> 
 
     by_id = {candidate.candidate_id: candidate for candidate in result.scored_candidates}
     assert by_id["company-false-positive"].fit == 0
+    assert "company" in by_id["company-false-positive"].fit_gate_failures
+    assert "school" in by_id["company-false-positive"].fit_gate_failures
     assert by_id["token-aware-hit"].fit == 1
     assert result.node_shortlist_candidate_ids == ["token-aware-hit"]
 
@@ -658,3 +670,49 @@ def test_score_search_results_fails_when_rerank_results_do_not_cover_candidates(
 
     with pytest.raises(ValueError, match="duplicate_rerank_result_id"):
         asyncio.run(score_search_results(execution_result, _scoring_policy(), rerank))
+
+
+def test_score_search_results_builds_deterministic_candidate_evidence_cards() -> None:
+    execution_result = _execution_result(
+        [
+            _scoring_candidate(
+                "advance-hit",
+                scoring_text="python retrieval",
+                capability_signals=["python", "retrieval"],
+                work_experience_summaries=["TestCo | Engineer | Built python retrieval platform"],
+            ),
+            _scoring_candidate(
+                "weak-hit",
+                scoring_text="python",
+                capability_signals=["retrieval"],
+                work_experience_summaries=["TestCo | Engineer | Built python services"],
+            ),
+        ]
+    )
+    scoring_policy = _scoring_policy().model_copy(
+        update={"fit_gate_constraints": FitGateConstraints()}
+    )
+    rerank = FakeRerankRequest(
+        response=RerankResponse(
+            model="test-reranker",
+            results=[
+                RerankResult(id="advance-hit", index=0, score=3.0, rank=1),
+                RerankResult(id="weak-hit", index=1, score=2.5, rank=2),
+            ],
+        )
+    )
+
+    result = asyncio.run(score_search_results(execution_result, scoring_policy, rerank))
+
+    cards = {card.candidate_id: card for card in result.candidate_evidence_cards}
+    assert cards["advance-hit"].review_recommendation == "advance"
+    assert [row.verdict for row in cards["advance-hit"].must_have_matrix] == [
+        "explicit_hit",
+        "explicit_hit",
+    ]
+    assert cards["weak-hit"].review_recommendation == "hold"
+    assert [row.verdict for row in cards["weak-hit"].must_have_matrix] == [
+        "explicit_hit",
+        "weak_inference",
+    ]
+    assert cards["weak-hit"].gap_signals[0].signal == "retrieval"

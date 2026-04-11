@@ -49,12 +49,6 @@ def select_active_frontier_node(
     ]
     if not open_nodes:
         raise ValueError("frontier_state has no open frontier nodes")
-    if any(
-        node.previous_branch_evaluation is not None
-        and node.previous_branch_evaluation.branch_exhausted
-        for node in open_nodes
-    ):
-        raise ValueError("open_frontier_node_marked_exhausted")
 
     selection_ranking = _selection_ranking(
         open_nodes,
