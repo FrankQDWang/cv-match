@@ -5,7 +5,7 @@
 - 场景：单领域 top1 路由
 - 业务解释：岗位文本足够明确，reranker 应稳定命中单一领域知识包。
 
-## 关键信号
+## Observed Facts
 
 - 路由结果：`inferred_single_pack`
 - 领域知识包：`['llm_agent_rag_engineering']`
@@ -13,9 +13,15 @@
 - 终止原因：`controller_stop`
 - shortlist：`[]`
 
-## 业务解读
+| round | phase | action | continue_flag | stop_reason | round_outcome |
+| --- | --- | --- | --- | --- | --- |
+| 0 | explore | stop | yes | None | stop rejected by phase gate |
+| 1 | explore | stop | yes | None | stop rejected by phase gate |
+| 2 | balance | stop | no | controller_stop | terminated |
 
-- 该 case 期望走 `inferred_single_pack`，实际路由为 `inferred_single_pack`。
-- 该 case 期望 stop 为 `controller_stop`，实际 stop 为 `controller_stop`。
-- 必须保留的事实：selected_knowledge_pack_ids contains llm_agent_rag_engineering。
-- 不应出现的事实：routing_mode = generic_fallback。
+## Case Expectations (spec-derived)
+
+- expected_route：`inferred_single_pack`
+- expected_stop_reason：`controller_stop`
+- must_hold：selected_knowledge_pack_ids contains llm_agent_rag_engineering
+- must_not_hold：routing_mode = generic_fallback

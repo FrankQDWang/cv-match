@@ -282,9 +282,9 @@ Thus `explore` favors coverage and operator uncertainty, while `harvest` favors 
 *Implementation anchor.* `frontier_ops.select_active_frontier_node`, `_selection_breakdown`  
 *Trace anchor.* `selection_ranking`, `active_selection_breakdown`
 
-## 6. Operator Legality Surface
+## 6. Operator Candidate Surface
 
-After the active node is fixed, the controller does not choose from the full operator catalog. It chooses from a phase-gated legality surface.
+After the active node is fixed, the controller does not choose from the full operator catalog. It chooses from a phase-gated candidate action surface.
 
 Let \(U(n)\) be the unmet must-have set of the active node, let \(D(n)\) indicate whether legal crossover donors exist, and let \(K(n)\) indicate whether the node carries knowledge-pack provenance.
 
@@ -332,6 +332,8 @@ So:
 - `explore` never allows crossover,
 - `balance` allows the full mature surface,
 - `harvest` removes pack-driven exploration and keeps expansion only when unmet must-haves remain.
+
+This surface is the controller-facing action space, not the final legality owner. Runtime normalization performs the last legality check after the LLM draft returns.
 
 *Implementation anchor.* `_allowed_operator_names`, `_donor_candidate_summaries`  
 *Trace anchor.* `allowed_operator_names`, `operator_surface_unmet_must_haves`, `donor_candidate_summaries`
@@ -391,6 +393,14 @@ q_a \setminus q' \neq \varnothing.
 $$
 
 Hence a rewrite must preserve some active anchor, introduce some new term, and drop some old term. Non-crossover search is a true rewrite, not append-only expansion.
+
+The current implementation adds one more runtime-only legality check:
+
+$$
+\texttt{must\_have\_alias} \;\Longrightarrow\; U(n)\neq\varnothing.
+$$
+
+So `must_have_alias` may still appear in the controller-facing candidate surface during `explore` or `balance`, but runtime normalization rejects it when the active node has no unmet must-have.
 
 ### 7.3 Crossover Legality
 
@@ -736,19 +746,23 @@ Hence the runtime never stops globally in `explore` merely because of a locally 
 
 The run bundle is not only a log. It is the observability surface for debugging and offline tuning.
 
-Per-round trace stores at least:
+Every round stores at least:
 
 - controller prompt audit,
-- branch-evaluation prompt audit,
 - final controller decision,
+- frontier state before/after,
+- effective stop guard.
+
+Search rounds additionally store:
+
 - execution plan,
 - execution result,
 - scoring result,
 - rewrite term pool,
-- rewrite choice trace,
-- reward breakdown,
-- frontier state before/after,
-- effective stop guard.
+- rewrite choice trace, when bounded rewrite ranking produces one,
+- reward breakdown.
+
+When a round executes `search_cts`, it also stores the branch-evaluation prompt audit. Stop-only rounds legitimately keep `execution_plan`, `execution_result`, `scoring_result`, and `branch_evaluation_audit` as `null`.
 
 Run-level diagnostics store at least:
 

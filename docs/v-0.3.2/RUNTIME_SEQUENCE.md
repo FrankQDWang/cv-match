@@ -42,15 +42,16 @@ sequenceDiagram
         alt action = search_cts
             Runtime->>Search: materialize search plan
             Search->>CTS: search(SearchExecutionPlan)
-            CTS-->>Search: retrieved candidates
+            CTS-->>Search: raw candidates
+            Search->>Search: deduplicate + project candidates
             Search->>Rerank: rerank(query text, resume text[])
             Rerank-->>Search: rerank scores
             Search->>Search: score candidates + fit gate
             Search-->>Runtime: scoring result
+            Runtime->>Runtime: build rewrite evidence pool
             Runtime->>BranchLLM: request branch evaluation draft
             BranchLLM-->>Runtime: BranchEvaluationDraft
             Runtime->>Runtime: normalize branch evaluation
-            Runtime->>Runtime: build rewrite evidence pool
             Runtime->>Runtime: compute reward + update frontier
         else action = stop
             Runtime->>Runtime: evaluate phase-gated stop
@@ -71,7 +72,7 @@ sequenceDiagram
 
 - Bootstrap freezes the requirement sheet and scoring policy before runtime starts.
 - Runtime is frontier-based, not single-query iterative overwrite.
-- A round either executes CTS search or exits through a stop decision.
+- A stop decision is still phase-gated; the runtime may reject it and continue into the next round.
 - Artifacts are written as structured bundle data, not ad hoc logs.
 
 ## 2. Single Search Round
@@ -99,14 +100,16 @@ sequenceDiagram
     Rewrite-->>Runtime: normalized controller decision
     Runtime->>Search: materialize SearchExecutionPlan
     Search->>CTS: search(query_terms, projected_filters)
-    CTS-->>Search: deduplicated candidates
+    CTS-->>Search: raw candidates
+    Search->>Search: deduplicate + project candidates
     Search->>Rerank: rerank(rerank_query_text, candidate.search_text[])
     Rerank-->>Search: scores
     Search->>Search: must-have / preferred / risk / fit / fusion
     Search-->>Runtime: SearchScoringResult
+    Runtime->>Runtime: build rewrite evidence pool
     Runtime->>BranchLLM: branch evaluation prompt
     BranchLLM-->>Runtime: novelty / usefulness / exhausted draft
-    Runtime->>Update: rewrite evidence + reward + frontier transition
+    Runtime->>Update: reward + frontier transition
     Update-->>Runtime: SearchRoundArtifact + next FrontierState
 ```
 
@@ -115,6 +118,7 @@ sequenceDiagram
 - The controller does not own the frontier; it only chooses a local action for the active node.
 - Rewrite normalization is deterministic after the LLM draft returns.
 - Candidate scoring is `rerank + deterministic scoring + binary fit gate`.
+- CTS returns raw candidates; sidecar projection owns deduplication and runtime audit tags.
 - Reward update and stop evaluation are deterministic owners.
 
 ## 3. Timing-Critical Boundaries
@@ -122,7 +126,7 @@ sequenceDiagram
 - `RequirementSheet` is frozen before runtime; downstream stages should not re-derive requirements from raw JD text.
 - `query_terms_hit(...)` is the shared text-match owner across selection, rewrite evidence, and scoring.
 - Non-crossover search rounds execute a rewritten full query, not `parent query + appended terms`.
-- `controller_stop` and `exhausted_low_gain` are phase-gated by the same runtime budget state.
+- `controller_stop` and `exhausted_low_gain` are phase-gated by the same runtime budget state, so a stop draft can be rejected without ending the run.
 
 ## Related Docs
 

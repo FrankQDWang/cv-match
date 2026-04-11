@@ -195,16 +195,32 @@ curl -X POST http://127.0.0.1:8012/api/rerank \
 
 ## 错误码
 
-- `400`：请求体不合法，或者字段缺失、为空
+- `400`：请求体不是合法 JSON，或者 schema 校验失败
 - `404`：路径不存在
 - `500`：推理过程异常
 - `503`：模型未就绪
 
-错误响应示例：
+错误响应分两类：
+
+1. JSON 解析失败时，返回字符串错误：
 
 ```json
 {
-  "error": "instruction must not be empty."
+  "error": "Invalid JSON body: Expecting value"
+}
+```
+
+2. 字段缺失、为空或类型不对时，返回 Pydantic `errors()` 数组：
+
+```json
+{
+  "error": [
+    {
+      "type": "value_error",
+      "loc": ["instruction"],
+      "msg": "Value error, instruction must not be empty."
+    }
+  ]
 }
 ```
 

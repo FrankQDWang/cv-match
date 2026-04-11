@@ -1,6 +1,6 @@
 # SeekTalent v0.3.2 Trace Index
 
-> 本页由 phase6 canonical case builder 生成，所有 trace 都来自结构化 run bundle。
+> 本页由 phase6 canonical case builder 生成。Agent Trace 由 canonical bundle 渲染；Business Trace 由 canonical bundle 与 case spec 共同渲染。
 
 ## Case Matrix
 

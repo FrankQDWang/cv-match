@@ -530,7 +530,7 @@ def _build_direct_stop_accepted_bundle(
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=_phase_gated_stop_outputs(),
-        final_summary="Controller stop was accepted immediately.",
+        final_summary="Controller stop was accepted in the first balance-phase stop round.",
         runs_dir_override=runs_dir_override,
     )
 
@@ -549,7 +549,7 @@ def _build_direct_stop_rejected_bundle(
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=_phase_gated_stop_outputs(),
-        final_summary="Controller stop was accepted after one retry round.",
+        final_summary="Controller stop was rejected in explore and accepted in balance.",
         runs_dir_override=runs_dir_override,
     )
 
@@ -1198,12 +1198,15 @@ def _write_trace_docs(spec: CanonicalCaseSpec, bundle: SearchRunBundle, *, repo_
 
 def _render_agent_trace(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> str:
     round_rows = "\n".join(
-        f"| {round_artifact.runtime_round_index} | {round_artifact.controller_decision.action} | "
+        f"| {round_artifact.runtime_round_index} | "
+        f"{round_artifact.controller_context.runtime_budget_state.search_phase} | "
+        f"{round_artifact.controller_decision.action} | "
         f"{round_artifact.controller_decision.selected_operator_name} | "
-        f"{round_artifact.execution_plan.knowledge_pack_ids if round_artifact.execution_plan else ''} | "
-        f"{round_artifact.stop_reason or ''} |"
+        f"{_bool_text(round_artifact.continue_flag)} | "
+        f"{round_artifact.stop_reason or 'None'} | "
+        f"{_round_outcome(round_artifact)} |"
         for round_artifact in bundle.rounds
-    ) or "| 0 | stop | must_have_alias |  | controller_stop |"
+    ) or "| 0 | explore | stop | must_have_alias | no | controller_stop | terminated |"
     return (
         f"# Agent Trace: {spec.case_id}\n\n"
         "## Trace Meta\n\n"
@@ -1220,33 +1223,46 @@ def _render_agent_trace(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> str
         f"- fallback_reason: `{bundle.bootstrap.routing_result.fallback_reason}`\n"
         f"- seed_count: `{len(bundle.bootstrap.bootstrap_output.frontier_seed_specifications)}`\n\n"
         "## Runtime Rounds\n\n"
-        "| round | action | operator | knowledge_pack_ids | stop_reason |\n"
-        "| --- | --- | --- | --- | --- |\n"
+        "| round | phase | action | operator | continue_flag | stop_reason | round_outcome |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
         f"{round_rows}\n\n"
         "## Final Result\n\n"
         f"- shortlist: `{bundle.final_result.final_shortlist_candidate_ids}`\n"
-        f"- run_summary: {bundle.final_result.run_summary}\n"
+        f"- stop_reason: `{bundle.final_result.stop_reason}`\n"
+        f"- Bundle Run Summary: {bundle.final_result.run_summary}\n"
     )
 
 
 def _render_business_trace(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> str:
     routing = bundle.bootstrap.routing_result
+    round_rows = "\n".join(
+        f"| {round_artifact.runtime_round_index} | "
+        f"{round_artifact.controller_context.runtime_budget_state.search_phase} | "
+        f"{round_artifact.controller_decision.action} | "
+        f"{_bool_text(round_artifact.continue_flag)} | "
+        f"{round_artifact.stop_reason or 'None'} | "
+        f"{_round_outcome(round_artifact)} |"
+        for round_artifact in bundle.rounds
+    ) or "| 0 | explore | stop | no | controller_stop | terminated |"
     return (
         f"# Business Trace: {spec.case_id}\n\n"
         "## 场景背景\n\n"
         f"- 场景：{spec.scenario}\n"
         f"- 业务解释：{spec.business_context}\n\n"
-        "## 关键信号\n\n"
+        "## Observed Facts\n\n"
         f"- 路由结果：`{routing.routing_mode}`\n"
         f"- 领域知识包：`{routing.selected_knowledge_pack_ids}`\n"
         f"- fallback_reason：`{routing.fallback_reason}`\n"
         f"- 终止原因：`{bundle.final_result.stop_reason}`\n"
         f"- shortlist：`{bundle.final_result.final_shortlist_candidate_ids}`\n\n"
-        "## 业务解读\n\n"
-        f"- 该 case 期望走 `{spec.expected_route}`，实际路由为 `{routing.routing_mode}`。\n"
-        f"- 该 case 期望 stop 为 `{spec.expected_stop_reason}`，实际 stop 为 `{bundle.final_result.stop_reason}`。\n"
-        f"- 必须保留的事实：{'; '.join(spec.must_hold)}。\n"
-        f"- 不应出现的事实：{'; '.join(spec.must_not_hold)}。\n"
+        "| round | phase | action | continue_flag | stop_reason | round_outcome |\n"
+        "| --- | --- | --- | --- | --- | --- |\n"
+        f"{round_rows}\n\n"
+        "## Case Expectations (spec-derived)\n\n"
+        f"- expected_route：`{spec.expected_route}`\n"
+        f"- expected_stop_reason：`{spec.expected_stop_reason}`\n"
+        f"- must_hold：{'; '.join(spec.must_hold)}\n"
+        f"- must_not_hold：{'; '.join(spec.must_not_hold)}\n"
     )
 
 
@@ -1300,13 +1316,25 @@ def _write_trace_index(specs: tuple[CanonicalCaseSpec, ...], *, repo_root: Path)
     )
     content = (
         "# SeekTalent v0.3.2 Trace Index\n\n"
-        "> 本页由 phase6 canonical case builder 生成，所有 trace 都来自结构化 run bundle。\n\n"
+        "> 本页由 phase6 canonical case builder 生成。Agent Trace 由 canonical bundle 渲染；Business Trace 由 canonical bundle 与 case spec 共同渲染。\n\n"
         "## Case Matrix\n\n"
         "| case_id | 场景 | Agent Trace | Business Trace |\n"
         "| --- | --- | --- | --- |\n"
         f"{rows}\n"
     )
     (repo_root / "docs" / "v-0.3.2" / "trace-index.md").write_text(content, encoding="utf-8")
+
+
+def _round_outcome(round_artifact) -> str:
+    if round_artifact.controller_decision.action == "stop":
+        if round_artifact.continue_flag:
+            return "stop rejected by phase gate"
+        return "terminated"
+    return "continued" if round_artifact.continue_flag else "terminated"
+
+
+def _bool_text(value: bool) -> str:
+    return "yes" if value else "no"
 
 
 __all__ = [

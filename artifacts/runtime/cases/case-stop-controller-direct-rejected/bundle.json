@@ -2705,7 +2705,7 @@
   },
   "final_result": {
     "final_shortlist_candidate_ids": [],
-    "run_summary": "Controller stop was accepted after one retry round.",
+    "run_summary": "Controller stop was rejected in explore and accepted in balance.",
     "stop_reason": "controller_stop"
   },
   "eval": {

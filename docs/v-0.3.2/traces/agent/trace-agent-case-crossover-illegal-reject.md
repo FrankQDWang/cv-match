@@ -19,13 +19,14 @@ run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-cross
 
 ## Runtime Rounds
 
-| round | action | operator | knowledge_pack_ids | stop_reason |
-| --- | --- | --- | --- | --- |
-| 0 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
-| 1 | search_cts | must_have_alias | ['llm_agent_rag_engineering'] |  |
-| 2 | stop | must_have_alias |  | controller_stop |
+| round | phase | action | operator | continue_flag | stop_reason | round_outcome |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | explore | search_cts | core_precision | yes | None | continued |
+| 1 | explore | search_cts | must_have_alias | yes | None | continued |
+| 2 | balance | stop | must_have_alias | no | controller_stop | terminated |
 
 ## Final Result
 
 - shortlist: `['candidate-illegal-2', 'candidate-illegal-1']`
-- run_summary: Illegal crossover was rejected and the run stopped on retry.
+- stop_reason: `controller_stop`
+- Bundle Run Summary: Illegal crossover was rejected and the run stopped on retry.

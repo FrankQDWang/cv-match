@@ -19,14 +19,15 @@ run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-cross
 
 ## Runtime Rounds
 
-| round | action | operator | knowledge_pack_ids | stop_reason |
-| --- | --- | --- | --- | --- |
-| 0 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
-| 1 | search_cts | must_have_alias | ['llm_agent_rag_engineering'] |  |
-| 2 | search_cts | crossover_compose | ['llm_agent_rag_engineering'] |  |
-| 3 | stop | must_have_alias |  | controller_stop |
+| round | phase | action | operator | continue_flag | stop_reason | round_outcome |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | explore | search_cts | core_precision | yes | None | continued |
+| 1 | explore | search_cts | must_have_alias | yes | None | continued |
+| 2 | balance | search_cts | crossover_compose | yes | None | continued |
+| 3 | harvest | stop | must_have_alias | no | controller_stop | terminated |
 
 ## Final Result
 
 - shortlist: `['candidate-crossover-3', 'candidate-crossover-1', 'candidate-crossover-2']`
-- run_summary: Legal crossover produced an expanded shortlist.
+- stop_reason: `controller_stop`
+- Bundle Run Summary: Legal crossover produced an expanded shortlist.

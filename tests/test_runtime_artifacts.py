@@ -118,6 +118,83 @@ def test_canonical_bundle_eval_contains_phased_diagnostics() -> None:
     assert isinstance(metrics["operator_distribution_explore"], dict)
 
 
+def test_agent_trace_marks_phase_gate_rejected_stop_rounds() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    trace_text = (
+        repo_root
+        / "docs"
+        / "v-0.3.2"
+        / "traces"
+        / "agent"
+        / "trace-agent-case-stop-controller-direct-rejected.md"
+    ).read_text(encoding="utf-8")
+
+    assert "| round | phase | action | operator | continue_flag | stop_reason | round_outcome |" in trace_text
+    assert "| 0 | explore | stop | must_have_alias | yes | None | stop rejected by phase gate |" in trace_text
+    assert "| 2 | balance | stop | must_have_alias | no | controller_stop | terminated |" in trace_text
+    assert "Bundle Run Summary:" in trace_text
+    assert "execution_plan" not in trace_text
+    assert "scoring_result" not in trace_text
+
+
+def test_business_trace_separates_observed_facts_from_case_expectations() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    trace_text = (
+        repo_root
+        / "docs"
+        / "v-0.3.2"
+        / "traces"
+        / "business"
+        / "trace-business-case-stop-controller-direct-accepted.md"
+    ).read_text(encoding="utf-8")
+
+    assert "## Observed Facts" in trace_text
+    assert "## Case Expectations (spec-derived)" in trace_text
+    assert "| round | phase | action | continue_flag | stop_reason | round_outcome |" in trace_text
+    assert "must_hold：" in trace_text
+    assert "must_not_hold：" in trace_text
+
+
+def test_trace_index_describes_trace_sources_precisely() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    trace_index = (
+        repo_root / "docs" / "v-0.3.2" / "trace-index.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Agent Trace 由 canonical bundle 渲染" in trace_index
+    assert "Business Trace 由 canonical bundle 与 case spec 共同渲染" in trace_index
+
+
+def test_generated_trace_round_rows_match_sample_case_bundles() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    cases = {
+        "case-stop-controller-direct-accepted": [
+            "| 0 | explore | stop | must_have_alias | yes | None | stop rejected by phase gate |",
+            "| 2 | balance | stop | must_have_alias | no | controller_stop | terminated |",
+        ],
+        "case-stop-controller-direct-rejected": [
+            "| 1 | explore | stop | must_have_alias | yes | None | stop rejected by phase gate |",
+            "| 2 | balance | stop | must_have_alias | no | controller_stop | terminated |",
+        ],
+        "case-crossover-legal": [
+            "| 2 | balance | search_cts | crossover_compose | yes | None | continued |",
+            "| 3 | harvest | stop | must_have_alias | no | controller_stop | terminated |",
+        ],
+    }
+
+    for case_id, expected_rows in cases.items():
+        trace_text = (
+            repo_root
+            / "docs"
+            / "v-0.3.2"
+            / "traces"
+            / "agent"
+            / f"trace-agent-{case_id}.md"
+        ).read_text(encoding="utf-8")
+        for expected_row in expected_rows:
+            assert expected_row in trace_text
+
+
 def _snapshot_files(paths: list[Path]) -> dict[str, bytes]:
     snapshot: dict[str, bytes] = {}
     for path in paths:

@@ -2705,7 +2705,7 @@
   },
   "final_result": {
     "final_shortlist_candidate_ids": [],
-    "run_summary": "Controller stop was accepted immediately.",
+    "run_summary": "Controller stop was accepted in the first balance-phase stop round.",
     "stop_reason": "controller_stop"
   },
   "eval": {

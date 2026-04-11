@@ -19,14 +19,15 @@ run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-stop-
 
 ## Runtime Rounds
 
-| round | action | operator | knowledge_pack_ids | stop_reason |
-| --- | --- | --- | --- | --- |
-| 0 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
-| 1 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
-| 2 | search_cts | core_precision | ['llm_agent_rag_engineering'] |  |
-| 3 | search_cts | core_precision | ['llm_agent_rag_engineering'] | exhausted_low_gain |
+| round | phase | action | operator | continue_flag | stop_reason | round_outcome |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | explore | search_cts | core_precision | yes | None | continued |
+| 1 | explore | search_cts | core_precision | yes | None | continued |
+| 2 | balance | search_cts | core_precision | yes | None | continued |
+| 3 | harvest | search_cts | core_precision | no | exhausted_low_gain | terminated |
 
 ## Final Result
 
 - shortlist: `[]`
-- run_summary: Low-gain branch was exhausted and finalized.
+- stop_reason: `exhausted_low_gain`
+- Bundle Run Summary: Low-gain branch was exhausted and finalized.
