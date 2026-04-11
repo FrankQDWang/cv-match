@@ -7,12 +7,14 @@
 
 ## English
 
-`SeekTalent` is currently on the `v0.3.2 offline artifacts` baseline. `HEAD` ships a canonical system model in `docs/v-0.3.2/SYSTEM_MODEL.md`, a thin implementation map in `docs/v-0.3.2/IMPLEMENTATION_OWNERS.md`, deterministic requirement normalization, the bootstrap core, execution/ranking, frontier control, a live CLI/API runtime surface, and checked-in offline artifacts.
+`SeekTalent` is currently on the `v0.3.2 offline artifacts` baseline. `docs/v-0.3.2/` describes the active `HEAD` runtime. `docs/v-0.3.3/` captures the next target-state model for planned code convergence. `HEAD` ships deterministic requirement normalization, the bootstrap core, execution/ranking, frontier control, a live CLI/API runtime surface, and checked-in offline artifacts.
 
 What exists today:
 
-- `docs/v-0.3.2/SYSTEM_MODEL.md` is the only active canonical spec
-- `docs/v-0.3.2/IMPLEMENTATION_OWNERS.md` is the only maintained implementation anchor
+- `docs/v-0.3.2/SYSTEM_MODEL.md` is the active canonical spec for `HEAD`
+- `docs/v-0.3.2/IMPLEMENTATION_OWNERS.md` is the active implementation anchor for `HEAD`
+- `docs/v-0.3.3/SYSTEM_MODEL.md` is the target-state spec for the next model revision
+- `docs/v-0.3.3/IMPLEMENTATION_OWNERS.md` maps current owners and traces onto that target
 - `src/seektalent/models.py` holds the stable runtime contracts
 - `src/seektalent/requirements/normalization.py` builds `SearchInputTruth` and normalized `RequirementSheet`
 - `src/seektalent/bootstrap.py` runs the internal round-0 bootstrap flow
@@ -109,6 +111,8 @@ print(result.run_dir)
 
 - [docs/v-0.3.2/SYSTEM_MODEL.md](docs/v-0.3.2/SYSTEM_MODEL.md)
 - [docs/v-0.3.2/IMPLEMENTATION_OWNERS.md](docs/v-0.3.2/IMPLEMENTATION_OWNERS.md)
+- [docs/v-0.3.3/SYSTEM_MODEL.md](docs/v-0.3.3/SYSTEM_MODEL.md)
+- [docs/v-0.3.3/IMPLEMENTATION_OWNERS.md](docs/v-0.3.3/IMPLEMENTATION_OWNERS.md)
 - [docs/architecture.md](docs/architecture.md)
 - [docs/configuration.md](docs/configuration.md)
 - [docs/cli.md](docs/cli.md)

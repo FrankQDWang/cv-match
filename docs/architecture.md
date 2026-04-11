@@ -1,9 +1,9 @@
 # Architecture
 
-`HEAD` uses a `v0.3.2` model-first documentation system:
+`HEAD` uses a versioned model-first documentation system:
 
-- `docs/v-0.3.2/SYSTEM_MODEL.md` is the only canonical spec
-- `docs/v-0.3.2/IMPLEMENTATION_OWNERS.md` is the only maintained implementation anchor
+- `docs/v-0.3.2/` describes the active runtime and current trace surfaces
+- `docs/v-0.3.3/` captures the next target-state model for planned convergence
 - `docs/_archive/v-0.3.1/` is historical implementation reference only
 
 ## 当前代码主结构
@@ -53,8 +53,8 @@
 
 ## Spec ownership
 
-- `docs/v-0.3.2/SYSTEM_MODEL.md` 是唯一有效 spec
-- `docs/v-0.3.2/IMPLEMENTATION_OWNERS.md` 是唯一实现锚点
+- `docs/v-0.3.2/` 是当前 `HEAD` 的有效 spec 和实现锚点
+- `docs/v-0.3.3/` 是下一阶段收敛目标文档
 - `docs/_archive/v-0.3.1/`、`docs/_archive/v-0.2/` 和 `docs/_archive/v-0.1/` 只保留归档价值
 
 ## Related docs
@@ -62,6 +62,8 @@
 - [System Model](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.2/SYSTEM_MODEL.md)
 - [Runtime Sequence](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.2/RUNTIME_SEQUENCE.md)
 - [Implementation Owners](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.2/IMPLEMENTATION_OWNERS.md)
+- [Target System Model](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.3/SYSTEM_MODEL.md)
+- [Target Implementation Owners](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.3.3/IMPLEMENTATION_OWNERS.md)
 - [Configuration](/Users/frankqdwang/Agents/SeekTalent/docs/configuration.md)
 - [CLI](/Users/frankqdwang/Agents/SeekTalent/docs/cli.md)
 - [Archived Implementation Checklist](/Users/frankqdwang/Agents/SeekTalent/docs/_archive/v-0.3.1/implementation-checklist.md)
