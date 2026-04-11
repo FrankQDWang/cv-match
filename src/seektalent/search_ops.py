@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from hashlib import sha1
 from typing import Protocol
 
@@ -26,7 +27,7 @@ from seektalent.models import (
     TopThreeStatistics,
     stable_deduplicate,
 )
-from seektalent.query_terms import query_terms_hit
+from seektalent.query_terms import normalized_query_text, query_terms_hit
 from seektalent.resources import load_school_type_registry
 from seektalent.retrieval import (
     SearchExecutionSidecar,
@@ -48,6 +49,22 @@ DEGREE_RANKS = {
     "研究生": 3,
     "博士": 4,
     "博士及以上": 4,
+}
+
+SNIPPET_MAX_LENGTH = 90
+SNIPPET_LIMIT_PER_SIGNAL = 2
+TOKEN_PATTERN = re.compile(r"[A-Za-z0-9+.#/-]+|[\u4e00-\u9fff]+")
+RISK_DISPLAY_TEXT = {
+    "location": "Location does not match requirement",
+    "min_years": "Below minimum years of experience",
+    "max_years": "Above maximum years of experience",
+    "min_age": "Below minimum age",
+    "max_age": "Above maximum age",
+    "gender": "Gender does not match requirement",
+    "company": "Company requirement not met",
+    "school": "School requirement not met",
+    "degree": "Degree requirement not met",
+    "frequent_job_changes": "Frequent job changes observed",
 }
 
 
@@ -460,6 +477,7 @@ def _build_candidate_evidence_card(
     preferred_evidence = [
         EvidenceSignal_t(
             signal=capability,
+            display_text=f"Preferred evidence for {capability}",
             evidence_snippets=evidence_snippets,
             source_fields=source_fields,
         )
@@ -470,27 +488,18 @@ def _build_candidate_evidence_card(
     gap_signals = [
         EvidenceSignal_t(
             signal=row.capability,
+            display_text=_gap_display_text(row),
             evidence_snippets=row.evidence_snippets,
             source_fields=row.source_fields,
         )
         for row in must_have_matrix
         if row.verdict != "explicit_hit"
     ]
-    risk_signals = [
-        EvidenceSignal_t(
-            signal=signal,
-            evidence_snippets=[],
-            source_fields=["career_stability_profile"],
-        )
-        for signal in scored_candidate.risk_flags
-    ] + [
-        EvidenceSignal_t(
-            signal=signal,
-            evidence_snippets=[],
-            source_fields=["fit_gate"],
-        )
-        for signal in scored_candidate.fit_gate_failures
-    ]
+    risk_signals = _risk_signals(
+        candidate=candidate,
+        scored_candidate=scored_candidate,
+        fit_gates=scoring_policy.fit_gate_constraints,
+    )
     review_recommendation = _review_recommendation(
         scored_candidate=scored_candidate,
         must_have_matrix=must_have_matrix,
@@ -523,6 +532,7 @@ def _must_have_evidence_row(
     return MustHaveEvidenceRow_t(
         capability=capability,
         verdict=verdict,
+        evidence_summary=_must_have_evidence_summary(verdict, source_fields),
         evidence_snippets=evidence_snippets,
         source_fields=source_fields,
     )
@@ -534,8 +544,8 @@ def _explicit_evidence(
 ) -> tuple[list[str], list[str]]:
     return _collect_evidence(
         [
-            ("scoring_text", [candidate.scoring_text]),
             ("work_experience_summaries", candidate.work_experience_summaries),
+            ("scoring_text", [candidate.scoring_text]),
         ],
         capability,
     )
@@ -570,13 +580,21 @@ def _collect_evidence(
 ) -> tuple[list[str], list[str]]:
     evidence_snippets: list[str] = []
     source_fields: list[str] = []
+    seen_snippets: set[str] = set()
     for field_name, values in candidates_by_field:
         for value in values:
             if not value or not query_terms_hit([value], capability):
                 continue
-            evidence_snippets.append(value)
+            snippet = _extractive_snippet(value, capability)
+            if snippet is None:
+                continue
+            normalized_snippet = snippet.casefold()
+            if normalized_snippet in seen_snippets:
+                continue
+            seen_snippets.add(normalized_snippet)
+            evidence_snippets.append(snippet)
             source_fields.append(field_name)
-            if len(evidence_snippets) >= 2:
+            if len(evidence_snippets) >= SNIPPET_LIMIT_PER_SIGNAL:
                 return evidence_snippets, stable_deduplicate(source_fields)
     return evidence_snippets, stable_deduplicate(source_fields)
 
@@ -601,15 +619,173 @@ def _card_summary(
 ) -> str:
     explicit_hits = sum(1 for row in must_have_matrix if row.verdict == "explicit_hit")
     total = len(must_have_matrix)
-    gaps = [row.capability for row in must_have_matrix if row.verdict != "explicit_hit"]
+    gaps = [
+        _gap_display_text(row)
+        for row in must_have_matrix
+        if row.verdict != "explicit_hit"
+    ]
     summary_parts = [
-        f"{review_recommendation}: explicit must-have coverage {explicit_hits}/{total}",
+        (
+            "Reject: failed fit gate"
+            if review_recommendation == "reject"
+            else f"{review_recommendation.title()}: explicit coverage on {explicit_hits}/{total} must-haves"
+        ),
     ]
     if gaps:
-        summary_parts.append(f"gaps {', '.join(gaps[:2])}")
+        summary_parts.append(f"Main gaps: {', '.join(gaps[:2])}")
     if risk_signals:
-        summary_parts.append(f"risks {', '.join(signal.signal for signal in risk_signals[:2])}")
+        summary_parts.append(
+            f"Main risks: {', '.join(signal.display_text for signal in risk_signals[:2])}"
+        )
     return "; ".join(summary_parts)
+
+
+def _must_have_evidence_summary(
+    verdict: str,
+    source_fields: list[str],
+) -> str:
+    if verdict == "explicit_hit":
+        if "work_experience_summaries" in source_fields:
+            return "Explicit evidence found in work history"
+        return "Explicit evidence found in search text"
+    if verdict == "weak_inference":
+        if "project_names" in source_fields and "work_summaries" in source_fields:
+            return "Only weak evidence found in project/work summary"
+        if "project_names" in source_fields:
+            return "Only weak evidence found in project summary"
+        return "Only weak evidence found in work summary"
+    return "No supporting evidence found"
+
+
+def _gap_display_text(row: MustHaveEvidenceRow_t) -> str:
+    if row.verdict == "weak_inference":
+        return f"Only weak evidence for {row.capability}"
+    return f"No evidence for {row.capability}"
+
+
+def _risk_signals(
+    *,
+    candidate: ScoringCandidate_t,
+    scored_candidate: ScoredCandidate_t,
+    fit_gates: FitGateConstraints,
+) -> list[EvidenceSignal_t]:
+    return [
+        _risk_signal(candidate, fit_gates, signal)
+        for signal in [*scored_candidate.risk_flags, *scored_candidate.fit_gate_failures]
+    ]
+
+
+def _risk_signal(
+    candidate: ScoringCandidate_t,
+    fit_gates: FitGateConstraints,
+    signal: str,
+) -> EvidenceSignal_t:
+    evidence_snippets, source_fields = _risk_signal_evidence(candidate, fit_gates, signal)
+    return EvidenceSignal_t(
+        signal=signal,
+        display_text=RISK_DISPLAY_TEXT.get(signal, signal.replace("_", " ")),
+        evidence_snippets=evidence_snippets,
+        source_fields=source_fields,
+    )
+
+
+def _risk_signal_evidence(
+    candidate: ScoringCandidate_t,
+    fit_gates: FitGateConstraints,
+    signal: str,
+) -> tuple[list[str], list[str]]:
+    match signal:
+        case "location":
+            return _field_value_snippets(candidate.location_signals), ["location_signals"]
+        case "company":
+            return _field_value_snippets(candidate.work_experience_summaries), ["work_experience_summaries"]
+        case "school" | "degree":
+            return _field_value_snippets(candidate.education_summaries), ["education_summaries"]
+        case "min_years":
+            return [f"years_of_experience: {candidate.years_of_experience} (< {fit_gates.min_years})"], [
+                "years_of_experience"
+            ]
+        case "max_years":
+            return [f"years_of_experience: {candidate.years_of_experience} (> {fit_gates.max_years})"], [
+                "years_of_experience"
+            ]
+        case "min_age":
+            return [f"age: {candidate.age} (< {fit_gates.min_age})"], ["age"]
+        case "max_age":
+            return [f"age: {candidate.age} (> {fit_gates.max_age})"], ["age"]
+        case "gender":
+            return [f"gender: {candidate.gender} (!= {fit_gates.gender_requirement})"], ["gender"]
+        case "frequent_job_changes":
+            profile = candidate.career_stability_profile
+            return [
+                (
+                    f"short_tenure_count: {profile.short_tenure_count}, "
+                    f"median_tenure_months: {profile.median_tenure_months}"
+                )
+            ], ["career_stability_profile"]
+    return [], []
+
+
+def _field_value_snippets(values: list[str]) -> list[str]:
+    snippets: list[str] = []
+    seen_snippets: set[str] = set()
+    for value in values:
+        clean = normalized_query_text(value)
+        if not clean:
+            continue
+        snippet = clean if len(clean) <= SNIPPET_MAX_LENGTH else clean[: SNIPPET_MAX_LENGTH - 3].rstrip() + "..."
+        normalized_snippet = snippet.casefold()
+        if normalized_snippet in seen_snippets:
+            continue
+        seen_snippets.add(normalized_snippet)
+        snippets.append(snippet)
+        if len(snippets) >= SNIPPET_LIMIT_PER_SIGNAL:
+            break
+    return snippets
+
+
+def _extractive_snippet(text: str, capability: str) -> str | None:
+    clean_text = normalized_query_text(text)
+    if not clean_text:
+        return None
+    span = _first_hit_span(clean_text, capability)
+    if span is None:
+        return clean_text if len(clean_text) <= SNIPPET_MAX_LENGTH else clean_text[: SNIPPET_MAX_LENGTH - 3].rstrip() + "..."
+    start, end = span
+    if len(clean_text) <= SNIPPET_MAX_LENGTH:
+        return clean_text
+    body_limit = SNIPPET_MAX_LENGTH - 6
+    center = (start + end) // 2
+    body_start = max(0, center - body_limit // 2)
+    body_end = min(len(clean_text), body_start + body_limit)
+    body_start = max(0, body_end - body_limit)
+    snippet = clean_text[body_start:body_end].strip()
+    if body_start > 0:
+        snippet = f"...{snippet}"
+    if body_end < len(clean_text):
+        snippet = f"{snippet}..."
+    return snippet
+
+
+def _first_hit_span(text: str, capability: str) -> tuple[int, int] | None:
+    lower_text = text.casefold()
+    phrase = normalized_query_text(capability).casefold()
+    candidates = stable_deduplicate([phrase, *_snippet_tokens(capability)])
+    best_span: tuple[int, int] | None = None
+    for candidate in candidates:
+        if not candidate:
+            continue
+        start = lower_text.find(candidate)
+        if start < 0:
+            continue
+        end = start + len(candidate)
+        if best_span is None or start < best_span[0] or (start == best_span[0] and end - start > best_span[1] - best_span[0]):
+            best_span = (start, end)
+    return best_span
+
+
+def _snippet_tokens(value: str) -> list[str]:
+    return TOKEN_PATTERN.findall(normalized_query_text(value).casefold())
 
 
 def _degree_fit(education_summaries: list[str], degree_requirement: str | None) -> int:

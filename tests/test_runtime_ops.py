@@ -24,6 +24,7 @@ from seektalent.models import (
     TopThreeStatistics,
 )
 from seektalent.runtime_ops import (
+    _reviewer_summary,
     build_effective_stop_guard,
     compute_node_reward_breakdown,
     evaluate_branch_outcome,
@@ -650,3 +651,63 @@ def test_finalize_search_run_preserves_shortlist_fact() -> None:
         "run_summary": "shortlist ready",
         "stop_reason": "controller_stop",
     }
+
+
+def test_reviewer_summary_uses_triage_language_and_counts() -> None:
+    summary = _reviewer_summary(
+        [
+            CandidateEvidenceCard_t(
+                candidate_id="c-1",
+                review_recommendation="advance",
+                must_have_matrix=[],
+                preferred_evidence=[],
+                gap_signals=[],
+                risk_signals=[],
+                card_summary="advance card",
+            ),
+            CandidateEvidenceCard_t(
+                candidate_id="c-2",
+                review_recommendation="hold",
+                must_have_matrix=[],
+                preferred_evidence=[],
+                gap_signals=[
+                    {
+                        "signal": "retrieval",
+                        "display_text": "Only weak evidence for retrieval",
+                    }
+                ],
+                risk_signals=[
+                    {
+                        "signal": "min_years",
+                        "display_text": "Below minimum years of experience",
+                    }
+                ],
+                card_summary="hold card",
+            ),
+            CandidateEvidenceCard_t(
+                candidate_id="c-3",
+                review_recommendation="reject",
+                must_have_matrix=[],
+                preferred_evidence=[],
+                gap_signals=[
+                    {
+                        "signal": "retrieval",
+                        "display_text": "Only weak evidence for retrieval",
+                    }
+                ],
+                risk_signals=[
+                    {
+                        "signal": "min_years",
+                        "display_text": "Below minimum years of experience",
+                    }
+                ],
+                card_summary="reject card",
+            ),
+        ]
+    )
+
+    assert summary == (
+        "Reviewer summary: 1 advance-ready, 1 need manual review, 1 reject; "
+        "Top gaps: Only weak evidence for retrieval (2); "
+        "Top risks: Below minimum years of experience (2)"
+    )

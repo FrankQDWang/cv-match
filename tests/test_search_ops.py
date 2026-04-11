@@ -710,9 +710,109 @@ def test_score_search_results_builds_deterministic_candidate_evidence_cards() ->
         "explicit_hit",
         "explicit_hit",
     ]
+    assert cards["advance-hit"].must_have_matrix[0].evidence_summary == "Explicit evidence found in work history"
+    assert cards["advance-hit"].card_summary == "Advance: explicit coverage on 2/2 must-haves"
     assert cards["weak-hit"].review_recommendation == "hold"
     assert [row.verdict for row in cards["weak-hit"].must_have_matrix] == [
         "explicit_hit",
         "weak_inference",
     ]
     assert cards["weak-hit"].gap_signals[0].signal == "retrieval"
+    assert cards["weak-hit"].gap_signals[0].display_text == "Only weak evidence for retrieval"
+    assert cards["weak-hit"].must_have_matrix[1].evidence_summary == "Only weak evidence found in project/work summary"
+    assert "Main gaps: Only weak evidence for retrieval" in cards["weak-hit"].card_summary
+
+
+def test_score_search_results_extracts_short_snippets_with_source_priority() -> None:
+    long_work_summary = (
+        "Worked on search relevance systems, led ranking calibration, and built a retrieval pipeline "
+        "for recruiter search over a very large candidate corpus with python orchestration and analytics."
+    )
+    execution_result = _execution_result(
+        [
+            _scoring_candidate(
+                "priority-hit",
+                scoring_text="python retrieval ranking search platform",
+                capability_signals=["python", "retrieval"],
+                work_experience_summaries=[long_work_summary],
+            ),
+        ]
+    )
+    scoring_policy = _scoring_policy().model_copy(
+        update={"fit_gate_constraints": FitGateConstraints()}
+    )
+    rerank = FakeRerankRequest(
+        response=RerankResponse(
+            model="test-reranker",
+            results=[RerankResult(id="priority-hit", index=0, score=3.0, rank=1)],
+        )
+    )
+
+    result = asyncio.run(score_search_results(execution_result, scoring_policy, rerank))
+
+    row = result.candidate_evidence_cards[0].must_have_matrix[1]
+    assert row.source_fields[0] == "work_experience_summaries"
+    assert len(row.evidence_snippets) == 2
+    assert len(row.evidence_snippets[0]) <= 90
+    assert "retrieval" in row.evidence_snippets[0].casefold()
+    assert row.evidence_snippets[0] != long_work_summary
+
+
+def test_score_search_results_builds_readable_risk_signals() -> None:
+    execution_result = _execution_result(
+        [
+            _scoring_candidate(
+                "risk-hit",
+                scoring_text="python retrieval",
+                capability_signals=["python", "retrieval"],
+                years_of_experience=4,
+                location_signals=["Beijing"],
+                work_experience_summaries=["OtherCo | Engineer | Built retrieval tooling"],
+                education_summaries=["普通学校 本科"],
+                profile=CareerStabilityProfile(
+                    job_count_last_5y=4,
+                    short_tenure_count=3,
+                    median_tenure_months=6,
+                    current_tenure_months=2,
+                    parsed_experience_count=4,
+                    confidence_score=1.0,
+                ),
+            ),
+        ]
+    )
+    rerank = FakeRerankRequest(
+        response=RerankResponse(
+            model="test-reranker",
+            results=[RerankResult(id="risk-hit", index=0, score=3.0, rank=1)],
+        )
+    )
+
+    scoring_policy = _scoring_policy().model_copy(
+        update={
+            "fit_gate_constraints": FitGateConstraints(
+                locations=["上海"],
+                min_years=5,
+                degree_requirement="硕士及以上",
+                company_names=["TestCo"],
+                school_names=["复旦大学"],
+            )
+        }
+    )
+
+    result = asyncio.run(score_search_results(execution_result, scoring_policy, rerank))
+
+    card = result.candidate_evidence_cards[0]
+    risk_by_signal = {signal.signal: signal for signal in card.risk_signals}
+    assert risk_by_signal["location"].display_text == "Location does not match requirement"
+    assert risk_by_signal["location"].evidence_snippets == ["Beijing"]
+    assert risk_by_signal["min_years"].display_text == "Below minimum years of experience"
+    assert risk_by_signal["min_years"].evidence_snippets == ["years_of_experience: 4 (< 5)"]
+    assert risk_by_signal["company"].display_text == "Company requirement not met"
+    assert risk_by_signal["company"].evidence_snippets == ["OtherCo | Engineer | Built retrieval tooling"]
+    assert risk_by_signal["school"].display_text == "School requirement not met"
+    assert risk_by_signal["school"].evidence_snippets == ["普通学校 本科"]
+    assert risk_by_signal["degree"].display_text == "Degree requirement not met"
+    assert risk_by_signal["frequent_job_changes"].display_text == "Frequent job changes observed"
+    assert risk_by_signal["frequent_job_changes"].evidence_snippets == [
+        "short_tenure_count: 3, median_tenure_months: 6"
+    ]

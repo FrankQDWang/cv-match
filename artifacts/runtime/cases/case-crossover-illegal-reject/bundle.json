@@ -1610,8 +1610,9 @@
               {
                 "capability": "Python backend",
                 "verdict": "explicit_hit",
+                "evidence_summary": "Explicit evidence found in search text",
                 "evidence_snippets": [
-                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work..."
                 ],
                 "source_fields": [
                   "scoring_text"
@@ -1620,42 +1621,47 @@
               {
                 "capability": "LLM",
                 "verdict": "missing",
+                "evidence_summary": "No supporting evidence found",
                 "evidence_snippets": [],
                 "source_fields": []
               },
               {
                 "capability": "retrieval",
                 "verdict": "explicit_hit",
+                "evidence_summary": "Explicit evidence found in work history",
                 "evidence_snippets": [
-                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
-                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                  "TestCo | Python Engineer | Built retrieval ranking systems.",
+                  "...gineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backe..."
                 ],
                 "source_fields": [
-                  "scoring_text",
-                  "work_experience_summaries"
+                  "work_experience_summaries",
+                  "scoring_text"
                 ]
               },
               {
                 "capability": "workflow",
                 "verdict": "missing",
+                "evidence_summary": "No supporting evidence found",
                 "evidence_snippets": [],
                 "source_fields": []
               },
               {
                 "capability": "ranking",
                 "verdict": "explicit_hit",
+                "evidence_summary": "Explicit evidence found in work history",
                 "evidence_snippets": [
-                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
-                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                  "TestCo | Python Engineer | Built retrieval ranking systems.",
+                  "...form. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer..."
                 ],
                 "source_fields": [
-                  "scoring_text",
-                  "work_experience_summaries"
+                  "work_experience_summaries",
+                  "scoring_text"
                 ]
               },
               {
                 "capability": "agent",
                 "verdict": "missing",
+                "evidence_summary": "No supporting evidence found",
                 "evidence_snippets": [],
                 "source_fields": []
               }
@@ -1664,22 +1670,25 @@
             "gap_signals": [
               {
                 "signal": "LLM",
+                "display_text": "No evidence for LLM",
                 "evidence_snippets": [],
                 "source_fields": []
               },
               {
                 "signal": "workflow",
+                "display_text": "No evidence for workflow",
                 "evidence_snippets": [],
                 "source_fields": []
               },
               {
                 "signal": "agent",
+                "display_text": "No evidence for agent",
                 "evidence_snippets": [],
                 "source_fields": []
               }
             ],
             "risk_signals": [],
-            "card_summary": "hold: explicit must-have coverage 3/6; gaps LLM, workflow"
+            "card_summary": "Hold: explicit coverage on 3/6 must-haves; Main gaps: No evidence for LLM, No evidence for workflow"
           }
         ],
         "top_three_statistics": {
@@ -3392,8 +3401,9 @@
               {
                 "capability": "Python backend",
                 "verdict": "explicit_hit",
+                "evidence_summary": "Explicit evidence found in search text",
                 "evidence_snippets": [
-                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work..."
                 ],
                 "source_fields": [
                   "scoring_text"
@@ -3402,26 +3412,29 @@
               {
                 "capability": "LLM",
                 "verdict": "missing",
+                "evidence_summary": "No supporting evidence found",
                 "evidence_snippets": [],
                 "source_fields": []
               },
               {
                 "capability": "retrieval",
                 "verdict": "explicit_hit",
+                "evidence_summary": "Explicit evidence found in work history",
                 "evidence_snippets": [
-                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
-                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                  "TestCo | Python Engineer | Built retrieval ranking systems.",
+                  "...gineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backe..."
                 ],
                 "source_fields": [
-                  "scoring_text",
-                  "work_experience_summaries"
+                  "work_experience_summaries",
+                  "scoring_text"
                 ]
               },
               {
                 "capability": "workflow",
                 "verdict": "explicit_hit",
+                "evidence_summary": "Explicit evidence found in search text",
                 "evidence_snippets": [
-                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+                  "...latform. Work summary: python backend workflow ranking. Experience: TestCo | Python..."
                 ],
                 "source_fields": [
                   "scoring_text"
@@ -3430,18 +3443,20 @@
               {
                 "capability": "ranking",
                 "verdict": "explicit_hit",
+                "evidence_summary": "Explicit evidence found in work history",
                 "evidence_snippets": [
-                  "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
-                  "TestCo | Python Engineer | Built retrieval ranking systems."
+                  "TestCo | Python Engineer | Built retrieval ranking systems.",
+                  "...Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer..."
                 ],
                 "source_fields": [
-                  "scoring_text",
-                  "work_experience_summaries"
+                  "work_experience_summaries",
+                  "scoring_text"
                 ]
               },
               {
                 "capability": "agent",
                 "verdict": "missing",
+                "evidence_summary": "No supporting evidence found",
                 "evidence_snippets": [],
                 "source_fields": []
               }
@@ -3450,17 +3465,19 @@
             "gap_signals": [
               {
                 "signal": "LLM",
+                "display_text": "No evidence for LLM",
                 "evidence_snippets": [],
                 "source_fields": []
               },
               {
                 "signal": "agent",
+                "display_text": "No evidence for agent",
                 "evidence_snippets": [],
                 "source_fields": []
               }
             ],
             "risk_signals": [],
-            "card_summary": "hold: explicit must-have coverage 4/6; gaps LLM, agent"
+            "card_summary": "Hold: explicit coverage on 4/6 must-haves; Main gaps: No evidence for LLM, No evidence for agent"
           }
         ],
         "top_three_statistics": {
@@ -5750,8 +5767,9 @@
           {
             "capability": "Python backend",
             "verdict": "explicit_hit",
+            "evidence_summary": "Explicit evidence found in search text",
             "evidence_snippets": [
-              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work..."
             ],
             "source_fields": [
               "scoring_text"
@@ -5760,26 +5778,29 @@
           {
             "capability": "LLM",
             "verdict": "missing",
+            "evidence_summary": "No supporting evidence found",
             "evidence_snippets": [],
             "source_fields": []
           },
           {
             "capability": "retrieval",
             "verdict": "explicit_hit",
+            "evidence_summary": "Explicit evidence found in work history",
             "evidence_snippets": [
-              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
-              "TestCo | Python Engineer | Built retrieval ranking systems."
+              "TestCo | Python Engineer | Built retrieval ranking systems.",
+              "...gineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backe..."
             ],
             "source_fields": [
-              "scoring_text",
-              "work_experience_summaries"
+              "work_experience_summaries",
+              "scoring_text"
             ]
           },
           {
             "capability": "workflow",
             "verdict": "explicit_hit",
+            "evidence_summary": "Explicit evidence found in search text",
             "evidence_snippets": [
-              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+              "...latform. Work summary: python backend workflow ranking. Experience: TestCo | Python..."
             ],
             "source_fields": [
               "scoring_text"
@@ -5788,18 +5809,20 @@
           {
             "capability": "ranking",
             "verdict": "explicit_hit",
+            "evidence_summary": "Explicit evidence found in work history",
             "evidence_snippets": [
-              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
-              "TestCo | Python Engineer | Built retrieval ranking systems."
+              "TestCo | Python Engineer | Built retrieval ranking systems.",
+              "...Work summary: python backend workflow ranking. Experience: TestCo | Python Engineer..."
             ],
             "source_fields": [
-              "scoring_text",
-              "work_experience_summaries"
+              "work_experience_summaries",
+              "scoring_text"
             ]
           },
           {
             "capability": "agent",
             "verdict": "missing",
+            "evidence_summary": "No supporting evidence found",
             "evidence_snippets": [],
             "source_fields": []
           }
@@ -5808,17 +5831,19 @@
         "gap_signals": [
           {
             "signal": "LLM",
+            "display_text": "No evidence for LLM",
             "evidence_snippets": [],
             "source_fields": []
           },
           {
             "signal": "agent",
+            "display_text": "No evidence for agent",
             "evidence_snippets": [],
             "source_fields": []
           }
         ],
         "risk_signals": [],
-        "card_summary": "hold: explicit must-have coverage 4/6; gaps LLM, agent"
+        "card_summary": "Hold: explicit coverage on 4/6 must-haves; Main gaps: No evidence for LLM, No evidence for agent"
       },
       {
         "candidate_id": "candidate-illegal-1",
@@ -5827,8 +5852,9 @@
           {
             "capability": "Python backend",
             "verdict": "explicit_hit",
+            "evidence_summary": "Explicit evidence found in search text",
             "evidence_snippets": [
-              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科."
+              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work..."
             ],
             "source_fields": [
               "scoring_text"
@@ -5837,42 +5863,47 @@
           {
             "capability": "LLM",
             "verdict": "missing",
+            "evidence_summary": "No supporting evidence found",
             "evidence_snippets": [],
             "source_fields": []
           },
           {
             "capability": "retrieval",
             "verdict": "explicit_hit",
+            "evidence_summary": "Explicit evidence found in work history",
             "evidence_snippets": [
-              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
-              "TestCo | Python Engineer | Built retrieval ranking systems."
+              "TestCo | Python Engineer | Built retrieval ranking systems.",
+              "...gineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backe..."
             ],
             "source_fields": [
-              "scoring_text",
-              "work_experience_summaries"
+              "work_experience_summaries",
+              "scoring_text"
             ]
           },
           {
             "capability": "workflow",
             "verdict": "missing",
+            "evidence_summary": "No supporting evidence found",
             "evidence_snippets": [],
             "source_fields": []
           },
           {
             "capability": "ranking",
             "verdict": "explicit_hit",
+            "evidence_summary": "Explicit evidence found in work history",
             "evidence_snippets": [
-              "Target role: Python Engineer. Location: Shanghai. Projects: retrieval platform. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer | Built retrieval ranking systems. Education: 复旦大学 计算机 本科.",
-              "TestCo | Python Engineer | Built retrieval ranking systems."
+              "TestCo | Python Engineer | Built retrieval ranking systems.",
+              "...form. Work summary: python backend rag ranking. Experience: TestCo | Python Engineer..."
             ],
             "source_fields": [
-              "scoring_text",
-              "work_experience_summaries"
+              "work_experience_summaries",
+              "scoring_text"
             ]
           },
           {
             "capability": "agent",
             "verdict": "missing",
+            "evidence_summary": "No supporting evidence found",
             "evidence_snippets": [],
             "source_fields": []
           }
@@ -5881,25 +5912,28 @@
         "gap_signals": [
           {
             "signal": "LLM",
+            "display_text": "No evidence for LLM",
             "evidence_snippets": [],
             "source_fields": []
           },
           {
             "signal": "workflow",
+            "display_text": "No evidence for workflow",
             "evidence_snippets": [],
             "source_fields": []
           },
           {
             "signal": "agent",
+            "display_text": "No evidence for agent",
             "evidence_snippets": [],
             "source_fields": []
           }
         ],
         "risk_signals": [],
-        "card_summary": "hold: explicit must-have coverage 3/6; gaps LLM, workflow"
+        "card_summary": "Hold: explicit coverage on 3/6 must-haves; Main gaps: No evidence for LLM, No evidence for workflow"
       }
     ],
-    "reviewer_summary": "Reviewer summary: 0 advance, 2 hold, 0 reject; main gaps: LLM, agent",
+    "reviewer_summary": "Reviewer summary: 0 advance-ready, 2 need manual review, 0 reject; Top gaps: No evidence for LLM (2), No evidence for agent (2)",
     "run_summary": "Illegal crossover was rejected and the run stopped on retry.",
     "stop_reason": "controller_stop"
   },

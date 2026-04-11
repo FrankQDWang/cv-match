@@ -798,6 +798,7 @@ class MustHaveEvidenceRow_t(BaseModel):
 
     capability: str
     verdict: MustHaveEvidenceVerdict
+    evidence_summary: str = ""
     evidence_snippets: list[str] = Field(default_factory=list)
     source_fields: list[str] = Field(default_factory=list)
 
@@ -806,6 +807,7 @@ class EvidenceSignal_t(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     signal: str
+    display_text: str = ""
     evidence_snippets: list[str] = Field(default_factory=list)
     source_fields: list[str] = Field(default_factory=list)
 

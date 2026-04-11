@@ -580,10 +580,10 @@ $$
 
 The card is not a prose-only explanation. It is a structured reviewer surface with these meanings:
 
-- `must_have_matrix`: ordered `MustHaveEvidenceRow_t` rows,
+- `must_have_matrix`: ordered `MustHaveEvidenceRow_t` rows, each with machine-stable verdicts plus human-readable `evidence_summary`,
 - `preferred_evidence`: positive but non-essential signals,
-- `gap_signals`: explicit missing or weakly supported requirements,
-- `risk_signals`: recruiter-visible risks rather than raw ranking penalties alone,
+- `gap_signals`: explicit missing or weakly supported requirements, each with machine-stable `signal` and recruiter-facing `display_text`,
+- `risk_signals`: recruiter-visible risks rather than raw ranking penalties alone, also carried as `signal + display_text`,
 - `card_summary`: a compact review sentence grounded in the card.
 
 The target `SearchScoringResult_t` therefore extends from rank-only output to reviewer-ready output by adding a candidate-evidence collection:

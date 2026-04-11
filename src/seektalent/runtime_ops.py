@@ -479,25 +479,29 @@ def _reviewer_summary(final_candidate_cards: list[CandidateEvidenceCard_t]) -> s
     parts = [
         (
             "Reviewer summary: "
-            f"{recommendation_counts['advance']} advance, "
-            f"{recommendation_counts['hold']} hold, "
+            f"{recommendation_counts['advance']} advance-ready, "
+            f"{recommendation_counts['hold']} need manual review, "
             f"{recommendation_counts['reject']} reject"
         )
     ]
-    if gap_counts:
-        parts.append(f"main gaps: {', '.join(gap_counts[:2])}")
+    if recommendation_counts["hold"] > 0 and gap_counts:
+        parts.append(f"Top gaps: {', '.join(gap_counts[:2])}")
     if risk_counts:
-        parts.append(f"main risks: {', '.join(risk_counts[:2])}")
+        parts.append(f"Top risks: {', '.join(risk_counts[:2])}")
     return "; ".join(parts)
 
 
 def _signal_counts(signals: list[EvidenceSignal_t] | tuple[EvidenceSignal_t, ...] | object) -> list[str]:
-    counts: dict[str, int] = {}
+    counts: dict[str, tuple[str, int]] = {}
     for signal in signals:
-        counts[signal.signal] = counts.get(signal.signal, 0) + 1
+        display_text, count = counts.get(signal.signal, (signal.display_text or signal.signal, 0))
+        counts[signal.signal] = (display_text, count + 1)
     return [
-        signal
-        for signal, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        f"{display_text} ({count})"
+        for _, (display_text, count) in sorted(
+            counts.items(),
+            key=lambda item: (-item[1][1], item[0]),
+        )
     ]
 
 
