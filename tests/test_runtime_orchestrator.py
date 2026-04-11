@@ -237,6 +237,8 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     assert result.rounds[0].branch_evaluation_audit is not None
     assert result.rounds[0].branch_evaluation_audit.prompt_surface.surface_id == "branch_outcome_evaluation"
     assert result.finalization_audit.prompt_surface.surface_id == "search_run_finalization"
+    assert "Search round count: 1" in result.finalization_audit.prompt_surface.input_text
+    assert "Operators used: core_precision" in result.finalization_audit.prompt_surface.input_text
     assert result.rounds[0].controller_context.runtime_budget_state.search_phase == "explore"
     assert result.rounds[0].controller_context.runtime_budget_state.phase_progress == 0.0
     assert result.rounds[0].controller_context.max_query_terms == 3
@@ -249,6 +251,7 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     assert result.rounds[0].controller_context.operator_surface_override_reason == "none"
     assert result.rounds[0].controller_context.operator_surface_unmet_must_haves
     assert result.rounds[0].execution_plan is not None
+    assert result.rounds[0].rewrite_choice_trace is None
     assert (
         len(result.rounds[0].execution_plan.query_terms)
         <= result.rounds[0].controller_context.max_query_terms

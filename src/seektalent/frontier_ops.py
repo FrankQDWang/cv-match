@@ -19,9 +19,11 @@ from seektalent.models import (
     RuntimeBudgetState,
     RuntimeSelectionPolicy,
     RuntimeTermBudgetPolicy,
+    RewriteChoiceScoreBreakdown,
+    RewriteChoiceTrace,
     RewriteFitnessWeights,
-    ScoringPolicy,
     RewriteTermCandidate,
+    ScoringPolicy,
     SearchControllerContext_t,
     SearchControllerDecisionDraft_t,
     SearchControllerDecision_t,
@@ -132,9 +134,22 @@ def generate_search_controller_decision(
     draft: SearchControllerDecisionDraft_t,
     rewrite_fitness_weights: RewriteFitnessWeights | None = None,
 ) -> SearchControllerDecision_t:
+    return generate_search_controller_decision_with_trace(
+        context,
+        draft,
+        rewrite_fitness_weights,
+    )[0]
+
+
+def generate_search_controller_decision_with_trace(
+    context: SearchControllerContext_t,
+    draft: SearchControllerDecisionDraft_t,
+    rewrite_fitness_weights: RewriteFitnessWeights | None = None,
+) -> tuple[SearchControllerDecision_t, RewriteChoiceTrace | None]:
     action = "stop" if _normalized_text(draft.action) == "stop" else "search_cts"
     active_node = context.active_frontier_node_summary
     active_operator_name = active_node.selected_operator_name
+    rewrite_trace: RewriteChoiceTrace | None = None
     normalized_operator_name = _normalized_operator_name(
         draft.selected_operator_name,
         context.allowed_operator_names,
@@ -144,13 +159,14 @@ def generate_search_controller_decision(
     if action == "stop":
         operator_args: dict[str, object] = {}
     elif normalized_operator_name != "crossover_compose":
+        query_terms, rewrite_trace = _normalized_non_crossover_query(
+            normalized_operator_name,
+            context,
+            _operator_args(draft).get("query_terms"),
+            rewrite_fitness_weights or RewriteFitnessWeights(),
+        )
         operator_args = {
-            "query_terms": _normalized_non_crossover_query_terms(
-                normalized_operator_name,
-                context,
-                _operator_args(draft).get("query_terms"),
-                rewrite_fitness_weights or RewriteFitnessWeights(),
-            )
+            "query_terms": query_terms,
         }
     else:
         donor_candidate_ids = {
@@ -177,12 +193,15 @@ def generate_search_controller_decision(
             ),
         }
 
-    return SearchControllerDecision_t(
-        action=action,
-        target_frontier_node_id=active_node.frontier_node_id,
-        selected_operator_name=normalized_operator_name,
-        operator_args=operator_args,
-        expected_gain_hypothesis=_normalized_text(draft.expected_gain_hypothesis),
+    return (
+        SearchControllerDecision_t(
+            action=action,
+            target_frontier_node_id=active_node.frontier_node_id,
+            selected_operator_name=normalized_operator_name,
+            operator_args=operator_args,
+            expected_gain_hypothesis=_normalized_text(draft.expected_gain_hypothesis),
+        ),
+        rewrite_trace,
     )
 
 
@@ -315,18 +334,18 @@ def _unmet_must_haves(
     ]
 
 
-def _normalized_non_crossover_query_terms(
+def _normalized_non_crossover_query(
     operator_name: OperatorName,
     context: SearchControllerContext_t,
     raw_query_terms: object,
     rewrite_fitness_weights: RewriteFitnessWeights,
-) -> list[str]:
+) -> tuple[list[str], RewriteChoiceTrace | None]:
     query_terms = _normalized_string_list(raw_query_terms)[: context.max_query_terms]
     if not query_terms:
         raise ValueError("search_cts requires materializable non-empty query_terms")
     _validate_non_crossover_query_terms(operator_name, context, query_terms)
     if operator_name not in _REWRITE_OPERATORS or not context.rewrite_term_candidates:
-        return query_terms
+        return query_terms, None
     return _ga_lite_query_rewrite(
         operator_name,
         context,
@@ -541,7 +560,7 @@ def _ga_lite_query_rewrite(
     context: SearchControllerContext_t,
     seed_query_terms: list[str],
     rewrite_fitness_weights: RewriteFitnessWeights,
-) -> list[str]:
+) -> tuple[list[str], RewriteChoiceTrace | None]:
     candidates = _rewrite_population(
         context,
         seed_query_terms,
@@ -555,20 +574,37 @@ def _ga_lite_query_rewrite(
             continue
         legal_candidates.append(candidate)
     if not legal_candidates:
-        return seed_query_terms
+        return seed_query_terms, None
     scored = sorted(
-        legal_candidates,
-        key=lambda candidate: (
-            -_rewrite_fitness(
+        [
+            _rewrite_scored_candidate(
                 candidate,
                 context,
                 rewrite_fitness_weights,
                 seed_query_terms=seed_query_terms,
-            ),
-            candidate,
+            )
+            for candidate in legal_candidates
+        ],
+        key=lambda item: (
+            -item[1],
+            item[0],
         ),
     )
-    return scored[0]
+    selected_query_terms, selected_total_score, selected_breakdown = scored[0]
+    runner_up_query_terms: list[str] | None = None
+    runner_up_total_score: float | None = None
+    if len(scored) > 1:
+        runner_up_query_terms = scored[1][0]
+        runner_up_total_score = scored[1][1]
+    return selected_query_terms, RewriteChoiceTrace(
+        seed_query_terms=seed_query_terms,
+        selected_query_terms=selected_query_terms,
+        candidate_count=len(scored),
+        selected_total_score=selected_total_score,
+        selected_breakdown=selected_breakdown,
+        runner_up_query_terms=runner_up_query_terms,
+        runner_up_total_score=runner_up_total_score,
+    )
 
 
 def _rewrite_population(
@@ -639,6 +675,55 @@ def _rewrite_fitness(
     *,
     seed_query_terms: list[str],
 ) -> float:
+    return _rewrite_total_score(
+        _rewrite_score_breakdown(
+            query_terms,
+            context,
+            seed_query_terms=seed_query_terms,
+        ),
+        rewrite_fitness_weights,
+    )
+
+
+def _rewrite_scored_candidate(
+    query_terms: list[str],
+    context: SearchControllerContext_t,
+    rewrite_fitness_weights: RewriteFitnessWeights,
+    *,
+    seed_query_terms: list[str],
+) -> tuple[list[str], float, RewriteChoiceScoreBreakdown]:
+    breakdown = _rewrite_score_breakdown(
+        query_terms,
+        context,
+        seed_query_terms=seed_query_terms,
+    )
+    return (
+        query_terms,
+        _rewrite_total_score(breakdown, rewrite_fitness_weights),
+        breakdown,
+    )
+
+
+def _rewrite_total_score(
+    breakdown: RewriteChoiceScoreBreakdown,
+    rewrite_fitness_weights: RewriteFitnessWeights,
+) -> float:
+    return (
+        rewrite_fitness_weights.must_have_repair * breakdown.must_have_repair_score
+        + rewrite_fitness_weights.anchor_preservation * breakdown.anchor_preservation_score
+        + rewrite_fitness_weights.rewrite_coherence * breakdown.rewrite_coherence_score
+        + rewrite_fitness_weights.provenance_coherence * breakdown.provenance_coherence_score
+        - rewrite_fitness_weights.query_length_penalty * breakdown.query_length_penalty
+        - rewrite_fitness_weights.redundancy_penalty * breakdown.redundancy_penalty
+    )
+
+
+def _rewrite_score_breakdown(
+    query_terms: list[str],
+    context: SearchControllerContext_t,
+    *,
+    seed_query_terms: list[str],
+) -> RewriteChoiceScoreBreakdown:
     active_terms = _normalized_string_list(
         context.active_frontier_node_summary.node_query_term_pool
     )
@@ -650,25 +735,20 @@ def _rewrite_fitness(
         for candidate in context.rewrite_term_candidates
     }
     new_terms = [term for term in query_terms if term not in active_term_set]
-    must_have_repair_score = _must_have_repair_score(query_terms, context)
     seed_anchor_terms = [
         term for term in seed_terms if term in active_term_set
     ] or seed_terms[:1]
-    anchor_preservation_score = min(
-        1.0,
-        len(set(seed_anchor_terms) & query_term_set) / max(1, len(seed_anchor_terms)),
-    )
-    rewrite_coherence_score = _rewrite_coherence_score(new_terms, evidence_lookup)
-    provenance_coherence_score = _provenance_coherence_score(new_terms, evidence_lookup)
-    query_length_penalty = len(query_terms) / max(1, context.max_query_terms)
-    redundancy_penalty = len(active_term_set & query_term_set) / max(1, len(query_term_set))
-    return (
-        rewrite_fitness_weights.must_have_repair * must_have_repair_score
-        + rewrite_fitness_weights.anchor_preservation * anchor_preservation_score
-        + rewrite_fitness_weights.rewrite_coherence * rewrite_coherence_score
-        + rewrite_fitness_weights.provenance_coherence * provenance_coherence_score
-        - rewrite_fitness_weights.query_length_penalty * query_length_penalty
-        - rewrite_fitness_weights.redundancy_penalty * redundancy_penalty
+    return RewriteChoiceScoreBreakdown(
+        must_have_repair_score=_must_have_repair_score(query_terms, context),
+        anchor_preservation_score=min(
+            1.0,
+            len(set(seed_anchor_terms) & query_term_set) / max(1, len(seed_anchor_terms)),
+        ),
+        rewrite_coherence_score=_rewrite_coherence_score(new_terms, evidence_lookup),
+        provenance_coherence_score=_provenance_coherence_score(new_terms, evidence_lookup),
+        query_length_penalty=len(query_terms) / max(1, context.max_query_terms),
+        redundancy_penalty=len(active_term_set & query_term_set)
+        / max(1, len(query_term_set)),
     )
 
 
@@ -809,5 +889,6 @@ def _deduplicate_term_lists(values: list[list[str]]) -> list[list[str]]:
 __all__ = [
     "carry_forward_frontier_state",
     "generate_search_controller_decision",
+    "generate_search_controller_decision_with_trace",
     "select_active_frontier_node",
 ]

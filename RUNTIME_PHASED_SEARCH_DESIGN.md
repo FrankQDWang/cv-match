@@ -44,6 +44,8 @@
 - offline replay tuning 已经落地为 deterministic case harness，只支持 canonical + tuning suite，不支持任意历史 bundle 反事实 replay。
 - rewrite evidence scoring 已经切到 discriminative term ranking，accepted terms 会显式记录 support、candidate quality、field weight 和 bonus / penalty 拆解。
 - rewrite coherence scoring 已经强化为 seed-anchor preservation + evidence-aware coherence + provenance overlap 的组合评分。
+- controller draft validation 与 runtime rewrite normalization 现在共享同一组 `RewriteFitnessWeights`。
+- non-crossover rewrite round 会显式落 `rewrite_choice_trace`，finalization prompt 也会带 compact `Run Facts`。
 
 也就是说，当前设计文档的重点不再是“把 phase 引入 runtime”，而是“在 CTS 交集语义已经纠正后，继续做 diagnostics、tuning 和局部优化”。
 

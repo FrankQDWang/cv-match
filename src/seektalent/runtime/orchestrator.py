@@ -13,7 +13,7 @@ from seektalent.config import AppSettings
 from seektalent.controller_llm import request_search_controller_decision_draft
 from seektalent.frontier_ops import (
     carry_forward_frontier_state,
-    generate_search_controller_decision,
+    generate_search_controller_decision_with_trace,
     select_active_frontier_node,
 )
 from seektalent.models import (
@@ -170,9 +170,10 @@ class WorkflowRuntime:
             )
             controller_draft, controller_audit = await request_search_controller_decision_draft(
                 controller_context,
+                rewrite_fitness_weights=active_assets.rewrite_fitness_weights,
                 model=self.search_controller_decision_model,
             )
-            controller_decision = generate_search_controller_decision(
+            controller_decision, rewrite_choice_trace = generate_search_controller_decision_with_trace(
                 controller_context,
                 controller_draft,
                 active_assets.rewrite_fitness_weights,
@@ -199,6 +200,7 @@ class WorkflowRuntime:
                         controller_draft=controller_draft,
                         controller_audit=controller_audit,
                         controller_decision=controller_decision,
+                        rewrite_choice_trace=rewrite_choice_trace,
                         effective_stop_guard=effective_stop_guard,
                         frontier_state_after=frontier_state_t1,
                         stop_reason=stop_reason,
@@ -286,6 +288,7 @@ class WorkflowRuntime:
                         execution_result=execution_result,
                         runtime_audit_tags=execution_sidecar.runtime_audit_tags,
                         rewrite_term_pool=rewrite_term_pool,
+                        rewrite_choice_trace=rewrite_choice_trace,
                         scoring_result=scoring_result,
                         branch_evaluation_draft=branch_evaluation_draft,
                         branch_evaluation_audit=branch_evaluation_audit,
@@ -310,6 +313,7 @@ class WorkflowRuntime:
             run_summary_draft, finalization_audit = await request_search_run_summary_draft(
                 bootstrap_artifacts.requirement_sheet,
                 frontier_state_t1,
+                rounds,
                 stop_reason,
                 model=self.search_run_finalization_model,
             )

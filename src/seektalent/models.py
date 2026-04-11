@@ -473,6 +473,29 @@ class RewriteTermPool(BaseModel):
     rejected: list[RewriteTermRejected] = Field(default_factory=list)
 
 
+class RewriteChoiceScoreBreakdown(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    must_have_repair_score: float = Field(default=0.0, ge=0.0)
+    anchor_preservation_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    rewrite_coherence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    provenance_coherence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    query_length_penalty: float = Field(default=0.0, ge=0.0)
+    redundancy_penalty: float = Field(default=0.0, ge=0.0)
+
+
+class RewriteChoiceTrace(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    seed_query_terms: list[str] = Field(default_factory=list)
+    selected_query_terms: list[str] = Field(default_factory=list)
+    candidate_count: int = Field(ge=0)
+    selected_total_score: float
+    selected_breakdown: RewriteChoiceScoreBreakdown
+    runner_up_query_terms: list[str] | None = None
+    runner_up_total_score: float | None = None
+
+
 class UnmetRequirementWeight(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -825,6 +848,7 @@ class SearchRoundArtifact(BaseModel):
     execution_result: SearchExecutionResult_t | None = None
     runtime_audit_tags: dict[str, list[str]] = Field(default_factory=dict)
     rewrite_term_pool: RewriteTermPool | None = None
+    rewrite_choice_trace: RewriteChoiceTrace | None = None
     scoring_result: SearchScoringResult_t | None = None
     branch_evaluation_draft: BranchEvaluationDraft_t | None = None
     branch_evaluation_audit: LLMCallAudit | None = None

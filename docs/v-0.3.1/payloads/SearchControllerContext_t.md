@@ -85,8 +85,9 @@ SearchControllerContext_t = {
 `Rewrite Evidence` section 会显式列出每个 candidate term 的：
 
 - `term`
-- `source_candidate_ids`
+- `support_count`
 - `source_fields`
+- `signal`
 
 `active_selection_breakdown` 与 `selection_ranking` 不会投影到 prompt text。
 

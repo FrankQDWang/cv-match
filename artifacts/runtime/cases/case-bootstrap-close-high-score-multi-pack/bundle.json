@@ -1088,6 +1088,7 @@
       "execution_result": null,
       "runtime_audit_tags": {},
       "rewrite_term_pool": null,
+      "rewrite_choice_trace": null,
       "scoring_result": null,
       "branch_evaluation_draft": null,
       "branch_evaluation_audit": null,
@@ -1821,6 +1822,7 @@
       "execution_result": null,
       "runtime_audit_tags": {},
       "rewrite_term_pool": null,
+      "rewrite_choice_trace": null,
       "scoring_result": null,
       "branch_evaluation_draft": null,
       "branch_evaluation_audit": null,
@@ -2554,6 +2556,7 @@
       "execution_result": null,
       "runtime_audit_tags": {},
       "rewrite_term_pool": null,
+      "rewrite_choice_trace": null,
       "scoring_result": null,
       "branch_evaluation_draft": null,
       "branch_evaluation_audit": null,
@@ -2792,9 +2795,9 @@
     "prompt_surface": {
       "surface_id": "search_run_finalization",
       "instructions_text": "Generate a strict structured final run summary draft.\n\nUse only the provided finalization context.\nDo not rewrite shortlist ordering or stop facts.",
-      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Agent Search Engineer\n- Role focus: Build agent and ranking systems together.\n- Must-have capabilities: Python backend, agent engineer, ranking\n- Locations: Shanghai\n\n## Final Shortlist State\n- Final shortlist candidate ids: None\n- Remaining budget: 5\n- Open frontier node ids: seed_core_precision_87acf8a7, seed_relaxed_floor_72de7f4f, seed_pack_expansion_0d92f929, seed_cross_pack_bridge_f0c14380, seed_generic_expansion_8690d463\n- Closed frontier node ids: None\n\n## Stop Reason\n- controller_stop\n\n## Return Fields\n- Return run_summary.",
+      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Agent Search Engineer\n- Role focus: Build agent and ranking systems together.\n- Must-have capabilities: Python backend, agent engineer, ranking\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 0\n- Final shortlist count: 0\n- Final must-have query coverage: 0.00\n- Operators used: None\n\n## Final Shortlist State\n- Final shortlist candidate ids: None\n- Remaining budget: 5\n- Open frontier node ids: seed_core_precision_87acf8a7, seed_relaxed_floor_72de7f4f, seed_pack_expansion_0d92f929, seed_cross_pack_bridge_f0c14380, seed_generic_expansion_8690d463\n- Closed frontier node ids: None\n\n## Stop Reason\n- controller_stop\n\n## Return Fields\n- Return run_summary.",
       "instructions_sha1": "8e78c48e227a8a26cadc04d211f4bc7c5b210c19",
-      "input_sha1": "9f0f24cc647cfd5311c567bef4d51d86a0b83bbc",
+      "input_sha1": "4fc5e59aa75fd0fb7e0ae6a9f746a36ed96672e0",
       "sections": [
         {
           "title": "Task Contract",
@@ -2810,6 +2813,16 @@
             "RequirementSheet.role_summary",
             "RequirementSheet.must_have_capabilities",
             "RequirementSheet.hard_constraints.locations"
+          ],
+          "is_dynamic": true
+        },
+        {
+          "title": "Run Facts",
+          "body_text": "- Search round count: 0\n- Final shortlist count: 0\n- Final must-have query coverage: 0.00\n- Operators used: None",
+          "source_paths": [
+            "SearchRoundArtifact.controller_decision",
+            "SearchRoundArtifact.execution_plan",
+            "FrontierState_t1.run_shortlist_candidate_ids"
           ],
           "is_dynamic": true
         },

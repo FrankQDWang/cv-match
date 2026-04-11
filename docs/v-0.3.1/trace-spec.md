@@ -18,6 +18,7 @@
 - `selected_knowledge_pack_ids`
 - round-0 seed 数量
 - 每轮 `operator / knowledge_pack_ids / stop_reason`
+- `rewrite_choice_trace`
 - `search_round_indexes`
 - `search_phase_by_search_round`
 - `selected_operator_by_search_round`

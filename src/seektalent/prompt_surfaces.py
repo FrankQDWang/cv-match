@@ -17,8 +17,11 @@ from seektalent.models import (
     SearchExecutionPlan_t,
     SearchExecutionResult_t,
     SearchInputTruth,
+    SearchRoundArtifact,
     SearchScoringResult_t,
+    stable_deduplicate,
 )
+from seektalent.query_terms import query_terms_hit
 
 RETRIES = 0
 OUTPUT_RETRIES = 1
@@ -400,6 +403,7 @@ def build_branch_evaluation_prompt_surface(
 def build_search_run_finalization_prompt_surface(
     requirement_sheet: RequirementSheet,
     frontier_state: FrontierState_t1,
+    rounds: list[SearchRoundArtifact],
     stop_reason: str,
     *,
     instructions_text: str,
@@ -429,6 +433,16 @@ def build_search_run_finalization_prompt_surface(
                     "RequirementSheet.role_summary",
                     "RequirementSheet.must_have_capabilities",
                     "RequirementSheet.hard_constraints.locations",
+                ],
+                is_dynamic=True,
+            ),
+            _section(
+                "Run Facts",
+                _finalization_run_fact_lines(requirement_sheet, frontier_state, rounds),
+                [
+                    "SearchRoundArtifact.controller_decision",
+                    "SearchRoundArtifact.execution_plan",
+                    "FrontierState_t1.run_shortlist_candidate_ids",
                 ],
                 is_dynamic=True,
             ),
@@ -571,11 +585,61 @@ def _controller_rewrite_evidence_lines(context: SearchControllerContext_t) -> li
         return ["No rewrite evidence terms."]
     return [
         (
-            f"{candidate.term}: source_candidate_ids={_comma_list(candidate.source_candidate_ids)}; "
-            f"source_fields={_comma_list(candidate.source_fields)}"
+            f"{candidate.term}: support_count={candidate.support_count}; "
+            f"source_fields={_comma_list(candidate.source_fields)}; "
+            f"signal={_rewrite_signal_label(candidate)}"
         )
         for candidate in context.rewrite_term_candidates
     ]
+
+
+def _finalization_run_fact_lines(
+    requirement_sheet: RequirementSheet,
+    frontier_state: FrontierState_t1,
+    rounds: list[SearchRoundArtifact],
+) -> list[str]:
+    search_rounds = [round_artifact for round_artifact in rounds if round_artifact.execution_plan is not None]
+    operators_used = stable_deduplicate(
+        [
+            round_artifact.controller_decision.selected_operator_name
+            for round_artifact in search_rounds
+        ]
+    )
+    final_query_terms = (
+        search_rounds[-1].execution_plan.query_terms
+        if search_rounds and search_rounds[-1].execution_plan is not None
+        else []
+    )
+    must_have_capabilities = requirement_sheet.must_have_capabilities
+    must_have_query_coverage = (
+        sum(query_terms_hit(final_query_terms, capability) for capability in must_have_capabilities)
+        / len(must_have_capabilities)
+        if must_have_capabilities
+        else 0.0
+    )
+    return [
+        f"Search round count: {len(search_rounds)}",
+        f"Final shortlist count: {len(frontier_state.run_shortlist_candidate_ids)}",
+        f"Final must-have query coverage: {must_have_query_coverage:.2f}",
+        f"Operators used: {_comma_list(operators_used)}",
+    ]
+
+
+def _rewrite_signal_label(candidate) -> str:
+    breakdown = candidate.score_breakdown
+    if breakdown.must_have_bonus > 0:
+        label = "must_have"
+    elif breakdown.anchor_bonus > 0:
+        label = "anchor"
+    elif breakdown.pack_bonus > 0:
+        label = "pack"
+    elif any(field in {"title", "project_names"} for field in candidate.source_fields):
+        label = "title_project"
+    else:
+        label = "mixed"
+    if breakdown.generic_penalty > 0:
+        return f"{label}+generic_penalty"
+    return label
 
 
 def _branch_budget_lines(runtime_budget_state: RuntimeBudgetState) -> list[str]:

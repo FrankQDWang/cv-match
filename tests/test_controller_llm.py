@@ -8,7 +8,13 @@ from pydantic_ai.models.test import TestModel
 
 from seektalent.controller_llm import request_search_controller_decision_draft
 from seektalent.frontier_ops import generate_search_controller_decision
-from seektalent.models import FitGateConstraints, SearchControllerContext_t
+from seektalent.models import (
+    FitGateConstraints,
+    RewriteFitnessWeights,
+    RewriteTermCandidate,
+    RewriteTermScoreBreakdown,
+    SearchControllerContext_t,
+)
 from seektalent.runtime_budget import build_runtime_budget_state
 
 
@@ -16,6 +22,8 @@ def _context(
     *,
     node_query_term_pool: list[str] | None = None,
     max_query_terms: int = 4,
+    allowed_operator_names: list[str] | None = None,
+    rewrite_term_candidates: list[RewriteTermCandidate] | None = None,
 ) -> SearchControllerContext_t:
     return SearchControllerContext_t.model_validate(
         {
@@ -77,13 +85,18 @@ def _context(
             "operator_statistics_summary": {
                 "must_have_alias": {"average_reward": 0.0, "times_selected": 0}
             },
-            "allowed_operator_names": [
+            "allowed_operator_names": allowed_operator_names
+            or [
                 "must_have_alias",
                 "core_precision",
                 "crossover_compose",
             ],
             "operator_surface_override_reason": "none",
             "operator_surface_unmet_must_haves": ["ranking"],
+            "rewrite_term_candidates": [
+                candidate.model_dump(mode="python")
+                for candidate in (rewrite_term_candidates or [])
+            ],
             "max_query_terms": max_query_terms,
             "fit_gate_constraints": FitGateConstraints().model_dump(mode="python"),
             "runtime_budget_state": build_runtime_budget_state(
@@ -95,10 +108,39 @@ def _context(
     )
 
 
+def _rewrite_candidate(
+    term: str,
+    *,
+    source_candidate_ids: list[str],
+    source_fields: list[str],
+    accepted_term_score: float,
+    must_have_bonus: float = 0.0,
+    anchor_bonus: float = 0.0,
+    pack_bonus: float = 0.0,
+) -> RewriteTermCandidate:
+    return RewriteTermCandidate(
+        term=term,
+        source_candidate_ids=source_candidate_ids,
+        source_fields=source_fields,
+        support_count=len(source_candidate_ids),
+        accepted_term_score=accepted_term_score,
+        score_breakdown=RewriteTermScoreBreakdown(
+            support_score=min(3.0, float(len(source_candidate_ids))),
+            candidate_quality_score=0.9,
+            field_weight_score=1.0 if "title" in source_fields else 0.8,
+            must_have_bonus=must_have_bonus,
+            anchor_bonus=anchor_bonus,
+            pack_bonus=pack_bonus,
+            generic_penalty=0.0,
+        ),
+    )
+
+
 def test_request_search_controller_decision_draft_records_prompt_surface_audit() -> None:
     draft, audit = asyncio.run(
         request_search_controller_decision_draft(
             _context(),
+            rewrite_fitness_weights=RewriteFitnessWeights(),
             model=TestModel(
                 custom_output_args={
                     "action": "search_cts",
@@ -131,6 +173,7 @@ def test_request_search_controller_decision_draft_retries_once_for_empty_non_cro
     draft, audit = asyncio.run(
         request_search_controller_decision_draft(
             _context(),
+            rewrite_fitness_weights=RewriteFitnessWeights(),
             model=TestModel(
                 custom_output_args=[
                     {
@@ -159,6 +202,7 @@ def test_request_search_controller_decision_draft_fails_after_single_validator_r
         asyncio.run(
             request_search_controller_decision_draft(
                 _context(),
+                rewrite_fitness_weights=RewriteFitnessWeights(),
                 model=TestModel(
                     custom_output_args=[
                         {
@@ -187,6 +231,7 @@ def test_request_search_controller_decision_draft_accepts_budget_clamped_non_cro
     draft, audit = asyncio.run(
         request_search_controller_decision_draft(
             context,
+            rewrite_fitness_weights=RewriteFitnessWeights(),
             model=TestModel(
                 custom_output_args={
                     "action": "search_cts",
@@ -202,3 +247,57 @@ def test_request_search_controller_decision_draft_accepts_budget_clamped_non_cro
 
     assert normalized.operator_args == {"query_terms": ["agent engineer", "python"]}
     assert audit.validator_retry_count == 0
+
+
+def test_request_search_controller_decision_draft_uses_explicit_rewrite_fitness_weights() -> None:
+    context = _context(
+        node_query_term_pool=["python backend", "workflow", "agent"],
+        allowed_operator_names=["generic_expansion", "core_precision", "crossover_compose"],
+        rewrite_term_candidates=[
+            _rewrite_candidate(
+                "ranking",
+                source_candidate_ids=["shared-1", "shared-2"],
+                source_fields=["title"],
+                accepted_term_score=4.8,
+                must_have_bonus=1.5,
+            ),
+            _rewrite_candidate(
+                "retrieval",
+                source_candidate_ids=["shared-1", "shared-2"],
+                source_fields=["project_names"],
+                accepted_term_score=4.5,
+                anchor_bonus=0.75,
+            ),
+            _rewrite_candidate(
+                "rag",
+                source_candidate_ids=["mixed-1"],
+                source_fields=["search_text"],
+                accepted_term_score=4.9,
+                anchor_bonus=0.75,
+            ),
+        ],
+    )
+    draft, _audit = asyncio.run(
+        request_search_controller_decision_draft(
+            context,
+            rewrite_fitness_weights=RewriteFitnessWeights(rewrite_coherence=4.0),
+            model=TestModel(
+                custom_output_args={
+                    "action": "search_cts",
+                    "selected_operator_name": "generic_expansion",
+                    "operator_args": {"query_terms": ["python backend", "ranking", "rag"]},
+                    "expected_gain_hypothesis": "Prefer the most coherent rewrite.",
+                }
+            ),
+        )
+    )
+
+    normalized = generate_search_controller_decision(
+        context,
+        draft,
+        RewriteFitnessWeights(rewrite_coherence=4.0),
+    )
+
+    assert normalized.operator_args == {
+        "query_terms": ["python backend", "ranking", "retrieval"]
+    }

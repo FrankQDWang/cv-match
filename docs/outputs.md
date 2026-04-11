@@ -65,6 +65,17 @@ Each section stores:
 
 This is the only prompt audit owner. There is no sidecar prompt file, no prompt preview field, and no hash-only audit fallback.
 
+For rewrite-driven search rounds, `bundle.json` now also stores `rounds[*].rewrite_choice_trace`:
+
+- `seed_query_terms`
+- `selected_query_terms`
+- `candidate_count`
+- `selected_total_score`
+- `selected_breakdown`
+- optional runner-up summary
+
+This is the compact GA-lite choice trace owner. It does not log the full rewrite population.
+
 ## `eval.json` now includes phased diagnostics
 
 `SearchRunBundle.eval` remains a flat metric list, but it now includes machine-friendly phased diagnostics derived from search rounds:

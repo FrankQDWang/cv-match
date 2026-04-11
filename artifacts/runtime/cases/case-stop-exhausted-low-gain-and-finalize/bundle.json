@@ -1063,6 +1063,7 @@
         "accepted": [],
         "rejected": []
       },
+      "rewrite_choice_trace": null,
       "scoring_result": {
         "scored_candidates": [],
         "node_shortlist_candidate_ids": [],
@@ -1980,6 +1981,7 @@
         "accepted": [],
         "rejected": []
       },
+      "rewrite_choice_trace": null,
       "scoring_result": {
         "scored_candidates": [],
         "node_shortlist_candidate_ids": [],
@@ -2971,6 +2973,7 @@
         "accepted": [],
         "rejected": []
       },
+      "rewrite_choice_trace": null,
       "scoring_result": {
         "scored_candidates": [],
         "node_shortlist_candidate_ids": [],
@@ -4033,6 +4036,7 @@
         "accepted": [],
         "rejected": []
       },
+      "rewrite_choice_trace": null,
       "scoring_result": {
         "scored_candidates": [],
         "node_shortlist_candidate_ids": [],
@@ -4521,9 +4525,9 @@
     "prompt_surface": {
       "surface_id": "search_run_finalization",
       "instructions_text": "Generate a strict structured final run summary draft.\n\nUse only the provided finalization context.\nDo not rewrite shortlist ordering or stop facts.",
-      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Locations: Shanghai\n\n## Final Shortlist State\n- Final shortlist candidate ids: None\n- Remaining budget: 1\n- Open frontier node ids: seed_generic_expansion_e391b822\n- Closed frontier node ids: seed_core_precision_e391b822, child_seed_core_precision_e391b822_14860cb6, seed_relaxed_floor_e391b822, child_seed_relaxed_floor_e391b822_14860cb6, seed_pack_expansion_e391b822, child_seed_pack_expansion_e391b822_14860cb6, seed_must_have_alias_e391b822, child_seed_must_have_alias_e391b822_14860cb6\n\n## Stop Reason\n- exhausted_low_gain\n\n## Return Fields\n- Return run_summary.",
+      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Senior Python / LLM Engineer\n- Role focus: Build Python, LLM, and retrieval systems.\n- Must-have capabilities: Python backend, LLM application, retrieval pipeline\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 4\n- Final shortlist count: 0\n- Final must-have query coverage: 0.33\n- Operators used: core_precision\n\n## Final Shortlist State\n- Final shortlist candidate ids: None\n- Remaining budget: 1\n- Open frontier node ids: seed_generic_expansion_e391b822\n- Closed frontier node ids: seed_core_precision_e391b822, child_seed_core_precision_e391b822_14860cb6, seed_relaxed_floor_e391b822, child_seed_relaxed_floor_e391b822_14860cb6, seed_pack_expansion_e391b822, child_seed_pack_expansion_e391b822_14860cb6, seed_must_have_alias_e391b822, child_seed_must_have_alias_e391b822_14860cb6\n\n## Stop Reason\n- exhausted_low_gain\n\n## Return Fields\n- Return run_summary.",
       "instructions_sha1": "8e78c48e227a8a26cadc04d211f4bc7c5b210c19",
-      "input_sha1": "bdc9b3d704dad67dc3199bc7433bd37fd3fc8bc3",
+      "input_sha1": "b51fbd3223b37f76a40ea1e568e9b7fc4e2a20f5",
       "sections": [
         {
           "title": "Task Contract",
@@ -4539,6 +4543,16 @@
             "RequirementSheet.role_summary",
             "RequirementSheet.must_have_capabilities",
             "RequirementSheet.hard_constraints.locations"
+          ],
+          "is_dynamic": true
+        },
+        {
+          "title": "Run Facts",
+          "body_text": "- Search round count: 4\n- Final shortlist count: 0\n- Final must-have query coverage: 0.33\n- Operators used: core_precision",
+          "source_paths": [
+            "SearchRoundArtifact.controller_decision",
+            "SearchRoundArtifact.execution_plan",
+            "FrontierState_t1.run_shortlist_candidate_ids"
           ],
           "is_dynamic": true
         },

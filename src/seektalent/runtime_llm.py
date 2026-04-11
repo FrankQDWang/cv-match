@@ -11,6 +11,7 @@ from seektalent.models import (
     LLMCallAudit,
     RequirementSheet,
     RuntimeBudgetState,
+    SearchRoundArtifact,
     SearchExecutionPlan_t,
     SearchExecutionResult_t,
     SearchRunSummaryDraft_t,
@@ -111,6 +112,7 @@ async def request_branch_evaluation_draft(
 async def request_search_run_summary_draft(
     requirement_sheet: RequirementSheet,
     frontier_state: FrontierState_t1,
+    rounds: list[SearchRoundArtifact],
     stop_reason: str,
     *,
     model: Any | None = None,
@@ -118,6 +120,7 @@ async def request_search_run_summary_draft(
     prompt_surface = build_search_run_finalization_prompt_surface(
         requirement_sheet,
         frontier_state,
+        rounds,
         stop_reason,
         instructions_text=SEARCH_RUN_FINALIZATION_PROMPT,
     )

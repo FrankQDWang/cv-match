@@ -10,6 +10,7 @@ from seektalent.clients.cts_client import CTSFetchResult
 from seektalent.frontier_ops import (
     carry_forward_frontier_state,
     generate_search_controller_decision,
+    generate_search_controller_decision_with_trace,
     select_active_frontier_node,
 )
 from seektalent.models import (
@@ -1249,6 +1250,70 @@ def test_rewrite_fitness_single_supported_new_term_gets_full_agreement_credit() 
     )
 
     assert frontier_ops_module._source_overlap_score([candidate]) == 1.0
+
+
+def test_generate_search_controller_decision_with_trace_records_winning_rewrite() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="generic_expansion",
+                    node_query_term_pool=["python backend", "workflow", "agent"],
+                    knowledge_pack_ids=[],
+                    rewrite_term_candidates=[
+                        _rewrite_candidate(
+                            "ranking",
+                            source_candidate_ids=["shared-1", "shared-2"],
+                            source_fields=["title"],
+                            accepted_term_score=4.8,
+                            must_have_bonus=1.5,
+                        ),
+                        _rewrite_candidate(
+                            "retrieval",
+                            source_candidate_ids=["shared-1", "shared-2"],
+                            source_fields=["project_names"],
+                            accepted_term_score=4.5,
+                            anchor_bonus=0.75,
+                        ),
+                        _rewrite_candidate(
+                            "rag",
+                            source_candidate_ids=["mixed-1"],
+                            source_fields=["search_text"],
+                            accepted_term_score=4.9,
+                            anchor_bonus=0.75,
+                        ),
+                    ],
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=5, runtime_round_index=3),
+    )
+
+    decision, rewrite_choice_trace = generate_search_controller_decision_with_trace(
+        context,
+        SearchControllerDecisionDraft_t(
+            action="search_cts",
+            selected_operator_name="generic_expansion",
+            operator_args={"query_terms": ["python backend", "ranking", "rag"]},
+            expected_gain_hypothesis="Prefer the most coherent rewrite.",
+        ),
+        RewriteFitnessWeights(rewrite_coherence=4.0),
+    )
+
+    assert decision.operator_args == {"query_terms": ["python backend", "ranking", "retrieval"]}
+    assert rewrite_choice_trace is not None
+    assert rewrite_choice_trace.seed_query_terms == ["python backend", "ranking", "rag"]
+    assert rewrite_choice_trace.selected_query_terms == ["python backend", "ranking", "retrieval"]
+    assert rewrite_choice_trace.candidate_count >= 2
+    assert rewrite_choice_trace.selected_breakdown.must_have_repair_score >= 0.0
+    assert rewrite_choice_trace.selected_breakdown.anchor_preservation_score == 1.0
+    assert rewrite_choice_trace.runner_up_query_terms is not None
 
 
 def test_generate_search_controller_decision_normalizes_crossover_fields() -> None:

@@ -1538,6 +1538,7 @@
           }
         ]
       },
+      "rewrite_choice_trace": null,
       "scoring_result": {
         "scored_candidates": [
           {
@@ -3052,6 +3053,7 @@
           }
         ]
       },
+      "rewrite_choice_trace": null,
       "scoring_result": {
         "scored_candidates": [
           {
@@ -4322,6 +4324,7 @@
       "execution_result": null,
       "runtime_audit_tags": {},
       "rewrite_term_pool": null,
+      "rewrite_choice_trace": null,
       "scoring_result": null,
       "branch_evaluation_draft": null,
       "branch_evaluation_audit": null,
@@ -4753,9 +4756,9 @@
     "prompt_surface": {
       "surface_id": "search_run_finalization",
       "instructions_text": "Generate a strict structured final run summary draft.\n\nUse only the provided finalization context.\nDo not rewrite shortlist ordering or stop facts.",
-      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n- Must-have capabilities: Python backend, LLM, retrieval, workflow, ranking, agent\n- Locations: Shanghai\n\n## Final Shortlist State\n- Final shortlist candidate ids: candidate-illegal-2, candidate-illegal-1\n- Remaining budget: 3\n- Open frontier node ids: seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, seed_must_have_alias_ff46b687, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f\n- Closed frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07\n\n## Stop Reason\n- controller_stop\n\n## Return Fields\n- Return run_summary.",
+      "input_text": "## Task Contract\n- Summarize the run outcome from the provided final shortlist state.\n- Do not invent candidates or runtime facts outside this packet.\n\n## Role Summary\n- Role title: Workflow Search Engineer\n- Role focus: Build workflow-aware search systems.\n- Must-have capabilities: Python backend, LLM, retrieval, workflow, ranking, agent\n- Locations: Shanghai\n\n## Run Facts\n- Search round count: 2\n- Final shortlist count: 2\n- Final must-have query coverage: 0.33\n- Operators used: core_precision, must_have_alias\n\n## Final Shortlist State\n- Final shortlist candidate ids: candidate-illegal-2, candidate-illegal-1\n- Remaining budget: 3\n- Open frontier node ids: seed_pack_expansion_901291cb, seed_generic_expansion_b92f6cb7, seed_must_have_alias_ff46b687, child_seed_core_precision_7b085415_730e220d, child_seed_relaxed_floor_a7280d07_ed18184f\n- Closed frontier node ids: seed_core_precision_7b085415, seed_relaxed_floor_a7280d07\n\n## Stop Reason\n- controller_stop\n\n## Return Fields\n- Return run_summary.",
       "instructions_sha1": "8e78c48e227a8a26cadc04d211f4bc7c5b210c19",
-      "input_sha1": "4163a82bc0bc06f7b18c112a59f411edefd2d56f",
+      "input_sha1": "f23b3b7879af56baeb4dba9794c2ebb6a338956f",
       "sections": [
         {
           "title": "Task Contract",
@@ -4771,6 +4774,16 @@
             "RequirementSheet.role_summary",
             "RequirementSheet.must_have_capabilities",
             "RequirementSheet.hard_constraints.locations"
+          ],
+          "is_dynamic": true
+        },
+        {
+          "title": "Run Facts",
+          "body_text": "- Search round count: 2\n- Final shortlist count: 2\n- Final must-have query coverage: 0.33\n- Operators used: core_precision, must_have_alias",
+          "source_paths": [
+            "SearchRoundArtifact.controller_decision",
+            "SearchRoundArtifact.execution_plan",
+            "FrontierState_t1.run_shortlist_candidate_ids"
           ],
           "is_dynamic": true
         },

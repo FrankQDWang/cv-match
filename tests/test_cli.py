@@ -172,6 +172,12 @@ def test_run_human_success_prints_four_lines(
     ]
 
 
+def test_main_no_longer_treats_bare_run_flags_as_implicit_run() -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["--jd", "JD"])
+    assert exc.value.code == 2
+
+
 def test_run_reads_notes_file_before_phase_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

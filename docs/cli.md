@@ -8,6 +8,8 @@ The canonical entrypoint is:
 seektalent --help
 ```
 
+Explicit subcommands are required. There is no implicit `run` mode.
+
 ## Current phase
 
 This CLI is a `v0.3.1 phase 6 offline artifacts active` surface.

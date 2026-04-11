@@ -7,6 +7,7 @@ from pydantic_ai import Agent, ModelRetry, NativeOutput
 from seektalent.frontier_ops import generate_search_controller_decision
 from seektalent.models import (
     LLMCallAudit,
+    RewriteFitnessWeights,
     SearchControllerContext_t,
     SearchControllerDecisionDraft_t,
     stable_deduplicate,
@@ -50,9 +51,14 @@ def _test_model_outputs(model: Any | None) -> list[dict[str, object]] | None:
 def _validate_controller_draft(
     draft: SearchControllerDecisionDraft_t,
     context: SearchControllerContext_t,
+    rewrite_fitness_weights: RewriteFitnessWeights,
 ) -> SearchControllerDecisionDraft_t:
     try:
-        normalized = generate_search_controller_decision(context, draft)
+        normalized = generate_search_controller_decision(
+            context,
+            draft,
+            rewrite_fitness_weights,
+        )
     except ValueError as exc:
         raise ModelRetry(str(exc)) from exc
     if normalized.action == "stop":
@@ -90,6 +96,7 @@ def _validate_controller_draft(
 async def request_search_controller_decision_draft(
     context: SearchControllerContext_t,
     *,
+    rewrite_fitness_weights: RewriteFitnessWeights,
     model: Any | None = None,
 ) -> tuple[SearchControllerDecisionDraft_t, LLMCallAudit]:
     prompt_surface = build_controller_prompt_surface(
@@ -102,7 +109,11 @@ async def request_search_controller_decision_draft(
         for index, payload in enumerate(test_outputs):
             draft = SearchControllerDecisionDraft_t.model_validate(payload)
             try:
-                return _validate_controller_draft(draft, context), build_llm_call_audit(
+                return _validate_controller_draft(
+                    draft,
+                    context,
+                    rewrite_fitness_weights,
+                ), build_llm_call_audit(
                     model=model,
                     prompt_surface=prompt_surface,
                     validator_retry_count=validator_retry_count,
@@ -122,7 +133,7 @@ async def request_search_controller_decision_draft(
     ) -> SearchControllerDecisionDraft_t:
         nonlocal validator_retry_count
         try:
-            return _validate_controller_draft(draft, context)
+            return _validate_controller_draft(draft, context, rewrite_fitness_weights)
         except ModelRetry:
             validator_retry_count += 1
             raise

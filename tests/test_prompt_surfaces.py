@@ -12,6 +12,8 @@ from seektalent.models import (
     NodeRewardBreakdown_t,
     RequirementPreferences,
     RequirementSheet,
+    RewriteTermCandidate,
+    RewriteTermScoreBreakdown,
     ScoredCandidate_t,
     SearchControllerContext_t,
     SearchExecutionPlan_t,
@@ -304,6 +306,39 @@ def test_controller_prompt_surface_orders_sections_and_delays_budget_warning() -
     assert "selection_ranking" not in regular_surface.input_text
 
 
+def test_controller_prompt_surface_keeps_rewrite_evidence_compact_but_informative() -> None:
+    surface = build_controller_prompt_surface(
+        _controller_context().model_copy(
+            update={
+                "rewrite_term_candidates": [
+                    RewriteTermCandidate(
+                        term="ranking",
+                        source_candidate_ids=["c1", "c2"],
+                        source_fields=["title", "project_names"],
+                        support_count=2,
+                        accepted_term_score=5.2,
+                        score_breakdown=RewriteTermScoreBreakdown(
+                            support_score=2.0,
+                            candidate_quality_score=0.9,
+                            field_weight_score=1.0,
+                            must_have_bonus=1.5,
+                            anchor_bonus=0.0,
+                            pack_bonus=0.0,
+                            generic_penalty=0.25,
+                        ),
+                    )
+                ]
+            }
+        ),
+        instructions_text="controller",
+    )
+
+    rewrite_body = surface.sections[5].body_text
+    assert "support_count=2" in rewrite_body
+    assert "signal=must_have+generic_penalty" in rewrite_body
+    assert "accepted_term_score" not in rewrite_body
+
+
 def test_branch_evaluation_prompt_surface_orders_sections_and_delays_budget_warning() -> None:
     regular_surface = build_branch_evaluation_prompt_surface(
         _requirement_sheet(),
@@ -367,6 +402,7 @@ def test_search_run_finalization_prompt_surface_uses_fixed_sections() -> None:
             operator_statistics={},
             remaining_budget=0,
         ),
+        [],
         "controller_stop",
         instructions_text="finalize",
     )
@@ -374,11 +410,14 @@ def test_search_run_finalization_prompt_surface_uses_fixed_sections() -> None:
     assert [section.title for section in surface.sections] == [
         "Task Contract",
         "Role Summary",
+        "Run Facts",
         "Final Shortlist State",
         "Stop Reason",
         "Return Fields",
     ]
-    assert surface.sections[3].body_text == "- controller_stop"
+    assert "Search round count: 0" in surface.sections[2].body_text
+    assert surface.sections[4].body_text == "- controller_stop"
+    assert "search_text" not in surface.input_text
 
 
 def test_prompt_path_regressions_removed_from_llm_modules() -> None:

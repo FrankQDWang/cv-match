@@ -224,6 +224,7 @@ def test_request_search_run_summary_draft_records_prompt_surface_audit() -> None
         request_search_run_summary_draft(
             _requirement_sheet(),
             FrontierState_t1.model_validate(_frontier_state().model_dump(mode="python")),
+            [],
             "controller_stop",
             model=TestModel(
                 custom_output_args={
@@ -242,4 +243,5 @@ def test_request_search_run_summary_draft_records_prompt_surface_audit() -> None
     assert audit.validator_retry_count == 0
     assert audit.model_name == "test"
     assert audit.prompt_surface.surface_id == "search_run_finalization"
+    assert audit.prompt_surface.sections[2].title == "Run Facts"
     assert audit.prompt_surface.sections[-1].title == "Return Fields"

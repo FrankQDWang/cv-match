@@ -36,6 +36,22 @@ GenerateSearchControllerDecision : SearchControllerContext_t -> SearchController
 
 `Rewrite Evidence` section 会显式列出 `rewrite_term_candidates`；它是 rewrite operator 的词源池，不会直接下推 CTS query。
 这些 term 直接来自 `RewriteTermPool.accepted`，现在已经是稳定 trace owner，不再是隐含 sidecar。
+controller prompt 只会投影紧凑 cue：
+
+- `term`
+- `support_count`
+- `source_fields`
+- `signal`
+
+其中 `signal` 只暴露粗粒度 evidence 质量标签：
+
+- `must_have`
+- `anchor`
+- `pack`
+- `title_project`
+- `mixed`
+
+如果 term 带有 generic 惩罚，还会追加 `+generic_penalty`。
 
 这里的 override 只是解释当前 phase-aware action surface 为什么被临时放宽；它不是第二套 selection policy。
 
@@ -49,6 +65,7 @@ GenerateSearchControllerDecision : SearchControllerContext_t -> SearchController
 - `query_terms` 会保序去重并按 `max_query_terms` 裁剪
 - `core_precision / relaxed_floor / must_have_alias / generic_expansion / pack_expansion / cross_pack_bridge` 都按 query rewrite contract 校验，不允许退回追加词语义
 - rewrite 类 operator 在 contract 校验通过后，允许基于 `rewrite_term_candidates` 做 bounded local search；它只能改最终 `query_terms`，不能改 operator 选择
+- bounded local search 的胜出结果会同步落入 `SearchRoundArtifact.rewrite_choice_trace`
 - `crossover_compose` 的 donor 只能来自合法 donor candidate 列表
 - `target_frontier_node_id` 固定绑定 active node，不接受 LLM 改写
 

@@ -15,7 +15,6 @@ from seektalent.config import AppSettings
 from seektalent.resources import read_default_env_template, resolve_user_path, runtime_active_file
 from seektalent.run_artifacts import PHASE6_STATUS
 
-SUBCOMMANDS = {"run", "doctor", "init", "version", "update", "inspect"}
 ROOT_HELP_EPILOG = """Phase 6 status:
   `run` now executes the full v0.3.1 runtime loop and returns SearchRunBundle.
   Each run writes bundle.json, final_result.json, and eval.json under runs/<run_id>/.
@@ -34,15 +33,6 @@ class DoctorCheck:
     name: str
     ok: bool
     message: str
-
-
-def _normalize_legacy_argv(argv: list[str]) -> list[str]:
-    if not argv:
-        return argv
-    if argv[0] in SUBCOMMANDS or argv[0] in {"-h", "--help", "--version"}:
-        return argv
-    return ["run", *argv]
-
 
 def _arg_spec(
     name: str,
@@ -409,8 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    normalized_argv = _normalize_legacy_argv(sys.argv[1:] if argv is None else argv)
-    args = parser.parse_args(normalized_argv)
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     handler = getattr(args, "handler", None)
     if handler is None:
         parser.print_help()

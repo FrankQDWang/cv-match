@@ -24,7 +24,7 @@
 | `BootstrapKeywordGenerationLLM` | `Task Contract / Requirement Summary / Routing Result / Selected Knowledge Packs / Return Fields` | 后续轮次状态、候选、CTS 结果、reward |
 | `SearchControllerDecisionLLM` | `Task Contract / Role Summary / Active Frontier Node / Donor Candidates / Allowed Operators / Rewrite Evidence / Operator Statistics / Fit Gates And Unmet Requirements / Runtime Budget State / Budget Warning? / Decision Request` | 整份 frontier、原始候选文本、CTS payload |
 | `BranchOutcomeEvaluationLLM` | `Evaluation Contract / Role Summary / Branch Facts / Search And Scoring Summary / Runtime Budget State / Budget Warning? / Return Fields` | 全量运行历史、未来轮次状态、stop owner |
-| `SearchRunFinalizationLLM` | `Task Contract / Role Summary / Final Shortlist State / Stop Reason / Return Fields` | 排序改写权、CTS 原始观测 |
+| `SearchRunFinalizationLLM` | `Task Contract / Role Summary / Run Facts / Final Shortlist State / Stop Reason / Return Fields` | 候选全文、CTS 原始观测、候选级解释写权 |
 
 `Budget Warning` 只在 `near_budget_end=true` 时出现。
 
@@ -36,6 +36,14 @@
 
 `Rewrite Evidence` section 会显式列出 `rewrite_term_candidates`。这些 evidence terms 只作为 rewrite operator 的词源池，不会直接 append 到 CTS `keyword`。
 `rewrite_term_candidates` 本身已经在 trace 中稳定落盘，对应 [[RewriteTermCandidate]] / [[RewriteTermPool]]。
+controller prompt 不会看到原始 `accepted_term_score`，只会看到：
+
+- `term`
+- `support_count`
+- `source_fields`
+- 紧凑 `signal`
+
+这样可以把 evidence 质量 cue 暴露给 controller，但不把完整 score math 塞进 prompt。
 
 controller 的 runtime budget section 也不再使用 range 语义，而是会明确投影：
 
@@ -77,6 +85,8 @@ round-0 bootstrap 也不再保留独立 4-term 心智；seed cap 直接复用 `e
 1. 模型看到了什么
 2. 这些内容按什么 section 排列
 3. 每个 section 从哪些 typed 字段抽出来
+
+对于 rewrite 类 non-crossover round，bundle 还会额外保存 `rewrite_choice_trace`，用来解释为什么某个合法 rewrite 候选最终胜出。
 
 ## 统一执行约束
 
