@@ -28,7 +28,9 @@ from seektalent.models import (
     RequirementSheet,
     RetrievedCandidate_t,
     RerankerCalibration,
+    RewriteFitnessWeights,
     RuntimeSearchBudget,
+    RuntimeSelectionPolicy,
     RuntimeTermBudgetPolicy,
     ScoringPolicy,
     SearchControllerDecisionDraft_t,
@@ -1006,6 +1008,94 @@ def test_generate_search_controller_decision_uses_ga_lite_rewrite_terms() -> Non
     assert decision.operator_args == {
         "query_terms": ["python backend", "workflow", "ranking"]
     }
+
+
+def test_explicit_runtime_selection_policy_matches_baseline_default() -> None:
+    nodes = [
+        FrontierNode_t(
+            frontier_node_id="seed_saturated",
+            selected_operator_name="must_have_alias",
+            node_query_term_pool=["python", "ranking"],
+            knowledge_pack_ids=["llm_agent_rag_engineering"],
+            node_shortlist_candidate_ids=["c1"],
+            status="open",
+        ),
+        FrontierNode_t(
+            frontier_node_id="seed_fresh",
+            selected_operator_name="must_have_alias",
+            node_query_term_pool=["python"],
+            knowledge_pack_ids=["llm_agent_rag_engineering"],
+            status="open",
+        ),
+    ]
+    default_context = select_active_frontier_node(
+        _frontier_state(nodes, run_shortlist_candidate_ids=["c1"]),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4),
+    )
+    explicit_context = select_active_frontier_node(
+        _frontier_state(nodes, run_shortlist_candidate_ids=["c1"]),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=4),
+        RuntimeSelectionPolicy(),
+    )
+
+    assert explicit_context.active_frontier_node_summary == default_context.active_frontier_node_summary
+    assert explicit_context.selection_ranking == default_context.selection_ranking
+
+
+def test_explicit_rewrite_fitness_weights_match_baseline_default() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="must_have_alias",
+                    node_query_term_pool=["python backend", "workflow", "agent"],
+                    knowledge_pack_ids=["llm_agent_rag_engineering"],
+                    rewrite_term_candidates=[
+                        RewriteTermCandidate(
+                            term="ranking",
+                            source_candidate_ids=["c1", "c2"],
+                            source_fields=["work_summaries"],
+                        ),
+                        RewriteTermCandidate(
+                            term="rag",
+                            source_candidate_ids=["c1"],
+                            source_fields=["project_names"],
+                        ),
+                    ],
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=5, runtime_round_index=4),
+    )
+    draft = SearchControllerDecisionDraft_t(
+        action="search_cts",
+        selected_operator_name="generic_expansion",
+        operator_args={"query_terms": ["python backend", "workflow", "rag"]},
+        expected_gain_hypothesis="Use the strongest supported rewrite.",
+    )
+
+    default_decision = generate_search_controller_decision(context, draft)
+    explicit_decision = generate_search_controller_decision(
+        context,
+        draft,
+        RewriteFitnessWeights(),
+    )
+
+    assert explicit_decision == default_decision
 
 
 def test_generate_search_controller_decision_normalizes_crossover_fields() -> None:

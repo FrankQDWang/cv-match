@@ -8,8 +8,10 @@ from seektalent.models import (
     CrossoverGuardThresholds,
     DomainKnowledgePack,
     RerankerCalibration,
+    RewriteFitnessWeights,
     RuntimeActiveManifest,
     RuntimeSearchBudget,
+    RuntimeSelectionPolicy,
     RuntimeTermBudgetPolicy,
     StopGuardThresholds,
     stable_deduplicate,
@@ -43,8 +45,10 @@ class BootstrapAssets:
     reranker_calibration: RerankerCalibration
     runtime_search_budget: RuntimeSearchBudget
     runtime_term_budget_policy: RuntimeTermBudgetPolicy
+    runtime_selection_policy: RuntimeSelectionPolicy
     crossover_guard_thresholds: CrossoverGuardThresholds
     stop_guard_thresholds: StopGuardThresholds
+    rewrite_fitness_weights: RewriteFitnessWeights
     operator_catalog: tuple[str, ...]
 
 
@@ -67,8 +71,10 @@ def default_bootstrap_assets(*, artifacts_root: Path | None = None) -> Bootstrap
             max_target_new_candidate_count=20,
         ),
         runtime_term_budget_policy=RuntimeTermBudgetPolicy(),
+        runtime_selection_policy=RuntimeSelectionPolicy(),
         crossover_guard_thresholds=CrossoverGuardThresholds(),
         stop_guard_thresholds=StopGuardThresholds(),
+        rewrite_fitness_weights=RewriteFitnessWeights(),
         operator_catalog=DEFAULT_OPERATOR_CATALOG,
     )
 

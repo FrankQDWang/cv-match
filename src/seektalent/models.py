@@ -519,6 +519,63 @@ class RuntimeTermBudgetPolicy(BaseModel):
     harvest_max_query_terms: int = Field(default=6, ge=1)
 
 
+class PhaseSelectionWeights(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    exploit: float = Field(ge=0.0)
+    explore: float = Field(ge=0.0)
+    coverage: float = Field(ge=0.0)
+    incremental: float = Field(ge=0.0)
+    fresh: float = Field(ge=0.0)
+    redundancy: float = Field(ge=0.0)
+
+
+class RuntimeSelectionPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    explore: PhaseSelectionWeights = Field(
+        default_factory=lambda: PhaseSelectionWeights(
+            exploit=0.6,
+            explore=1.6,
+            coverage=1.2,
+            incremental=0.2,
+            fresh=0.8,
+            redundancy=0.4,
+        )
+    )
+    balance: PhaseSelectionWeights = Field(
+        default_factory=lambda: PhaseSelectionWeights(
+            exploit=1.0,
+            explore=1.0,
+            coverage=0.8,
+            incremental=0.8,
+            fresh=0.3,
+            redundancy=0.8,
+        )
+    )
+    harvest: PhaseSelectionWeights = Field(
+        default_factory=lambda: PhaseSelectionWeights(
+            exploit=1.4,
+            explore=0.3,
+            coverage=0.2,
+            incremental=1.2,
+            fresh=0.0,
+            redundancy=1.2,
+        )
+    )
+
+
+class RewriteFitnessWeights(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    must_have_repair: float = Field(default=1.4, ge=0.0)
+    anchor_preservation: float = Field(default=1.0, ge=0.0)
+    rewrite_coherence: float = Field(default=1.2, ge=0.0)
+    provenance_coherence: float = Field(default=0.8, ge=0.0)
+    query_length_penalty: float = Field(default=0.35, ge=0.0)
+    redundancy_penalty: float = Field(default=0.45, ge=0.0)
+
+
 class RuntimeRoundState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

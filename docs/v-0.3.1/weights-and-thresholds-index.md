@@ -13,8 +13,9 @@
 | 类别 | 是否全局写死 | owner |
 | --- | --- | --- |
 | routing / card matching 系数 | 是 | [[retrieval-semantics]] |
-| frontier 选点系数 | 是 | [[selection-plan-semantics]] |
+| frontier 选点系数 | 有默认值，来自 runtime tuning owner | [[selection-plan-semantics]] + [[RuntimeSelectionPolicy]] |
 | reward 合成系数 | 是 | [[reward-frontier-semantics]] |
+| rewrite fitness 系数 | 有默认值，来自 runtime tuning owner | [[RewriteFitnessWeights]] |
 | crossover / stop / budget 默认阈值 | 是，按 runtime 默认值 | `runtime/` |
 | fusion 权重 | 有默认值，但可被业务配置覆盖 | [[FreezeScoringPolicy]] + [[BusinessPolicyPack]] |
 | stability penalty 强度与置信度 floor | 有公式，但强度和 floor 可配置 | [[scoring-semantics]] + [[BusinessPolicyPack]] |
@@ -273,7 +274,48 @@ harvest_max_query_terms: 6
 - `search_phase = balance`：`balance_max_query_terms`
 - `search_phase = harvest`：`harvest_max_query_terms`
 
-### 3.4 Crossover Guard Thresholds
+### 3.4 Selection Policy
+
+owner: [[RuntimeSelectionPolicy]]
+
+```yaml
+explore:
+  exploit: 0.6
+  explore: 1.6
+  coverage: 1.2
+  incremental: 0.2
+  fresh: 0.8
+  redundancy: 0.4
+balance:
+  exploit: 1.0
+  explore: 1.0
+  coverage: 0.8
+  incremental: 0.8
+  fresh: 0.3
+  redundancy: 0.8
+harvest:
+  exploit: 1.4
+  explore: 0.3
+  coverage: 0.2
+  incremental: 1.2
+  fresh: 0.0
+  redundancy: 1.2
+```
+
+### 3.5 Rewrite Fitness Weights
+
+owner: [[RewriteFitnessWeights]]
+
+```yaml
+must_have_repair: 1.4
+anchor_preservation: 1.0
+rewrite_coherence: 1.2
+provenance_coherence: 0.8
+query_length_penalty: 0.35
+redundancy_penalty: 0.45
+```
+
+### 3.6 Crossover Guard Thresholds
 
 owner: [[CrossoverGuardThresholds]]
 
@@ -283,7 +325,7 @@ min_reward_score: 1.5
 max_donor_candidates: 2
 ```
 
-### 3.5 Stop Guard Thresholds
+### 3.7 Stop Guard Thresholds
 
 owner: [[StopGuardThresholds]]
 

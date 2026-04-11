@@ -19,7 +19,6 @@ from seektalent.models import (
     DomainKnowledgePack,
     RetrievedCandidate_t,
     SearchRunBundle,
-    StopGuardThresholds,
     stable_deduplicate,
 )
 from seektalent.resources import runtime_case_dir, runtime_eval_matrix_file
@@ -220,26 +219,68 @@ def build_all_canonical_artifacts(*, repo_root: Path) -> None:
     _write_trace_index(specs, repo_root=repo_root)
 
 
-def build_case_bundle(spec: CanonicalCaseSpec, *, repo_root: Path) -> SearchRunBundle:
+def build_case_bundle(
+    spec: CanonicalCaseSpec,
+    *,
+    repo_root: Path,
+    assets_override: object | None = None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     match spec.case_id:
         case "case-bootstrap-explicit-pack":
-            return _build_explicit_pack_bundle(repo_root=repo_root)
+            return _build_explicit_pack_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
         case "case-bootstrap-inferred-single-pack":
-            return _build_inferred_single_pack_bundle(repo_root=repo_root)
+            return _build_inferred_single_pack_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
         case "case-bootstrap-close-high-score-multi-pack":
-            return _build_close_high_score_multi_pack_bundle(repo_root=repo_root)
+            return _build_close_high_score_multi_pack_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
         case "case-bootstrap-out-of-domain-generic":
-            return _build_out_of_domain_generic_bundle(repo_root=repo_root)
+            return _build_out_of_domain_generic_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
         case "case-crossover-legal":
-            return _build_legal_crossover_bundle(repo_root=repo_root)
+            return _build_legal_crossover_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
         case "case-crossover-illegal-reject":
-            return _build_illegal_crossover_bundle(repo_root=repo_root)
+            return _build_illegal_crossover_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
         case "case-stop-controller-direct-accepted":
-            return _build_direct_stop_accepted_bundle(repo_root=repo_root)
+            return _build_direct_stop_accepted_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
         case "case-stop-controller-direct-rejected":
-            return _build_direct_stop_rejected_bundle(repo_root=repo_root)
+            return _build_direct_stop_rejected_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
         case "case-stop-exhausted-low-gain-and-finalize":
-            return _build_exhausted_low_gain_bundle(repo_root=repo_root)
+            return _build_exhausted_low_gain_bundle(
+                repo_root=repo_root,
+                assets_override=assets_override,
+                runs_dir_override=runs_dir_override,
+            )
     raise ValueError(f"unknown_case_id: {spec.case_id}")
 
 
@@ -284,37 +325,57 @@ def build_case_eval(spec: CanonicalCaseSpec, bundle: SearchRunBundle) -> dict[st
     }
 
 
-def _build_explicit_pack_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_explicit_pack_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-bootstrap-explicit-pack",
-        assets=_runtime_assets(knowledge_pack_id_override="llm_agent_rag_engineering"),
+        assets=_runtime_assets(
+            knowledge_pack_id_override="llm_agent_rag_engineering",
+            base_assets=assets_override,
+        ),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Explicit pack bootstrap stopped cleanly.",
+        runs_dir_override=runs_dir_override,
     )
 
 
-def _build_inferred_single_pack_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_inferred_single_pack_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-bootstrap-inferred-single-pack",
-        assets=_runtime_assets(),
+        assets=_runtime_assets(base_assets=assets_override),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Single-pack inferred bootstrap stopped cleanly.",
+        runs_dir_override=runs_dir_override,
     )
 
 
-def _build_close_high_score_multi_pack_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_close_high_score_multi_pack_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-bootstrap-close-high-score-multi-pack",
-        assets=_runtime_assets(),
+        assets=_runtime_assets(base_assets=assets_override),
         requirement_payload=_hybrid_requirement_payload(),
         keyword_payload=_hybrid_keyword_payload(),
         pack_scores={
@@ -324,14 +385,20 @@ def _build_close_high_score_multi_pack_bundle(*, repo_root: Path) -> SearchRunBu
         },
         controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Close high scores triggered a multi-pack bootstrap.",
+        runs_dir_override=runs_dir_override,
     )
 
 
-def _build_out_of_domain_generic_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_out_of_domain_generic_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-bootstrap-out-of-domain-generic",
-        assets=_runtime_assets(),
+        assets=_runtime_assets(base_assets=assets_override),
         requirement_payload=_ops_requirement_payload(),
         keyword_payload=_ops_keyword_payload(),
         pack_scores={
@@ -341,11 +408,17 @@ def _build_out_of_domain_generic_bundle(*, repo_root: Path) -> SearchRunBundle:
         },
         controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Out-of-domain route fell back to generic bootstrap.",
+        runs_dir_override=runs_dir_override,
     )
 
 
-def _build_legal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
-    assets = _runtime_assets()
+def _build_legal_crossover_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
+    assets = _runtime_assets(base_assets=assets_override)
     crossover_payload = _legal_crossover_round_two_payload(assets)
     return _run_case(
         repo_root=repo_root,
@@ -391,14 +464,20 @@ def _build_legal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
             _branch_payload(novelty=0.7, usefulness=0.6, repair_operator_hint="crossover_compose"),
         ],
         final_summary="Legal crossover produced an expanded shortlist.",
+        runs_dir_override=runs_dir_override,
     )
 
 
-def _build_illegal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_illegal_crossover_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-crossover-illegal-reject",
-        assets=_runtime_assets(),
+        assets=_runtime_assets(base_assets=assets_override),
         requirement_payload=_crossover_requirement_payload(),
         keyword_payload=_crossover_keyword_payload(),
         pack_scores=_llm_pack_scores(),
@@ -433,36 +512,54 @@ def _build_illegal_crossover_bundle(*, repo_root: Path) -> SearchRunBundle:
             _branch_payload(novelty=0.7, usefulness=0.6, repair_operator_hint="core_precision"),
         ],
         final_summary="Illegal crossover was rejected and the run stopped on retry.",
+        runs_dir_override=runs_dir_override,
     )
 
 
-def _build_direct_stop_accepted_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_direct_stop_accepted_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-stop-controller-direct-accepted",
-        assets=_runtime_assets(),
+        assets=_runtime_assets(base_assets=assets_override),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Controller stop was accepted immediately.",
+        runs_dir_override=runs_dir_override,
     )
 
 
-def _build_direct_stop_rejected_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_direct_stop_rejected_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-stop-controller-direct-rejected",
-        assets=_runtime_assets(),
+        assets=_runtime_assets(base_assets=assets_override),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=_llm_keyword_payload(),
         pack_scores=_llm_pack_scores(),
         controller_outputs=_phase_gated_stop_outputs(),
         final_summary="Controller stop was accepted after one retry round.",
+        runs_dir_override=runs_dir_override,
     )
 
 
-def _build_exhausted_low_gain_bundle(*, repo_root: Path) -> SearchRunBundle:
+def _build_exhausted_low_gain_bundle(
+    *,
+    repo_root: Path,
+    assets_override=None,
+    runs_dir_override: Path | None = None,
+) -> SearchRunBundle:
     keyword_payload = _llm_keyword_payload()
     keyword_payload["candidate_seeds"] = [
         {
@@ -499,7 +596,7 @@ def _build_exhausted_low_gain_bundle(*, repo_root: Path) -> SearchRunBundle:
     return _run_case(
         repo_root=repo_root,
         case_id="case-stop-exhausted-low-gain-and-finalize",
-        assets=_runtime_assets(),
+        assets=_runtime_assets(base_assets=assets_override),
         requirement_payload=_llm_requirement_payload(),
         keyword_payload=keyword_payload,
         pack_scores=_llm_pack_scores(),
@@ -522,6 +619,7 @@ def _build_exhausted_low_gain_bundle(*, repo_root: Path) -> SearchRunBundle:
             _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
         ],
         final_summary="Low-gain branch was exhausted and finalized.",
+        runs_dir_override=runs_dir_override,
     )
 
 
@@ -538,6 +636,7 @@ def _run_case(
     candidate_scores: list[dict[str, float]] | None = None,
     cts_results: list[CTSFetchResult] | None = None,
     branch_outputs: list[dict[str, object]] | None = None,
+    runs_dir_override: Path | None = None,
 ) -> SearchRunBundle:
     del repo_root
     return run_match(
@@ -546,7 +645,7 @@ def _run_case(
         settings=AppSettings(
             _env_file=None,
             mock_cts=True,
-            runs_dir=str(runtime_case_dir(case_id) / "_tmp_runs"),
+            runs_dir=str(runs_dir_override or (runtime_case_dir(case_id) / "_tmp_runs")),
         ),
         env_file=None,
         assets=assets,
@@ -568,8 +667,9 @@ def _run_case(
 def _runtime_assets(
     *,
     knowledge_pack_id_override: str | None = None,
+    base_assets=None,
 ):
-    base_assets = default_bootstrap_assets()
+    base_assets = base_assets or default_bootstrap_assets()
     return replace(
         base_assets,
         business_policy_pack=BusinessPolicyPack.model_validate(
@@ -578,7 +678,7 @@ def _runtime_assets(
                 "knowledge_pack_id_override": knowledge_pack_id_override,
             }
         ),
-        stop_guard_thresholds=StopGuardThresholds(),
+        stop_guard_thresholds=base_assets.stop_guard_thresholds,
     )
 
 

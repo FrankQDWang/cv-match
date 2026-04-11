@@ -14,9 +14,12 @@ from seektalent.models import (
     FrontierState_t,
     FrontierState_t1,
     OperatorName,
+    PhaseSelectionWeights,
     RequirementSheet,
     RuntimeBudgetState,
+    RuntimeSelectionPolicy,
     RuntimeTermBudgetPolicy,
+    RewriteFitnessWeights,
     ScoringPolicy,
     RewriteTermCandidate,
     SearchControllerContext_t,
@@ -35,6 +38,7 @@ def select_active_frontier_node(
     crossover_thresholds: CrossoverGuardThresholds,
     term_budget_policy: RuntimeTermBudgetPolicy,
     runtime_budget_state: RuntimeBudgetState,
+    selection_policy: RuntimeSelectionPolicy | None = None,
 ) -> SearchControllerContext_t:
     open_nodes = [
         frontier_state.frontier_nodes[node_id]
@@ -55,6 +59,7 @@ def select_active_frontier_node(
         frontier_state,
         requirement_sheet,
         runtime_budget_state,
+        selection_policy or RuntimeSelectionPolicy(),
     )
     active_candidate = selection_ranking[0]
     active_node = next(
@@ -125,6 +130,7 @@ def select_active_frontier_node(
 def generate_search_controller_decision(
     context: SearchControllerContext_t,
     draft: SearchControllerDecisionDraft_t,
+    rewrite_fitness_weights: RewriteFitnessWeights | None = None,
 ) -> SearchControllerDecision_t:
     action = "stop" if _normalized_text(draft.action) == "stop" else "search_cts"
     active_node = context.active_frontier_node_summary
@@ -143,6 +149,7 @@ def generate_search_controller_decision(
                 normalized_operator_name,
                 context,
                 _operator_args(draft).get("query_terms"),
+                rewrite_fitness_weights or RewriteFitnessWeights(),
             )
         }
     else:
@@ -188,6 +195,7 @@ def _selection_ranking(
     frontier_state: FrontierState_t,
     requirement_sheet: RequirementSheet,
     runtime_budget_state: RuntimeBudgetState,
+    selection_policy: RuntimeSelectionPolicy,
 ) -> list[FrontierSelectionCandidateSummary]:
     indexed_nodes = list(enumerate(open_nodes))
     ranking = [
@@ -199,6 +207,7 @@ def _selection_ranking(
                 frontier_state,
                 requirement_sheet,
                 runtime_budget_state,
+                selection_policy,
             ),
         )
         for _, node in indexed_nodes
@@ -221,8 +230,12 @@ def _selection_breakdown(
     frontier_state: FrontierState_t,
     requirement_sheet: RequirementSheet,
     runtime_budget_state: RuntimeBudgetState,
+    selection_policy: RuntimeSelectionPolicy,
 ) -> FrontierSelectionBreakdown:
-    weights = _selection_phase_weights(runtime_budget_state.search_phase)
+    weights = _selection_phase_weights(
+        runtime_budget_state.search_phase,
+        selection_policy,
+    )
     operator_exploitation_score = _operator_exploitation_score(node, frontier_state)
     operator_exploration_bonus = _operator_exploration_bonus(node, frontier_state)
     coverage_opportunity_score = _coverage_opportunity_score(node, requirement_sheet)
@@ -230,12 +243,12 @@ def _selection_breakdown(
     fresh_node_bonus = 1.0 if node.previous_branch_evaluation is None else 0.0
     redundancy_penalty = _redundancy_penalty(node, frontier_state)
     final_selection_score = (
-        weights["exploit"] * operator_exploitation_score
-        + weights["explore"] * operator_exploration_bonus
-        + weights["coverage"] * coverage_opportunity_score
-        + weights["incremental"] * incremental_value_score
-        + weights["fresh"] * fresh_node_bonus
-        - weights["redundancy"] * redundancy_penalty
+        weights.exploit * operator_exploitation_score
+        + weights.explore * operator_exploration_bonus
+        + weights.coverage * coverage_opportunity_score
+        + weights.incremental * incremental_value_score
+        + weights.fresh * fresh_node_bonus
+        - weights.redundancy * redundancy_penalty
     )
     return FrontierSelectionBreakdown(
         search_phase=runtime_budget_state.search_phase,
@@ -249,33 +262,15 @@ def _selection_breakdown(
     )
 
 
-def _selection_phase_weights(search_phase: str) -> dict[str, float]:
+def _selection_phase_weights(
+    search_phase: str,
+    selection_policy: RuntimeSelectionPolicy,
+) -> PhaseSelectionWeights:
     if search_phase == "explore":
-        return {
-            "exploit": 0.6,
-            "explore": 1.6,
-            "coverage": 1.2,
-            "incremental": 0.2,
-            "fresh": 0.8,
-            "redundancy": 0.4,
-        }
+        return selection_policy.explore
     if search_phase == "harvest":
-        return {
-            "exploit": 1.4,
-            "explore": 0.3,
-            "coverage": 0.2,
-            "incremental": 1.2,
-            "fresh": 0.0,
-            "redundancy": 1.2,
-        }
-    return {
-        "exploit": 1.0,
-        "explore": 1.0,
-        "coverage": 0.8,
-        "incremental": 0.8,
-        "fresh": 0.3,
-        "redundancy": 0.8,
-    }
+        return selection_policy.harvest
+    return selection_policy.balance
 
 
 def _operator_exploitation_score(node: FrontierNode_t, frontier_state: FrontierState_t) -> float:
@@ -324,6 +319,7 @@ def _normalized_non_crossover_query_terms(
     operator_name: OperatorName,
     context: SearchControllerContext_t,
     raw_query_terms: object,
+    rewrite_fitness_weights: RewriteFitnessWeights,
 ) -> list[str]:
     query_terms = _normalized_string_list(raw_query_terms)[: context.max_query_terms]
     if not query_terms:
@@ -331,7 +327,12 @@ def _normalized_non_crossover_query_terms(
     _validate_non_crossover_query_terms(operator_name, context, query_terms)
     if operator_name not in _REWRITE_OPERATORS or not context.rewrite_term_candidates:
         return query_terms
-    return _ga_lite_query_rewrite(operator_name, context, query_terms)
+    return _ga_lite_query_rewrite(
+        operator_name,
+        context,
+        query_terms,
+        rewrite_fitness_weights,
+    )
 
 
 def _incremental_value_score(node: FrontierNode_t) -> float:
@@ -539,8 +540,13 @@ def _ga_lite_query_rewrite(
     operator_name: OperatorName,
     context: SearchControllerContext_t,
     seed_query_terms: list[str],
+    rewrite_fitness_weights: RewriteFitnessWeights,
 ) -> list[str]:
-    candidates = _rewrite_population(context, seed_query_terms)[:6]
+    candidates = _rewrite_population(
+        context,
+        seed_query_terms,
+        rewrite_fitness_weights,
+    )[:6]
     legal_candidates: list[list[str]] = []
     for candidate in candidates:
         try:
@@ -553,7 +559,7 @@ def _ga_lite_query_rewrite(
     scored = sorted(
         legal_candidates,
         key=lambda candidate: (
-            -_rewrite_fitness(candidate, context),
+            -_rewrite_fitness(candidate, context, rewrite_fitness_weights),
             candidate,
         ),
     )
@@ -563,6 +569,7 @@ def _ga_lite_query_rewrite(
 def _rewrite_population(
     context: SearchControllerContext_t,
     seed_query_terms: list[str],
+    rewrite_fitness_weights: RewriteFitnessWeights,
 ) -> list[list[str]]:
     evidence_terms = [
         candidate.term
@@ -589,7 +596,10 @@ def _rewrite_population(
                 population.append(candidate)
     top_seed_candidates = sorted(
         _deduplicate_term_lists(population),
-        key=lambda candidate: (-_rewrite_fitness(candidate, context), candidate),
+        key=lambda candidate: (
+            -_rewrite_fitness(candidate, context, rewrite_fitness_weights),
+            candidate,
+        ),
     )[:2]
     for candidate in top_seed_candidates:
         for evidence_term in evidence_terms:
@@ -615,6 +625,7 @@ def _rewrite_population(
 def _rewrite_fitness(
     query_terms: list[str],
     context: SearchControllerContext_t,
+    rewrite_fitness_weights: RewriteFitnessWeights,
 ) -> float:
     active_terms = _normalized_string_list(
         context.active_frontier_node_summary.node_query_term_pool
@@ -652,12 +663,12 @@ def _rewrite_fitness(
     query_length_penalty = len(query_terms) / max(1, context.max_query_terms)
     redundancy_penalty = len(active_term_set & query_term_set) / max(1, len(query_term_set))
     return (
-        1.4 * must_have_repair_score
-        + 1.0 * anchor_preservation_score
-        + 1.2 * rewrite_coherence_score
-        + 0.8 * provenance_coherence_score
-        - 0.35 * query_length_penalty
-        - 0.45 * redundancy_penalty
+        rewrite_fitness_weights.must_have_repair * must_have_repair_score
+        + rewrite_fitness_weights.anchor_preservation * anchor_preservation_score
+        + rewrite_fitness_weights.rewrite_coherence * rewrite_coherence_score
+        + rewrite_fitness_weights.provenance_coherence * provenance_coherence_score
+        - rewrite_fitness_weights.query_length_penalty * query_length_penalty
+        - rewrite_fitness_weights.redundancy_penalty * redundancy_penalty
     )
 
 

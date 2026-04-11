@@ -166,6 +166,7 @@ class WorkflowRuntime:
                 active_assets.crossover_guard_thresholds,
                 active_assets.runtime_term_budget_policy,
                 runtime_budget_state,
+                active_assets.runtime_selection_policy,
             )
             controller_draft, controller_audit = await request_search_controller_decision_draft(
                 controller_context,
@@ -174,6 +175,7 @@ class WorkflowRuntime:
             controller_decision = generate_search_controller_decision(
                 controller_context,
                 controller_draft,
+                active_assets.rewrite_fitness_weights,
             )
             if controller_decision.action == "stop":
                 frontier_state_t1 = carry_forward_frontier_state(frontier_state)
