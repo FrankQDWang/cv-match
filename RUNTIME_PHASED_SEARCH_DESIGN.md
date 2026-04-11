@@ -43,6 +43,7 @@
 - `eval.json` 已经包含 phased search diagnostics，用于观测 coverage、net-new shortlist 和 phase 内 operator 分布。
 - offline replay tuning 已经落地为 deterministic case harness，只支持 canonical + tuning suite，不支持任意历史 bundle 反事实 replay。
 - rewrite evidence scoring 已经切到 discriminative term ranking，accepted terms 会显式记录 support、candidate quality、field weight 和 bonus / penalty 拆解。
+- rewrite coherence scoring 已经强化为 seed-anchor preservation + evidence-aware coherence + provenance overlap 的组合评分。
 
 也就是说，当前设计文档的重点不再是“把 phase 引入 runtime”，而是“在 CTS 交集语义已经纠正后，继续做 diagnostics、tuning 和局部优化”。
 
@@ -405,14 +406,6 @@ phase policy 必须进入真实 run trace，也就是 `runs/<run_id>/bundle.json
 2. 在 `12` 轮预算下，后段 operator 选择会明显向 precision / crossover 收敛。
 3. 在 `5` 轮预算下，整体行为仍然接近当前 baseline，不出现大回归。
 4. trace 能明确解释 phase-aware 决策，而不是只剩黑箱结果。
-
-## Immediate Optimization Queue
-
-下面这些不是架构重写，而是基于当前完成态 runtime 可以立刻推进的算法优化项：
-
-1. `stronger rewrite coherence scoring`
-   - 强化 `rewrite_coherence_score / anchor_preservation_score / provenance_coherence_score`
-   - 目标是让 GA-lite rewrite 更少出现“形式合法但语义违和”的 query
 
 ## Future Experiments
 

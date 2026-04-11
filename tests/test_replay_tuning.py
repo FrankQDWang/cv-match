@@ -88,6 +88,28 @@ def test_replay_tuning_does_not_write_tracked_canonical_artifacts(tmp_path: Path
     assert after == before
 
 
+def test_replay_tuning_rewrite_coherence_tradeoff_differs_by_profile(tmp_path: Path) -> None:
+    report = run_replay_tuning(
+        repo_root=repo_root(),
+        output_dir=tmp_path / "report",
+        profile_ids={
+            "selection=baseline__stop=baseline__rewrite=baseline",
+            "selection=baseline__stop=baseline__rewrite=coherence_heavy",
+        },
+        case_set="tuning",
+        case_ids={"rewrite_coherence_tradeoff"},
+    )
+
+    summaries = {
+        profile["profile_id"]: profile["case_summaries"][0]
+        for profile in report["profiles"]
+    }
+
+    assert summaries["selection=baseline__stop=baseline__rewrite=baseline"]["last_query_terms"] != summaries[
+        "selection=baseline__stop=baseline__rewrite=coherence_heavy"
+    ]["last_query_terms"]
+
+
 def _snapshot_files(paths: list[Path]) -> dict[str, bytes]:
     snapshot: dict[str, bytes] = {}
     for path in paths:

@@ -29,6 +29,7 @@ from seektalent.models import (
     RetrievedCandidate_t,
     RerankerCalibration,
     RewriteFitnessWeights,
+    RewriteTermScoreBreakdown,
     RuntimeSearchBudget,
     RuntimeSelectionPolicy,
     RuntimeTermBudgetPolicy,
@@ -94,6 +95,34 @@ def _reward(score: float) -> NodeRewardBreakdown_t:
         duplicate_penalty=0.0,
         cost_penalty=0.0,
         reward_score=score,
+    )
+
+
+def _rewrite_candidate(
+    term: str,
+    *,
+    source_candidate_ids: list[str],
+    source_fields: list[str],
+    accepted_term_score: float = 4.0,
+    must_have_bonus: float = 0.0,
+    anchor_bonus: float = 0.0,
+    pack_bonus: float = 0.0,
+) -> RewriteTermCandidate:
+    return RewriteTermCandidate(
+        term=term,
+        source_candidate_ids=source_candidate_ids,
+        source_fields=source_fields,
+        support_count=len(source_candidate_ids),
+        accepted_term_score=accepted_term_score,
+        score_breakdown=RewriteTermScoreBreakdown(
+            support_score=min(3.0, float(len(source_candidate_ids))),
+            candidate_quality_score=0.9,
+            field_weight_score=1.0 if "title" in source_fields else 0.8,
+            must_have_bonus=must_have_bonus,
+            anchor_bonus=anchor_bonus,
+            pack_bonus=pack_bonus,
+            generic_penalty=0.0,
+        ),
     )
 
 
@@ -973,15 +1002,19 @@ def test_generate_search_controller_decision_uses_ga_lite_rewrite_terms() -> Non
                     node_query_term_pool=["python backend", "workflow", "agent"],
                     knowledge_pack_ids=["llm_agent_rag_engineering"],
                     rewrite_term_candidates=[
-                        RewriteTermCandidate(
-                            term="ranking",
+                        _rewrite_candidate(
+                            "ranking",
                             source_candidate_ids=["c1", "c2"],
                             source_fields=["work_summaries"],
+                            accepted_term_score=5.0,
+                            must_have_bonus=1.5,
                         ),
-                        RewriteTermCandidate(
-                            term="rag",
+                        _rewrite_candidate(
+                            "rag",
                             source_candidate_ids=["c1"],
                             source_fields=["project_names"],
+                            accepted_term_score=3.8,
+                            pack_bonus=0.5,
                         ),
                     ],
                     status="open",
@@ -1060,15 +1093,19 @@ def test_explicit_rewrite_fitness_weights_match_baseline_default() -> None:
                     node_query_term_pool=["python backend", "workflow", "agent"],
                     knowledge_pack_ids=["llm_agent_rag_engineering"],
                     rewrite_term_candidates=[
-                        RewriteTermCandidate(
-                            term="ranking",
+                        _rewrite_candidate(
+                            "ranking",
                             source_candidate_ids=["c1", "c2"],
                             source_fields=["work_summaries"],
+                            accepted_term_score=5.0,
+                            must_have_bonus=1.5,
                         ),
-                        RewriteTermCandidate(
-                            term="rag",
+                        _rewrite_candidate(
+                            "rag",
                             source_candidate_ids=["c1"],
                             source_fields=["project_names"],
+                            accepted_term_score=3.8,
+                            pack_bonus=0.5,
                         ),
                     ],
                     status="open",
@@ -1096,6 +1133,122 @@ def test_explicit_rewrite_fitness_weights_match_baseline_default() -> None:
     )
 
     assert explicit_decision == default_decision
+
+
+def test_rewrite_fitness_penalizes_dropping_the_only_seed_anchor() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="generic_expansion",
+                    node_query_term_pool=["python backend", "workflow", "agent"],
+                    knowledge_pack_ids=[],
+                    rewrite_term_candidates=[
+                        _rewrite_candidate(
+                            "ranking",
+                            source_candidate_ids=["c1", "c2"],
+                            source_fields=["work_summaries"],
+                            accepted_term_score=5.0,
+                            must_have_bonus=1.5,
+                        )
+                    ],
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=5, runtime_round_index=3),
+    )
+
+    preserved = frontier_ops_module._rewrite_fitness(
+        ["python backend", "ranking", "rag"],
+        context,
+        RewriteFitnessWeights(),
+        seed_query_terms=["python backend", "ranking", "rag"],
+    )
+    dropped_anchor = frontier_ops_module._rewrite_fitness(
+        ["ranking", "rag"],
+        context,
+        RewriteFitnessWeights(),
+        seed_query_terms=["python backend", "ranking", "rag"],
+    )
+
+    assert preserved > dropped_anchor
+
+
+def test_rewrite_fitness_prefers_shared_provenance_over_mixed_sources() -> None:
+    context = select_active_frontier_node(
+        _frontier_state(
+            [
+                FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="generic_expansion",
+                    node_query_term_pool=["python backend", "workflow", "agent"],
+                    knowledge_pack_ids=[],
+                    rewrite_term_candidates=[
+                        _rewrite_candidate(
+                            "ranking",
+                            source_candidate_ids=["shared-1", "shared-2"],
+                            source_fields=["title"],
+                            accepted_term_score=4.8,
+                            must_have_bonus=1.5,
+                        ),
+                        _rewrite_candidate(
+                            "retrieval",
+                            source_candidate_ids=["shared-1", "shared-2"],
+                            source_fields=["project_names"],
+                            accepted_term_score=4.5,
+                            anchor_bonus=0.75,
+                        ),
+                        _rewrite_candidate(
+                            "rag",
+                            source_candidate_ids=["mixed-1"],
+                            source_fields=["search_text"],
+                            accepted_term_score=4.9,
+                            anchor_bonus=0.75,
+                        ),
+                    ],
+                    status="open",
+                )
+            ]
+        ),
+        _requirement_sheet(),
+        _scoring_policy(),
+        CrossoverGuardThresholds(),
+        RuntimeTermBudgetPolicy(),
+        _runtime_budget_state(remaining_budget=5, runtime_round_index=3),
+    )
+
+    shared_provenance = frontier_ops_module._rewrite_fitness(
+        ["python backend", "ranking", "retrieval"],
+        context,
+        RewriteFitnessWeights(),
+        seed_query_terms=["python backend", "ranking", "rag"],
+    )
+    mixed_sources = frontier_ops_module._rewrite_fitness(
+        ["python backend", "ranking", "rag"],
+        context,
+        RewriteFitnessWeights(),
+        seed_query_terms=["python backend", "ranking", "rag"],
+    )
+
+    assert shared_provenance > mixed_sources
+
+
+def test_rewrite_fitness_single_supported_new_term_gets_full_agreement_credit() -> None:
+    candidate = _rewrite_candidate(
+        "ranking",
+        source_candidate_ids=["c1", "c2"],
+        source_fields=["title"],
+        accepted_term_score=5.0,
+        must_have_bonus=1.5,
+    )
+
+    assert frontier_ops_module._source_overlap_score([candidate]) == 1.0
 
 
 def test_generate_search_controller_decision_normalizes_crossover_fields() -> None:

@@ -559,7 +559,12 @@ def _ga_lite_query_rewrite(
     scored = sorted(
         legal_candidates,
         key=lambda candidate: (
-            -_rewrite_fitness(candidate, context, rewrite_fitness_weights),
+            -_rewrite_fitness(
+                candidate,
+                context,
+                rewrite_fitness_weights,
+                seed_query_terms=seed_query_terms,
+            ),
             candidate,
         ),
     )
@@ -597,7 +602,12 @@ def _rewrite_population(
     top_seed_candidates = sorted(
         _deduplicate_term_lists(population),
         key=lambda candidate: (
-            -_rewrite_fitness(candidate, context, rewrite_fitness_weights),
+            -_rewrite_fitness(
+                candidate,
+                context,
+                rewrite_fitness_weights,
+                seed_query_terms=seed_query_terms,
+            ),
             candidate,
         ),
     )[:2]
@@ -626,10 +636,13 @@ def _rewrite_fitness(
     query_terms: list[str],
     context: SearchControllerContext_t,
     rewrite_fitness_weights: RewriteFitnessWeights,
+    *,
+    seed_query_terms: list[str],
 ) -> float:
     active_terms = _normalized_string_list(
         context.active_frontier_node_summary.node_query_term_pool
     )
+    seed_terms = stable_deduplicate(seed_query_terms)
     active_term_set = set(active_terms)
     query_term_set = set(query_terms)
     evidence_lookup = {
@@ -638,28 +651,15 @@ def _rewrite_fitness(
     }
     new_terms = [term for term in query_terms if term not in active_term_set]
     must_have_repair_score = _must_have_repair_score(query_terms, context)
+    seed_anchor_terms = [
+        term for term in seed_terms if term in active_term_set
+    ] or seed_terms[:1]
     anchor_preservation_score = min(
         1.0,
-        len(active_term_set & query_term_set) / max(1, min(2, len(active_term_set))),
+        len(set(seed_anchor_terms) & query_term_set) / max(1, len(seed_anchor_terms)),
     )
-    rewrite_coherence_score = (
-        0.0
-        if not new_terms
-        else sum(
-            min(1.0, len(evidence_lookup.get(term, RewriteTermCandidate(term=term)).source_candidate_ids) / 2.0)
-            for term in new_terms
-        )
-        / len(new_terms)
-    )
-    provenance_coherence_score = (
-        0.0
-        if not new_terms
-        else sum(
-            _rewrite_provenance_weight(evidence_lookup.get(term))
-            for term in new_terms
-        )
-        / len(new_terms)
-    )
+    rewrite_coherence_score = _rewrite_coherence_score(new_terms, evidence_lookup)
+    provenance_coherence_score = _provenance_coherence_score(new_terms, evidence_lookup)
     query_length_penalty = len(query_terms) / max(1, context.max_query_terms)
     redundancy_penalty = len(active_term_set & query_term_set) / max(1, len(query_term_set))
     return (
@@ -682,17 +682,116 @@ def _must_have_repair_score(
     return sum(query_terms_hit(query_terms, capability) for capability in unmet) / len(unmet)
 
 
-def _rewrite_provenance_weight(candidate: RewriteTermCandidate | None) -> float:
+def _rewrite_coherence_score(
+    new_terms: list[str],
+    evidence_lookup: dict[str, RewriteTermCandidate],
+) -> float:
+    if not new_terms:
+        return 0.0
+    candidates = [evidence_lookup.get(term) for term in new_terms]
+    evidence_strength_score = sum(
+        _rewrite_evidence_strength(candidate) for candidate in candidates
+    ) / len(new_terms)
+    term_alignment_score = sum(
+        _rewrite_term_alignment_score(candidate) for candidate in candidates
+    ) / len(new_terms)
+    multi_term_agreement_score = _source_overlap_score(candidates)
+    return (
+        0.45 * evidence_strength_score
+        + 0.35 * term_alignment_score
+        + 0.20 * multi_term_agreement_score
+    )
+
+
+def _provenance_coherence_score(
+    new_terms: list[str],
+    evidence_lookup: dict[str, RewriteTermCandidate],
+) -> float:
+    if not new_terms:
+        return 0.0
+    candidates = [evidence_lookup.get(term) for term in new_terms]
+    field_strength_score = sum(
+        _rewrite_field_strength(candidate) for candidate in candidates
+    ) / len(new_terms)
+    support_strength_score = sum(
+        _rewrite_support_strength(candidate) for candidate in candidates
+    ) / len(new_terms)
+    source_overlap_score = _source_overlap_score(candidates)
+    return (
+        0.40 * field_strength_score
+        + 0.35 * support_strength_score
+        + 0.25 * source_overlap_score
+    )
+
+
+def _rewrite_evidence_strength(candidate: RewriteTermCandidate | None) -> float:
     if candidate is None:
         return 0.0
-    field_weights = {
-        "project_names": 1.0,
-        "work_summaries": 0.9,
-        "work_experience_summaries": 0.8,
-        "title": 0.7,
-        "search_text": 0.5,
-    }
-    return max((field_weights.get(field, 0.0) for field in candidate.source_fields), default=0.0)
+    return min(1.0, candidate.accepted_term_score / 6.0)
+
+
+def _rewrite_term_alignment_score(candidate: RewriteTermCandidate | None) -> float:
+    if candidate is None:
+        return 0.4
+    breakdown = candidate.score_breakdown
+    if breakdown.must_have_bonus > 0:
+        return 1.0
+    if breakdown.anchor_bonus > 0:
+        return 0.85
+    if breakdown.pack_bonus > 0:
+        return 0.75
+    if _rewrite_best_source_field(candidate) in {"title", "project_names"}:
+        return 0.65
+    return 0.4
+
+
+def _rewrite_field_strength(candidate: RewriteTermCandidate | None) -> float:
+    if candidate is None:
+        return 0.0
+    return max((_rewrite_field_weight(field) for field in candidate.source_fields), default=0.0)
+
+
+def _rewrite_support_strength(candidate: RewriteTermCandidate | None) -> float:
+    if candidate is None:
+        return 0.0
+    return min(1.0, candidate.support_count / 3.0)
+
+
+def _rewrite_best_source_field(candidate: RewriteTermCandidate) -> str:
+    return max(candidate.source_fields, key=_rewrite_field_weight, default="")
+
+
+def _rewrite_field_weight(field_name: str) -> float:
+    return {
+        "title": 1.0,
+        "project_names": 0.9,
+        "work_summaries": 0.8,
+        "work_experience_summaries": 0.7,
+        "search_text": 0.4,
+    }.get(field_name, 0.0)
+
+
+def _source_overlap_score(candidates: list[RewriteTermCandidate | None]) -> float:
+    if len(candidates) < 2:
+        return 1.0
+    overlaps: list[float] = []
+    for index, left in enumerate(candidates[:-1]):
+        for right in candidates[index + 1 :]:
+            overlaps.append(_candidate_source_jaccard(left, right))
+    if not overlaps:
+        return 1.0
+    return sum(overlaps) / len(overlaps)
+
+
+def _candidate_source_jaccard(
+    left: RewriteTermCandidate | None,
+    right: RewriteTermCandidate | None,
+) -> float:
+    left_ids = set(left.source_candidate_ids) if left is not None else set()
+    right_ids = set(right.source_candidate_ids) if right is not None else set()
+    if not left_ids and not right_ids:
+        return 0.0
+    return len(left_ids & right_ids) / len(left_ids | right_ids)
 
 
 def _deduplicate_term_lists(values: list[list[str]]) -> list[list[str]]:

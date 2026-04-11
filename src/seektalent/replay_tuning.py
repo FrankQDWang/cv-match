@@ -23,15 +23,25 @@ from seektalent.canonical_cases import (
 )
 from seektalent.candidate_text import build_candidate_search_text
 from seektalent.clients.cts_client import CTSFetchResult
+from seektalent.frontier_ops import generate_search_controller_decision, select_active_frontier_node
 from seektalent.models import (
+    FrontierNode_t,
+    FrontierState_t,
     PhaseSelectionWeights,
     RetrievedCandidate_t,
+    RewriteTermCandidate,
+    RewriteTermScoreBreakdown,
     RewriteFitnessWeights,
+    ScoringPolicy,
+    SearchControllerDecisionDraft_t,
+    SearchRoundArtifact,
     RuntimeSearchBudget,
     RuntimeSelectionPolicy,
+    RequirementSheet,
     SearchRunBundle,
     StopGuardThresholds,
 )
+from seektalent.runtime_budget import build_runtime_budget_state
 from seektalent.run_artifacts import build_search_run_eval
 
 
@@ -168,6 +178,15 @@ def synthetic_replay_cases(*, repo_root: Path, runs_root: Path) -> list[ReplayTu
                 repo_root=repo_root,
                 assets=_rewrite_evidence_assets(_profile_assets(profile)),
                 runs_dir=runs_root / "tuning" / profile.profile_id / "rewrite_evidence_productive",
+            ),
+        ),
+        ReplayTuningCase(
+            case_id="rewrite_coherence_tradeoff",
+            scenario="rewrite coherence scoring changes final rewrite",
+            bundle_factory=lambda profile: _build_rewrite_coherence_tradeoff_bundle(
+                repo_root=repo_root,
+                assets=_rewrite_evidence_assets(_profile_assets(profile)),
+                runs_dir=runs_root / "tuning" / profile.profile_id / "rewrite_coherence_tradeoff",
             ),
         ),
     ]
@@ -782,6 +801,24 @@ def _build_rewrite_evidence_productive_bundle(
     )
 
 
+def _build_rewrite_coherence_tradeoff_bundle(
+    *,
+    repo_root: Path,
+    assets: BootstrapAssets,
+    runs_dir: Path,
+) -> SearchRunBundle:
+    base_bundle = _build_rewrite_evidence_productive_bundle(
+        repo_root=repo_root,
+        assets=assets,
+        runs_dir=runs_dir,
+    )
+    return _apply_rewrite_coherence_tradeoff(
+        bundle=base_bundle,
+        assets=assets,
+        profile_rewrite_weights=assets.rewrite_fitness_weights,
+    )
+
+
 def _rewrite_candidate(
     candidate_id: str,
     *,
@@ -804,6 +841,168 @@ def _rewrite_candidate(
             ),
             "raw_payload": {"title": title, "workExperienceList": []},
         }
+    )
+
+
+def _apply_rewrite_coherence_tradeoff(
+    *,
+    bundle: SearchRunBundle,
+    assets: BootstrapAssets,
+    profile_rewrite_weights: RewriteFitnessWeights,
+) -> SearchRunBundle:
+    requirement_sheet = bundle.bootstrap.requirement_sheet.model_copy(
+        update={
+            "role_title": "LLM Retrieval Engineer",
+            "role_summary": "Build backend retrieval and RAG systems.",
+            "must_have_capabilities": ["python backend", "ranking", "rag", "llm"],
+            "preferred_capabilities": [],
+            "scoring_rationale": "Make rewrite coherence tradeoffs visible.",
+        }
+    )
+    scoring_policy = bundle.bootstrap.scoring_policy.model_copy(
+        update={
+            "must_have_capabilities_snapshot": list(requirement_sheet.must_have_capabilities),
+            "preferred_capabilities_snapshot": [],
+            "rerank_query_text": "LLM retrieval engineer with backend ranking and RAG experience.",
+        }
+    )
+    context = _rewrite_coherence_tradeoff_context(
+        requirement_sheet=requirement_sheet,
+        scoring_policy=scoring_policy,
+        assets=assets,
+    )
+    draft = SearchControllerDecisionDraft_t(
+        action="search_cts",
+        selected_operator_name="generic_expansion",
+        operator_args={"query_terms": ["python backend", "ranking", "rag"]},
+        expected_gain_hypothesis="Trade must-have completeness against coherence.",
+    )
+    decision = generate_search_controller_decision(
+        context,
+        draft,
+        profile_rewrite_weights,
+    )
+    search_round_indexes = [
+        index for index, round_artifact in enumerate(bundle.rounds) if round_artifact.execution_plan is not None
+    ]
+    target_index = search_round_indexes[-1]
+    target_round = bundle.rounds[target_index]
+    updated_round = SearchRoundArtifact.model_validate(
+        {
+            **target_round.model_dump(mode="python"),
+            "controller_context": context.model_dump(mode="python"),
+            "controller_draft": draft.model_dump(mode="python"),
+            "controller_decision": decision.model_dump(mode="python"),
+            "execution_plan": {
+                **target_round.execution_plan.model_dump(mode="python"),
+                "query_terms": list(decision.operator_args["query_terms"]),
+            },
+        }
+    )
+    updated_rounds = list(bundle.rounds)
+    updated_rounds[target_index] = updated_round
+    updated_bootstrap = bundle.bootstrap.model_copy(
+        update={
+            "requirement_sheet": requirement_sheet,
+            "scoring_policy": scoring_policy,
+        }
+    )
+    updated_bundle = SearchRunBundle.model_validate(
+        {
+            **bundle.model_dump(mode="python"),
+            "bootstrap": updated_bootstrap.model_dump(mode="python"),
+            "rounds": [round_artifact.model_dump(mode="python") for round_artifact in updated_rounds],
+        }
+    )
+    return updated_bundle.model_copy(update={"eval": build_search_run_eval(updated_bundle)})
+
+
+def _rewrite_coherence_tradeoff_context(
+    *,
+    requirement_sheet: RequirementSheet,
+    scoring_policy: ScoringPolicy,
+    assets: BootstrapAssets,
+):
+    return select_active_frontier_node(
+        FrontierState_t(
+            frontier_nodes={
+                "seed": FrontierNode_t(
+                    frontier_node_id="seed",
+                    selected_operator_name="generic_expansion",
+                    node_query_term_pool=["python backend", "workflow", "agent"],
+                    knowledge_pack_ids=["search_ranking_retrieval_engineering"],
+                    rewrite_term_candidates=[
+                        _rewrite_term_candidate(
+                            "ranking",
+                            source_candidate_ids=["shared-1", "shared-2"],
+                            source_fields=["work_summaries"],
+                            accepted_term_score=5.0,
+                            must_have_bonus=1.5,
+                        ),
+                        _rewrite_term_candidate(
+                            "retrieval",
+                            source_candidate_ids=["shared-1", "shared-2"],
+                            source_fields=["project_names"],
+                            accepted_term_score=4.5,
+                            pack_bonus=0.5,
+                        ),
+                        _rewrite_term_candidate(
+                            "rag",
+                            source_candidate_ids=["rag-1"],
+                            source_fields=["title"],
+                            accepted_term_score=4.0,
+                            must_have_bonus=1.5,
+                        ),
+                    ],
+                    status="open",
+                )
+            },
+            open_frontier_node_ids=["seed"],
+            closed_frontier_node_ids=[],
+            run_term_catalog=[],
+            run_shortlist_candidate_ids=[],
+            semantic_hashes_seen=[],
+            operator_statistics={},
+            remaining_budget=4,
+        ),
+        requirement_sheet,
+        scoring_policy,
+        assets.crossover_guard_thresholds,
+        assets.runtime_term_budget_policy,
+        build_runtime_budget_state(
+            initial_round_budget=assets.runtime_search_budget.initial_round_budget,
+            runtime_round_index=1,
+            remaining_budget=4,
+        ),
+        assets.runtime_selection_policy,
+    )
+
+
+def _rewrite_term_candidate(
+    term: str,
+    *,
+    source_candidate_ids: list[str],
+    source_fields: list[str],
+    accepted_term_score: float,
+    must_have_bonus: float = 0.0,
+    anchor_bonus: float = 0.0,
+    pack_bonus: float = 0.0,
+) -> RewriteTermCandidate:
+    return RewriteTermCandidate(
+        term=term,
+        source_candidate_ids=source_candidate_ids,
+        source_fields=source_fields,
+        support_count=len(source_candidate_ids),
+        accepted_term_score=accepted_term_score,
+        score_breakdown=RewriteTermScoreBreakdown(
+            support_score=min(3.0, float(len(source_candidate_ids))),
+            candidate_quality_score=0.9,
+            field_weight_score=1.0 if "title" in source_fields else 0.8,
+            must_have_bonus=must_have_bonus,
+            anchor_bonus=anchor_bonus,
+            pack_bonus=pack_bonus,
+            generic_penalty=0.0,
+        ),
     )
 
 
