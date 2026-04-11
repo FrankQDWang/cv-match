@@ -2298,6 +2298,50 @@
         "value": 0
       },
       {
+        "name": "search_round_indexes",
+        "value": []
+      },
+      {
+        "name": "search_phase_by_search_round",
+        "value": []
+      },
+      {
+        "name": "selected_operator_by_search_round",
+        "value": []
+      },
+      {
+        "name": "eligible_open_node_count_by_search_round",
+        "value": []
+      },
+      {
+        "name": "selection_margin_by_search_round",
+        "value": []
+      },
+      {
+        "name": "must_have_query_coverage_by_search_round",
+        "value": []
+      },
+      {
+        "name": "net_new_shortlist_gain_by_search_round",
+        "value": []
+      },
+      {
+        "name": "run_shortlist_size_after_search_round",
+        "value": []
+      },
+      {
+        "name": "operator_distribution_explore",
+        "value": {}
+      },
+      {
+        "name": "operator_distribution_balance",
+        "value": {}
+      },
+      {
+        "name": "operator_distribution_harvest",
+        "value": {}
+      },
+      {
         "name": "stop_reason",
         "value": "controller_stop"
       },

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 from seektalent.models import SearchRunBundle, SearchRunEval, SearchRunEvalMetric
+from seektalent.query_terms import query_terms_hit
 
 
 PHASE6_STATUS = "phase6_offline_artifacts_active"
@@ -50,6 +52,40 @@ def build_search_run_eval(bundle: SearchRunBundle) -> SearchRunEval:
             if round_artifact.branch_evaluation_audit is not None
         ],
     ]
+    search_round_indexes = [round_artifact.runtime_round_index for round_artifact in search_rounds]
+    search_phase_by_search_round = [
+        round_artifact.controller_context.runtime_budget_state.search_phase
+        for round_artifact in search_rounds
+    ]
+    selected_operator_by_search_round = [
+        round_artifact.controller_decision.selected_operator_name for round_artifact in search_rounds
+    ]
+    eligible_open_node_count_by_search_round = [
+        len(round_artifact.controller_context.selection_ranking) for round_artifact in search_rounds
+    ]
+    selection_margin_by_search_round = [
+        _selection_margin(round_artifact) for round_artifact in search_rounds
+    ]
+    must_have_query_coverage_by_search_round = [
+        _must_have_query_coverage(bundle, round_artifact) for round_artifact in search_rounds
+    ]
+    net_new_shortlist_gain_by_search_round = [
+        _net_new_shortlist_gain(round_artifact) for round_artifact in search_rounds
+    ]
+    run_shortlist_size_after_search_round = [
+        len(round_artifact.frontier_state_after.run_shortlist_candidate_ids)
+        for round_artifact in search_rounds
+    ]
+    operator_distribution_by_phase = {
+        phase: dict(
+            Counter(
+                round_artifact.controller_decision.selected_operator_name
+                for round_artifact in search_rounds
+                if round_artifact.controller_context.runtime_budget_state.search_phase == phase
+            )
+        )
+        for phase in ("explore", "balance", "harvest")
+    }
     metrics = [
         SearchRunEvalMetric(
             name="routing_mode",
@@ -65,6 +101,50 @@ def build_search_run_eval(bundle: SearchRunBundle) -> SearchRunEval:
         ),
         SearchRunEvalMetric(name="round_count", value=len(bundle.rounds)),
         SearchRunEvalMetric(name="search_round_count", value=len(search_rounds)),
+        SearchRunEvalMetric(
+            name="search_round_indexes",
+            value=search_round_indexes,
+        ),
+        SearchRunEvalMetric(
+            name="search_phase_by_search_round",
+            value=search_phase_by_search_round,
+        ),
+        SearchRunEvalMetric(
+            name="selected_operator_by_search_round",
+            value=selected_operator_by_search_round,
+        ),
+        SearchRunEvalMetric(
+            name="eligible_open_node_count_by_search_round",
+            value=eligible_open_node_count_by_search_round,
+        ),
+        SearchRunEvalMetric(
+            name="selection_margin_by_search_round",
+            value=selection_margin_by_search_round,
+        ),
+        SearchRunEvalMetric(
+            name="must_have_query_coverage_by_search_round",
+            value=must_have_query_coverage_by_search_round,
+        ),
+        SearchRunEvalMetric(
+            name="net_new_shortlist_gain_by_search_round",
+            value=net_new_shortlist_gain_by_search_round,
+        ),
+        SearchRunEvalMetric(
+            name="run_shortlist_size_after_search_round",
+            value=run_shortlist_size_after_search_round,
+        ),
+        SearchRunEvalMetric(
+            name="operator_distribution_explore",
+            value=operator_distribution_by_phase["explore"],
+        ),
+        SearchRunEvalMetric(
+            name="operator_distribution_balance",
+            value=operator_distribution_by_phase["balance"],
+        ),
+        SearchRunEvalMetric(
+            name="operator_distribution_harvest",
+            value=operator_distribution_by_phase["harvest"],
+        ),
         SearchRunEvalMetric(
             name="stop_reason",
             value=bundle.final_result.stop_reason,
@@ -206,6 +286,28 @@ def _write_json(path: Path, payload: object) -> None:
 def _has_budget_warning(prompt_surface: object) -> bool:
     sections = getattr(prompt_surface, "sections", [])
     return any(getattr(section, "title", "") == "Budget Warning" for section in sections)
+
+
+def _selection_margin(round_artifact: object) -> float:
+    ranking = round_artifact.controller_context.selection_ranking
+    if len(ranking) < 2:
+        return 0.0
+    return ranking[0].breakdown.final_selection_score - ranking[1].breakdown.final_selection_score
+
+
+def _must_have_query_coverage(bundle: SearchRunBundle, round_artifact: object) -> float:
+    capabilities = bundle.bootstrap.requirement_sheet.must_have_capabilities
+    hit_count = sum(
+        query_terms_hit(round_artifact.execution_plan.query_terms, capability)
+        for capability in capabilities
+    )
+    return hit_count / max(1, len(capabilities))
+
+
+def _net_new_shortlist_gain(round_artifact: object) -> int:
+    node_shortlist_ids = set(round_artifact.scoring_result.node_shortlist_candidate_ids)
+    run_shortlist_ids_before = set(round_artifact.frontier_state_before.run_shortlist_candidate_ids)
+    return len(node_shortlist_ids - run_shortlist_ids_before)
 
 
 __all__ = [

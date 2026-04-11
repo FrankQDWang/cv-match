@@ -96,6 +96,28 @@ def test_runtime_artifact_builder_emits_nine_canonical_cases() -> None:
     assert "case-bootstrap-out-of-domain-generic" in case_ids
 
 
+def test_canonical_bundle_eval_contains_phased_diagnostics() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    bundle_path = (
+        repo_root
+        / "artifacts"
+        / "runtime"
+        / "cases"
+        / "case-crossover-legal"
+        / "bundle.json"
+    )
+    bundle_payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    metrics = {metric["name"]: metric["value"] for metric in bundle_payload["eval"]["metrics"]}
+
+    assert "search_round_indexes" in metrics
+    assert "must_have_query_coverage_by_search_round" in metrics
+    assert "net_new_shortlist_gain_by_search_round" in metrics
+    assert "operator_distribution_explore" in metrics
+    assert isinstance(metrics["search_round_indexes"], list)
+    assert isinstance(metrics["must_have_query_coverage_by_search_round"], list)
+    assert isinstance(metrics["operator_distribution_explore"], dict)
+
+
 def _snapshot_files(paths: list[Path]) -> dict[str, bytes]:
     snapshot: dict[str, bytes] = {}
     for path in paths:

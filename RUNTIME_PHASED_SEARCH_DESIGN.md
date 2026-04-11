@@ -39,9 +39,10 @@
 - term budget 已经切到 phase-frozen `max_query_terms`。
 - non-crossover operator 已经切到 final `query_terms` rewrite。
 - round-0 bootstrap seed cap 已经直接复用 `explore_max_query_terms`。
-- 当前剩下的主要 gap 是 stop policy 还没有按 phase 收口。
+- stop policy 已经切到 phase-gated owner。
+- `eval.json` 已经包含 phased search diagnostics，用于观测 coverage、net-new shortlist 和 phase 内 operator 分布。
 
-也就是说，当前设计文档的重点不再是“把 phase 引入 runtime”，而是“在 CTS 交集语义已经纠正后，把 stop policy 和后续局部优化补齐”。
+也就是说，当前设计文档的重点不再是“把 phase 引入 runtime”，而是“在 CTS 交集语义已经纠正后，继续做 diagnostics、tuning 和局部优化”。
 
 ## Design Decision
 
@@ -402,3 +403,34 @@ phase policy 必须进入真实 run trace，也就是 `runs/<run_id>/bundle.json
 2. 在 `12` 轮预算下，后段 operator 选择会明显向 precision / crossover 收敛。
 3. 在 `5` 轮预算下，整体行为仍然接近当前 baseline，不出现大回归。
 4. trace 能明确解释 phase-aware 决策，而不是只剩黑箱结果。
+
+## Immediate Optimization Queue
+
+下面这些不是架构重写，而是基于当前完成态 runtime 可以立刻推进的算法优化项：
+
+1. `offline replay tuning`
+   - 用 canonical cases + run replay 统一调 selection weights、stop floors、GA-lite fitness
+   - 目标是减少继续“拍常数”调参
+2. `discriminative rewrite evidence scoring`
+   - 让 evidence term score 同时考虑 support、candidate quality、field weight、discriminativeness
+   - 目标是让 `rewrite_term_candidates` 更像高质量词源池，而不只是过滤后保留的高频词
+3. `stronger rewrite coherence scoring`
+   - 强化 `rewrite_coherence_score / anchor_preservation_score / provenance_coherence_score`
+   - 目标是让 GA-lite rewrite 更少出现“形式合法但语义违和”的 query
+
+## Future Experiments
+
+下面这些属于明确的后续实验项，不应在当前已稳定的 phased runtime 主链上直接插入：
+
+1. `continuous annealing`
+   - 把当前三段式 `explore / balance / harvest` 平滑成连续退火
+2. `optional CTS probe reranking`
+   - 对 top rewrite candidates 做一次轻量 probe，再决定最终 query
+3. `multi-query fan-out / beam search`
+   - 在 CTS 交集语义下，探索“多个短 query”是否优于“单个长 query”
+4. `capability alias ontology / skill graph`
+   - 把 `query_terms_hit` 之上的语义映射独立成专门 owner
+5. `reward formula rewrite`
+   - 等 phased policy 稳定后，再单独评估是否要重写 reward
+6. `final candidate presentation layer`
+   - 补最终 top candidates 的推荐理由、不符合点和可读报告层

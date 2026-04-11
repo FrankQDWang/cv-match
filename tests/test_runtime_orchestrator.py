@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -265,7 +266,38 @@ def test_workflow_runtime_uses_same_reranker_for_routing_and_candidate_scoring(t
     metrics = {metric.name: metric.value for metric in result.eval.metrics}
     assert metrics["prompt_surface_count"] == 9
     assert metrics["budget_warning_round_count"] == 0
+    assert metrics["round_count"] > metrics["search_round_count"]
+    assert metrics["search_round_count"] == len(metrics["search_round_indexes"]) == 1
+    assert metrics["search_phase_by_search_round"] == ["explore"]
+    assert metrics["selected_operator_by_search_round"] == ["core_precision"]
+    assert len(metrics["eligible_open_node_count_by_search_round"]) == metrics["search_round_count"]
+    assert len(metrics["selection_margin_by_search_round"]) == metrics["search_round_count"]
+    assert len(metrics["must_have_query_coverage_by_search_round"]) == metrics["search_round_count"]
+    assert len(metrics["net_new_shortlist_gain_by_search_round"]) == metrics["search_round_count"]
+    assert len(metrics["run_shortlist_size_after_search_round"]) == metrics["search_round_count"]
+    assert all(
+        0.0 <= value <= 1.0 for value in metrics["must_have_query_coverage_by_search_round"]
+    )
+    assert all(value >= 0 for value in metrics["net_new_shortlist_gain_by_search_round"])
+    assert metrics["run_shortlist_size_after_search_round"] == sorted(
+        metrics["run_shortlist_size_after_search_round"]
+    )
+    assert all(value >= 1 for value in metrics["eligible_open_node_count_by_search_round"])
+    assert sum(metrics["operator_distribution_explore"].values()) == metrics["search_phase_by_search_round"].count(
+        "explore"
+    )
+    assert sum(metrics["operator_distribution_balance"].values()) == metrics["search_phase_by_search_round"].count(
+        "balance"
+    )
+    assert sum(metrics["operator_distribution_harvest"].values()) == metrics["search_phase_by_search_round"].count(
+        "harvest"
+    )
     assert Path(result.run_dir).joinpath("bundle.json").exists()
+    eval_payload = json.loads(Path(result.run_dir).joinpath("eval.json").read_text(encoding="utf-8"))
+    eval_metrics = {metric["name"]: metric["value"] for metric in eval_payload["metrics"]}
+    assert isinstance(eval_metrics["search_round_indexes"], list)
+    assert isinstance(eval_metrics["selection_margin_by_search_round"], list)
+    assert isinstance(eval_metrics["operator_distribution_explore"], dict)
 
 
 def test_workflow_runtime_stops_on_exhausted_low_gain(tmp_path: Path) -> None:

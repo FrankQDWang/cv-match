@@ -766,7 +766,7 @@ class SearchRunEvalMetric(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    value: bool | int | float | str | list[str]
+    value: bool | int | float | str | list[int] | list[float] | list[str] | dict[str, int]
 
 
 class SearchRunEval(BaseModel):

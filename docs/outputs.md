@@ -65,6 +65,24 @@ Each section stores:
 
 This is the only prompt audit owner. There is no sidecar prompt file, no prompt preview field, and no hash-only audit fallback.
 
+## `eval.json` now includes phased diagnostics
+
+`SearchRunBundle.eval` remains a flat metric list, but it now includes machine-friendly phased diagnostics derived from search rounds:
+
+- `search_round_indexes`
+- `search_phase_by_search_round`
+- `selected_operator_by_search_round`
+- `eligible_open_node_count_by_search_round`
+- `selection_margin_by_search_round`
+- `must_have_query_coverage_by_search_round`
+- `net_new_shortlist_gain_by_search_round`
+- `run_shortlist_size_after_search_round`
+- `operator_distribution_explore`
+- `operator_distribution_balance`
+- `operator_distribution_harvest`
+
+These metrics live only in `bundle.eval` / `eval.json`. They do not change the business-case `artifacts/runtime/evals/e5-matrix.json` schema.
+
 ## What remains intentionally absent
 
 - `trace.log`

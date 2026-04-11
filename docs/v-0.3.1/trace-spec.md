@@ -18,3 +18,12 @@
 - `selected_knowledge_pack_ids`
 - round-0 seed 数量
 - 每轮 `operator / knowledge_pack_ids / stop_reason`
+- `search_round_indexes`
+- `search_phase_by_search_round`
+- `selected_operator_by_search_round`
+- `eligible_open_node_count_by_search_round`
+- `selection_margin_by_search_round`
+- `must_have_query_coverage_by_search_round`
+- `net_new_shortlist_gain_by_search_round`
+- `run_shortlist_size_after_search_round`
+- `operator_distribution_explore / balance / harvest`

@@ -4529,6 +4529,77 @@
         "value": 2
       },
       {
+        "name": "search_round_indexes",
+        "value": [
+          0,
+          1
+        ]
+      },
+      {
+        "name": "search_phase_by_search_round",
+        "value": [
+          "explore",
+          "explore"
+        ]
+      },
+      {
+        "name": "selected_operator_by_search_round",
+        "value": [
+          "core_precision",
+          "must_have_alias"
+        ]
+      },
+      {
+        "name": "eligible_open_node_count_by_search_round",
+        "value": [
+          5,
+          5
+        ]
+      },
+      {
+        "name": "selection_margin_by_search_round",
+        "value": [
+          0.1999999999999993,
+          0.0
+        ]
+      },
+      {
+        "name": "must_have_query_coverage_by_search_round",
+        "value": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      },
+      {
+        "name": "net_new_shortlist_gain_by_search_round",
+        "value": [
+          1,
+          1
+        ]
+      },
+      {
+        "name": "run_shortlist_size_after_search_round",
+        "value": [
+          1,
+          2
+        ]
+      },
+      {
+        "name": "operator_distribution_explore",
+        "value": {
+          "core_precision": 1,
+          "must_have_alias": 1
+        }
+      },
+      {
+        "name": "operator_distribution_balance",
+        "value": {}
+      },
+      {
+        "name": "operator_distribution_harvest",
+        "value": {}
+      },
+      {
         "name": "stop_reason",
         "value": "controller_stop"
       },
