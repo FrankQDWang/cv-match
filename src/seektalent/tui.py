@@ -1,178 +1,117 @@
 from __future__ import annotations
 
+import asyncio
+import os
+from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.key_binding import KeyBindings
+from rich.console import Console
 from rich.markup import escape
-from textual import events
-from textual.app import App, ComposeResult
-from textual.widgets import RichLog, Static, TextArea
 
 from seektalent.api import run_match_async
 from seektalent.models import SearchRunBundle
 from seektalent.progress import ProgressEvent
 
+PromptFn = Callable[[str], str]
+RunSearchFn = Callable[..., Awaitable[SearchRunBundle]]
 
-class SeekTalentApp(App[None]):
-    CSS = """
-    Screen {
-        layout: vertical;
-        background: #0b0d10;
-        color: #e6e7eb;
-        padding: 1 2;
-    }
 
-    #transcript {
-        height: 1fr;
-        border: solid #1f2329;
-        background: #0f1115;
-        padding: 0 1;
-    }
-
-    #status {
-        color: #8b949e;
-        padding: 0 1;
-        height: auto;
-    }
-
-    #composer {
-        height: 8;
-        border: solid #1f2329;
-        background: #11161c;
-        color: #e6e7eb;
-        padding: 0 1;
-    }
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.phase = "awaiting_jd"
-        self.job_description = ""
-        self.hiring_notes = ""
-        self.current_bundle: SearchRunBundle | None = None
-        self.messages: list[dict[str, str]] = []
-        self.working_message_index: int | None = None
-        self.status_text = ""
-
-    def compose(self) -> ComposeResult:
-        yield RichLog(id="transcript", markup=True, wrap=True)
-        yield Static("", id="status")
-        yield TextArea("", id="composer")
-
-    def on_mount(self) -> None:
-        composer = self.query_one("#composer", TextArea)
-        composer.border_title = "Message"
-        composer.focus()
-        self._set_status("Shift+Enter submit · Enter newline")
-        self._append_assistant(
-            "Paste [bold]Job Description[/] below, then press [bold]Shift+Enter[/]. "
-            "After that I will ask for optional [bold]Hiring Notes[/]."
+def run_chat_session(
+    *,
+    ask: PromptFn | None = None,
+    console: Console | None = None,
+    run_search: RunSearchFn = run_match_async,
+    cwd: Path | None = None,
+) -> int:
+    console = console or Console()
+    prompt = ask or _build_prompt()
+    try:
+        _print_intro(console, cwd or Path.cwd())
+        job_description = _read_job_description(console, prompt)
+        console.print()
+        console.print(
+            "Paste [bold]Hiring Notes[/] if you have them. Press [bold]Enter[/] to skip. "
+            "Use [bold]Ctrl+J[/] for new lines."
         )
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key != "shift+enter":
-            return
-        if self.focused is not self.query_one("#composer", TextArea):
-            return
-        event.stop()
-        self.action_submit_message()
-
-    def action_submit_message(self) -> None:
-        composer = self.query_one("#composer", TextArea)
-        if self.phase in {"running", "completed"}:
-            return
-        text = composer.text.rstrip()
-        if self.phase == "awaiting_jd":
-            if not text.strip():
-                self._append_assistant(
-                    "Job Description cannot be empty. Paste the JD and press [bold]Shift+Enter[/]."
-                )
-                return
-            self.job_description = text.strip()
-            self._append_user(self.job_description)
-            composer.text = ""
-            self.phase = "awaiting_notes"
-            self._append_assistant(
-                "Paste [bold]Hiring Notes[/] if you have them. Leave the box empty and press "
-                "[bold]Shift+Enter[/] to skip."
-            )
-            self._set_status("Optional notes · Shift+Enter submit · Enter newline")
-            return
-        notes = text.strip()
-        if notes:
-            self._append_user(notes)
-        else:
-            self._append_assistant("No hiring notes supplied. Starting search.")
-        self.hiring_notes = notes
-        composer.text = ""
-        composer.disabled = True
-        composer.read_only = True
-        self.phase = "running"
-        self._set_status("Working…")
-        self.working_message_index = self._append_assistant(
-            "Working:\n- starting search pipeline"
-        )
-        self.run_worker(self._run_search(), exclusive=True, group="search")
-
-    async def _run_search(self) -> None:
-        try:
-            bundle = await run_match_async(
-                job_description=self.job_description,
-                hiring_notes=self.hiring_notes,
+        hiring_notes = prompt("› ").rstrip().strip()
+        console.print()
+        console.print("Working:")
+        bundle = asyncio.run(
+            run_search(
+                job_description=job_description,
+                hiring_notes=hiring_notes,
                 top_k=10,
                 round_budget=None,
                 env_file=".env",
-                progress_callback=self._record_progress,
+                progress_callback=lambda event: _print_progress(console, event),
             )
-        except Exception as exc:  # noqa: BLE001
-            self._append_working_line(f"- failed: {escape(str(exc))}")
-            self._append_assistant(f"Run failed.\n{escape(str(exc))}")
-            self._finish_session()
-            return
-        self.current_bundle = bundle
-        self._append_assistant(_result_message(bundle))
-        self._finish_session()
+        )
+    except KeyboardInterrupt:
+        console.print("\nInterrupted. Re-run [bold]seektalent[/] to start a new session.")
+        return 130
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"Run failed.\n{escape(str(exc))}")
+        console.print("Session complete. Re-run [bold]seektalent[/] to start a new session.")
+        return 1
+    console.print()
+    console.print(_result_message(bundle))
+    console.print()
+    console.print("Session complete. Re-run [bold]seektalent[/] to start a new session.")
+    return 0
 
-    def _record_progress(self, event: ProgressEvent) -> None:
-        self._append_working_line(f"- {escape(event.message)}")
 
-    def _append_working_line(self, line: str) -> None:
-        if self.working_message_index is None:
-            self.working_message_index = self._append_assistant(f"Working:\n{line}")
-            return
-        self.messages[self.working_message_index]["text"] += f"\n{line}"
-        self._refresh_transcript()
+def _build_prompt() -> PromptFn:
+    os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+    bindings = KeyBindings()
 
-    def _finish_session(self) -> None:
-        self.phase = "completed"
-        self._set_status("Session complete. Re-run seektalent to start a new session.")
-        composer = self.query_one("#composer", TextArea)
-        composer.disabled = True
-        composer.read_only = True
+    @bindings.add("enter")
+    def _submit(event) -> None:
+        event.current_buffer.validate_and_handle()
 
-    def _append_user(self, text: str) -> int:
-        return self._append_message("you", escape(text))
+    @bindings.add("c-j")
+    def _newline(event) -> None:
+        event.current_buffer.insert_text("\n")
 
-    def _append_assistant(self, text: str) -> int:
-        return self._append_message("assistant", text)
+    session = PromptSession(
+        multiline=True,
+        key_bindings=bindings,
+        prompt_continuation=lambda width, line_number, wrap_count: "  ",
+        bottom_toolbar=lambda: " Enter submit · Ctrl+J newline · Ctrl+C quit ",
+    )
+    return session.prompt
 
-    def _append_message(self, role: str, text: str) -> int:
-        self.messages.append({"role": role, "text": text})
-        self._refresh_transcript()
-        return len(self.messages) - 1
 
-    def _refresh_transcript(self) -> None:
-        transcript = self.query_one("#transcript", RichLog)
-        transcript.clear()
-        for message in self.messages:
-            label = "[bold #79c0ff]you[/]" if message["role"] == "you" else "[bold #e6e7eb]assistant[/]"
-            transcript.write(f"{label}\n{message['text']}\n")
+def _print_intro(console: Console, cwd: Path) -> None:
+    console.print(
+        "\n".join(
+            [
+                "[dim]╭─────────────────────────────────────────────╮[/]",
+                "[dim]│[/] [bold]>_[/] [bold]SeekTalent[/]                               [dim]│[/]",
+                "[dim]│[/]                                             [dim]│[/]",
+                "[dim]│[/] [dim]mode:[/]      chat-first JD search            [dim]│[/]",
+                f"[dim]│[/] [dim]cwd:[/]       {escape(str(cwd))[:29]:<29} [dim]│[/]",
+                "[dim]╰─────────────────────────────────────────────╯[/]",
+                "",
+                "Paste [bold]Job Description[/]. Press [bold]Enter[/] to submit. "
+                "Use [bold]Ctrl+J[/] for new lines.",
+            ]
+        )
+    )
 
-    def _set_status(self, text: str) -> None:
-        self.status_text = text
-        self.query_one("#status", Static).update(text)
 
-    def transcript_text(self) -> str:
-        return "\n\n".join(f"{message['role']}\n{message['text']}" for message in self.messages)
+def _read_job_description(console: Console, prompt: PromptFn) -> str:
+    while True:
+        text = prompt("› ").rstrip()
+        if text.strip():
+            return text.strip()
+        console.print("Job Description cannot be empty. Paste the JD and press [bold]Enter[/].")
+
+
+def _print_progress(console: Console, event: ProgressEvent) -> None:
+    console.print(f"• {escape(event.message)}")
 
 
 def _result_message(bundle: SearchRunBundle) -> str:
@@ -220,4 +159,4 @@ def _value(item: Any, field: str) -> Any:
     return getattr(item, field, "")
 
 
-__all__ = ["SeekTalentApp"]
+__all__ = ["run_chat_session"]

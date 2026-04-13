@@ -8,7 +8,7 @@
 seektalent --help
 ```
 
-在 TTY 里，`seektalent` 无参数会直接打开一次性聊天式 `Textual` 会话。`seektalent --help` 仍然是给人类和 agent 的标准协议入口。
+在 TTY 里，`seektalent` 无参数会直接打开一个内联的一次性聊天式终端会话。`seektalent --help` 仍然是给人类和 agent 的标准协议入口。
 
 ## 当前阶段
 
@@ -20,7 +20,7 @@ seektalent --help
 
 ### `seektalent`
 
-在 TTY 里，裸命令会直接打开一次性聊天式 `Textual` 会话：
+在 TTY 里，裸命令会直接打开内联的一次性聊天式终端会话：
 
 ```bash
 seektalent
@@ -31,9 +31,9 @@ seektalent
 - 单一 transcript 作为唯一主区域
 - 第一段输入 `Job Description`
 - 第二段输入可选的 `Hiring Notes`
-- `Shift+Enter` 提交，`Enter` 换行
+- `Enter` 提交，`Ctrl+J` 换行
 - 同一条对话里持续追加 working transcript 和最终结果
-- 每次启动只跑一轮；要重来就重新执行 `seektalent`
+- 每次启动只跑一轮；输出最终结果后自动退出，并把 transcript 留在终端滚动区里
 
 ### `seektalent init`
 
@@ -120,7 +120,7 @@ seektalent run --jd-file ./jd.md --notes-file ./notes.md
 - `--json` 模式下把 `SearchRunBundle.model_dump(mode="json")` 直接写到 stdout
 - 最终产品结果看 `final_result.final_candidate_cards`
 
-`--jd` / `--notes` 这种 inline 长文本参数已经删除。请改用 request file、request stdin，或者直接使用 Textual 会话。
+`--jd` / `--notes` 这种 inline 长文本参数已经删除。请改用 request file、request stdin，或者直接使用聊天式终端会话。
 
 ## 相关文档
 

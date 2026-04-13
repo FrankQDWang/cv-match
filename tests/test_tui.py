@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import asyncio
+from io import StringIO
 from types import SimpleNamespace
 
-from textual.widgets import TextArea
+from rich.console import Console
 
 from seektalent.progress import make_progress_event
-from seektalent.tui import SeekTalentApp
+from seektalent.tui import run_chat_session
 
 
 def _fake_bundle() -> object:
     return SimpleNamespace(
-        run_dir="/tmp/runs/test",
         final_result=SimpleNamespace(
             final_candidate_cards=[
                 SimpleNamespace(
@@ -40,38 +39,57 @@ def _fake_bundle() -> object:
     )
 
 
-def test_textual_app_starts_with_chat_prompt() -> None:
-    async def _exercise() -> None:
-        app = SeekTalentApp()
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            composer = app.query_one("#composer", TextArea)
-            assert app.phase == "awaiting_jd"
-            assert composer.disabled is False
-            transcript = app.transcript_text()
-            assert "assistant" in transcript
-            assert "Job Description" in transcript
-            assert "Shift+Enter" in transcript
-
-    asyncio.run(_exercise())
+def _rendered_text(console: Console, stream: StringIO) -> str:
+    console.file.flush()
+    return stream.getvalue()
 
 
-def test_enter_inserts_newline_without_submitting() -> None:
-    async def _exercise() -> None:
-        app = SeekTalentApp()
-        async with app.run_test() as pilot:
-            composer = app.query_one("#composer", TextArea)
-            composer.text = "JD"
-            await pilot.press("enter")
-            await pilot.pause()
-            assert app.phase == "awaiting_jd"
-            assert composer.text == "\nJD"
+def test_chat_session_starts_with_codex_like_intro() -> None:
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None)
+    prompts: list[str] = []
 
-    asyncio.run(_exercise())
+    def fake_ask(prompt_text: str) -> str:
+        prompts.append(prompt_text)
+        return "JD"
+
+    async def fake_run_search(**kwargs):
+        return _fake_bundle()
+
+    assert run_chat_session(ask=fake_ask, console=console, run_search=fake_run_search) == 0
+    output = _rendered_text(console, stream)
+    assert ">_ SeekTalent" in output
+    assert "Paste Job Description." in output
+    assert "Ctrl+J" in output
+    assert prompts == ["› ", "› "]
 
 
-def test_shift_enter_drives_jd_then_notes_then_run(monkeypatch) -> None:
-    async def fake_run_match_async(**kwargs):
+def test_empty_jd_reprompts_before_running() -> None:
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None)
+    answers = iter(["", "JD", ""])
+
+    def fake_ask(prompt_text: str) -> str:
+        return next(answers)
+
+    async def fake_run_search(**kwargs):
+        return _fake_bundle()
+
+    assert run_chat_session(ask=fake_ask, console=console, run_search=fake_run_search) == 0
+    output = _rendered_text(console, stream)
+    assert "Job Description cannot be empty." in output
+    assert "Paste Hiring Notes" in output
+
+
+def test_chat_session_streams_progress_and_final_result() -> None:
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None)
+    answers = iter(["JD text", ""])
+
+    def fake_ask(prompt_text: str) -> str:
+        return next(answers)
+
+    async def fake_run_search(**kwargs):
         kwargs["progress_callback"](
             make_progress_event(
                 "controller_decision",
@@ -88,31 +106,12 @@ def test_shift_enter_drives_jd_then_notes_then_run(monkeypatch) -> None:
         )
         return _fake_bundle()
 
-    monkeypatch.setattr("seektalent.tui.run_match_async", fake_run_match_async)
-
-    async def _exercise() -> None:
-        app = SeekTalentApp()
-        async with app.run_test() as pilot:
-            composer = app.query_one("#composer", TextArea)
-            composer.text = "JD text"
-            await pilot.press("shift+enter")
-            await pilot.pause()
-            assert app.phase == "awaiting_notes"
-            assert "Hiring Notes" in app.transcript_text()
-
-            composer.text = ""
-            await pilot.press("shift+enter")
-            await pilot.pause()
-            await pilot.pause()
-
-            assert app.phase == "completed"
-            assert composer.disabled is True
-            transcript = app.transcript_text()
-            assert "controller: selected core_precision" in transcript
-            assert "rerank: built 2 candidate cards" in transcript
-            assert "reviewer_summary: 1 advance-ready, 1 need manual review, 0 reject" in transcript
-            assert "c-1 | advance" in transcript
-            assert "gaps: Only weak evidence for retrieval" in transcript
-            assert app.status_text == "Session complete. Re-run seektalent to start a new session."
-
-    asyncio.run(_exercise())
+    assert run_chat_session(ask=fake_ask, console=console, run_search=fake_run_search) == 0
+    output = _rendered_text(console, stream)
+    assert "Working:" in output
+    assert "• controller: selected core_precision" in output
+    assert "• rerank: built 2 candidate cards" in output
+    assert "reviewer_summary: 1 advance-ready, 1 need manual review, 0 reject" in output
+    assert "1. c-1 | advance" in output
+    assert "gaps: Only weak evidence for retrieval" in output
+    assert "Session complete. Re-run seektalent to start a new session." in output

@@ -36,13 +36,13 @@ From a local checkout:
 
 ```bash
 uv build
-pipx install dist/seektalent-0.3.4-py3-none-any.whl
+pipx install dist/seektalent-0.3.5-py3-none-any.whl
 ```
 
 Or into an existing Python environment:
 
 ```bash
-pip install dist/seektalent-0.3.4-py3-none-any.whl
+pip install dist/seektalent-0.3.5-py3-none-any.whl
 ```
 
 ## Quick Start
@@ -84,7 +84,7 @@ Human-first entry:
 seektalent
 ```
 
-This opens a chat-first Textual session in a TTY. Paste the `JD`, press `Shift+Enter`, then optionally add `notes`. The whole run streams into one transcript and the session ends after the final result.
+This opens an inline chat-first terminal session in a TTY. Paste the `JD`, press `Enter`, then optionally add `notes`. Use `Ctrl+J` for new lines. The whole run streams into one transcript, exits automatically after the final result, and leaves the session in terminal scrollback.
 
 Agent-friendly entry:
 
@@ -124,7 +124,7 @@ print(result.run_dir)
 
 ## Commands
 
-- `seektalent` (TTY only; launches the one-shot chat-first Textual session)
+- `seektalent` (TTY only; launches the one-shot chat-first terminal session)
 - `seektalent run`
 - `seektalent doctor`
 - `seektalent init`

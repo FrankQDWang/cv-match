@@ -32,8 +32,9 @@ REQUEST_JSON_EXAMPLE = json.dumps(
 )
 ROOT_HELP_EPILOG = """Human entry:
   seektalent
-  Launch the chat-first Textual session when attached to a TTY.
-  Paste Job Description, press Shift+Enter, then optionally add Hiring Notes.
+  Launch the inline chat-first terminal session when attached to a TTY.
+  Paste Job Description, press Enter to submit, then optionally add Hiring Notes.
+  Use Ctrl+J for new lines.
 
 Agent entry:
   seektalent run --request-file ./request.json --json --progress jsonl
@@ -216,7 +217,7 @@ def _doctor_checks(settings: AppSettings, *, env_file: str) -> list[DoctorCheck]
             name="phase",
             ok=True,
             message=(
-                "v0.3.3 active. `seektalent` opens a chat-first Textual session in a TTY, "
+                "v0.3.3 active. `seektalent` opens a chat-first terminal session in a TTY, "
                 "`run` is the non-interactive protocol surface, and final candidate "
                 "results live at final_result.final_candidate_cards."
             ),
@@ -315,15 +316,16 @@ def _inspect_payload(*, env_file: str = ".env") -> dict[str, object]:
         "version": __version__,
         "phase": RUNTIME_STATUS,
         "summary": (
-            "v0.3.3 active: no-arg TTY opens a one-shot chat-first Textual session, "
+            "v0.3.3 active: no-arg TTY opens a one-shot chat-first terminal session, "
             "`run` is the agent-facing protocol command, and final candidate "
             "results are exposed through final_result.final_candidate_cards."
         ),
         "interactive_entry": {
             "command": "seektalent",
-            "description": "Launch a one-shot chat-first Textual session when attached to a TTY.",
+            "description": "Launch an inline one-shot chat-first terminal session when attached to a TTY.",
             "input_flow": ["job_description", "hiring_notes_optional"],
-            "submit_key": "Shift+Enter",
+            "submit_key": "Enter",
+            "newline_key": "Ctrl+J",
             "session_behavior": "Single run per launch. Re-run `seektalent` to start a new session.",
         },
         "non_interactive_entry": {
@@ -625,7 +627,7 @@ def _handle_inspect(args: argparse.Namespace) -> int:
         return 0
     print("SeekTalent v0.3.3 CLI inspection summary")
     print("Human entry: `seektalent`")
-    print("Interactive flow: paste JD, press Shift+Enter, then optionally add notes.")
+    print("Interactive flow: paste JD, press Enter, then optionally add notes. Use Ctrl+J for new lines.")
     print("Agent entry: `seektalent run --request-file ./request.json --json --progress jsonl`")
     print("Use `seektalent inspect --json` for the machine-readable contract.")
     return 0
@@ -742,11 +744,9 @@ def _emit_removed_inline_flag_error(flag: str) -> int:
 
 
 def _launch_tui() -> int:
-    from seektalent.tui import SeekTalentApp
+    from seektalent.tui import run_chat_session
 
-    app = SeekTalentApp()
-    app.run()
-    return 0
+    return run_chat_session()
 
 
 def main(argv: list[str] | None = None) -> int:

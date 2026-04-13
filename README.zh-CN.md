@@ -36,13 +36,13 @@
 
 ```bash
 uv build
-pipx install dist/seektalent-0.3.4-py3-none-any.whl
+pipx install dist/seektalent-0.3.5-py3-none-any.whl
 ```
 
 或者装进现有 Python 环境：
 
 ```bash
-pip install dist/seektalent-0.3.4-py3-none-any.whl
+pip install dist/seektalent-0.3.5-py3-none-any.whl
 ```
 
 ## 快速开始
@@ -84,7 +84,7 @@ seektalent inspect --json
 seektalent
 ```
 
-在 TTY 里这会直接打开一个聊天式 `Textual` 会话。先粘贴 `JD` 并按 `Shift+Enter`，再按需补充 `notes`。整个 run 会在同一条 transcript 中持续滚动，最终结果输出后会话结束。
+在 TTY 里这会直接打开一个内联聊天式终端会话。先粘贴 `JD` 并按 `Enter`，再按需补充 `notes`。如需换行，用 `Ctrl+J`。整个 run 会在同一条 transcript 中持续滚动，最终结果输出后自动退出，并保留在终端滚动区里。
 
 面向 agent 的入口：
 
@@ -124,7 +124,7 @@ print(result.run_dir)
 
 ## 命令
 
-- `seektalent`（仅在 TTY 下；直接打开一次性聊天式 Textual 会话）
+- `seektalent`（仅在 TTY 下；直接打开一次性聊天式终端会话）
 - `seektalent run`
 - `seektalent doctor`
 - `seektalent init`
