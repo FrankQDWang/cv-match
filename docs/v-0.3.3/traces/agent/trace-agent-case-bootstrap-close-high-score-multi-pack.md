@@ -7,7 +7,7 @@ case_id: case-bootstrap-close-high-score-multi-pack
 routing_mode: inferred_multi_pack
 selected_knowledge_pack_ids: ['llm_agent_rag_engineering', 'search_ranking_retrieval_engineering']
 stop_reason: controller_stop
-run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-bootstrap-close-high-score-multi-pack
+run_dir: artifacts/runtime/cases/case-bootstrap-close-high-score-multi-pack
 ```
 
 ## Bootstrap

@@ -1307,10 +1307,11 @@ def _canonical_bundle(
     case_id: str,
     repo_root: Path,
 ) -> SearchRunBundle:
+    del repo_root
     return bundle.model_copy(
         update={
             "run_id": case_id,
-            "run_dir": str(_repo_runtime_case_dir(repo_root, case_id)),
+            "run_dir": f"artifacts/runtime/cases/{case_id}",
             "created_at_utc": "2026-04-09T00:00:00Z",
             "eval": (
                 None

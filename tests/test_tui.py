@@ -56,10 +56,11 @@ def test_textual_app_runs_search_and_renders_results(monkeypatch) -> None:
         monkeypatch.setattr("seektalent.tui.run_match_async", fake_run_match_async)
 
         app = SeekTalentApp()
-        async with app.run_test():
+        async with app.run_test() as pilot:
             app.query_one("#job-description", TextArea).text = "JD"
             app.query_one("#hiring-notes", TextArea).text = "Notes"
             await app._run_search()
+            await pilot.pause()
             table = app.query_one("#candidate-table", DataTable)
             assert table.row_count == 2
             summary = app.query_one("#summary", Static).render()

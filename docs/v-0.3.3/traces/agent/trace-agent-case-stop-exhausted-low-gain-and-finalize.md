@@ -7,7 +7,7 @@ case_id: case-stop-exhausted-low-gain-and-finalize
 routing_mode: inferred_single_pack
 selected_knowledge_pack_ids: ['llm_agent_rag_engineering']
 stop_reason: exhausted_low_gain
-run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-stop-exhausted-low-gain-and-finalize
+run_dir: artifacts/runtime/cases/case-stop-exhausted-low-gain-and-finalize
 ```
 
 ## Bootstrap

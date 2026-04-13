@@ -7,7 +7,7 @@ case_id: case-crossover-legal
 routing_mode: inferred_single_pack
 selected_knowledge_pack_ids: ['llm_agent_rag_engineering']
 stop_reason: controller_stop
-run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-crossover-legal
+run_dir: artifacts/runtime/cases/case-crossover-legal
 ```
 
 ## Bootstrap

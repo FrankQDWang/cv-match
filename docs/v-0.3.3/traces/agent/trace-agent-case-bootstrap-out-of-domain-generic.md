@@ -7,7 +7,7 @@ case_id: case-bootstrap-out-of-domain-generic
 routing_mode: generic_fallback
 selected_knowledge_pack_ids: []
 stop_reason: controller_stop
-run_dir: /Users/frankqdwang/Agents/SeekTalent/artifacts/runtime/cases/case-bootstrap-out-of-domain-generic
+run_dir: artifacts/runtime/cases/case-bootstrap-out-of-domain-generic
 ```
 
 ## Bootstrap
