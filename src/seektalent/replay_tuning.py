@@ -33,13 +33,13 @@ from seektalent.models import (
     RewriteTermScoreBreakdown,
     RewriteFitnessWeights,
     ScoringPolicy,
-    SearchControllerDecisionDraft_t,
     SearchRoundArtifact,
     RuntimeSearchBudget,
     RuntimeSelectionPolicy,
     RequirementSheet,
     SearchRunBundle,
     StopGuardThresholds,
+    make_search_controller_decision_draft,
 )
 from seektalent.runtime_budget import build_runtime_budget_state
 from seektalent.run_artifacts import build_search_run_eval
@@ -871,7 +871,7 @@ def _apply_rewrite_coherence_tradeoff(
         scoring_policy=scoring_policy,
         assets=assets,
     )
-    draft = SearchControllerDecisionDraft_t(
+    draft = make_search_controller_decision_draft(
         action="search_cts",
         selected_operator_name="vocabulary_bridge",
         operator_args={"query_terms": ["python backend", "ranking", "rag"]},

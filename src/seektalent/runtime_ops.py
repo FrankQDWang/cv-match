@@ -41,27 +41,11 @@ def evaluate_branch_outcome(
         raise ValueError(
             f"unknown_parent_frontier_node_id: {plan.child_frontier_node_stub.parent_frontier_node_id}"
         )
-    allowed_repair_operator_names = {
-        "core_precision",
-        "must_have_alias",
-        "relaxed_floor",
-        "vocabulary_bridge",
-        "crossover_compose",
-    }
-    if plan.knowledge_pack_ids:
-        allowed_repair_operator_names.add("pack_bridge")
-    repair_operator_hint = _normalized_text(draft.repair_operator_hint)
     return BranchEvaluation_t(
-        novelty_score=_clamp_score(draft.novelty_score),
-        usefulness_score=_clamp_score(draft.usefulness_score),
-        branch_exhausted=(
-            draft.branch_exhausted or not scoring_result.node_shortlist_candidate_ids
-        ),
-        repair_operator_hint=(
-            repair_operator_hint
-            if repair_operator_hint in allowed_repair_operator_names
-            else None
-        ),
+        novelty_score=draft.novelty_score,
+        usefulness_score=draft.usefulness_score,
+        branch_exhausted=draft.branch_exhausted,
+        repair_operator_hint=draft.repair_operator_hint,
         evaluation_notes=_normalized_text(draft.evaluation_notes),
     )
 
@@ -505,10 +489,6 @@ def _signal_counts(signals: list[EvidenceSignal_t] | tuple[EvidenceSignal_t, ...
             key=lambda item: (-item[1][1], item[0]),
         )
     ]
-
-
-def _clamp_score(value: float) -> float:
-    return min(1.0, max(0.0, value))
 
 
 def _normalized_text(value: object) -> str:

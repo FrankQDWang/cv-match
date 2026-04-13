@@ -616,10 +616,30 @@ def _build_exhausted_low_gain_bundle(
             CTSFetchResult(request_payload={}, candidates=[], raw_candidate_count=0, latency_ms=5),
         ],
         branch_outputs=[
-            _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
-            _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
-            _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
-            _branch_payload(novelty=0.1, usefulness=0.1, repair_operator_hint="core_precision"),
+            _branch_payload(
+                novelty=0.1,
+                usefulness=0.1,
+                repair_operator_hint="core_precision",
+                branch_exhausted=True,
+            ),
+            _branch_payload(
+                novelty=0.1,
+                usefulness=0.1,
+                repair_operator_hint="core_precision",
+                branch_exhausted=True,
+            ),
+            _branch_payload(
+                novelty=0.1,
+                usefulness=0.1,
+                repair_operator_hint="core_precision",
+                branch_exhausted=True,
+            ),
+            _branch_payload(
+                novelty=0.1,
+                usefulness=0.1,
+                repair_operator_hint="core_precision",
+                branch_exhausted=True,
+            ),
         ],
         final_summary="Low-gain branch was exhausted and finalized.",
         runs_dir_override=runs_dir_override,
@@ -1069,11 +1089,12 @@ def _branch_payload(
     novelty: float,
     usefulness: float,
     repair_operator_hint: str,
+    branch_exhausted: bool = False,
 ) -> dict[str, object]:
     return {
         "novelty_score": novelty,
         "usefulness_score": usefulness,
-        "branch_exhausted": False,
+        "branch_exhausted": branch_exhausted,
         "repair_operator_hint": repair_operator_hint,
         "evaluation_notes": "Canonical branch evaluation.",
     }

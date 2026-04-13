@@ -134,6 +134,7 @@ def test_inspect_json_returns_machine_readable_contract(
     assert payload["interactive_entry"]["command"] == "seektalent"
     assert payload["interactive_entry"]["submit_key"] == "Enter"
     assert payload["interactive_entry"]["newline_key"] == "Ctrl+J"
+    assert payload["interactive_entry"]["composer_min_lines"] == 3
     assert payload["non_interactive_entry"]["command"].endswith("--json --progress jsonl")
     assert payload["result_pointer"] == "final_result.final_candidate_cards"
     assert payload["request_contract"]["preferred"] == "--request-file"
@@ -344,3 +345,24 @@ def test_run_invalid_request_json_prints_example(
     stderr = capsys.readouterr().err
     assert "invalid_request_json" in stderr
     assert '"job_description"' in stderr
+
+
+def test_run_surfaces_specific_runtime_failure_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    request_file = tmp_path / "request.json"
+    request_file.write_text(json.dumps(_request_payload()), encoding="utf-8")
+    monkeypatch.setattr(
+        "seektalent.cli.run_match",
+        lambda **kwargs: (_ for _ in ()).throw(
+            RuntimeError(
+                "search_run_finalization_output_invalid: search_run_finalization requires non-empty run_summary"
+            )
+        ),
+    )
+
+    assert main(["run", "--request-file", str(request_file)]) == 1
+    stderr = capsys.readouterr().err
+    assert "search_run_finalization_output_invalid:" in stderr

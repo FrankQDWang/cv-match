@@ -31,6 +31,7 @@ The session provides:
 - one transcript as the only main area
 - a first prompt for `Job Description`
 - a second prompt for optional `Hiring Notes`
+- a bottom composer with a fixed 3-line minimum height while input is active
 - `Enter` to submit and `Ctrl+J` to insert a newline
 - a live working transcript that streams progress and the final result in the same conversation
 - one run per launch; it exits automatically after the final result and leaves the transcript in scrollback

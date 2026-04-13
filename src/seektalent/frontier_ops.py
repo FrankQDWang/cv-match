@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 
+from pydantic import BaseModel
+
 from seektalent.runtime_budget import derive_max_query_terms
 from seektalent.models import (
     CrossoverGuardThresholds,
@@ -485,7 +487,11 @@ def _normalized_operator_name(
 
 
 def _operator_args(draft: SearchControllerDecisionDraft_t) -> dict[str, object]:
-    return draft.operator_args if isinstance(draft.operator_args, dict) else {}
+    if isinstance(draft.operator_args, dict):
+        return draft.operator_args
+    if isinstance(draft.operator_args, BaseModel):
+        return draft.operator_args.model_dump(mode="python")
+    return {}
 
 
 def _string_list(value: object) -> list[str]:

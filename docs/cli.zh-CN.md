@@ -31,6 +31,7 @@ seektalent
 - 单一 transcript 作为唯一主区域
 - 第一段输入 `Job Description`
 - 第二段输入可选的 `Hiring Notes`
+- 输入阶段底部固定保留一个最少 3 行的 composer
 - `Enter` 提交，`Ctrl+J` 换行
 - 同一条对话里持续追加 working transcript 和最终结果
 - 每次启动只跑一轮；输出最终结果后自动退出，并把 transcript 留在终端滚动区里

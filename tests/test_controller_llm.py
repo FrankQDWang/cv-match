@@ -4,8 +4,10 @@ import asyncio
 
 import pytest
 from pydantic_ai import ModelRetry
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.test import TestModel
 
+import seektalent.controller_llm as controller_llm_module
 from seektalent.controller_llm import request_search_controller_decision_draft
 from seektalent.frontier_ops import generate_search_controller_decision
 from seektalent.models import (
@@ -14,6 +16,8 @@ from seektalent.models import (
     RewriteTermCandidate,
     RewriteTermScoreBreakdown,
     SearchControllerContext_t,
+    search_controller_decision_draft_json_schema,
+    validate_search_controller_decision_draft,
 )
 from seektalent.runtime_budget import build_runtime_budget_state
 
@@ -193,7 +197,9 @@ def test_request_search_controller_decision_draft_retries_once_for_empty_non_cro
         )
     )
 
-    assert draft.operator_args == {"query_terms": ["agent engineer", "python"]}
+    assert draft.operator_args.model_dump(mode="python") == {
+        "query_terms": ["agent engineer", "python"]
+    }
     assert audit.validator_retry_count == 1
 
 
@@ -220,6 +226,23 @@ def test_request_search_controller_decision_draft_fails_after_single_validator_r
                     ]
                 ),
             )
+        )
+
+
+def test_search_controller_decision_draft_schema_requires_nested_operator_args_for_search_cts() -> None:
+    schema = search_controller_decision_draft_json_schema()
+    schema_text = str(schema)
+
+    assert "query_terms" in schema_text
+    assert "donor_frontier_node_id" in schema_text
+    with pytest.raises(Exception):
+        validate_search_controller_decision_draft(
+            {
+                "action": "search_cts",
+                "selected_operator_name": "core_precision",
+                "operator_args": {},
+                "expected_gain_hypothesis": "Tighten the query.",
+            }
         )
 
 
@@ -301,3 +324,57 @@ def test_request_search_controller_decision_draft_uses_explicit_rewrite_fitness_
     assert normalized.operator_args == {
         "query_terms": ["python backend", "ranking", "retrieval"]
     }
+
+
+def test_request_search_controller_decision_draft_surfaces_last_validator_error() -> None:
+    context = _context()
+    dummy_model = object()
+
+    class FakeAgent:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self._validator = None
+
+        def output_validator(self, fn):
+            self._validator = fn
+            return fn
+
+        async def run(self, *_args, **_kwargs):
+            for payload in [
+                {
+                    "action": "search_cts",
+                    "selected_operator_name": "core_precision",
+                    "operator_args": {"query_terms": [""]},
+                    "expected_gain_hypothesis": "Tighten the query.",
+                },
+                {
+                    "action": "search_cts",
+                    "selected_operator_name": "core_precision",
+                    "operator_args": {"query_terms": []},
+                    "expected_gain_hypothesis": "Tighten the query.",
+                },
+            ]:
+                draft = validate_search_controller_decision_draft(payload)
+                try:
+                    assert self._validator is not None
+                    self._validator(draft)
+                except ModelRetry:
+                    continue
+            raise UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(controller_llm_module, "Agent", FakeAgent)
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="controller_output_invalid: search_cts requires materializable non-empty query_terms",
+        ):
+            asyncio.run(
+                request_search_controller_decision_draft(
+                    context,
+                    rewrite_fitness_weights=RewriteFitnessWeights(),
+                    model=dummy_model,
+                    env_file=None,
+                )
+            )
+    finally:
+        monkeypatch.undo()

@@ -4,9 +4,14 @@ import asyncio
 
 import pytest
 from pydantic_ai import ModelRetry
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.test import TestModel
 
-from seektalent.bootstrap_llm import request_bootstrap_keyword_draft
+import seektalent.bootstrap_llm as bootstrap_llm_module
+from seektalent.bootstrap_llm import (
+    request_bootstrap_keyword_draft,
+    request_requirement_extraction_draft,
+)
 from seektalent.models import (
     BootstrapRoutingResult,
     DomainKnowledgePack,
@@ -14,6 +19,7 @@ from seektalent.models import (
     RequirementPreferences,
     RequirementSheet,
 )
+from seektalent.requirements import build_input_truth
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -255,3 +261,155 @@ def test_request_bootstrap_keyword_draft_rejects_multi_pack_bridge_without_two_p
                 model=TestModel(custom_output_args=invalid),
             )
         )
+
+
+def test_request_requirement_extraction_draft_retries_after_empty_semantic_fields() -> None:
+    draft, audit = asyncio.run(
+        request_requirement_extraction_draft(
+            build_input_truth(
+                job_description="招聘 Senior Agent Engineer\n负责 Agent Runtime 和 tool calling。",
+                hiring_notes="",
+            ),
+            model=TestModel(
+                custom_output_args=[
+                    {
+                        "role_title_candidate": "Senior Agent Engineer",
+                        "role_summary_candidate": "负责 Agent Runtime 和 tool calling。",
+                        "must_have_capability_candidates": [],
+                        "preferred_capability_candidates": [],
+                        "exclusion_signal_candidates": [],
+                        "preference_candidates": {},
+                        "hard_constraint_candidates": {},
+                        "scoring_rationale_candidate": "",
+                    },
+                    {
+                        "role_title_candidate": "Senior Agent Engineer",
+                        "role_summary_candidate": "负责 Agent Runtime 和 tool calling。",
+                        "must_have_capability_candidates": [],
+                        "preferred_capability_candidates": [],
+                        "exclusion_signal_candidates": [],
+                        "preference_candidates": {},
+                        "hard_constraint_candidates": {},
+                        "scoring_rationale_candidate": "must-have first",
+                    },
+                ]
+            ),
+        )
+    )
+
+    assert draft.role_title_candidate == "Senior Agent Engineer"
+    assert audit.validator_retry_count == 1
+
+
+def test_request_requirement_extraction_draft_surfaces_last_validator_error() -> None:
+    dummy_model = object()
+
+    class FakeAgent:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self._validator = None
+
+        def output_validator(self, fn):
+            self._validator = fn
+            return fn
+
+        async def run(self, *_args, **_kwargs):
+            for payload in [
+                {
+                    "role_title_candidate": "Senior Agent Engineer",
+                    "role_summary_candidate": "负责 Agent Runtime 和 tool calling。",
+                    "must_have_capability_candidates": [],
+                    "preferred_capability_candidates": [],
+                    "exclusion_signal_candidates": [],
+                    "preference_candidates": {},
+                    "hard_constraint_candidates": {},
+                    "scoring_rationale_candidate": "",
+                },
+                {
+                    "role_title_candidate": "Senior Agent Engineer",
+                    "role_summary_candidate": "负责 Agent Runtime 和 tool calling。",
+                    "must_have_capability_candidates": [],
+                    "preferred_capability_candidates": [],
+                    "exclusion_signal_candidates": [],
+                    "preference_candidates": {},
+                    "hard_constraint_candidates": {},
+                    "scoring_rationale_candidate": "",
+                },
+            ]:
+                draft = bootstrap_llm_module.RequirementExtractionDraft.model_validate(payload)
+                try:
+                    assert self._validator is not None
+                    self._validator(draft)
+                except ModelRetry:
+                    continue
+            raise UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(bootstrap_llm_module, "Agent", FakeAgent)
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="requirement_extraction_output_invalid: scoring_rationale must not be empty after normalization",
+        ):
+            asyncio.run(
+                request_requirement_extraction_draft(
+                    build_input_truth(
+                        job_description="招聘 Senior Agent Engineer\n负责 Agent Runtime 和 tool calling。",
+                        hiring_notes="",
+                    ),
+                    model=dummy_model,
+                    env_file=None,
+                )
+            )
+    finally:
+        monkeypatch.undo()
+
+
+def test_request_bootstrap_keyword_draft_surfaces_last_validator_error() -> None:
+    routing_result = BootstrapRoutingResult(
+        routing_mode="generic_fallback",
+        selected_knowledge_pack_ids=[],
+        routing_confidence=0.3,
+        fallback_reason="top1_confidence_below_floor",
+        pack_scores={},
+    )
+    invalid = _valid_generic_payload()
+    invalid["candidate_seeds"][3]["source_knowledge_pack_ids"] = ["llm_agent_rag_engineering"]
+    dummy_model = object()
+
+    class FakeAgent:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self._validator = None
+
+        def output_validator(self, fn):
+            self._validator = fn
+            return fn
+
+        async def run(self, *_args, **_kwargs):
+            for payload in [invalid, invalid]:
+                draft = bootstrap_llm_module.BootstrapKeywordDraft.model_validate(payload)
+                try:
+                    assert self._validator is not None
+                    self._validator(draft)
+                except ModelRetry:
+                    continue
+            raise UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(bootstrap_llm_module, "Agent", FakeAgent)
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="bootstrap_output_invalid: bootstrap seed source_knowledge_pack_ids must be selected packs",
+        ):
+            asyncio.run(
+                request_bootstrap_keyword_draft(
+                    _requirement_sheet(),
+                    routing_result,
+                    [],
+                    max_seed_terms=3,
+                    model=dummy_model,
+                    env_file=None,
+                )
+            )
+    finally:
+        monkeypatch.undo()

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic_ai import Agent, ModelRetry
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 
 from seektalent.frontier_ops import generate_search_controller_decision
 from seektalent.llm_config import build_llm_binding
@@ -13,6 +14,7 @@ from seektalent.models import (
     SearchControllerContext_t,
     SearchControllerDecisionDraft_t,
     stable_deduplicate,
+    validate_search_controller_decision_draft,
 )
 from seektalent.prompt_surfaces import (
     OUTPUT_RETRIES,
@@ -103,7 +105,7 @@ async def request_search_controller_decision_draft(
     if test_outputs is not None:
         validator_retry_count = 0
         for index, payload in enumerate(test_outputs):
-            draft = SearchControllerDecisionDraft_t.model_validate(payload)
+            draft = validate_search_controller_decision_draft(payload)
             try:
                 return _validate_controller_draft(
                     draft,
@@ -123,6 +125,7 @@ async def request_search_controller_decision_draft(
         raise ValueError("test_model_requires_custom_output_args")
 
     validator_retry_count = 0
+    last_validator_error: str | None = None
     active_agent = Agent(
         binding.model,
         output_type=binding.output_type,
@@ -139,21 +142,27 @@ async def request_search_controller_decision_draft(
         draft: SearchControllerDecisionDraft_t,
     ) -> SearchControllerDecisionDraft_t:
         nonlocal validator_retry_count
+        nonlocal last_validator_error
         try:
             return _validate_controller_draft(draft, context, rewrite_fitness_weights)
-        except ModelRetry:
+        except ModelRetry as exc:
             validator_retry_count += 1
+            last_validator_error = str(exc)
             raise
 
-    result = await active_agent.run(
-        prompt_surface.input_text,
-        message_history=None,
-        instructions=SEARCH_CONTROLLER_DECISION_PROMPT,
-        builtin_tools=(),
-        toolsets=(),
-        infer_name=False,
-    )
-    return SearchControllerDecisionDraft_t.model_validate(result.output), build_llm_call_audit(
+    try:
+        result = await active_agent.run(
+            prompt_surface.input_text,
+            message_history=None,
+            instructions=SEARCH_CONTROLLER_DECISION_PROMPT,
+            builtin_tools=(),
+            toolsets=(),
+            infer_name=False,
+        )
+    except UnexpectedModelBehavior as exc:
+        message = last_validator_error or str(exc)
+        raise RuntimeError(f"controller_output_invalid: {message}") from exc
+    return validate_search_controller_decision_draft(result.output), build_llm_call_audit(
         model=model,
         prompt_surface=prompt_surface,
         validator_retry_count=validator_retry_count,

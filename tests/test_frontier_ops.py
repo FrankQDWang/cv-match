@@ -35,8 +35,8 @@ from seektalent.models import (
     RuntimeSelectionPolicy,
     RuntimeTermBudgetPolicy,
     ScoringPolicy,
-    SearchControllerDecisionDraft_t,
     RewriteTermCandidate,
+    make_search_controller_decision_draft,
 )
 from seektalent.search_ops import (
     execute_search_plan,
@@ -808,7 +808,7 @@ def test_select_active_frontier_node_max_query_terms_uses_current_term_budget_po
     assert context.max_query_terms == 6
 
 
-def test_generate_search_controller_decision_normalizes_stop_and_falls_back_to_active_operator() -> None:
+def test_generate_search_controller_decision_normalizes_stop_with_empty_operator_args() -> None:
     context = select_active_frontier_node(
         _frontier_state(
             [
@@ -830,10 +830,10 @@ def test_generate_search_controller_decision_normalizes_stop_and_falls_back_to_a
 
     decision = generate_search_controller_decision(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="stop",
-            selected_operator_name="unknown_operator",
-            operator_args={"query_terms": ["ranking"]},
+            selected_operator_name="must_have_alias",
+            operator_args={},
             expected_gain_hypothesis="Enough coverage.",
         ),
     )
@@ -866,7 +866,7 @@ def test_generate_search_controller_decision_clamps_non_crossover_query_terms() 
 
     decision = generate_search_controller_decision(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="search_cts",
             selected_operator_name="core_precision",
             operator_args={"query_terms": [" backend ", "", "backend", "python", "workflow"]},
@@ -902,7 +902,7 @@ def test_generate_search_controller_decision_rejects_core_precision_new_terms() 
     with pytest.raises(ValueError, match="core_precision_requires_non_empty_active_query_subset"):
         generate_search_controller_decision(
             context,
-            SearchControllerDecisionDraft_t(
+            make_search_controller_decision_draft(
                 action="search_cts",
                 selected_operator_name="core_precision",
                 operator_args={"query_terms": ["python", "ranking"]},
@@ -934,7 +934,7 @@ def test_generate_search_controller_decision_requires_strict_relaxed_floor_subse
     with pytest.raises(ValueError, match="relaxed_floor_requires_non_empty_strict_active_query_subset"):
         generate_search_controller_decision(
             context,
-            SearchControllerDecisionDraft_t(
+            make_search_controller_decision_draft(
                 action="search_cts",
                 selected_operator_name="relaxed_floor",
                 operator_args={"query_terms": ["python", "agent", "workflow"]},
@@ -965,7 +965,7 @@ def test_generate_search_controller_decision_requires_rewrite_for_must_have_alia
 
     decision = generate_search_controller_decision(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="search_cts",
             selected_operator_name="must_have_alias",
             operator_args={"query_terms": ["python", "backend", "ranking"]},
@@ -981,7 +981,7 @@ def test_generate_search_controller_decision_requires_rewrite_for_must_have_alia
     ):
         generate_search_controller_decision(
             context,
-            SearchControllerDecisionDraft_t(
+            make_search_controller_decision_draft(
                 action="search_cts",
                 selected_operator_name="must_have_alias",
                 operator_args={"query_terms": ["python", "agent", "workflow", "backend", "ranking"]},
@@ -1028,7 +1028,7 @@ def test_generate_search_controller_decision_uses_ga_lite_rewrite_terms() -> Non
 
     decision = generate_search_controller_decision(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="search_cts",
             selected_operator_name="vocabulary_bridge",
             operator_args={"query_terms": ["python backend", "workflow", "rag"]},
@@ -1116,7 +1116,7 @@ def test_explicit_rewrite_fitness_weights_match_baseline_default() -> None:
         RuntimeTermBudgetPolicy(),
         _runtime_budget_state(remaining_budget=5, runtime_round_index=4),
     )
-    draft = SearchControllerDecisionDraft_t(
+    draft = make_search_controller_decision_draft(
         action="search_cts",
         selected_operator_name="vocabulary_bridge",
         operator_args={"query_terms": ["python backend", "workflow", "rag"]},
@@ -1294,7 +1294,7 @@ def test_generate_search_controller_decision_with_trace_records_winning_rewrite(
 
     decision, rewrite_choice_trace = generate_search_controller_decision_with_trace(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="search_cts",
             selected_operator_name="vocabulary_bridge",
             operator_args={"query_terms": ["python backend", "ranking", "rag"]},
@@ -1341,7 +1341,7 @@ def test_generate_search_controller_decision_normalizes_crossover_fields() -> No
 
     invalid = generate_search_controller_decision(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="search_cts",
             selected_operator_name="crossover_compose",
             operator_args={
@@ -1355,7 +1355,7 @@ def test_generate_search_controller_decision_normalizes_crossover_fields() -> No
     )
     valid = generate_search_controller_decision(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="search_cts",
             selected_operator_name="crossover_compose",
             operator_args={
@@ -1425,7 +1425,7 @@ def test_frontier_search_path_connects_to_phase3_ops() -> None:
     )
     decision = generate_search_controller_decision(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="search_cts",
             selected_operator_name="core_precision",
             operator_args={"query_terms": ["python"]},
@@ -1493,7 +1493,7 @@ def test_frontier_stop_path_keeps_the_same_frontier_state() -> None:
     )
     decision = generate_search_controller_decision(
         context,
-        SearchControllerDecisionDraft_t(
+        make_search_controller_decision_draft(
             action="stop",
             selected_operator_name="core_precision",
             operator_args={},

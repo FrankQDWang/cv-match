@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+from pydantic import ValidationError
+from pydantic_ai import ModelRetry
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.test import TestModel
 
+import seektalent.runtime_llm as runtime_llm_module
 from seektalent.models import (
     BranchEvaluationDraft_t,
     FrontierNode_t,
@@ -192,6 +197,19 @@ def test_request_branch_evaluation_draft_records_prompt_surface_audit() -> None:
     assert "## Return Fields" in audit.prompt_surface.input_text
 
 
+def test_branch_evaluation_draft_rejects_invalid_hint_and_out_of_range_scores() -> None:
+    with pytest.raises(ValidationError):
+        BranchEvaluationDraft_t.model_validate(
+            {
+                "novelty_score": 1.2,
+                "usefulness_score": 0.6,
+                "branch_exhausted": False,
+                "repair_operator_hint": "invalid_operator",
+                "evaluation_notes": "Useful expansion.",
+            }
+        )
+
+
 def test_request_branch_evaluation_draft_adds_budget_warning_near_budget_end() -> None:
     _, audit = asyncio.run(
         request_branch_evaluation_draft(
@@ -217,6 +235,105 @@ def test_request_branch_evaluation_draft_adds_budget_warning_near_budget_end() -
         "Budget Warning",
         "Return Fields",
     ]
+
+
+def test_request_branch_evaluation_draft_retries_when_empty_shortlist_requires_exhausted() -> None:
+    draft, audit = asyncio.run(
+        request_branch_evaluation_draft(
+            _requirement_sheet(),
+            _frontier_state(),
+            _execution_plan(),
+            _execution_result(),
+            _scoring_result().model_copy(update={"node_shortlist_candidate_ids": []}),
+            _runtime_budget_state(),
+            model=TestModel(
+                custom_output_args=[
+                    {
+                        "novelty_score": 0.4,
+                        "usefulness_score": 0.6,
+                        "branch_exhausted": False,
+                        "repair_operator_hint": "core_precision",
+                        "evaluation_notes": "Useful expansion.",
+                    },
+                    {
+                        "novelty_score": 0.4,
+                        "usefulness_score": 0.6,
+                        "branch_exhausted": True,
+                        "repair_operator_hint": "core_precision",
+                        "evaluation_notes": "  Useful expansion.  ",
+                    },
+                ]
+            ),
+        )
+    )
+
+    assert draft == BranchEvaluationDraft_t(
+        novelty_score=0.4,
+        usefulness_score=0.6,
+        branch_exhausted=True,
+        repair_operator_hint="core_precision",
+        evaluation_notes="Useful expansion.",
+    )
+    assert audit.validator_retry_count == 1
+
+
+def test_request_branch_evaluation_draft_surfaces_last_validator_error() -> None:
+    dummy_model = object()
+
+    class FakeAgent:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self._validator = None
+
+        def output_validator(self, fn):
+            self._validator = fn
+            return fn
+
+        async def run(self, *_args, **_kwargs):
+            for payload in [
+                {
+                    "novelty_score": 0.4,
+                    "usefulness_score": 0.6,
+                    "branch_exhausted": False,
+                    "repair_operator_hint": "core_precision",
+                    "evaluation_notes": "Useful expansion.",
+                },
+                {
+                    "novelty_score": 0.3,
+                    "usefulness_score": 0.5,
+                    "branch_exhausted": False,
+                    "repair_operator_hint": None,
+                    "evaluation_notes": "Still useful.",
+                },
+            ]:
+                draft = BranchEvaluationDraft_t.model_validate(payload)
+                try:
+                    assert self._validator is not None
+                    self._validator(draft)
+                except ModelRetry:
+                    continue
+            raise UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(runtime_llm_module, "Agent", FakeAgent)
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="branch_evaluation_output_invalid: branch_evaluation requires branch_exhausted=true when node_shortlist_candidate_ids is empty",
+        ):
+            asyncio.run(
+                request_branch_evaluation_draft(
+                    _requirement_sheet(),
+                    _frontier_state(),
+                    _execution_plan(),
+                    _execution_result(),
+                    _scoring_result().model_copy(update={"node_shortlist_candidate_ids": []}),
+                    _runtime_budget_state(),
+                    model=dummy_model,
+                    env_file=None,
+                )
+            )
+    finally:
+        monkeypatch.undo()
 
 
 def test_request_search_run_summary_draft_records_prompt_surface_audit() -> None:
@@ -245,3 +362,67 @@ def test_request_search_run_summary_draft_records_prompt_surface_audit() -> None
     assert audit.prompt_surface.surface_id == "search_run_finalization"
     assert audit.prompt_surface.sections[2].title == "Run Facts"
     assert audit.prompt_surface.sections[-1].title == "Return Fields"
+
+
+def test_request_search_run_summary_draft_retries_after_blank_summary() -> None:
+    draft, audit = asyncio.run(
+        request_search_run_summary_draft(
+            _requirement_sheet(),
+            FrontierState_t1.model_validate(_frontier_state().model_dump(mode="python")),
+            [],
+            "controller_stop",
+            model=TestModel(
+                custom_output_args=[
+                    {"run_summary": "   "},
+                    {"run_summary": "  The shortlist is ready for review.  "},
+                ]
+            ),
+        )
+    )
+
+    assert draft == SearchRunSummaryDraft_t(
+        run_summary="The shortlist is ready for review."
+    )
+    assert audit.validator_retry_count == 1
+
+
+def test_request_search_run_summary_draft_surfaces_last_validator_error() -> None:
+    dummy_model = object()
+
+    class FakeAgent:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self._validator = None
+
+        def output_validator(self, fn):
+            self._validator = fn
+            return fn
+
+        async def run(self, *_args, **_kwargs):
+            for payload in [{"run_summary": "   "}, {"run_summary": " \n "}]:
+                draft = SearchRunSummaryDraft_t.model_validate(payload)
+                try:
+                    assert self._validator is not None
+                    self._validator(draft)
+                except ModelRetry:
+                    continue
+            raise UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(runtime_llm_module, "Agent", FakeAgent)
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="search_run_finalization_output_invalid: search_run_finalization requires non-empty run_summary",
+        ):
+            asyncio.run(
+                request_search_run_summary_draft(
+                    _requirement_sheet(),
+                    FrontierState_t1.model_validate(_frontier_state().model_dump(mode="python")),
+                    [],
+                    "controller_stop",
+                    model=dummy_model,
+                    env_file=None,
+                )
+            )
+    finally:
+        monkeypatch.undo()

@@ -4,7 +4,7 @@ import json
 from hashlib import sha1
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 
 ConstraintValue = str | int | list[str]
@@ -29,6 +29,13 @@ OperatorName = Literal[
     "pack_bridge",
     "vocabulary_bridge",
     "crossover_compose",
+]
+NonCrossoverOperatorName = Literal[
+    "core_precision",
+    "must_have_alias",
+    "relaxed_floor",
+    "pack_bridge",
+    "vocabulary_bridge",
 ]
 SearchControllerAction = Literal["search_cts", "stop"]
 SearchPhase = Literal["explore", "balance", "harvest"]
@@ -315,10 +322,10 @@ class BranchEvaluation_t(BaseModel):
 class BranchEvaluationDraft_t(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    novelty_score: float
-    usefulness_score: float
+    novelty_score: float = Field(ge=0.0, le=1.0)
+    usefulness_score: float = Field(ge=0.0, le=1.0)
     branch_exhausted: bool
-    repair_operator_hint: str | None = None
+    repair_operator_hint: OperatorName | None = None
     evaluation_notes: str
 
 
@@ -529,13 +536,85 @@ class SearchControllerContext_t(BaseModel):
     runtime_budget_state: RuntimeBudgetState
 
 
-class SearchControllerDecisionDraft_t(BaseModel):
+class StopControllerOperatorArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: str
-    selected_operator_name: str
-    operator_args: dict[str, Any] = Field(default_factory=dict)
+    pass
+
+
+class NonCrossoverSearchControllerOperatorArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query_terms: list[str]
+
+
+class CrossoverSearchControllerOperatorArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    donor_frontier_node_id: str
+    shared_anchor_terms: list[str]
+    donor_terms_used: list[str]
+    crossover_rationale: str | None = None
+
+
+class StopControllerDecisionDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["stop"]
+    selected_operator_name: OperatorName
+    operator_args: StopControllerOperatorArgs
     expected_gain_hypothesis: str
+
+
+class NonCrossoverSearchControllerDecisionDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["search_cts"]
+    selected_operator_name: NonCrossoverOperatorName
+    operator_args: NonCrossoverSearchControllerOperatorArgs
+    expected_gain_hypothesis: str
+
+
+class CrossoverSearchControllerDecisionDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["search_cts"]
+    selected_operator_name: Literal["crossover_compose"]
+    operator_args: CrossoverSearchControllerOperatorArgs
+    expected_gain_hypothesis: str
+
+
+SearchControllerDecisionDraft_t = (
+    StopControllerDecisionDraft
+    | CrossoverSearchControllerDecisionDraft
+    | NonCrossoverSearchControllerDecisionDraft
+)
+_SEARCH_CONTROLLER_DECISION_DRAFT_ADAPTER = TypeAdapter(SearchControllerDecisionDraft_t)
+
+
+def validate_search_controller_decision_draft(payload: Any) -> SearchControllerDecisionDraft_t:
+    return _SEARCH_CONTROLLER_DECISION_DRAFT_ADAPTER.validate_python(payload)
+
+
+def make_search_controller_decision_draft(
+    *,
+    action: str,
+    selected_operator_name: str,
+    operator_args: dict[str, Any],
+    expected_gain_hypothesis: str,
+) -> SearchControllerDecisionDraft_t:
+    return validate_search_controller_decision_draft(
+        {
+            "action": action,
+            "selected_operator_name": selected_operator_name,
+            "operator_args": operator_args,
+            "expected_gain_hypothesis": expected_gain_hypothesis,
+        }
+    )
+
+
+def search_controller_decision_draft_json_schema() -> dict[str, Any]:
+    return _SEARCH_CONTROLLER_DECISION_DRAFT_ADAPTER.json_schema()
 
 
 class SearchControllerDecision_t(BaseModel):
@@ -844,7 +923,7 @@ class SearchRunResult(BaseModel):
 class SearchRunSummaryDraft_t(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_summary: str
+    run_summary: str = Field(min_length=1)
 
 
 class RuntimeActiveManifest(BaseModel):

@@ -3,10 +3,11 @@ from __future__ import annotations
 from io import StringIO
 from types import SimpleNamespace
 
+from prompt_toolkit.buffer import Buffer
 from rich.console import Console
 
 from seektalent.progress import make_progress_event
-from seektalent.tui import run_chat_session
+from seektalent.tui import COMPOSER_MIN_LINES, _build_composer_window, run_chat_session
 
 
 def _fake_bundle() -> object:
@@ -64,6 +65,12 @@ def test_chat_session_starts_with_codex_like_intro() -> None:
     assert prompts == ["› ", "› "]
 
 
+def test_composer_window_keeps_fixed_min_height() -> None:
+    window = _build_composer_window(Buffer(multiline=True), "› ")
+    assert window.height.min == COMPOSER_MIN_LINES
+    assert window.height.preferred == COMPOSER_MIN_LINES
+
+
 def test_empty_jd_reprompts_before_running() -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None)
@@ -79,6 +86,7 @@ def test_empty_jd_reprompts_before_running() -> None:
     output = _rendered_text(console, stream)
     assert "Job Description cannot be empty." in output
     assert "Paste Hiring Notes" in output
+    assert "(optional)" in output
 
 
 def test_chat_session_streams_progress_and_final_result() -> None:
@@ -108,10 +116,30 @@ def test_chat_session_streams_progress_and_final_result() -> None:
 
     assert run_chat_session(ask=fake_ask, console=console, run_search=fake_run_search) == 0
     output = _rendered_text(console, stream)
-    assert "Working:" in output
-    assert "• controller: selected core_precision" in output
-    assert "• rerank: built 2 candidate cards" in output
-    assert "reviewer_summary: 1 advance-ready, 1 need manual review, 0 reject" in output
-    assert "1. c-1 | advance" in output
-    assert "gaps: Only weak evidence for retrieval" in output
+    assert "Working" in output
+    assert "· controller: selected core_precision" in output
+    assert "· rerank: built 2 candidate cards" in output
+    assert "Final result" in output
+    assert "1 advance-ready, 1 need manual review, 0 reject" in output
+    assert "1. c-1 · advance" in output
+    assert "gap: Only weak evidence for retrieval" in output
     assert "Session complete. Re-run seektalent to start a new session." in output
+
+
+def test_chat_session_surfaces_specific_failure_reason() -> None:
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None)
+    answers = iter(["JD text", ""])
+
+    def fake_ask(prompt_text: str) -> str:
+        return next(answers)
+
+    async def fake_run_search(**kwargs):
+        raise RuntimeError(
+            "branch_evaluation_output_invalid: branch_evaluation requires branch_exhausted=true when node_shortlist_candidate_ids is empty"
+        )
+
+    assert run_chat_session(ask=fake_ask, console=console, run_search=fake_run_search) == 1
+    output = _rendered_text(console, stream)
+    assert "Failed" in output
+    assert "branch_evaluation_output_invalid:" in output

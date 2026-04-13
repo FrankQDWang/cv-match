@@ -95,7 +95,7 @@ def _branch_evaluation_payload() -> dict[str, object]:
     return {
         "novelty_score": 0.8,
         "usefulness_score": 0.7,
-        "branch_exhausted": False,
+        "branch_exhausted": True,
         "repair_operator_hint": "core_precision",
         "evaluation_notes": "Good expansion.",
     }
@@ -151,7 +151,7 @@ class _FakeLLMHandler(BaseHTTPRequestHandler):
             arguments = {
                 "action": "search_cts",
                 "selected_operator_name": "core_precision",
-                "operator_args": {"query_terms": ["retrieval"]},
+                "operator_args": {"query_terms": ["python backend"]},
                 "expected_gain_hypothesis": "Tighten around the strongest terms.",
             }
         else:
@@ -173,7 +173,10 @@ class _FakeLLMHandler(BaseHTTPRequestHandler):
                         "type": "function",
                         "function": {
                             "name": name,
-                            "arguments": json.dumps(arguments, ensure_ascii=False),
+                            "arguments": json.dumps(
+                                {"response": arguments},
+                                ensure_ascii=False,
+                            ),
                         },
                     }
                 ],
@@ -300,7 +303,7 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert version_result.stdout.strip() == "0.3.5"
+    assert version_result.stdout.strip() == "0.3.6"
 
     inspect_result = subprocess.run(
         [str(cli), "inspect", "--json"],

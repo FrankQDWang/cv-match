@@ -212,16 +212,16 @@ def _scoring_result(*, shortlist_ids: list[str] | None = None, top_three_average
     )
 
 
-def test_evaluate_branch_outcome_clamps_whitelists_and_forces_exhaustion() -> None:
+def test_evaluate_branch_outcome_preserves_legal_draft_values() -> None:
     result = evaluate_branch_outcome(
         _requirement_sheet(),
         _frontier_state(),
-        _plan().model_copy(update={"knowledge_pack_ids": []}),
+        _plan(),
         _execution_result(),
-        _scoring_result(shortlist_ids=[]),
+        _scoring_result(),
         BranchEvaluationDraft_t(
-            novelty_score=1.5,
-            usefulness_score=-1.0,
+            novelty_score=0.8,
+            usefulness_score=0.4,
             branch_exhausted=False,
             repair_operator_hint="pack_bridge",
             evaluation_notes="  too broad  ",
@@ -229,10 +229,10 @@ def test_evaluate_branch_outcome_clamps_whitelists_and_forces_exhaustion() -> No
     )
 
     assert result == BranchEvaluation_t(
-        novelty_score=1.0,
-        usefulness_score=0.0,
-        branch_exhausted=True,
-        repair_operator_hint=None,
+        novelty_score=0.8,
+        usefulness_score=0.4,
+        branch_exhausted=False,
+        repair_operator_hint="pack_bridge",
         evaluation_notes="too broad",
     )
 

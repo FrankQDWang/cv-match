@@ -18,6 +18,7 @@ from seektalent.llm_config import CALLPOINT_ENV_PREFIXES, inspect_llm_callpoints
 from seektalent.progress import ProgressEvent
 from seektalent.resources import read_env_template, resolve_user_path, runtime_active_file
 from seektalent.run_artifacts import RUNTIME_STATUS
+from seektalent.tui import COMPOSER_MIN_LINES
 
 KNOWN_COMMANDS = ("run", "doctor", "init", "version", "update", "inspect")
 REMOVED_INLINE_FLAGS = ("--jd", "--notes")
@@ -326,6 +327,7 @@ def _inspect_payload(*, env_file: str = ".env") -> dict[str, object]:
             "input_flow": ["job_description", "hiring_notes_optional"],
             "submit_key": "Enter",
             "newline_key": "Ctrl+J",
+            "composer_min_lines": COMPOSER_MIN_LINES,
             "session_behavior": "Single run per launch. Re-run `seektalent` to start a new session.",
         },
         "non_interactive_entry": {

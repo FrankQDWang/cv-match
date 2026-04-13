@@ -25,6 +25,7 @@ Return only these fields:
 
 `action` must be either `search_cts` or `stop`.
 If `action` is `search_cts`, `selected_operator_name` must be one of `allowed_operator_names`.
+If `action` is `search_cts`, `operator_args` must be present and must contain the required nested fields for the chosen operator.
 If `action` is `stop`, still return a legal `selected_operator_name`, but make the stop decision clear through `action`.
 
 ## Decision Procedure
@@ -67,6 +68,7 @@ If `action` is `stop`, still return a legal `selected_operator_name`, but make t
   - `donor_frontier_node_id`
   - `shared_anchor_terms`
   - `donor_terms_used`
+- `operator_args: {}` is illegal for any `search_cts` decision.
 - Do not invent donor ids outside the provided donor candidate list.
 - `expected_gain_hypothesis` must be a short sentence about the expected incremental gain, not a generic explanation.
 
@@ -140,6 +142,19 @@ Good draft:
   "expected_gain_hypothesis": "Further search is unlikely to add enough shortlist value under the remaining budget."
 }
 ```
+
+### Invalid Example: Empty operator_args
+
+```json
+{
+  "action": "search_cts",
+  "selected_operator_name": "core_precision",
+  "operator_args": {},
+  "expected_gain_hypothesis": "Tighten the query."
+}
+```
+
+This is invalid because `search_cts` requires materializable operator arguments.
 
 ## Hard Rules
 

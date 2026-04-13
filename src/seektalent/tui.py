@@ -6,8 +6,12 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from prompt_toolkit import PromptSession
+from prompt_toolkit.application import Application
+from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout, Window
+from prompt_toolkit.layout.controls import BufferControl
+from prompt_toolkit.layout.dimension import Dimension
 from rich.console import Console
 from rich.markup import escape
 
@@ -15,6 +19,8 @@ from seektalent.api import run_match_async
 from seektalent.models import SearchRunBundle
 from seektalent.progress import ProgressEvent
 
+COMPOSER_MIN_LINES = 3
+INTRO_BOX_MAX_WIDTH = 64
 PromptFn = Callable[[str], str]
 RunSearchFn = Callable[..., Awaitable[SearchRunBundle]]
 
@@ -33,12 +39,12 @@ def run_chat_session(
         job_description = _read_job_description(console, prompt)
         console.print()
         console.print(
-            "Paste [bold]Hiring Notes[/] if you have them. Press [bold]Enter[/] to skip. "
-            "Use [bold]Ctrl+J[/] for new lines."
+            "Paste [bold]Hiring Notes[/] [dim](optional)[/]. "
+            "Press [bold]Enter[/] to skip."
         )
         hiring_notes = prompt("› ").rstrip().strip()
         console.print()
-        console.print("Working:")
+        console.print("[dim]Working[/]")
         bundle = asyncio.run(
             run_search(
                 job_description=job_description,
@@ -50,56 +56,92 @@ def run_chat_session(
             )
         )
     except KeyboardInterrupt:
-        console.print("\nInterrupted. Re-run [bold]seektalent[/] to start a new session.")
+        console.print("\n[bold]Interrupted[/]")
+        console.print("[dim]Re-run seektalent to start a new session.[/]")
         return 130
     except Exception as exc:  # noqa: BLE001
-        console.print(f"Run failed.\n{escape(str(exc))}")
-        console.print("Session complete. Re-run [bold]seektalent[/] to start a new session.")
+        console.print("[bold red]Failed[/]")
+        console.print(escape(str(exc)))
+        console.print("[dim]Session complete. Re-run seektalent to start a new session.[/]")
         return 1
     console.print()
     console.print(_result_message(bundle))
     console.print()
-    console.print("Session complete. Re-run [bold]seektalent[/] to start a new session.")
+    console.print("[dim]Session complete. Re-run seektalent to start a new session.[/]")
     return 0
 
 
 def _build_prompt() -> PromptFn:
-    os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+    if os.environ.get("TERM") == "dumb":
+        os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+
+    def _prompt(prompt_text: str) -> str:
+        buffer = Buffer(multiline=True)
+        app = Application(
+            full_screen=False,
+            key_bindings=_composer_bindings(),
+            layout=Layout(_build_composer_window(buffer, prompt_text)),
+        )
+        return app.run()
+
+    return _prompt
+
+
+def _composer_bindings() -> KeyBindings:
     bindings = KeyBindings()
 
     @bindings.add("enter")
     def _submit(event) -> None:
-        event.current_buffer.validate_and_handle()
+        event.app.exit(result=event.app.current_buffer.text)
 
     @bindings.add("c-j")
     def _newline(event) -> None:
-        event.current_buffer.insert_text("\n")
+        event.app.current_buffer.insert_text("\n")
 
-    session = PromptSession(
-        multiline=True,
-        key_bindings=bindings,
-        prompt_continuation=lambda width, line_number, wrap_count: "  ",
-        bottom_toolbar=lambda: " Enter submit · Ctrl+J newline · Ctrl+C quit ",
+    @bindings.add("c-c")
+    def _interrupt(event) -> None:
+        raise KeyboardInterrupt
+
+    return bindings
+
+
+def _build_composer_window(buffer: Buffer, prompt_text: str) -> Window:
+    return Window(
+        BufferControl(buffer=buffer),
+        height=Dimension(min=COMPOSER_MIN_LINES, preferred=COMPOSER_MIN_LINES),
+        wrap_lines=True,
+        get_line_prefix=lambda line_number, wrap_count: prompt_text if line_number == 0 and wrap_count == 0 else "  ",
     )
-    return session.prompt
 
 
 def _print_intro(console: Console, cwd: Path) -> None:
+    box_width = min(max(console.size.width - 4, 36), INTRO_BOX_MAX_WIDTH)
+    content_width = box_width - 4
+    cwd_text = _fit_text(str(cwd), content_width - 5)
+    mode_text = _fit_text("chat-first JD search", content_width - 6)
+    title_text = _fit_text(">_ SeekTalent", content_width)
     console.print(
         "\n".join(
             [
-                "[dim]╭─────────────────────────────────────────────╮[/]",
-                "[dim]│[/] [bold]>_[/] [bold]SeekTalent[/]                               [dim]│[/]",
-                "[dim]│[/]                                             [dim]│[/]",
-                "[dim]│[/] [dim]mode:[/]      chat-first JD search            [dim]│[/]",
-                f"[dim]│[/] [dim]cwd:[/]       {escape(str(cwd))[:29]:<29} [dim]│[/]",
-                "[dim]╰─────────────────────────────────────────────╯[/]",
+                f"[dim]╭{'─' * (box_width - 2)}╮[/]",
+                f"[dim]│[/] [bold]{escape(title_text):<{content_width}}[/] [dim]│[/]",
+                f"[dim]│[/] {'':<{content_width}} [dim]│[/]",
+                f"[dim]│[/] [dim]mode:[/] {escape(mode_text):<{content_width - 6}} [dim]│[/]",
+                f"[dim]│[/] [dim]cwd:[/]  {escape(cwd_text):<{content_width - 6}} [dim]│[/]",
+                f"[dim]╰{'─' * (box_width - 2)}╯[/]",
                 "",
-                "Paste [bold]Job Description[/]. Press [bold]Enter[/] to submit. "
-                "Use [bold]Ctrl+J[/] for new lines.",
+                "Paste [bold]Job Description[/].",
+                "[dim]Enter submit · Ctrl+J newline · Ctrl+C quit[/]",
             ]
         )
     )
+
+
+def _fit_text(text: str, width: int) -> str:
+    width = max(width, 8)
+    if len(text) <= width:
+        return text
+    return f"…{text[-(width - 1):]}"
 
 
 def _read_job_description(console: Console, prompt: PromptFn) -> str:
@@ -111,32 +153,40 @@ def _read_job_description(console: Console, prompt: PromptFn) -> str:
 
 
 def _print_progress(console: Console, event: ProgressEvent) -> None:
-    console.print(f"• {escape(event.message)}")
+    console.print(f"[dim]·[/] {escape(event.message)}")
 
 
 def _result_message(bundle: SearchRunBundle) -> str:
     cards = bundle.final_result.final_candidate_cards[:10]
     lines = [
-        "Run complete.",
-        f"stop_reason: {escape(bundle.final_result.stop_reason)}",
-        f"reviewer_summary: {escape(bundle.final_result.reviewer_summary)}",
-        f"run_summary: {escape(bundle.final_result.run_summary)}",
+        "[bold]Final result[/]",
+        f"[dim]Stop reason:[/] {escape(bundle.final_result.stop_reason)}",
+        "",
+        escape(bundle.final_result.reviewer_summary),
+        "",
+        escape(bundle.final_result.run_summary),
     ]
     if not cards:
-        lines.append("top_candidates: none")
+        lines.extend(
+            [
+                "",
+                "[dim]Top candidates[/]",
+                "None",
+            ]
+        )
         return "\n".join(lines)
-    lines.append("top_candidates:")
+    lines.extend(["", "[dim]Top candidates[/]"])
     for index, card in enumerate(cards, start=1):
         lines.append(
-            f"{index}. {escape(_value(card, 'candidate_id'))} | {escape(_value(card, 'review_recommendation'))}"
+            f"{index}. {escape(_value(card, 'candidate_id'))} · {escape(_value(card, 'review_recommendation'))}"
         )
         lines.append(f"   {escape(_value(card, 'card_summary'))}")
         gap_text = _signal_summary(_value(card, "gap_signals"))
         risk_text = _signal_summary(_value(card, "risk_signals"))
         if gap_text:
-            lines.append(f"   gaps: {gap_text}")
+            lines.append(f"   gap: {gap_text}")
         if risk_text:
-            lines.append(f"   risks: {risk_text}")
+            lines.append(f"   risk: {risk_text}")
     return "\n".join(lines)
 
 

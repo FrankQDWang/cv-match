@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic_ai import Agent, ModelRetry
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 
 from seektalent.llm_config import build_llm_binding
 from seektalent.models import (
@@ -25,6 +26,7 @@ from seektalent.prompt_surfaces import (
     build_requirement_extraction_prompt_surface,
 )
 from seektalent.prompts import load_prompt
+from seektalent.requirements import normalize_requirement_draft
 
 REQUIREMENT_EXTRACTION_PROMPT = load_prompt("bootstrap_requirement_extraction.md")
 BOOTSTRAP_KEYWORD_GENERATION_PROMPT = load_prompt("bootstrap_keyword_generation.md")
@@ -62,14 +64,27 @@ async def request_requirement_extraction_draft(
     )
     test_outputs = _test_model_outputs(RequirementExtractionDraft, model=model)
     if test_outputs is not None:
-        return test_outputs[0], build_llm_call_audit(
-            model=model,
-            prompt_surface=prompt_surface,
-            validator_retry_count=0,
-            output_mode=binding.audit_output_mode,
-            model_name=binding.audit_model_name,
-        )
-    result = await Agent(
+        validator_retry_count = 0
+        for index, draft in enumerate(test_outputs):
+            try:
+                return _validate_requirement_extraction_draft(
+                    draft,
+                    input_truth=input_truth,
+                ), build_llm_call_audit(
+                    model=model,
+                    prompt_surface=prompt_surface,
+                    validator_retry_count=validator_retry_count,
+                    output_mode=binding.audit_output_mode,
+                    model_name=binding.audit_model_name,
+                )
+            except ModelRetry:
+                validator_retry_count += 1
+                if validator_retry_count > 1 or index == len(test_outputs) - 1:
+                    raise
+        raise ValueError("test_model_requires_custom_output_args")
+    validator_retry_count = 0
+    last_validator_error: str | None = None
+    active_agent = Agent(
         binding.model,
         output_type=binding.output_type,
         retries=RETRIES,
@@ -78,18 +93,35 @@ async def request_requirement_extraction_draft(
         toolsets=(),
         system_prompt=(),
         model_settings=STRICT_MODEL_SETTINGS,
-    ).run(
-        prompt_surface.input_text,
-        message_history=None,
-        instructions=REQUIREMENT_EXTRACTION_PROMPT,
-        builtin_tools=(),
-        toolsets=(),
-        infer_name=False,
     )
+
+    @active_agent.output_validator
+    def _output_validator(draft: RequirementExtractionDraft) -> RequirementExtractionDraft:
+        nonlocal validator_retry_count
+        nonlocal last_validator_error
+        try:
+            return _validate_requirement_extraction_draft(draft, input_truth=input_truth)
+        except ModelRetry as exc:
+            validator_retry_count += 1
+            last_validator_error = str(exc)
+            raise
+
+    try:
+        result = await active_agent.run(
+            prompt_surface.input_text,
+            message_history=None,
+            instructions=REQUIREMENT_EXTRACTION_PROMPT,
+            builtin_tools=(),
+            toolsets=(),
+            infer_name=False,
+        )
+    except UnexpectedModelBehavior as exc:
+        message = last_validator_error or str(exc)
+        raise RuntimeError(f"requirement_extraction_output_invalid: {message}") from exc
     return RequirementExtractionDraft.model_validate(result.output), build_llm_call_audit(
         model=model,
         prompt_surface=prompt_surface,
-        validator_retry_count=0,
+        validator_retry_count=validator_retry_count,
         output_mode=binding.audit_output_mode,
         model_name=binding.audit_model_name,
     )
@@ -150,10 +182,12 @@ async def request_bootstrap_keyword_draft(
         system_prompt=(),
         model_settings=STRICT_MODEL_SETTINGS,
     )
+    last_validator_error: str | None = None
 
     @active_agent.output_validator
     def _output_validator(draft: BootstrapKeywordDraft) -> BootstrapKeywordDraft:
         nonlocal validator_retry_count
+        nonlocal last_validator_error
         try:
             return _validate_bootstrap_keyword_draft(
                 draft,
@@ -161,18 +195,23 @@ async def request_bootstrap_keyword_draft(
                 selected_knowledge_packs=selected_knowledge_packs,
                 max_seed_terms=max_seed_terms,
             )
-        except ModelRetry:
+        except ModelRetry as exc:
             validator_retry_count += 1
+            last_validator_error = str(exc)
             raise
 
-    result = await active_agent.run(
-        prompt_surface.input_text,
-        message_history=None,
-        instructions=BOOTSTRAP_KEYWORD_GENERATION_PROMPT,
-        builtin_tools=(),
-        toolsets=(),
-        infer_name=False,
-    )
+    try:
+        result = await active_agent.run(
+            prompt_surface.input_text,
+            message_history=None,
+            instructions=BOOTSTRAP_KEYWORD_GENERATION_PROMPT,
+            builtin_tools=(),
+            toolsets=(),
+            infer_name=False,
+        )
+    except UnexpectedModelBehavior as exc:
+        message = last_validator_error or str(exc)
+        raise RuntimeError(f"bootstrap_output_invalid: {message}") from exc
     return BootstrapKeywordDraft.model_validate(result.output), build_llm_call_audit(
         model=model,
         prompt_surface=prompt_surface,
@@ -238,6 +277,18 @@ def _validate_bootstrap_keyword_draft(
             raise ModelRetry("multi-pack routing must include two-pack pack_bridge")
 
     return draft.model_copy(update={"candidate_seeds": normalized_seeds})
+
+
+def _validate_requirement_extraction_draft(
+    draft: RequirementExtractionDraft,
+    *,
+    input_truth: SearchInputTruth,
+) -> RequirementExtractionDraft:
+    try:
+        normalize_requirement_draft(draft, input_truth=input_truth)
+    except ValueError as exc:
+        raise ModelRetry(str(exc)) from exc
+    return draft
 
 
 def _normalized_keywords(keywords: list[str], max_seed_terms: int) -> list[str]:
