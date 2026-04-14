@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+.idea/
+.obsidian/
+
+# Run artifacts
+runs/
+cts.validated.yaml
+!src/seektalent/cts.validated.yaml
+examples/
+obsidian/
+
+# Frontend-generated files
+node_modules/
