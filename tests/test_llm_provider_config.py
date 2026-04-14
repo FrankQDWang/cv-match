@@ -68,6 +68,15 @@ def test_app_settings_accepts_explicit_judge_reasoning_effort() -> None:
     assert settings.effective_judge_reasoning_effort == "high"
 
 
+def test_app_settings_weave_entity_falls_back_to_wandb_entity() -> None:
+    settings = AppSettings(
+        _env_file=None,
+        wandb_entity="frankqdwang1-personal-creations",
+    )
+
+    assert settings.effective_weave_entity == "frankqdwang1-personal-creations"
+
+
 def test_app_settings_rejects_max_rounds_above_ten() -> None:
     with pytest.raises(ValidationError, match="max_rounds must be <= 10"):
         AppSettings(_env_file=None, max_rounds=11)

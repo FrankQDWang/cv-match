@@ -90,6 +90,8 @@ class AppSettings(BaseSettings):
     enable_reflection: bool = True
     wandb_entity: str | None = None
     wandb_project: str | None = None
+    weave_entity: str | None = None
+    weave_project: str | None = None
 
     runs_dir: str = "runs"
 
@@ -147,6 +149,10 @@ class AppSettings(BaseSettings):
     @property
     def effective_judge_reasoning_effort(self) -> ReasoningEffort:
         return self.judge_reasoning_effort or self.reasoning_effort
+
+    @property
+    def effective_weave_entity(self) -> str | None:
+        return self.weave_entity or self.wandb_entity
 
     def require_cts_credentials(self) -> None:
         if not self.cts_tenant_key or not self.cts_tenant_secret:

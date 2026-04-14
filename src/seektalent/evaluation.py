@@ -8,6 +8,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Literal
@@ -92,6 +93,25 @@ def snapshot_sha256(payload: dict[str, Any]) -> str:
 
 def _cache_path(project_root: Path) -> Path:
     return project_root / ".seektalent" / "judge_cache.sqlite3"
+
+
+def _history_path(project_root: Path) -> Path:
+    return project_root / ".seektalent" / "eval_history.sqlite3"
+
+
+def _app_version() -> str:
+    try:
+        return package_version("seektalent")
+    except PackageNotFoundError:
+        return "0.2.4"
+
+
+@dataclass(frozen=True)
+class VersionStageAverage:
+    count: int
+    ndcg_at_10: float
+    precision_at_10: float
+    total_score: float
 
 
 class JudgeCache:
@@ -189,6 +209,97 @@ class JudgeCache:
                         datetime.now().astimezone().isoformat(timespec="seconds"),
                     )
                     for jd_sha256_value, snapshot_sha256_value, model_id, result in entries
+                ],
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    def close(self) -> None:
+        if self.conn is not None:
+            self.conn.close()
+
+
+class EvaluationHistory:
+    def __init__(self, project_root: Path) -> None:
+        self.path = _history_path(project_root)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.conn: sqlite3.Connection | None = None
+        if self.path.exists():
+            self.conn = sqlite3.connect(self.path)
+            self.conn.row_factory = sqlite3.Row
+
+    def _ensure_conn(self) -> sqlite3.Connection:
+        if self.conn is None:
+            self.conn = sqlite3.connect(self.path)
+            self.conn.row_factory = sqlite3.Row
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS eval_history (
+                run_id TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                seektalent_version TEXT NOT NULL,
+                ndcg_at_10 REAL NOT NULL,
+                precision_at_10 REAL NOT NULL,
+                total_score REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (run_id, stage)
+            )
+            """
+        )
+        self.conn.commit()
+        return self.conn
+
+    def get_version_stage_average(self, *, seektalent_version: str, stage: str) -> VersionStageAverage:
+        if self.conn is None and not self.path.exists():
+            return VersionStageAverage(count=0, ndcg_at_10=0.0, precision_at_10=0.0, total_score=0.0)
+        conn = self._ensure_conn()
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS count,
+                AVG(ndcg_at_10) AS ndcg_at_10,
+                AVG(precision_at_10) AS precision_at_10,
+                AVG(total_score) AS total_score
+            FROM eval_history
+            WHERE seektalent_version = ? AND stage = ?
+            """,
+            (seektalent_version, stage),
+        ).fetchone()
+        count = int(row["count"]) if row is not None else 0
+        return VersionStageAverage(
+            count=count,
+            ndcg_at_10=float(row["ndcg_at_10"] or 0.0) if row is not None else 0.0,
+            precision_at_10=float(row["precision_at_10"] or 0.0) if row is not None else 0.0,
+            total_score=float(row["total_score"] or 0.0) if row is not None else 0.0,
+        )
+
+    def put_many(
+        self,
+        entries: list[tuple[str, str, str, EvaluationStageResult]],
+    ) -> None:
+        if not entries:
+            return
+        conn = self._ensure_conn()
+        try:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO eval_history (
+                    run_id, stage, seektalent_version, ndcg_at_10, precision_at_10, total_score, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        run_id,
+                        stage,
+                        seektalent_version,
+                        result.ndcg_at_10,
+                        result.precision_at_10,
+                        result.total_score,
+                        datetime.now().astimezone().isoformat(timespec="seconds"),
+                    )
+                    for run_id, stage, seektalent_version, result in entries
                 ],
             )
             conn.commit()
@@ -382,6 +493,135 @@ def _remove_path(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
+def _version_average_with_current(existing: VersionStageAverage, current: EvaluationStageResult) -> VersionStageAverage:
+    count = existing.count + 1
+    if existing.count == 0:
+        return VersionStageAverage(
+            count=1,
+            ndcg_at_10=current.ndcg_at_10,
+            precision_at_10=current.precision_at_10,
+            total_score=current.total_score,
+        )
+    return VersionStageAverage(
+        count=count,
+        ndcg_at_10=((existing.ndcg_at_10 * existing.count) + current.ndcg_at_10) / count,
+        precision_at_10=((existing.precision_at_10 * existing.count) + current.precision_at_10) / count,
+        total_score=((existing.total_score * existing.count) + current.total_score) / count,
+    )
+
+
+def _weave_project_name(settings: AppSettings) -> str | None:
+    if not settings.weave_project:
+        return None
+    if settings.effective_weave_entity:
+        return f"{settings.effective_weave_entity}/{settings.weave_project}"
+    return settings.weave_project
+
+
+def _weave_summary_markdown(
+    *,
+    evaluation: EvaluationResult,
+    stage: EvaluationStageResult,
+    seektalent_version: str,
+    version_average: VersionStageAverage,
+) -> str:
+    return "\n".join(
+        [
+            "# SeekTalent Eval Summary",
+            "",
+            f"- Run ID: `{evaluation.run_id}`",
+            f"- Stage: `{stage.stage}`",
+            f"- SeekTalent version: `{seektalent_version}`",
+            f"- Judge model: `{evaluation.judge_model}`",
+            f"- Historical runs in this version/stage: `{version_average.count}`",
+            "",
+            "| Metric | Current | Version Mean |",
+            "| --- | ---: | ---: |",
+            f"| ndcg@10 | {stage.ndcg_at_10:.4f} | {version_average.ndcg_at_10:.4f} |",
+            f"| precision@10 | {stage.precision_at_10:.4f} | {version_average.precision_at_10:.4f} |",
+            f"| total_score | {stage.total_score:.4f} | {version_average.total_score:.4f} |",
+        ]
+    )
+
+
+def _log_to_weave(
+    *,
+    settings: AppSettings,
+    evaluation: EvaluationResult,
+    version_averages: dict[str, VersionStageAverage],
+) -> None:
+    project_name = _weave_project_name(settings)
+    if project_name is None:
+        return
+
+    import weave
+
+    weave.init(project_name)
+    seektalent_version = _app_version()
+    model = {
+        "name": "seektalent",
+        "version": seektalent_version,
+        "judge_model": evaluation.judge_model,
+    }
+    for stage in (evaluation.round_01, evaluation.final):
+        logger = weave.EvaluationLogger(
+            name=f"seektalent-{stage.stage}",
+            model=model,
+            dataset=[
+                {
+                    "rank": candidate.rank,
+                    "resume_id": candidate.resume_id,
+                    "source_resume_id": candidate.source_resume_id,
+                    "snapshot_sha256": candidate.snapshot_sha256,
+                }
+                for candidate in stage.candidates
+            ],
+            eval_attributes={
+                "run_id": evaluation.run_id,
+                "stage": stage.stage,
+                "jd_sha256": evaluation.jd_sha256,
+                "seektalent_version": seektalent_version,
+                "judge_model": evaluation.judge_model,
+            },
+            scorers=["judge_score", "is_relevant"],
+        )
+        for candidate in stage.candidates:
+            prediction = logger.log_prediction(
+                inputs={
+                    "rank": candidate.rank,
+                    "resume_id": candidate.resume_id,
+                    "source_resume_id": candidate.source_resume_id,
+                    "snapshot_sha256": candidate.snapshot_sha256,
+                    "raw_resume_path": candidate.raw_resume_path,
+                },
+                output={
+                    "judge_score": candidate.judge_score,
+                    "judge_rationale": candidate.judge_rationale,
+                },
+            )
+            prediction.log_score("judge_score", candidate.judge_score)
+            prediction.log_score("is_relevant", int(candidate.judge_score >= PRECISION_RELEVANCE_THRESHOLD))
+            prediction.finish()
+        logger.set_view(
+            "summary",
+            _weave_summary_markdown(
+                evaluation=evaluation,
+                stage=stage,
+                seektalent_version=seektalent_version,
+                version_average=version_averages[stage.stage],
+            ),
+            extension="md",
+        )
+        logger.log_summary(
+            {
+                "ndcg_at_10": stage.ndcg_at_10,
+                "precision_at_10": stage.precision_at_10,
+                "total_score": stage.total_score,
+            },
+            auto_summarize=False,
+        )
+
+
 def _log_to_wandb(
     *,
     settings: AppSettings,
@@ -476,10 +716,12 @@ async def evaluate_run(
     final_candidates: list[ResumeCandidate],
 ) -> EvaluationArtifacts:
     cache = JudgeCache(settings.project_root)
+    history = EvaluationHistory(settings.project_root)
     temp_root = run_dir / "._evaluation_tmp"
     final_evaluation_dir = run_dir / "evaluation"
     final_raw_dir = run_dir / "raw_resumes"
     try:
+        seektalent_version = _app_version()
         jd_hash = sha256(jd.encode("utf-8")).hexdigest()
         unique_candidates: dict[str, ResumeCandidate] = {}
         for candidate in [*round_01_candidates[:TOP_K], *final_candidates[:TOP_K]]:
@@ -497,6 +739,22 @@ async def evaluate_run(
             round_01=_stage_result(stage="round_01", candidates=round_01_candidates, judged=judged),
             final=_stage_result(stage="final", candidates=final_candidates, judged=judged),
         )
+        version_averages = {
+            "round_01": _version_average_with_current(
+                history.get_version_stage_average(
+                    seektalent_version=seektalent_version,
+                    stage="round_01",
+                ),
+                evaluation.round_01,
+            ),
+            "final": _version_average_with_current(
+                history.get_version_stage_average(
+                    seektalent_version=seektalent_version,
+                    stage="final",
+                ),
+                evaluation.final,
+            ),
+        }
         _remove_path(temp_root)
         export_judge_tasks(run_dir=temp_root, stage="round_01", jd_sha256_value=jd_hash, candidates=round_01_candidates)
         export_judge_tasks(run_dir=temp_root, stage="final", jd_sha256_value=jd_hash, candidates=final_candidates)
@@ -507,13 +765,36 @@ async def evaluate_run(
         path = temp_root / "evaluation" / "evaluation.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(evaluation.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8")
+        (temp_root / "evaluation" / "version_averages.json").write_text(
+            json.dumps(
+                {
+                    stage: {
+                        "count": average.count,
+                        "ndcg_at_10": average.ndcg_at_10,
+                        "precision_at_10": average.precision_at_10,
+                        "total_score": average.total_score,
+                    }
+                    for stage, average in version_averages.items()
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         _log_to_wandb(settings=settings, artifact_root=temp_root, evaluation=evaluation)
+        _log_to_weave(settings=settings, evaluation=evaluation, version_averages=version_averages)
 
         _remove_path(final_evaluation_dir)
         _remove_path(final_raw_dir)
         shutil.move(str(temp_root / "evaluation"), str(final_evaluation_dir))
         shutil.move(str(temp_root / "raw_resumes"), str(final_raw_dir))
         cache.put_many(pending_cache_writes)
+        history.put_many(
+            [
+                (run_id, "round_01", seektalent_version, evaluation.round_01),
+                (run_id, "final", seektalent_version, evaluation.final),
+            ]
+        )
         _remove_path(temp_root)
         return EvaluationArtifacts(result=evaluation, path=final_evaluation_dir / "evaluation.json")
     except Exception:
@@ -523,3 +804,4 @@ async def evaluate_run(
         raise
     finally:
         cache.close()
+        history.close()

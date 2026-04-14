@@ -938,6 +938,8 @@ class WorkflowRuntime:
                 "enable_reflection": self.settings.enable_reflection,
                 "wandb_entity": self.settings.wandb_entity,
                 "wandb_project": self.settings.wandb_project,
+                "weave_entity": self.settings.effective_weave_entity,
+                "weave_project": self.settings.weave_project,
             },
             "configured_providers": self._configured_providers(),
             "selected_openapi_file": str(self.settings.spec_file),

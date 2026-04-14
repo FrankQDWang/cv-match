@@ -139,6 +139,8 @@ def test_init_writes_env_template(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "SEEKTALENT_JUDGE_REASONING_EFFORT=high" in text
     assert "SEEKTALENT_MAX_ROUNDS=10" in text
     assert "SEEKTALENT_WANDB_PROJECT=seektalent-resume-eval" in text
+    assert "SEEKTALENT_WEAVE_ENTITY=frankqdwang1-personal-creations" in text
+    assert "SEEKTALENT_WEAVE_PROJECT=seektalent" in text
     assert str(env_file) in capsys.readouterr().out
 
 
