@@ -61,13 +61,13 @@ def test_latest_runs_by_version_rows_keeps_latest_finished_eval_enabled_run() ->
         [
             {"run_name": "new", "state": "finished", "eval_enabled": True, "seektalent_version": "0.2.5"},
             {"run_name": "skip-disabled", "state": "finished", "eval_enabled": False, "seektalent_version": "0.2.5"},
-            {"run_name": "old", "state": "finished", "eval_enabled": True, "seektalent_version": "0.2.4"},
-            {"run_name": "newer", "state": "finished", "eval_enabled": True, "seektalent_version": "0.2.4"},
+            {"run_name": "old", "state": "finished", "eval_enabled": True, "seektalent_version": "0.4.1"},
+            {"run_name": "newer", "state": "finished", "eval_enabled": True, "seektalent_version": "0.4.1"},
             {"run_name": "skip-crashed", "state": "crashed", "eval_enabled": True, "seektalent_version": "0.2.6"},
         ]
     )
 
-    assert [row["run_name"] for row in rows] == ["new", "old"]
+    assert [row["run_name"] for row in rows] == ["old", "new"]
 
 
 def test_judge_cache_round_trip(tmp_path: Path) -> None:
@@ -512,7 +512,7 @@ def test_evaluate_run_logs_weave_and_wandb(
     }
     assert FakeEvaluationLogger.instances[0].auto_summarize is False
     assert "SeekTalent version" in FakeEvaluationLogger.instances[0].views["summary"]
-    assert fake_wandb.runs[0].kwargs["config"]["seektalent_version"] == "0.2.4"
+    assert fake_wandb.runs[0].kwargs["config"]["seektalent_version"] == "0.4.1"
     assert fake_wandb.runs[0].kwargs["config"]["eval_enabled"] is True
     assert any("final_total_score" in payload for payload in fake_wandb.runs[0].logged)
     assert fake_wandb.runs[0].artifacts

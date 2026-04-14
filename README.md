@@ -37,13 +37,13 @@ From a local checkout:
 
 ```bash
 uv build
-pipx install dist/seektalent-0.2.4-py3-none-any.whl
+pipx install dist/seektalent-0.4.1-py3-none-any.whl
 ```
 
 If you prefer a plain Python environment:
 
 ```bash
-pip install dist/seektalent-0.2.4-py3-none-any.whl
+pip install dist/seektalent-0.4.1-py3-none-any.whl
 ```
 
 ### Create a starter env file
@@ -123,7 +123,7 @@ seektalent inspect --json
 Recommended:
 
 ```bash
-pipx install dist/seektalent-0.2.4-py3-none-any.whl
+pipx install dist/seektalent-0.4.1-py3-none-any.whl
 ```
 
 This gives you the `seektalent` command directly.
@@ -131,7 +131,7 @@ This gives you the `seektalent` command directly.
 ### Python integrators
 
 ```bash
-pip install dist/seektalent-0.2.4-py3-none-any.whl
+pip install dist/seektalent-0.4.1-py3-none-any.whl
 ```
 
 Then:
