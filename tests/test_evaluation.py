@@ -14,6 +14,7 @@ from seektalent.evaluation import (
     JudgeCache,
     ResumeJudge,
     ResumeJudgeResult,
+    _latest_runs_by_version_rows,
     _upsert_wandb_report,
     evaluate_run,
     ndcg_at_10,
@@ -53,6 +54,20 @@ def test_ndcg_at_10_returns_zero_for_empty_recall() -> None:
 
 def test_precision_at_10_counts_scores_two_and_above() -> None:
     assert precision_at_10([3, 2, 1, 0]) == 0.2
+
+
+def test_latest_runs_by_version_rows_keeps_latest_finished_eval_enabled_run() -> None:
+    rows = _latest_runs_by_version_rows(
+        [
+            {"run_name": "new", "state": "finished", "eval_enabled": True, "seektalent_version": "0.2.5"},
+            {"run_name": "skip-disabled", "state": "finished", "eval_enabled": False, "seektalent_version": "0.2.5"},
+            {"run_name": "old", "state": "finished", "eval_enabled": True, "seektalent_version": "0.2.4"},
+            {"run_name": "newer", "state": "finished", "eval_enabled": True, "seektalent_version": "0.2.4"},
+            {"run_name": "skip-crashed", "state": "crashed", "eval_enabled": True, "seektalent_version": "0.2.6"},
+        ]
+    )
+
+    assert [row["run_name"] for row in rows] == ["new", "old"]
 
 
 def test_judge_cache_round_trip(tmp_path: Path) -> None:
@@ -116,6 +131,56 @@ def test_evaluate_run_keeps_no_judge_artifacts_on_failure(tmp_path: Path, monkey
 
     assert not (run_dir / "evaluation").exists()
     assert not (run_dir / "raw_resumes").exists()
+    assert not (tmp_path / ".seektalent" / "judge_cache.sqlite3").exists()
+
+
+def test_evaluate_run_does_not_log_wandb_when_weave_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    async def fake_judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
+        del self, jd, notes, cache
+        result = ResumeJudgeResult(score=3, rationale="Strong fit")
+        return (
+            {candidate.resume_id: (result, False, 1) for candidate in candidates},
+            [("jd", candidate.snapshot_sha256, "openai-responses:gpt-5.4", result) for candidate in candidates],
+        )
+
+    wandb_calls: list[str] = []
+
+    monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
+    monkeypatch.setattr("seektalent.evaluation._log_to_weave", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("weave failed")))
+    monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: wandb_calls.append("wandb"))
+    settings = AppSettings(_env_file=None, runs_dir=str(tmp_path / "runs"), enable_eval=True)
+    prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
+    candidate = ResumeCandidate(
+        resume_id="resume-1",
+        source_resume_id="resume-1",
+        snapshot_sha256="snapshot-1",
+        dedup_key="resume-1",
+        expected_job_category="Engineer",
+        now_location="上海",
+        work_year=5,
+        search_text="engineer",
+        raw={"resume_id": "resume-1"},
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    with pytest.raises(RuntimeError, match="weave failed"):
+        asyncio.run(
+            evaluate_run(
+                settings=settings,
+                prompt=prompt,
+                run_id="run-1",
+                run_dir=run_dir,
+                jd="test jd",
+                round_01_candidates=[candidate],
+                final_candidates=[candidate],
+            )
+        )
+
+    assert wandb_calls == []
+    assert not (run_dir / "evaluation").exists()
     assert not (tmp_path / ".seektalent" / "judge_cache.sqlite3").exists()
 
 
@@ -369,6 +434,7 @@ def test_evaluate_run_logs_weave_and_wandb(
 
     fake_wandb = FakeWandb()
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    monkeypatch.setattr("seektalent.evaluation._latest_runs_markdown", lambda **kwargs: "| Latest run |")
     monkeypatch.setitem(
         sys.modules,
         "wandb_workspaces.reports.v2",
@@ -377,6 +443,7 @@ def test_evaluate_run_logs_weave_and_wandb(
             Config=FakeConfig,
             H1=lambda text: ("H1", text),
             H2=lambda text: ("H2", text),
+            MarkdownBlock=lambda text: ("MarkdownBlock", text),
             P=lambda text: ("P", text),
             PanelGrid=FakePanelGrid,
             Report=FakeReport,
@@ -450,10 +517,92 @@ def test_evaluate_run_logs_weave_and_wandb(
     assert any("final_total_score" in payload for payload in fake_wandb.runs[0].logged)
     assert fake_wandb.runs[0].artifacts
     assert FakeReport.instances[0].title == WANDB_REPORT_TITLE
+    markdown_blocks = [block for block in FakeReport.instances[0].blocks if isinstance(block, tuple) and block[0] == "MarkdownBlock"]
+    assert len(markdown_blocks) == 1
+    assert "Latest run" in markdown_blocks[0][1]
     panel_grids = [block for block in FakeReport.instances[0].blocks if isinstance(block, FakePanelGrid)]
     assert len(panel_grids) == 2
     assert sum(len(panel.kwargs["panels"]) for panel in panel_grids) == 6
     assert artifacts.result.final.total_score == pytest.approx(0.13602752988942404)
+
+
+def test_evaluate_run_skips_empty_weave_stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    class FakePrediction:
+        def log_score(self, name: str, value: object) -> None:
+            del name, value
+
+        def finish(self) -> None:
+            return None
+
+    class FakeEvaluationLogger:
+        instances: list["FakeEvaluationLogger"] = []
+
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            self.kwargs = kwargs
+            type(self).instances.append(self)
+
+        def log_prediction(self, *, inputs: dict, output: dict) -> FakePrediction:
+            del inputs, output
+            return FakePrediction()
+
+        def set_view(self, name: str, content: str, **kwargs) -> None:  # noqa: ANN003
+            del name, content, kwargs
+
+        def log_summary(self, summary: dict | None = None, auto_summarize: bool = True) -> None:
+            del summary, auto_summarize
+
+    monkeypatch.setitem(sys.modules, "weave", SimpleNamespace(init=lambda project_name: project_name, EvaluationLogger=FakeEvaluationLogger))
+    monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: None)
+
+    async def fake_judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
+        del self, jd, notes, cache
+        result = ResumeJudgeResult(score=3, rationale="Strong fit")
+        return (
+            {candidate.resume_id: (result, False, 1) for candidate in candidates},
+            [("jd", candidate.snapshot_sha256, "openai-responses:gpt-5.4", result) for candidate in candidates],
+        )
+
+    monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
+    settings = AppSettings(
+        _env_file=None,
+        runs_dir=str(tmp_path / "runs"),
+        enable_eval=True,
+        weave_entity="frankqdwang1-personal-creations",
+        weave_project="seektalent",
+        judge_model="openai-responses:gpt-5.4",
+    )
+    prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
+    candidate = ResumeCandidate(
+        resume_id="resume-1",
+        source_resume_id="resume-1",
+        snapshot_sha256="snapshot-1",
+        dedup_key="resume-1",
+        expected_job_category="Engineer",
+        now_location="上海",
+        work_year=5,
+        search_text="engineer",
+        raw={"resume_id": "resume-1"},
+    )
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    artifacts = asyncio.run(
+        evaluate_run(
+            settings=settings,
+            prompt=prompt,
+            run_id="run-1",
+            run_dir=run_dir,
+            jd="test jd",
+            round_01_candidates=[],
+            final_candidates=[candidate],
+        )
+    )
+
+    assert len(FakeEvaluationLogger.instances) == 1
+    assert FakeEvaluationLogger.instances[0].kwargs["name"] == "seektalent-final"
+    assert artifacts.result.round_01.ndcg_at_10 == 0.0
 
 
 def test_upsert_wandb_report_reuses_existing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -465,6 +614,7 @@ def test_upsert_wandb_report_reuses_existing_report(tmp_path: Path, monkeypatch:
         blocks=[],
         width="readable",
         save_calls=0,
+        url="https://example.com/report",
         save=lambda: None,
     )
 
@@ -474,13 +624,17 @@ def test_upsert_wandb_report_reuses_existing_report(tmp_path: Path, monkeypatch:
     saved_report.save = _save
 
     class FakeApi:
+        called_with: tuple[str, str | None, int] | None = None
+
         def reports(self, path: str, name: str | None = None, per_page: int = 50):  # noqa: ANN001
-            del path, name, per_page
-            return [SimpleNamespace(url="https://example.com/report")]
+            self.called_with = (path, name, per_page)
+            return [SimpleNamespace(url="https://example.com/report", display_name=WANDB_REPORT_TITLE)]
+
+    api = FakeApi()
 
     class FakeWandb:
         def Api(self) -> FakeApi:  # noqa: N802
-            return FakeApi()
+            return api
 
     class FakeReport:
         @classmethod
@@ -489,6 +643,7 @@ def test_upsert_wandb_report_reuses_existing_report(tmp_path: Path, monkeypatch:
             return saved_report
 
     monkeypatch.setitem(sys.modules, "wandb", FakeWandb())
+    monkeypatch.setattr("seektalent.evaluation._latest_runs_markdown", lambda **kwargs: "| Latest run |")
     monkeypatch.setitem(
         sys.modules,
         "wandb_workspaces.reports.v2",
@@ -497,6 +652,7 @@ def test_upsert_wandb_report_reuses_existing_report(tmp_path: Path, monkeypatch:
             Config=lambda name: ("Config", name),
             H1=lambda text: ("H1", text),
             H2=lambda text: ("H2", text),
+            MarkdownBlock=lambda text: ("MarkdownBlock", text),
             P=lambda text: ("P", text),
             PanelGrid=lambda **kwargs: ("PanelGrid", kwargs),
             Report=FakeReport,
@@ -518,6 +674,81 @@ def test_upsert_wandb_report_reuses_existing_report(tmp_path: Path, monkeypatch:
 
     _upsert_wandb_report(settings)
 
+    assert api.called_with == ("frankqdwang1-personal-creations/seektalent", None, 100)
     assert saved_report.title == WANDB_REPORT_TITLE
     assert saved_report.width == "fluid"
     assert saved_report.save_calls == 1
+
+
+def test_upsert_wandb_report_deletes_duplicate_titles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    deleted: list[str] = []
+    saved_report = SimpleNamespace(
+        title="Old",
+        description="Old",
+        blocks=[],
+        width="readable",
+        save_calls=0,
+        url="https://example.com/report-1",
+        save=lambda: None,
+    )
+
+    def _save() -> None:
+        saved_report.save_calls += 1
+
+    saved_report.save = _save
+
+    class FakeApi:
+        def reports(self, path: str, name: str | None = None, per_page: int = 50):  # noqa: ANN001
+            del path, name, per_page
+            return [
+                SimpleNamespace(url="https://example.com/report-1", display_name=WANDB_REPORT_TITLE),
+                SimpleNamespace(url="https://example.com/report-2", display_name=WANDB_REPORT_TITLE),
+            ]
+
+    class FakeWandb:
+        def Api(self) -> FakeApi:  # noqa: N802
+            return FakeApi()
+
+    class FakeReport:
+        @classmethod
+        def from_url(cls, url: str):  # noqa: ANN001
+            if url == "https://example.com/report-1":
+                return saved_report
+            return SimpleNamespace(delete=lambda: deleted.append(url))
+
+    monkeypatch.setitem(sys.modules, "wandb", FakeWandb())
+    monkeypatch.setattr("seektalent.evaluation._latest_runs_markdown", lambda **kwargs: "| Latest run |")
+    monkeypatch.setitem(
+        sys.modules,
+        "wandb_workspaces.reports.v2",
+        SimpleNamespace(
+            BarPlot=lambda **kwargs: ("BarPlot", kwargs),
+            Config=lambda name: ("Config", name),
+            H1=lambda text: ("H1", text),
+            H2=lambda text: ("H2", text),
+            MarkdownBlock=lambda text: ("MarkdownBlock", text),
+            P=lambda text: ("P", text),
+            PanelGrid=lambda **kwargs: ("PanelGrid", kwargs),
+            Report=FakeReport,
+            Runset=lambda **kwargs: ("Runset", kwargs),
+            SummaryMetric=lambda name: ("SummaryMetric", name),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "wandb_workspaces.reports.v2.interface",
+        SimpleNamespace(expr=SimpleNamespace(Config=FakeExprConfig)),
+    )
+
+    settings = AppSettings(
+        _env_file=None,
+        wandb_entity="frankqdwang1-personal-creations",
+        wandb_project="seektalent",
+    )
+
+    _upsert_wandb_report(settings)
+
+    assert saved_report.save_calls == 1
+    assert deleted == ["https://example.com/report-2"]

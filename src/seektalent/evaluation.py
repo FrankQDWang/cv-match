@@ -427,6 +427,71 @@ def _weave_summary_markdown(
     )
 
 
+def _latest_runs_by_version_rows(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest_by_version: dict[str, dict[str, Any]] = {}
+    for run in runs:
+        if run.get("state") != "finished" or not run.get("eval_enabled"):
+            continue
+        version = run.get("seektalent_version")
+        if not version or version in latest_by_version:
+            continue
+        latest_by_version[version] = run
+    return [latest_by_version[version] for version in sorted(latest_by_version.keys(), reverse=True)]
+
+
+def _latest_runs_markdown(*, entity: str, project: str) -> str:
+    import wandb
+
+    api = wandb.Api()
+    rows = _latest_runs_by_version_rows(
+        [
+            {
+                "run_name": run.name,
+                "run_url": run.url,
+                "created_at": run.created_at,
+                "state": run.state,
+                "eval_enabled": bool(run.config.get("eval_enabled")),
+                "seektalent_version": run.config.get("seektalent_version"),
+                "judge_model": run.config.get("judge_model"),
+                "final_total_score": run.summary.get("final_total_score"),
+                "final_precision_at_10": run.summary.get("final_precision_at_10"),
+                "final_ndcg_at_10": run.summary.get("final_ndcg_at_10"),
+                "round_01_total_score": run.summary.get("round_01_total_score"),
+                "round_01_precision_at_10": run.summary.get("round_01_precision_at_10"),
+                "round_01_ndcg_at_10": run.summary.get("round_01_ndcg_at_10"),
+            }
+            for run in api.runs(f"{entity}/{project}")
+        ]
+    )
+    if not rows:
+        return "No successful eval-enabled runs yet."
+
+    lines = [
+        "| Version | Latest run | Created | Judge model | Final total | Final p@10 | Final ndcg@10 | Round1 total | Round1 p@10 | Round1 ndcg@10 |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in rows:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(row["seektalent_version"]),
+                    f"[{row['run_name']}]({row['run_url']})",
+                    str(row["created_at"]),
+                    str(row["judge_model"]),
+                    f"{float(row['final_total_score'] or 0):.4f}",
+                    f"{float(row['final_precision_at_10'] or 0):.4f}",
+                    f"{float(row['final_ndcg_at_10'] or 0):.4f}",
+                    f"{float(row['round_01_total_score'] or 0):.4f}",
+                    f"{float(row['round_01_precision_at_10'] or 0):.4f}",
+                    f"{float(row['round_01_ndcg_at_10'] or 0):.4f}",
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines)
+
+
 def _log_to_weave(
     *,
     settings: AppSettings,
@@ -446,6 +511,8 @@ def _log_to_weave(
         "judge_model": evaluation.judge_model,
     }
     for stage in (evaluation.round_01, evaluation.final):
+        if not stage.candidates:
+            continue
         logger = weave.EvaluationLogger(
             name=f"seektalent-{stage.stage}",
             model=model,
@@ -507,7 +574,7 @@ WANDB_REPORT_TITLE = "SeekTalent Version Metrics"
 
 
 def _wandb_report_blocks(*, entity: str, project: str) -> list[object]:
-    from wandb_workspaces.reports.v2 import BarPlot, Config, H1, H2, P, PanelGrid, Runset, SummaryMetric
+    from wandb_workspaces.reports.v2 import BarPlot, H1, H2, MarkdownBlock, P, PanelGrid, Runset
     from wandb_workspaces.reports.v2.interface import expr
 
     runset = Runset(
@@ -520,8 +587,8 @@ def _wandb_report_blocks(*, entity: str, project: str) -> list[object]:
     def metric_panel(stage: str, metric_key: str, title: str) -> BarPlot:
         return BarPlot(
             title=title,
-            metrics=[SummaryMetric(f"{stage}_{metric_key}")],
-            groupby=Config("seektalent_version"),
+            metrics=[f"{stage}_{metric_key}"],
+            groupby="config.seektalent_version",
             groupby_aggfunc="mean",
             orientation="v",
             title_x="SeekTalent version",
@@ -534,6 +601,9 @@ def _wandb_report_blocks(*, entity: str, project: str) -> list[object]:
             "This report compares successful eval-enabled SeekTalent runs by version. "
             "Eval-off smoke tests are excluded. Each bar shows the mean metric value aggregated from W&B runs."
         ),
+        H2("Latest Runs By Version"),
+        MarkdownBlock(text=_latest_runs_markdown(entity=entity, project=project)),
+        H2("Version Means"),
         H2("Final Metrics"),
         PanelGrid(
             runsets=[runset],
@@ -563,10 +633,14 @@ def _upsert_wandb_report(settings: AppSettings) -> None:
 
     blocks = _wandb_report_blocks(entity=settings.wandb_entity, project=settings.wandb_project)
     api = wandb.Api()
-    existing = next(
-        iter(api.reports(f"{settings.wandb_entity}/{settings.wandb_project}", name=WANDB_REPORT_TITLE, per_page=1)),
-        None,
-    )
+    reports = list(api.reports(f"{settings.wandb_entity}/{settings.wandb_project}", per_page=100))
+    matches = [
+        report
+        for report in reports
+        if getattr(report, "display_name", None) == WANDB_REPORT_TITLE
+        or getattr(report, "title", None) == WANDB_REPORT_TITLE
+    ]
+    existing = matches[0] if matches else None
     if existing is None:
         report = Report(
             project=settings.wandb_project,
@@ -583,6 +657,11 @@ def _upsert_wandb_report(settings: AppSettings) -> None:
         report.blocks = blocks
         report.width = "fluid"
     report.save()
+    saved_url = getattr(report, "url", None)
+    for duplicate in matches[1:]:
+        if getattr(duplicate, "url", None) == saved_url:
+            continue
+        Report.from_url(duplicate.url).delete()
 
 
 def _log_to_wandb(
@@ -709,8 +788,8 @@ async def evaluate_run(
         path = temp_root / "evaluation" / "evaluation.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(evaluation.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8")
-        _log_to_wandb(settings=settings, artifact_root=temp_root, evaluation=evaluation)
         _log_to_weave(settings=settings, evaluation=evaluation)
+        _log_to_wandb(settings=settings, artifact_root=temp_root, evaluation=evaluation)
 
         _remove_path(final_evaluation_dir)
         _remove_path(final_raw_dir)
