@@ -18,6 +18,10 @@ cts.validated.yaml
 !src/seektalent/cts.validated.yaml
 examples/
 obsidian/
+.seektalent/
+wandb/
+tea_debug.log
+artifacts/benchmarks/agent_jds.jsonl
 
 # Frontend-generated files
 node_modules/
