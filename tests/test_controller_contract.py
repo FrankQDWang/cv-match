@@ -219,6 +219,7 @@ def test_controller_output_validator_rejects_missing_response_to_reflection(
         round_no=2,
         min_rounds=1,
         max_rounds=3,
+        is_final_allowed_round=False,
         target_new=5,
         previous_reflection={"decision": "continue", "reflection_summary": "Add one term."},
     )
@@ -251,6 +252,7 @@ def test_controller_output_validator_rejects_empty_query_terms(
         round_no=1,
         min_rounds=1,
         max_rounds=3,
+        is_final_allowed_round=False,
         target_new=5,
     )
     decision = SearchControllerDecision(
@@ -282,6 +284,7 @@ def test_controller_output_validator_rejects_query_terms_over_budget(
         round_no=1,
         min_rounds=1,
         max_rounds=3,
+        is_final_allowed_round=False,
         target_new=5,
     )
     decision = SearchControllerDecision(
@@ -294,3 +297,41 @@ def test_controller_output_validator_rejects_query_terms_over_budget(
 
     with pytest.raises(ModelRetry, match="must not exceed 3 terms"):
         validator(type("Ctx", (), {"deps": context})(), decision)
+
+
+def test_runtime_sanitizes_premature_max_round_claims_in_stop_decision() -> None:
+    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True, max_rounds=5)
+    runtime = WorkflowRuntime(settings)
+    run_state = _run_state_with_previous_reflection()
+    decision = StopControllerDecision(
+        thought_summary="Stop.",
+        action="stop",
+        decision_rationale="The search has reached the maximum rounds (10), and the pool is stable enough.",
+        response_to_reflection="Agreed that the pool is stable.",
+        stop_reason="Search is exhausted: max rounds reached, two strong fit candidates identified.",
+    )
+
+    sanitized = runtime._sanitize_controller_decision(decision=decision, run_state=run_state, round_no=2)
+
+    assert "maximum rounds" not in sanitized.decision_rationale.casefold()
+    assert "max rounds" not in sanitized.stop_reason.casefold()
+    assert "diminishing returns" in sanitized.decision_rationale.casefold()
+    assert "diminishing returns" in sanitized.stop_reason.casefold()
+
+
+def test_runtime_preserves_max_round_claims_on_final_allowed_round() -> None:
+    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True, max_rounds=5)
+    runtime = WorkflowRuntime(settings)
+    run_state = _run_state_with_previous_reflection()
+    decision = StopControllerDecision(
+        thought_summary="Stop.",
+        action="stop",
+        decision_rationale="The search has reached the maximum rounds (5), and the pool is stable enough.",
+        response_to_reflection="Agreed that the pool is stable.",
+        stop_reason="Search is exhausted: max rounds reached, two strong fit candidates identified.",
+    )
+
+    sanitized = runtime._sanitize_controller_decision(decision=decision, run_state=run_state, round_no=5)
+
+    assert sanitized.decision_rationale == decision.decision_rationale
+    assert sanitized.stop_reason == decision.stop_reason

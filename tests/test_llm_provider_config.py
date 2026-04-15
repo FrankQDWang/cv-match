@@ -202,6 +202,18 @@ def test_build_output_spec_uses_prompted_output_for_openai_chat(monkeypatch: pyt
     assert type(spec).__name__ == "PromptedOutput"
 
 
+def test_build_output_spec_uses_native_output_for_openai_chat_deepseek_v32(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    model = build_model("openai-chat:deepseek-v3.2")
+
+    spec = build_output_spec("openai-chat:deepseek-v3.2", model, dict[str, str])
+
+    assert type(spec).__name__ == "NativeOutput"
+    assert spec.strict is True
+
+
 def test_build_model_settings_keeps_openai_only_knobs_for_openai_models() -> None:
     settings = AppSettings(_env_file=None)
 
@@ -398,7 +410,7 @@ def test_preflight_models_surfaces_provider_credential_errors(
         (Finalizer, "finalize"),
     ],
 )
-def test_all_agents_use_one_output_retry_and_no_generic_retries(
+def test_all_agents_use_two_output_retries_and_no_generic_retries(
     monkeypatch: pytest.MonkeyPatch,
     builder,
     prompt_name: str,
@@ -412,6 +424,6 @@ def test_all_agents_use_one_output_retry_and_no_generic_retries(
         agent = component._get_agent()
 
     assert agent._max_tool_retries == 0
-    assert agent._max_result_retries == 1
+    assert agent._max_result_retries == 2
     assert type(agent._output_type).__name__ == "NativeOutput"
     assert agent._output_type.strict is True

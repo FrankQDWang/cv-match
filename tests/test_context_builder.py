@@ -222,6 +222,13 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
         max_rounds=3,
         target_new=5,
     )
+    final_round_context = build_controller_context(
+        run_state=run_state,
+        round_no=3,
+        min_rounds=1,
+        max_rounds=3,
+        target_new=5,
+    )
     scoring_context = build_scoring_context(
         run_state=run_state,
         round_no=2,
@@ -258,6 +265,7 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
     )
 
     assert controller_context.shortage_history == [2]
+    assert controller_context.is_final_allowed_round is False
     assert controller_context.latest_search_observation is not None
     assert controller_context.latest_search_observation.shortage_count == 2
     assert controller_context.latest_search_observation.city_search_summaries[0].city == "上海市"
@@ -267,3 +275,4 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
     assert reflection_context.top_candidates[0].resume_id == "r-1"
     assert reflection_context.dropped_candidates[0].resume_id == "r-2"
     assert finalize_context.top_candidates[0].resume_id == "r-1"
+    assert final_round_context.is_final_allowed_round is True

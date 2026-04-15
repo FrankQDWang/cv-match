@@ -253,6 +253,7 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
         round_no=2,
         min_rounds=3,
         max_rounds=5,
+        is_final_allowed_round=False,
         target_new=5,
         requirement_digest=digest,
         query_term_pool=requirement_sheet.initial_query_term_pool,

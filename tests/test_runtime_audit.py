@@ -221,7 +221,7 @@ class StubScorer:
                     "prompt_snapshot_path": "prompt_snapshots/scoring.md",
                     "output_mode": "native_strict",
                     "retries": 0,
-                    "output_retries": 1,
+                    "output_retries": 2,
                     "started_at": "stub",
                     "latency_ms": 1,
                     "status": "succeeded",
@@ -292,7 +292,7 @@ class FailingScorer:
                 "prompt_snapshot_path": "prompt_snapshots/scoring.md",
                 "output_mode": "native_strict",
                 "retries": 0,
-                "output_retries": 1,
+                "output_retries": 2,
                 "started_at": "stub",
                 "latency_ms": 1,
                 "status": "failed",
@@ -493,18 +493,29 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert final_candidates["summary"]
     assert all(candidate["match_summary"] for candidate in final_candidates["candidates"])
     assert requirements_call["user_payload"]["INPUT_TRUTH"]["jd"]
+    assert requirements_call["retries"] == 0
+    assert requirements_call["output_retries"] == 2
     assert requirement_draft["role_title"] == "Senior Python Engineer"
     assert controller_call["user_payload"]["CONTROLLER_CONTEXT"]["round_no"] == 1
+    assert controller_call["user_payload"]["CONTROLLER_CONTEXT"]["is_final_allowed_round"] is True
     assert controller_call["structured_output"]["action"] == "search_cts"
+    assert controller_call["retries"] == 0
+    assert controller_call["output_retries"] == 2
     assert reflection_call["user_payload"]["REFLECTION_CONTEXT"]["round_no"] == 1
     assert reflection_call["structured_output"]["reflection_summary"] == "No reflection changes."
+    assert reflection_call["retries"] == 0
+    assert reflection_call["output_retries"] == 2
     assert len(scoring_calls) == len(scorecards)
     assert scoring_calls[0]["resume_id"] == "mock-r001"
     assert scoring_calls[0]["status"] == "succeeded"
+    assert scoring_calls[0]["retries"] == 0
+    assert scoring_calls[0]["output_retries"] == 2
     assert (
         finalizer_call["user_payload"]["FINALIZATION_CONTEXT"]["ranked_candidates"][0]["resume_id"]
         == final_candidates["candidates"][0]["resume_id"]
     )
+    assert finalizer_call["retries"] == 0
+    assert finalizer_call["output_retries"] == 2
     assert judge_packet["requirements"]["requirement_sheet"]["role_title"] == "Senior Python Engineer"
     assert judge_packet["rounds"][0]["controller_decision"]["action"] == "search_cts"
     assert judge_packet["final"]["final_result"]["summary"] == final_candidates["summary"]

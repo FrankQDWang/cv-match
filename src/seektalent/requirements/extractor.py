@@ -22,7 +22,7 @@ class RequirementExtractor:
             system_prompt=self.prompt.content,
             model_settings=build_model_settings(self.settings, self.settings.requirements_model),
             retries=0,
-            output_retries=1,
+            output_retries=2,
         )
 
     async def extract(self, *, input_truth: InputTruth) -> RequirementSheet:

@@ -83,6 +83,7 @@ def _controller_context() -> ControllerContext:
         round_no=1,
         min_rounds=1,
         max_rounds=3,
+        is_final_allowed_round=False,
         target_new=10,
         query_term_pool=requirement_sheet.initial_query_term_pool,
     )
@@ -213,11 +214,11 @@ def test_finalizer_uses_live_path_and_raises_for_empty_ranked_list(monkeypatch: 
         )
 
 
-def test_requirement_extractor_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_requirement_extractor_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     extractor = RequirementExtractor(_settings(monkeypatch), _prompt("requirements"))
     monkeypatch.setattr("seektalent.requirements.extractor.build_model", lambda model_id: _test_model("{}"))
 
-    with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
+    with pytest.raises(Exception, match="Exceeded maximum retries \\(2\\) for output validation"):
         asyncio.run(
             extractor.extract(
                 input_truth=InputTruth(
@@ -232,30 +233,30 @@ def test_requirement_extractor_fails_after_one_output_retry(monkeypatch: pytest.
         )
 
 
-def test_controller_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_controller_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     controller = ReActController(_settings(monkeypatch), _prompt("controller"))
     monkeypatch.setattr(
         "seektalent.controller.react_controller.build_model",
         lambda model_id: _test_model('{"action":"search_cts"}'),
     )
 
-    with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
+    with pytest.raises(Exception, match="Exceeded maximum retries \\(2\\) for output validation"):
         asyncio.run(controller.decide(context=_controller_context()))
 
 
-def test_reflection_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reflection_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     critic = ReflectionCritic(_settings(monkeypatch), _prompt("reflection"))
     monkeypatch.setattr("seektalent.reflection.critic.build_model", lambda model_id: _test_model("{}"))
 
-    with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
+    with pytest.raises(Exception, match="Exceeded maximum retries \\(2\\) for output validation"):
         asyncio.run(critic.reflect(context=_reflection_context()))
 
 
-def test_finalizer_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_finalizer_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     finalizer = Finalizer(_settings(monkeypatch), _prompt("finalize"))
     monkeypatch.setattr("seektalent.finalize.finalizer.build_model", lambda model_id: _test_model("{}"))
 
-    with pytest.raises(Exception, match="Exceeded maximum retries \\(1\\) for output validation"):
+    with pytest.raises(Exception, match="Exceeded maximum retries \\(2\\) for output validation"):
         asyncio.run(
             finalizer.finalize(
                 run_id="run-1",
@@ -267,7 +268,7 @@ def test_finalizer_fails_after_one_output_retry(monkeypatch: pytest.MonkeyPatch)
         )
 
 
-def test_scorer_returns_failure_after_one_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_scorer_returns_failure_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     scorer = ResumeScorer(_settings(monkeypatch), _prompt("scoring"))
     monkeypatch.setattr("seektalent.scoring.scorer.build_model", lambda model_id: _test_model("{}"))
 
@@ -282,4 +283,4 @@ def test_scorer_returns_failure_after_one_output_retry(monkeypatch: pytest.Monke
 
     assert scored == []
     assert len(failures) == 1
-    assert failures[0].error_message == "Exceeded maximum retries (1) for output validation"
+    assert failures[0].error_message == "Exceeded maximum retries (2) for output validation"

@@ -30,7 +30,7 @@ class ResumeScorer:
             system_prompt=self.prompt.content,
             model_settings=build_model_settings(self.settings, self.settings.scoring_model),
             retries=0,
-            output_retries=1,
+            output_retries=2,
         )
 
     async def score_candidates_parallel(
@@ -131,6 +131,8 @@ class ResumeScorer:
                     provider=model_provider(self.settings.scoring_model),
                     prompt_hash=self.prompt.sha256,
                     prompt_snapshot_path="prompt_snapshots/scoring.md",
+                    retries=0,
+                    output_retries=2,
                     started_at=started_at_iso,
                     latency_ms=latency_ms,
                     status="succeeded",
@@ -183,6 +185,8 @@ class ResumeScorer:
                     provider=model_provider(self.settings.scoring_model),
                     prompt_hash=self.prompt.sha256,
                     prompt_snapshot_path="prompt_snapshots/scoring.md",
+                    retries=0,
+                    output_retries=2,
                     started_at=started_at_iso,
                     latency_ms=latency_ms,
                     status="failed",

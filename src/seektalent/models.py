@@ -611,6 +611,7 @@ class ControllerContext(BaseModel):
     round_no: int
     min_rounds: int
     max_rounds: int
+    is_final_allowed_round: bool
     target_new: int
     requirement_digest: RequirementDigest | None = None
     query_term_pool: list[QueryTermCandidate] = Field(default_factory=list)

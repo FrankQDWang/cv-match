@@ -12,6 +12,9 @@ from pydantic_ai.settings import ModelSettings
 from seektalent.config import AppSettings, load_process_env
 
 
+NATIVE_OPENAI_CHAT_MODELS = {"openai-chat:deepseek-v3.2"}
+
+
 def model_provider(model_id: str) -> str:
     return model_id.split(":", 1)[0]
 
@@ -63,6 +66,9 @@ def ensure_native_structured_output(model_id: str, model: Model) -> None:
 
 
 def build_output_spec(model_id: str, model: Model, output_type: Any) -> Any:
+    if model_id in NATIVE_OPENAI_CHAT_MODELS:
+        ensure_native_structured_output(model_id, model)
+        return NativeOutput(output_type, strict=True)
     if model_id.startswith("openai-chat:"):
         return PromptedOutput(output_type)
     ensure_native_structured_output(model_id, model)
@@ -116,6 +122,6 @@ def preflight_models(settings: AppSettings) -> None:
             openai_base_url=openai_base_url,
             openai_api_key=openai_api_key,
         )
-        if not model_id.startswith("openai-chat:"):
+        if model_id in NATIVE_OPENAI_CHAT_MODELS or not model_id.startswith("openai-chat:"):
             ensure_native_structured_output(model_id, model)
         seen.add(key)

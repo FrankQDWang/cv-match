@@ -33,6 +33,7 @@ def build_controller_context(
         round_no=round_no,
         min_rounds=min_rounds,
         max_rounds=max_rounds,
+        is_final_allowed_round=round_no >= max_rounds,
         target_new=target_new,
         requirement_digest=build_requirement_digest(run_state.requirement_sheet),
         query_term_pool=run_state.retrieval_state.query_term_pool,

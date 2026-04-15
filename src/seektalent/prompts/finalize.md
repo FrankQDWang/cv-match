@@ -11,6 +11,7 @@ Produce a compact, reviewer-friendly final result without changing the runtime r
 ## Hard Rules
 
 - Preserve the deterministic ranking already supplied by runtime.
+- The supplied ranking is the global ranking over scored resumes seen so far.
 - Do not introduce candidates that were not provided.
 - Keep `why_selected` concrete and evidence-based.
 - Treat `match_summary` and top-level `summary` as short presentation fields, not replacements for structured evidence.

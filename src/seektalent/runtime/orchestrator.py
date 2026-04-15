@@ -201,6 +201,8 @@ class WorkflowRuntime:
                         started_at=finalizer_started_at,
                         latency_ms=latency_ms,
                         status="failed",
+                        retries=0,
+                        output_retries=2,
                         error_message=str(exc),
                         validator_retry_count=self.finalizer.last_validator_retry_count,
                     ).model_dump(mode="json"),
@@ -229,6 +231,8 @@ class WorkflowRuntime:
                     started_at=finalizer_started_at,
                     latency_ms=latency_ms,
                     status="succeeded",
+                    retries=0,
+                    output_retries=2,
                     structured_output=final_result.model_dump(mode="json"),
                     validator_retry_count=self.finalizer.last_validator_retry_count,
                 ).model_dump(mode="json"),
@@ -376,6 +380,8 @@ class WorkflowRuntime:
                     started_at=started_at,
                     latency_ms=latency_ms,
                     status="failed",
+                    retries=0,
+                    output_retries=2,
                     error_message=str(exc),
                 ).model_dump(mode="json"),
             )
@@ -404,6 +410,8 @@ class WorkflowRuntime:
                 started_at=started_at,
                 latency_ms=latency_ms,
                 status="succeeded",
+                retries=0,
+                output_retries=2,
                 structured_output=requirement_draft.model_dump(mode="json"),
             ).model_dump(mode="json"),
         )
@@ -522,6 +530,8 @@ class WorkflowRuntime:
                         started_at=controller_started_at,
                         latency_ms=latency_ms,
                         status="failed",
+                        retries=0,
+                        output_retries=2,
                         error_message=str(exc),
                         round_no=round_no,
                         validator_retry_count=self.controller.last_validator_retry_count,
@@ -563,6 +573,8 @@ class WorkflowRuntime:
                     started_at=controller_started_at,
                     latency_ms=latency_ms,
                     status="succeeded",
+                    retries=0,
+                    output_retries=2,
                     structured_output=controller_decision.model_dump(mode="json"),
                     round_no=round_no,
                     validator_retry_count=self.controller.last_validator_retry_count,
@@ -730,6 +742,8 @@ class WorkflowRuntime:
                         started_at=reflection_started_at,
                         latency_ms=latency_ms,
                         status="failed",
+                        retries=0,
+                        output_retries=2,
                         error_message=str(exc),
                         round_no=round_no,
                     ).model_dump(mode="json"),
@@ -764,6 +778,8 @@ class WorkflowRuntime:
                     started_at=reflection_started_at,
                     latency_ms=latency_ms,
                     status="succeeded",
+                    retries=0,
+                    output_retries=2,
                     structured_output=reflection_advice.model_dump(mode="json"),
                     round_no=round_no,
                 ).model_dump(mode="json"),
@@ -810,7 +826,18 @@ class WorkflowRuntime:
         if previous_reflection is not None and not (decision.response_to_reflection or "").strip():
             raise ValueError("response_to_reflection is required after a reflection round")
         if decision.action == "stop":
-            return decision
+            return decision.model_copy(
+                update={
+                    "decision_rationale": self._sanitize_premature_max_round_claim(
+                        decision.decision_rationale,
+                        round_no=round_no,
+                    ),
+                    "stop_reason": self._sanitize_premature_max_round_claim(
+                        decision.stop_reason,
+                        round_no=round_no,
+                    ),
+                }
+            )
         query_terms = canonicalize_controller_query_terms(
             decision.proposed_query_terms,
             round_no=round_no,
@@ -828,6 +855,29 @@ class WorkflowRuntime:
                 "stop_reason": None,
             }
         )
+
+    def _sanitize_premature_max_round_claim(self, text: str, *, round_no: int) -> str:
+        if round_no >= self.settings.max_rounds:
+            return text
+        lowered = text.casefold()
+        if "max rounds" not in lowered and "maximum rounds" not in lowered:
+            return text
+        cleaned = re.sub(
+            r"(?i)the search has reached the maximum rounds \(\d+\),\s*",
+            "The search appears exhausted with diminishing returns, ",
+            text,
+        )
+        cleaned = re.sub(
+            r"(?i)search is exhausted:\s*max(?:imum)? rounds? reached,\s*",
+            "Search is exhausted with diminishing returns; ",
+            cleaned,
+        )
+        cleaned = re.sub(
+            r"(?i)\bmax(?:imum)? rounds? reached\b[:,]?\s*",
+            "diminishing returns, ",
+            cleaned,
+        )
+        return " ".join(cleaned.split())
 
     def _force_continue_decision(self, *, run_state: RunState, round_no: int) -> ControllerDecision:
         return SearchControllerDecision(
@@ -1021,6 +1071,8 @@ class WorkflowRuntime:
         started_at: str,
         latency_ms: int | None,
         status: str,
+        retries: int,
+        output_retries: int,
         structured_output: dict[str, object] | None = None,
         error_message: str | None = None,
         round_no: int | None = None,
@@ -1039,6 +1091,8 @@ class WorkflowRuntime:
             provider=model_provider(model_id),
             prompt_hash=prompt.sha256,
             prompt_snapshot_path=self._prompt_snapshot_path(prompt_name),
+            retries=retries,
+            output_retries=output_retries,
             started_at=started_at,
             latency_ms=latency_ms,
             status=status,

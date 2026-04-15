@@ -41,8 +41,8 @@ class LLMCallSnapshot(BaseModel):
     prompt_hash: str
     prompt_snapshot_path: str
     output_mode: Literal["native_strict"] = "native_strict"
-    retries: int = 0
-    output_retries: int = 1
+    retries: int
+    output_retries: int
     started_at: str
     latency_ms: int | None = None
     status: Literal["succeeded", "failed"]

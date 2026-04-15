@@ -81,6 +81,7 @@ def _controller_context() -> ControllerContext:
         round_no=1,
         min_rounds=1,
         max_rounds=3,
+        is_final_allowed_round=False,
         target_new=5,
     )
 

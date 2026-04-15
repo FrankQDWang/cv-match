@@ -25,7 +25,7 @@ class ReActController:
             deps_type=ControllerContext,
             model_settings=build_model_settings(self.settings, self.settings.controller_model),
             retries=0,
-            output_retries=1,
+            output_retries=2,
         )
 
         @agent.output_validator

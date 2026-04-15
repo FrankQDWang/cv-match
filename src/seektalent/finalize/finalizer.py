@@ -24,7 +24,7 @@ class Finalizer:
             deps_type=FinalizeContext,
             model_settings=build_model_settings(self.settings, self.settings.finalize_model),
             retries=0,
-            output_retries=1,
+            output_retries=2,
         )
 
         @agent.output_validator

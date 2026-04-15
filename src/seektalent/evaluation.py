@@ -239,7 +239,7 @@ class ResumeJudge:
                 reasoning_effort=self.settings.effective_judge_reasoning_effort,
             ),
             retries=0,
-            output_retries=1,
+            output_retries=2,
         )
 
     async def judge_many(

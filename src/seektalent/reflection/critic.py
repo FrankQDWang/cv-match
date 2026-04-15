@@ -89,7 +89,7 @@ class ReflectionCritic:
             system_prompt=self.prompt.content,
             model_settings=build_model_settings(self.settings, self.settings.reflection_model),
             retries=0,
-            output_retries=1,
+            output_retries=2,
         )
 
     async def reflect(self, *, context: ReflectionContext) -> ReflectionAdvice:
