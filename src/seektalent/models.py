@@ -201,6 +201,15 @@ class ReflectionKeywordAdvice(BaseModel):
     critique: str = ""
 
 
+class ReflectionKeywordAdviceDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    suggested_activate_terms: list[str] = Field(default_factory=list)
+    suggested_keep_terms: list[str] = Field(default_factory=list)
+    suggested_deprioritize_terms: list[str] = Field(default_factory=list)
+    suggested_drop_terms: list[str] = Field(default_factory=list)
+
+
 class ReflectionFilterAdvice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -208,6 +217,14 @@ class ReflectionFilterAdvice(BaseModel):
     suggested_drop_filter_fields: list[FilterField] = Field(default_factory=list)
     suggested_add_filter_fields: list[FilterField] = Field(default_factory=list)
     critique: str = ""
+
+
+class ReflectionFilterAdviceDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    suggested_keep_filter_fields: list[FilterField] = Field(default_factory=list)
+    suggested_drop_filter_fields: list[FilterField] = Field(default_factory=list)
+    suggested_add_filter_fields: list[FilterField] = Field(default_factory=list)
 
 
 class ReflectionAdvice(BaseModel):
@@ -224,6 +241,26 @@ class ReflectionAdvice(BaseModel):
 
     @model_validator(mode="after")
     def validate_stop_fields(self) -> ReflectionAdvice:
+        if self.suggest_stop and not self.suggested_stop_reason:
+            raise ValueError("suggested_stop_reason is required when suggest_stop is true")
+        if not self.suggest_stop and self.suggested_stop_reason is not None:
+            raise ValueError("suggested_stop_reason must be null when suggest_stop is false")
+        return self
+
+
+class ReflectionAdviceDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    strategy_assessment: str = Field(min_length=1, description="Short critique of the current retrieval direction.")
+    quality_assessment: str = Field(min_length=1, description="Short critique of top-pool quality.")
+    coverage_assessment: str = Field(min_length=1, description="Short critique of recall and coverage.")
+    keyword_advice: ReflectionKeywordAdviceDraft = Field(default_factory=ReflectionKeywordAdviceDraft, description="Field-safe query-term advice for the next round.")
+    filter_advice: ReflectionFilterAdviceDraft = Field(default_factory=ReflectionFilterAdviceDraft, description="Field-level non-location filter advice for the next round.")
+    suggest_stop: bool = Field(default=False, description="Whether the critic recommends stopping after this round.")
+    suggested_stop_reason: str | None = Field(default=None, description="Concrete stop reason when suggest_stop is true.")
+
+    @model_validator(mode="after")
+    def validate_stop_fields(self) -> ReflectionAdviceDraft:
         if self.suggest_stop and not self.suggested_stop_reason:
             raise ValueError("suggested_stop_reason is required when suggest_stop is true")
         if not self.suggest_stop and self.suggested_stop_reason is not None:
