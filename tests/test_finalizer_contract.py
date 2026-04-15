@@ -128,6 +128,26 @@ def test_finalizer_output_validator_rejects_non_contiguous_ranks(
         validator(type("Ctx", (), {"deps": _deps()})(), output)
 
 
+def test_finalizer_output_validator_rejects_incomplete_shortlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    validator = _validator(monkeypatch)
+    output = FinalResult(
+        run_id="run-1",
+        run_dir="/tmp/run-1",
+        rounds_executed=2,
+        stop_reason="reflection_stop",
+        summary="Returned 2 candidates.",
+        candidates=[
+            _candidate("r-1", rank=1, source_round=1),
+            _candidate("r-2", rank=2, source_round=2),
+        ],
+    )
+
+    with pytest.raises(ModelRetry, match="include every runtime-ranked candidate"):
+        validator(type("Ctx", (), {"deps": _deps()})(), output)
+
+
 def test_finalizer_output_validator_rejects_source_round_mismatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -143,3 +163,25 @@ def test_finalizer_output_validator_rejects_source_round_mismatch(
 
     with pytest.raises(ModelRetry, match="source_round"):
         validator(type("Ctx", (), {"deps": _deps()})(), output)
+
+
+def test_finalizer_output_validator_accepts_complete_runtime_shortlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    validator = _validator(monkeypatch)
+    output = FinalResult(
+        run_id="run-1",
+        run_dir="/tmp/run-1",
+        rounds_executed=2,
+        stop_reason="reflection_stop",
+        summary="Returned 3 candidates.",
+        candidates=[
+            _candidate("r-1", rank=1, source_round=1),
+            _candidate("r-2", rank=2, source_round=2),
+            _candidate("r-3", rank=3, source_round=2),
+        ],
+    )
+
+    validated = validator(type("Ctx", (), {"deps": _deps()})(), output)
+
+    assert validated == output

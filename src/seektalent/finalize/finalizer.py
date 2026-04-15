@@ -58,6 +58,9 @@ class Finalizer:
                 seen.add(candidate.resume_id)
                 last_position = position
                 expected_rank += 1
+            if len(output.candidates) != len(ctx.deps.top_candidates):
+                self.last_validator_retry_count += 1
+                raise ModelRetry("Final candidates must include every runtime-ranked candidate provided.")
             return output
 
         return agent
