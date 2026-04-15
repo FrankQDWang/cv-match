@@ -846,6 +846,8 @@ class WorkflowRuntime:
         return advice
 
     def _update_query_term_pool(self, pool, advice: ReflectionAdvice, round_no: int):
+        del round_no
+        activate_terms = {item.casefold() for item in advice.keyword_advice.suggested_activate_terms}
         drop_terms = {item.casefold() for item in advice.keyword_advice.suggested_drop_terms}
         deprioritize_terms = {item.casefold() for item in advice.keyword_advice.suggested_deprioritize_terms}
         updated: list[QueryTermCandidate] = []
@@ -855,11 +857,23 @@ class WorkflowRuntime:
             if candidate.source == "job_title":
                 updated.append(candidate)
                 continue
-            if key in drop_terms:
-                candidate = candidate.model_copy(update={"active": False})
-            elif key in deprioritize_terms:
+            active = key in activate_terms or (candidate.active and key not in drop_terms)
+            if key in deprioritize_terms:
                 candidate = candidate.model_copy(update={"priority": candidate.priority + 100})
+            if candidate.active != active:
+                candidate = candidate.model_copy(update={"active": active})
             updated.append(candidate)
+        if not any(item.active for item in updated if item.source != "job_title"):
+            fallback = min(
+                (item for item in updated if item.source != "job_title"),
+                key=lambda item: (item.priority, item.first_added_round, item.term.casefold()),
+                default=None,
+            )
+            if fallback is not None:
+                updated = [
+                    item.model_copy(update={"active": True}) if item.term.casefold() == fallback.term.casefold() else item
+                    for item in updated
+                ]
         return updated
 
     async def _score_round(

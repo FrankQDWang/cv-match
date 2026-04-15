@@ -65,6 +65,10 @@ class RequirementExtractionDraft(BaseModel):
         default_factory=list,
         description="High-signal searchable terms extracted from the JD only, excluding the title anchor.",
     )
+    notes_query_terms: list[str] = Field(
+        default_factory=list,
+        description="High-signal searchable terms extracted from the notes only, excluding the title anchor.",
+    )
     role_summary: str = Field(min_length=1, description="Concise business summary of the role scope.")
     must_have_capabilities: list[str] = Field(default_factory=list, description="Critical capabilities required for fit.")
     preferred_capabilities: list[str] = Field(default_factory=list, description="Nice-to-have capabilities that strengthen fit.")
@@ -190,7 +194,7 @@ class RequirementDigest(BaseModel):
 class ReflectionKeywordAdvice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    suggested_add_terms: list[str] = Field(default_factory=list)
+    suggested_activate_terms: list[str] = Field(default_factory=list)
     suggested_keep_terms: list[str] = Field(default_factory=list)
     suggested_deprioritize_terms: list[str] = Field(default_factory=list)
     suggested_drop_terms: list[str] = Field(default_factory=list)

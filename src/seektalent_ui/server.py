@@ -22,6 +22,7 @@ from seektalent_ui.models import CandidateDetailResponse, RunCreateRequest, RunC
 @dataclass
 class UiRunRecord:
     run_id: str
+    job_title: str
     jd_text: str
     sourcing_preference_text: str
     status: str = "queued"
@@ -56,14 +57,18 @@ class RunRegistry:
         self._lock = threading.Lock()
         self._runs: dict[str, UiRunRecord] = {}
 
-    def create_run(self, *, jd_text: str, sourcing_preference_text: str) -> RunCreateResponse:
+    def create_run(self, *, job_title: str, jd_text: str, sourcing_preference_text: str) -> RunCreateResponse:
+        job_title = job_title.strip()
         jd_text = jd_text.strip()
         sourcing_preference_text = sourcing_preference_text.strip()
+        if not job_title:
+            raise ValueError("jobTitle must not be empty.")
         if not jd_text:
             raise ValueError("jdText must not be empty.")
         run_id = f"web-{uuid.uuid4().hex[:8]}"
         record = UiRunRecord(
             run_id=run_id,
+            job_title=job_title,
             jd_text=jd_text,
             sourcing_preference_text=sourcing_preference_text,
         )
@@ -102,6 +107,7 @@ class RunRegistry:
             self._runs[run_id].status = "running"
         try:
             artifacts = runtime.run(
+                job_title=self._runs[run_id].job_title,
                 jd=self._runs[run_id].jd_text,
                 notes=self._runs[run_id].sourcing_preference_text,
             )
@@ -156,6 +162,7 @@ def create_server(host: str, port: int, registry: RunRegistry) -> ThreadingHTTPS
                 payload = self._read_json()
                 request = RunCreateRequest.model_validate(payload)
                 response = registry.create_run(
+                    job_title=request.jobTitle.strip(),
                     jd_text=request.jdText.strip(),
                     sourcing_preference_text=request.sourcingPreferenceText.strip(),
                 )

@@ -22,6 +22,7 @@ from seektalent.models import (
 )
 
 UNLIMITED = "不限"
+ACTIVE_NON_ANCHOR_WINDOW = 4
 DEGREE_PATTERNS = (
     ("博士及以上", ("博士及以上", "博士以上", "博士研究生及以上")),
     ("硕士及以上", ("硕士及以上", "研究生及以上", "硕士以上", "研究生以上", "硕士研究生及以上")),
@@ -90,8 +91,14 @@ def normalize_requirement_draft(draft: RequirementExtractionDraft, *, job_title:
         for term in _clean_list(draft.jd_query_terms, limit=8)
         if term.casefold() != title_anchor_term.casefold()
     ]
-    if not jd_query_terms:
-        raise ValueError("jd_query_terms must contain at least one non-anchor term after normalization")
+    notes_query_terms = [
+        term
+        for term in _clean_list(draft.notes_query_terms, limit=8)
+        if term.casefold() != title_anchor_term.casefold()
+    ]
+    merged_query_terms = _merge_query_terms(jd_query_terms=jd_query_terms, notes_query_terms=notes_query_terms, limit=8)
+    if not merged_query_terms:
+        raise ValueError("jd_query_terms or notes_query_terms must contain at least one non-anchor term after normalization")
     allowed_locations = normalize_locations(draft.locations)
     preferred_locations = _normalize_preferred_locations(
         allowed_locations=allowed_locations,
@@ -124,6 +131,7 @@ def normalize_requirement_draft(draft: RequirementExtractionDraft, *, job_title:
         initial_query_term_pool=_build_query_term_pool(
             title_anchor_term=title_anchor_term,
             jd_query_terms=jd_query_terms,
+            notes_query_terms=notes_query_terms,
         ),
         scoring_rationale=scoring_rationale,
     )
@@ -290,6 +298,7 @@ def _build_query_term_pool(
     *,
     title_anchor_term: str,
     jd_query_terms: list[str],
+    notes_query_terms: list[str],
 ) -> list[QueryTermCandidate]:
     pool: list[QueryTermCandidate] = []
     pool.append(
@@ -302,17 +311,33 @@ def _build_query_term_pool(
             first_added_round=0,
         )
     )
-    for index, term in enumerate(jd_query_terms[:8], start=2):
+    for index, term in enumerate(
+        _merge_query_terms(jd_query_terms=jd_query_terms, notes_query_terms=notes_query_terms, limit=8),
+        start=2,
+    ):
         key = term.casefold()
         category = "tooling" if "python" in key or "pydantic" in key or "trace" in key or "logging" in key else "domain"
+        source = "jd" if any(term.casefold() == item.casefold() for item in jd_query_terms) else "notes"
         pool.append(
             QueryTermCandidate(
                 term=term,
-                source="jd",
+                source=source,
                 category=category,
                 priority=index,
-                evidence="JD query term.",
+                evidence="JD query term." if source == "jd" else "Notes query term.",
                 first_added_round=0,
+                active=index <= ACTIVE_NON_ANCHOR_WINDOW + 1,
             )
         )
     return pool
+
+
+def _merge_query_terms(*, jd_query_terms: list[str], notes_query_terms: list[str], limit: int) -> list[str]:
+    merged: list[str] = []
+    max_len = max(len(jd_query_terms), len(notes_query_terms))
+    for index in range(max_len):
+        if index < len(jd_query_terms):
+            merged.append(jd_query_terms[index])
+        if index < len(notes_query_terms):
+            merged.append(notes_query_terms[index])
+    return unique_strings(merged)[:limit]

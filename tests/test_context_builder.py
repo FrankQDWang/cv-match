@@ -207,7 +207,7 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
                     strategy_assessment="Current anchors are directionally correct.",
                     quality_assessment="Top candidate quality is acceptable.",
                     coverage_assessment="Coverage is still narrow.",
-                    keyword_advice=ReflectionKeywordAdvice(suggested_add_terms=["trace"]),
+                    keyword_advice=ReflectionKeywordAdvice(suggested_activate_terms=["trace"]),
                     filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
                     reflection_summary="Continue with one additional domain term next round.",
                 ),

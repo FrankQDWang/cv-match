@@ -325,3 +325,91 @@ def test_runtime_records_terminal_controller_round_separately(tmp_path: Path) ->
     assert not (tracer.run_dir / "rounds" / "round_03" / "retrieval_plan.json").exists()
     assert not (tracer.run_dir / "rounds" / "round_03" / "search_observation.json").exists()
     assert not (tracer.run_dir / "rounds" / "round_03" / "reflection_advice.json").exists()
+
+
+def test_runtime_query_pool_can_activate_reserve_term_without_losing_all_active_terms(tmp_path: Path) -> None:
+    runtime = WorkflowRuntime(AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+    pool = [
+        QueryTermCandidate(
+            term="python",
+            source="job_title",
+            category="role_anchor",
+            priority=1,
+            evidence="Job title",
+            first_added_round=0,
+        ),
+        QueryTermCandidate(
+            term="rag",
+            source="jd",
+            category="domain",
+            priority=2,
+            evidence="JD body",
+            first_added_round=0,
+            active=True,
+        ),
+        QueryTermCandidate(
+            term="langchain",
+            source="notes",
+            category="tooling",
+            priority=3,
+            evidence="Notes body",
+            first_added_round=0,
+            active=False,
+        ),
+    ]
+
+    updated = runtime._update_query_term_pool(
+        pool,
+        ReflectionAdvice(
+            strategy_assessment="Need a different framework term.",
+            quality_assessment="Current pool is narrow.",
+            coverage_assessment="Broaden one reserve term.",
+            keyword_advice=ReflectionKeywordAdvice(
+                suggested_activate_terms=["langchain"],
+                suggested_drop_terms=["rag"],
+            ),
+            filter_advice=ReflectionFilterAdvice(),
+            reflection_summary="Swap to the reserve framework term.",
+        ),
+        round_no=2,
+    )
+
+    assert [item.term for item in updated if item.active and item.source != "job_title"] == ["langchain"]
+
+
+def test_runtime_query_pool_keeps_one_active_non_anchor_term(tmp_path: Path) -> None:
+    runtime = WorkflowRuntime(AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+    pool = [
+        QueryTermCandidate(
+            term="python",
+            source="job_title",
+            category="role_anchor",
+            priority=1,
+            evidence="Job title",
+            first_added_round=0,
+        ),
+        QueryTermCandidate(
+            term="rag",
+            source="jd",
+            category="domain",
+            priority=2,
+            evidence="JD body",
+            first_added_round=0,
+            active=True,
+        ),
+    ]
+
+    updated = runtime._update_query_term_pool(
+        pool,
+        ReflectionAdvice(
+            strategy_assessment="Pool is weak.",
+            quality_assessment="Drop the only non-anchor term.",
+            coverage_assessment="No reserve terms are available.",
+            keyword_advice=ReflectionKeywordAdvice(suggested_drop_terms=["rag"]),
+            filter_advice=ReflectionFilterAdvice(),
+            reflection_summary="Attempted to drop the only active non-anchor term.",
+        ),
+        round_no=2,
+    )
+
+    assert [item.term for item in updated if item.active and item.source != "job_title"] == ["rag"]

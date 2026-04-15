@@ -157,6 +157,26 @@ def test_normalize_requirement_draft_keeps_only_allowed_preferred_locations() ->
     assert requirement_sheet.preferences.preferred_locations == ["北京", "上海"]
 
 
+def test_normalize_requirement_draft_merges_jd_and_notes_terms_into_term_bank() -> None:
+    requirement_sheet = normalize_requirement_draft(
+        RequirementExtractionDraft(
+            role_title="LLM Agent 工程师",
+            title_anchor_term="Agent",
+            jd_query_terms=["RAG", "LangChain", "AutoGen"],
+            notes_query_terms=["Python", "Java", "LangGraph"],
+            role_summary="负责 Agent 系统建设。",
+            must_have_capabilities=["Agent"],
+            scoring_rationale="先看 Agent 与工程能力。",
+        ),
+        job_title="LLM Agent 工程师",
+    )
+
+    non_anchor_terms = requirement_sheet.initial_query_term_pool[1:]
+    assert [item.term for item in non_anchor_terms] == ["RAG", "Python", "LangChain", "Java", "AutoGen", "LangGraph"]
+    assert [item.source for item in non_anchor_terms] == ["jd", "notes", "jd", "notes", "jd", "notes"]
+    assert [item.active for item in non_anchor_terms] == [True, True, True, True, False, False]
+
+
 def test_normalize_requirement_draft_clears_preferred_locations_for_single_city() -> None:
     requirement_sheet = normalize_requirement_draft(
         RequirementExtractionDraft(

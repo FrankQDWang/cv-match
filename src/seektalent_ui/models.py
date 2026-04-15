@@ -11,6 +11,7 @@ RunStatus = Literal["queued", "running", "completed", "failed"]
 class RunCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    jobTitle: str = Field(min_length=1)
     jdText: str = Field(min_length=1)
     sourcingPreferenceText: str = ""
 
