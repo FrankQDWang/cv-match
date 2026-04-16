@@ -1,11 +1,15 @@
 services:
   openclaw-gateway:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
-    command: ["node", "dist/index.js", "gateway", "--allow-unconfigured", "--bind", "lan"]
+    command: ["node", "dist/index.js", "gateway", "--bind", "lan"]
     ports:
       - "18789:18789"
+    env_file:
+      - ../../.env
+      - ./.env
     environment:
-      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
     volumes:
       - ./state/config:/home/node/.openclaw
       - ./state/workspace:/home/node/.openclaw/workspace
