@@ -11,7 +11,7 @@ from experiments.openclaw_baseline import OPENCLAW_MAX_ROUNDS
 from experiments.openclaw_baseline.cts_tools import SearchCandidatesTool
 from experiments.openclaw_baseline.harness import run_openclaw_baseline
 from experiments.openclaw_baseline.judge_eval import evaluate_openclaw_run
-from experiments.openclaw_baseline.wandb_logging import log_openclaw_to_wandb
+from experiments.openclaw_baseline.wandb_logging import log_openclaw_failure_to_wandb, log_openclaw_to_wandb
 from seektalent.config import AppSettings
 from seektalent.evaluation import EvaluationArtifacts, EvaluationResult, EvaluationStageResult, ResumeJudgeResult
 from seektalent.models import ResumeCandidate
@@ -421,3 +421,49 @@ def test_log_openclaw_to_wandb_does_not_touch_weave(monkeypatch: pytest.MonkeyPa
         evaluation=_evaluation(),
         rounds_executed=1,
     )
+
+
+def test_log_openclaw_failure_to_wandb_writes_zero_scores(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    class FakeRun:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            self.kwargs = kwargs
+            self.logged: list[dict[str, object]] = []
+
+        def log(self, payload: dict[str, object]) -> None:
+            self.logged.append(payload)
+
+        def finish(self) -> None:
+            return None
+
+    class FakeWandb:
+        def __init__(self) -> None:
+            self.runs: list[FakeRun] = []
+
+        def init(self, **kwargs) -> FakeRun:  # noqa: ANN003
+            run = FakeRun(**kwargs)
+            self.runs.append(run)
+            return run
+
+    fake_wandb = FakeWandb()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    upserts: list[str] = []
+    monkeypatch.setattr("experiments.openclaw_baseline.wandb_logging._upsert_wandb_report", lambda settings: upserts.append(settings.wandb_project))
+    settings = AppSettings(_env_file=None, wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
+
+    log_openclaw_failure_to_wandb(
+        settings=settings,
+        run_id="failed-openclaw-run",
+        jd="agent jd",
+        rounds_executed=1,
+        error_message="Unsupported native filter: work_years",
+    )
+
+    payload = fake_wandb.runs[0].logged[0]
+    assert fake_wandb.runs[0].kwargs["config"]["version"] == "openclaw"
+    assert payload["final_total_score"] == 0.0
+    assert payload["round_01_total_score"] == 0.0
+    assert payload["openclaw_failed"] == 1
+    assert "Unsupported native filter" in str(payload["openclaw_failure_message"])
+    assert upserts == ["seektalent"]

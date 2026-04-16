@@ -24,6 +24,7 @@ from experiments.openclaw_baseline.adapters import (
 from experiments.openclaw_baseline.cts_tools import SearchCandidatesTool
 from experiments.openclaw_baseline.judge_eval import evaluate_openclaw_run
 from experiments.openclaw_baseline.wandb_logging import log_openclaw_to_wandb
+from experiments.openclaw_baseline.wandb_logging import log_openclaw_failure_to_wandb
 from seektalent.config import AppSettings
 from seektalent.evaluation import EvaluationResult, TOP_K
 from seektalent.prompting import PromptRegistry, json_block
@@ -96,7 +97,7 @@ class OpenClawResponsesClient:
 
 
 def _message_input(text: str) -> list[dict[str, object]]:
-    return [{"role": "user", "content": [{"type": "input_text", "text": text}]}]
+    return [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}]
 
 
 def _normalize_gateway_base_url(base_url: str) -> str:
@@ -165,7 +166,15 @@ def _extract_text(body: dict[str, object]) -> str:
 
 
 def _parse_snapshot(text: str) -> ShortlistSnapshot:
-    return ShortlistSnapshot.model_validate(json.loads(text))
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+    return ShortlistSnapshot.model_validate(json.loads(stripped))
 
 
 async def run_openclaw_round(
@@ -394,6 +403,13 @@ async def run_openclaw_baseline(
             evaluation_result=evaluation_artifacts.result,
         )
     except Exception as exc:
+        log_openclaw_failure_to_wandb(
+            settings=settings,
+            run_id=tracer.run_id,
+            jd=jd,
+            rounds_executed=rounds_executed,
+            error_message=str(exc),
+        )
         tracer.emit("run_failed", status="failed", summary=str(exc), error_message=str(exc))
         raise
     finally:

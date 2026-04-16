@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 
 from experiments.openclaw_baseline import OPENCLAW_VERSION
@@ -81,6 +82,51 @@ def log_openclaw_to_wandb(
         artifact.add_file(str(artifact_root / "evaluation" / "evaluation.json"))
         artifact.add_dir(str(artifact_root / "raw_resumes"), name="raw_resumes")
         run.log_artifact(artifact)
+    finally:
+        run.finish()
+    _upsert_wandb_report(settings)
+
+
+def log_openclaw_failure_to_wandb(
+    *,
+    settings: AppSettings,
+    run_id: str,
+    jd: str,
+    rounds_executed: int,
+    error_message: str,
+) -> None:
+    if not settings.wandb_project:
+        return
+    import wandb
+
+    run = wandb.init(
+        project=settings.wandb_project,
+        entity=settings.wandb_entity or None,
+        job_type="resume-eval",
+        config={
+            "version": OPENCLAW_VERSION,
+            "seektalent_version": OPENCLAW_VERSION,
+            "eval_enabled": True,
+            "judge_model": settings.effective_judge_model,
+            "jd_sha256": sha256(jd.encode("utf-8")).hexdigest(),
+            "backing_model": settings.controller_model,
+        },
+        name=run_id,
+    )
+    try:
+        run.log(
+            {
+                "round_01_ndcg_at_10": 0.0,
+                "round_01_precision_at_10": 0.0,
+                "round_01_total_score": 0.0,
+                "final_ndcg_at_10": 0.0,
+                "final_precision_at_10": 0.0,
+                "final_total_score": 0.0,
+                "rounds_executed": rounds_executed,
+                "openclaw_failed": 1,
+                "openclaw_failure_message": error_message,
+            }
+        )
     finally:
         run.finish()
     _upsert_wandb_report(settings)

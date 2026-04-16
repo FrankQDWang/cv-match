@@ -60,7 +60,6 @@ class SearchCandidatesTool:
                 "Search CTS candidates. Use only concise query terms and CTS-native filters. "
                 "The round has hard page and attempt limits."
             ),
-            "strict": True,
             "parameters": {
                 "type": "object",
                 "additionalProperties": False,
