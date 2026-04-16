@@ -8,6 +8,12 @@ from seektalent.config import AppSettings
 from seektalent.evaluation import EvaluationResult, _upsert_wandb_report
 
 
+def _wandb_settings(wandb):  # noqa: ANN001
+    if not hasattr(wandb, "Settings"):
+        return None
+    return wandb.Settings(init_timeout=300)
+
+
 def log_jd_text_to_wandb(
     *,
     settings: AppSettings,
@@ -24,6 +30,7 @@ def log_jd_text_to_wandb(
         project=settings.wandb_project,
         entity=settings.wandb_entity or None,
         job_type="resume-eval",
+        settings=_wandb_settings(wandb),
         config={
             "version": JD_TEXT_VERSION,
             "seektalent_version": JD_TEXT_VERSION,
@@ -103,6 +110,7 @@ def log_jd_text_failure_to_wandb(
         project=settings.wandb_project,
         entity=settings.wandb_entity or None,
         job_type="resume-eval",
+        settings=_wandb_settings(wandb),
         config={
             "version": JD_TEXT_VERSION,
             "seektalent_version": JD_TEXT_VERSION,
