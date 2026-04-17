@@ -34,6 +34,17 @@ uv run ty check --watch src tests
 
 ty is a standalone required CI check, not part of `pytest`.
 
+Run Tach architecture dependency observations:
+
+```bash
+uv run tach report src/seektalent/runtime
+uv run tach report src/seektalent_ui
+uv run tach show --mermaid -o tach_module_graph.md
+uv run tach map -o tach_dependency_map.json
+```
+
+Tach is a local architecture radar in this phase, not a required CI gate. Do not commit generated graph or map files.
+
 Run Python tests:
 
 ```bash

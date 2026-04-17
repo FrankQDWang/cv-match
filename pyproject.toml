@@ -23,6 +23,7 @@ dependencies = [
 dev = [
     "pytest>=8.4.2",
     "ruff>=0.14.0",
+    "tach>=0.34.1",
     "ty>=0.0.31",
 ]
 
