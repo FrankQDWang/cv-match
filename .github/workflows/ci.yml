@@ -21,4 +21,5 @@ jobs:
         run: |
           uv sync --group dev
           uv run --group dev ruff check src tests
+          uv run --group dev ty check src tests
           uv run --group dev python -m pytest -q

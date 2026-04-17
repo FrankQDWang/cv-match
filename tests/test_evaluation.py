@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
-from seektalent.config import AppSettings
 from seektalent.evaluation import (
     WANDB_REPORT_TITLE,
     _latest_runs_by_version_rows,
@@ -25,6 +25,7 @@ from seektalent.evaluation import (
 )
 from seektalent.models import ResumeCandidate
 from seektalent.prompting import LoadedPrompt
+from tests.settings_factory import make_settings
 
 
 class FakeExprConfig:
@@ -278,7 +279,7 @@ def test_evaluate_run_keeps_no_judge_artifacts_on_failure(tmp_path: Path, monkey
         raise RuntimeError("judge failed")
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
-    settings = AppSettings(_env_file=None, runs_dir=str(tmp_path / "runs"))
+    settings = make_settings(runs_dir=str(tmp_path / "runs"))
     prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
     candidate = ResumeCandidate(
         resume_id="resume-1",
@@ -329,7 +330,7 @@ def test_evaluate_run_does_not_log_wandb_when_weave_fails(tmp_path: Path, monkey
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
     monkeypatch.setattr("seektalent.evaluation._log_to_weave", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("weave failed")))
     monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: wandb_calls.append("wandb"))
-    settings = AppSettings(_env_file=None, runs_dir=str(tmp_path / "runs"), enable_eval=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), enable_eval=True)
     prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
     candidate = ResumeCandidate(
         resume_id="resume-1",
@@ -365,7 +366,7 @@ def test_evaluate_run_does_not_log_wandb_when_weave_fails(tmp_path: Path, monkey
 
 
 def test_resume_judge_includes_notes_block_only_when_present(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
     prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
     candidate = ResumeCandidate(
         resume_id="resume-1",
@@ -387,7 +388,7 @@ def test_resume_judge_includes_notes_block_only_when_present(tmp_path: Path) -> 
             return SimpleNamespace(output=ResumeJudgeResult(score=2, rationale="ok"))
 
     judge = ResumeJudge(settings, prompt)
-    judge._build_agent = lambda: FakeAgent()  # type: ignore[method-assign]
+    cast(Any, judge)._build_agent = lambda: FakeAgent()
     try:
         asyncio.run(judge.judge_many(jd="JD text", notes="Prefer agent experience", candidates=[candidate], cache=cache))
         asyncio.run(judge.judge_many(jd="JD text", notes="", candidates=[candidate], cache=JudgeCache(tmp_path / "other")))
@@ -418,7 +419,7 @@ def test_evaluate_run_passes_notes_to_judge(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
     monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: None)
     monkeypatch.setattr("seektalent.evaluation._log_to_weave", lambda **kwargs: None)
-    settings = AppSettings(_env_file=None, runs_dir=str(tmp_path / "runs"))
+    settings = make_settings(runs_dir=str(tmp_path / "runs"))
     prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
     candidate = ResumeCandidate(
         resume_id="resume-1",
@@ -692,8 +693,7 @@ def test_evaluate_run_logs_weave_and_wandb(
         )
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         enable_eval=True,
         wandb_entity="frankqdwang1-personal-creations",
@@ -775,7 +775,7 @@ def test_evaluate_run_logs_weave_before_wandb(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
     monkeypatch.setattr("seektalent.evaluation._log_to_weave", lambda **kwargs: calls.append("weave"))
     monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: calls.append("wandb"))
-    settings = AppSettings(_env_file=None, runs_dir=str(tmp_path / "runs"), enable_eval=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), enable_eval=True)
     prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
     candidate = ResumeCandidate(
         resume_id="resume-1",
@@ -846,8 +846,7 @@ def test_evaluate_run_skips_empty_weave_stage(tmp_path: Path, monkeypatch: pytes
         )
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         enable_eval=True,
         weave_entity="frankqdwang1-personal-creations",
@@ -976,8 +975,7 @@ def test_upsert_wandb_report_reuses_existing_report(tmp_path: Path, monkeypatch:
             ),
         )
 
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         wandb_entity="frankqdwang1-personal-creations",
         wandb_project="seektalent",
     )
@@ -1080,8 +1078,7 @@ def test_upsert_wandb_report_deletes_duplicate_titles(tmp_path: Path, monkeypatc
             ),
         )
 
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         wandb_entity="frankqdwang1-personal-creations",
         wandb_project="seektalent",
     )

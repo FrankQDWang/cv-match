@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -17,6 +18,7 @@ from seektalent.models import (
     InputTruth,
     LocationExecutionPlan,
     NormalizedResume,
+    PreferenceSlots,
     QueryTermCandidate,
     ReflectionAdvice,
     ReflectionContext,
@@ -28,11 +30,13 @@ from seektalent.models import (
     RequirementSheet,
     ScoredCandidate,
     ScoringContext,
+    ScoringPolicy,
 )
 from seektalent.prompting import LoadedPrompt
 from seektalent.reflection.critic import ReflectionCritic
 from seektalent.requirements.extractor import RequirementExtractor
 from seektalent.scoring.scorer import ResumeScorer
+from tests.settings_factory import make_settings
 
 
 def _prompt(name: str) -> LoadedPrompt:
@@ -41,7 +45,7 @@ def _prompt(name: str) -> LoadedPrompt:
 
 def _settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    return AppSettings(_env_file=None)
+    return make_settings()
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -154,16 +158,16 @@ def _scored_candidate() -> ScoredCandidate:
 def _scoring_context() -> ScoringContext:
     return ScoringContext(
         round_no=1,
-        scoring_policy={
-            "role_title": "Senior Python Engineer",
-            "role_summary": "Build resume matching workflows.",
-            "must_have_capabilities": ["python"],
-            "preferred_capabilities": [],
-            "exclusion_signals": [],
-            "hard_constraints": {"locations": ["上海"]},
-            "preferences": {},
-            "scoring_rationale": "Score Python fit first.",
-        },
+        scoring_policy=ScoringPolicy(
+            role_title="Senior Python Engineer",
+            role_summary="Build resume matching workflows.",
+            must_have_capabilities=["python"],
+            preferred_capabilities=[],
+            exclusion_signals=[],
+            hard_constraints=HardConstraintSlots(locations=["上海"]),
+            preferences=PreferenceSlots(),
+            scoring_rationale="Score Python fit first.",
+        ),
         normalized_resume=NormalizedResume(
             resume_id="resume-1",
             dedup_key="resume-1",
@@ -334,8 +338,8 @@ def test_scorer_builds_one_agent_per_parallel_call(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(scorer, "_build_agent", build_agent)
     monkeypatch.setattr(scorer, "_score_candidates_parallel", fake_score_candidates_parallel)
 
-    asyncio.run(scorer.score_candidates_parallel(contexts=[_scoring_context()], tracer=object()))
-    asyncio.run(scorer.score_candidates_parallel(contexts=[_scoring_context()], tracer=object()))
+    asyncio.run(scorer.score_candidates_parallel(contexts=[_scoring_context()], tracer=cast(Any, object())))
+    asyncio.run(scorer.score_candidates_parallel(contexts=[_scoring_context()], tracer=cast(Any, object())))
 
     assert len(created_agents) == 2
     assert used_agents == created_agents

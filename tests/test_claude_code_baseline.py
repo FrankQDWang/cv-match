@@ -17,10 +17,10 @@ from experiments.claude_code_baseline.wandb_logging import (
     log_claude_code_failure_to_wandb,
     log_claude_code_to_wandb,
 )
-from seektalent.config import AppSettings
 from seektalent.evaluation import EvaluationArtifacts, EvaluationResult, EvaluationStageResult, ResumeJudgeResult
 from seektalent.models import ResumeCandidate
 from seektalent.prompting import LoadedPrompt
+from tests.settings_factory import make_settings
 
 
 def _candidate(resume_id: str, *, source_round: int = 1) -> ResumeCandidate:
@@ -73,7 +73,7 @@ def test_chat_completions_url_appends_endpoint() -> None:
 
 
 def test_write_router_config_uses_isolated_home_and_env_reference(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(controller_model="openai-chat:deepseek-v3.2")
+    settings = make_settings(controller_model="openai-chat:deepseek-v3.2")
     config_path = write_router_config(
         home_dir=tmp_path / "home",
         settings=settings,
@@ -90,7 +90,7 @@ def test_write_router_config_uses_isolated_home_and_env_reference(tmp_path: Path
 
 
 def test_cts_mcp_enforces_ten_accepted_calls(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(mock_cts=True)
+    settings = make_settings(mock_cts=True)
     session = CTSToolSession(settings=settings, run_dir=tmp_path)
 
     for _ in range(CLAUDE_CODE_MAX_ROUNDS):
@@ -107,7 +107,7 @@ def test_cts_mcp_enforces_ten_accepted_calls(tmp_path: Path) -> None:
 
 
 def test_cts_mcp_freezes_first_successful_search(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(mock_cts=True)
+    settings = make_settings(mock_cts=True)
     session = CTSToolSession(settings=settings, run_dir=tmp_path)
 
     first = asyncio.run(session.search_candidates({"query_terms": ["python"], "page": 1, "page_size": 2}))
@@ -123,7 +123,7 @@ def test_run_claude_code_baseline_uses_isolated_home_and_counts_cts_calls(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         controller_model="openai-chat:deepseek-v3.2",
@@ -191,7 +191,7 @@ def test_run_claude_code_baseline_fails_unseen_final_ids_with_zero_score(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         controller_model="openai-chat:deepseek-v3.2",
@@ -251,7 +251,7 @@ def test_run_claude_code_baseline_fails_unseen_final_ids_with_zero_score(
 
 
 def test_evaluate_claude_code_run_writes_eval_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
     monkeypatch.chdir(tmp_path)
 
     class FakeJudge:
@@ -346,7 +346,7 @@ def test_log_claude_code_to_wandb_uses_report_version(monkeypatch: pytest.Monkey
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
     upserts: list[str] = []
     monkeypatch.setattr("experiments.claude_code_baseline.wandb_logging._upsert_wandb_report", lambda settings: upserts.append(settings.wandb_project))
-    settings = AppSettings(_env_file=None, wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
+    settings = make_settings(wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
 
     log_claude_code_to_wandb(settings=settings, artifact_root=artifact_root, evaluation=_evaluation(), rounds_executed=4)
 
@@ -406,7 +406,7 @@ def test_log_claude_code_to_wandb_does_not_touch_weave(monkeypatch: pytest.Monke
     monkeypatch.setitem(sys.modules, "weave", PoisonWeave())
     monkeypatch.setitem(sys.modules, "wandb", FakeWandb())
     monkeypatch.setattr("experiments.claude_code_baseline.wandb_logging._upsert_wandb_report", lambda settings: None)
-    settings = AppSettings(_env_file=None, wandb_project="seektalent")
+    settings = make_settings(wandb_project="seektalent")
 
     log_claude_code_to_wandb(
         settings=settings,
@@ -443,7 +443,7 @@ def test_log_claude_code_failure_to_wandb_writes_zero_scores(monkeypatch: pytest
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
     upserts: list[str] = []
     monkeypatch.setattr("experiments.claude_code_baseline.wandb_logging._upsert_wandb_report", lambda settings: upserts.append(settings.wandb_project))
-    settings = AppSettings(_env_file=None, wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
+    settings = make_settings(wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
 
     log_claude_code_failure_to_wandb(
         settings=settings,

@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -43,7 +44,7 @@ def test_reflection_advice_rejects_stop_reason_when_continuing() -> None:
 
 def test_reflection_filter_advice_rejects_unknown_filter_fields() -> None:
     with pytest.raises(ValidationError):
-        ReflectionFilterAdvice(suggested_add_filter_fields=["unsupported_field"])
+        ReflectionFilterAdvice.model_validate({"suggested_add_filter_fields": ["unsupported_field"]})
 
 
 def test_reflection_advice_draft_requires_stop_reason_when_stopping() -> None:
@@ -61,7 +62,7 @@ def test_reflection_advice_draft_requires_stop_reason_when_stopping() -> None:
 def test_materialized_reflection_prose_mentions_only_structured_activate_terms() -> None:
     context = SimpleNamespace(round_no=3, search_observation=SimpleNamespace(unique_new_count=0))
     advice = materialize_reflection_advice(
-        context=context,
+        context=cast(Any, context),
         draft=ReflectionAdviceDraft(
             strategy_assessment="Need broader framework coverage.",
             quality_assessment="Top pool is narrow.",
@@ -83,7 +84,7 @@ def test_materialized_reflection_prose_mentions_only_structured_activate_terms()
 def test_materialized_reflection_prose_does_not_invent_terms() -> None:
     context = SimpleNamespace(round_no=2, search_observation=SimpleNamespace(unique_new_count=1))
     advice = materialize_reflection_advice(
-        context=context,
+        context=cast(Any, context),
         draft=ReflectionAdviceDraft(
             strategy_assessment="Direction is stable.",
             quality_assessment="Pool quality is mixed.",

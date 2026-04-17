@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 from pydantic_ai.exceptions import ModelRetry
 
-from seektalent.config import AppSettings
 from seektalent.finalize.finalizer import Finalizer
 from seektalent.models import FinalCandidate, FinalResult, FinalizeContext, ScoredCandidate
 from seektalent.prompting import LoadedPrompt
+from tests.settings_factory import make_settings
 
 
 def _scored_candidate(resume_id: str, *, source_round: int, score: int) -> ScoredCandidate:
@@ -51,7 +51,7 @@ def _candidate(resume_id: str, *, rank: int, source_round: int) -> FinalCandidat
 def _validator(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     finalizer = Finalizer(
-        AppSettings(_env_file=None),
+        make_settings(),
         LoadedPrompt(name="finalize", path=Path("finalize.md"), content="finalize prompt", sha256="hash"),
     )
     return finalizer._get_agent()._output_validators[0].function

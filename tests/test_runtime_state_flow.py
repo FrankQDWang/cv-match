@@ -1,8 +1,8 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any, cast
 
-from seektalent.config import AppSettings
 from seektalent.models import (
     CTSQuery,
     FinalCandidate,
@@ -29,6 +29,7 @@ from seektalent.models import (
 from seektalent.retrieval import build_location_execution_plan, build_round_retrieval_plan
 from seektalent.runtime import WorkflowRuntime
 from seektalent.tracing import RunTracer
+from tests.settings_factory import make_settings
 
 
 def _sample_inputs() -> tuple[str, str, str]:
@@ -268,19 +269,24 @@ class StopAfterSecondRoundController:
         )
 
 
+def _install_runtime_stubs(runtime: WorkflowRuntime, *, controller: object, resume_scorer: object) -> None:
+    runtime_any = cast(Any, runtime)
+    runtime_any.requirement_extractor = StubRequirementExtractor()
+    runtime_any.controller = controller
+    runtime_any.reflection_critic = SequenceReflection()
+    runtime_any.resume_scorer = resume_scorer
+    runtime_any.finalizer = StubFinalizer()
+
+
 def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
         max_rounds=2,
     )
     runtime = WorkflowRuntime(settings)
-    runtime.requirement_extractor = StubRequirementExtractor()
-    runtime.controller = SequenceController()
-    runtime.reflection_critic = SequenceReflection()
-    runtime.resume_scorer = StubScorer()
-    runtime.finalizer = StubFinalizer()
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
     tracer = RunTracer(tmp_path / "trace-runs")
     job_title, jd, notes = _sample_inputs()
 
@@ -375,9 +381,9 @@ class RecordingScorer:
 
 
 def test_score_round_keeps_existing_scorecards_and_only_scores_new_resumes(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     runtime = WorkflowRuntime(settings)
-    runtime.resume_scorer = RecordingScorer()
+    cast(Any, runtime).resume_scorer = RecordingScorer()
     requirement_sheet = asyncio.run(StubRequirementExtractor().extract(input_truth=None))
     existing = ScoredCandidate(
         resume_id="seen",
@@ -440,7 +446,7 @@ def test_score_round_keeps_existing_scorecards_and_only_scores_new_resumes(tmp_p
     finally:
         tracer.close()
 
-    assert runtime.resume_scorer.resume_ids == ["fresh"]
+    assert cast(Any, runtime).resume_scorer.resume_ids == ["fresh"]
     assert run_state.scorecards_by_resume_id["seen"].overall_score == 80
     assert run_state.scorecards_by_resume_id["fresh"].overall_score == 95
     assert [item.resume_id for item in top_candidates] == ["fresh", "seen"]
@@ -449,18 +455,14 @@ def test_score_round_keeps_existing_scorecards_and_only_scores_new_resumes(tmp_p
 
 
 def test_runtime_records_terminal_controller_round_separately(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
         max_rounds=3,
     )
     runtime = WorkflowRuntime(settings)
-    runtime.requirement_extractor = StubRequirementExtractor()
-    runtime.controller = StopAfterSecondRoundController()
-    runtime.reflection_critic = SequenceReflection()
-    runtime.resume_scorer = StubScorer()
-    runtime.finalizer = StubFinalizer()
+    _install_runtime_stubs(runtime, controller=StopAfterSecondRoundController(), resume_scorer=StubScorer())
     tracer = RunTracer(tmp_path / "trace-runs")
     job_title, jd, notes = _sample_inputs()
 
@@ -485,7 +487,7 @@ def test_runtime_records_terminal_controller_round_separately(tmp_path: Path) ->
 
 
 def test_runtime_query_pool_can_activate_reserve_term_without_losing_all_active_terms(tmp_path: Path) -> None:
-    runtime = WorkflowRuntime(AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
     pool = [
         QueryTermCandidate(
             term="python",
@@ -535,7 +537,7 @@ def test_runtime_query_pool_can_activate_reserve_term_without_losing_all_active_
 
 
 def test_runtime_query_pool_keeps_one_active_non_anchor_term(tmp_path: Path) -> None:
-    runtime = WorkflowRuntime(AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
     pool = [
         QueryTermCandidate(
             term="python",
@@ -573,7 +575,7 @@ def test_runtime_query_pool_keeps_one_active_non_anchor_term(tmp_path: Path) -> 
 
 
 def test_runtime_degrades_to_single_query_when_no_distinct_explore_query_exists(tmp_path: Path) -> None:
-    runtime = WorkflowRuntime(AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
     requirement_sheet = RequirementSheet(
         role_title="Senior Python Engineer",
         title_anchor_term="python",

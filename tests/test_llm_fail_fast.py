@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from pydantic_ai.models.test import TestModel
@@ -28,6 +29,7 @@ from seektalent.prompting import LoadedPrompt
 from seektalent.requirements import RequirementExtractor
 from seektalent.reflection.critic import ReflectionCritic
 from seektalent.scoring.scorer import ResumeScorer
+from tests.settings_factory import make_settings
 
 
 def _prompt(name: str) -> LoadedPrompt:
@@ -36,7 +38,7 @@ def _prompt(name: str) -> LoadedPrompt:
 
 def _settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    return AppSettings(_env_file=None)
+    return make_settings()
 
 
 def _test_model(output_text: str) -> TestModel:
@@ -279,7 +281,9 @@ def test_scorer_returns_failure_after_two_output_retries(monkeypatch: pytest.Mon
         def append_jsonl(self, *args, **kwargs):  # noqa: ANN002, ANN003
             return None
 
-    scored, failures = asyncio.run(scorer.score_candidates_parallel(contexts=[_scoring_context()], tracer=StubTracer()))
+    scored, failures = asyncio.run(
+        scorer.score_candidates_parallel(contexts=[_scoring_context()], tracer=cast(Any, StubTracer()))
+    )
 
     assert scored == []
     assert len(failures) == 1

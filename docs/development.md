@@ -24,21 +24,27 @@ uv run ruff check src tests
 
 Ruff is a standalone quality check, not part of `pytest`.
 
-Run advisory ty checks on production code:
+Run ty type checks:
 
 ```bash
-uv run ty check src
+uv run ty check src tests
 uv run ty check src/seektalent/runtime/orchestrator.py
-uv run ty check --watch src
+uv run ty check --watch src tests
 ```
 
-ty is a local risk radar for production code. It is not part of `pytest` and is not a required CI gate yet.
+ty is a standalone required CI check, not part of `pytest`.
 
 Run Python tests:
 
 ```bash
 uv run pytest
 ```
+
+## Test Typing
+
+Use `tests.settings_factory.make_settings()` when tests need `AppSettings`. Do not call `AppSettings(_env_file=None)` directly in tests.
+
+Keep dynamic test boundaries local. For monkeypatches, stubs, fake clients, or third-party typing gaps, prefer a local `cast(Any, ...)` at the boundary. Do not add global ty ignores, bulk suppressions, or production abstractions just to satisfy tests.
 
 Run the CLI help:
 

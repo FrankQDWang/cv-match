@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -13,10 +14,10 @@ from experiments.jd_text_baseline.cts_search import JDTextCTSClient, JDTextSearc
 from experiments.jd_text_baseline.harness import run_jd_text_baseline
 from experiments.jd_text_baseline.judge_eval import evaluate_jd_text_run
 from experiments.jd_text_baseline.wandb_logging import log_jd_text_failure_to_wandb, log_jd_text_to_wandb
-from seektalent.config import AppSettings
 from seektalent.evaluation import EvaluationArtifacts, EvaluationResult, EvaluationStageResult, ResumeJudgeResult
 from seektalent.models import ResumeCandidate
 from seektalent.prompting import LoadedPrompt
+from tests.settings_factory import make_settings
 
 
 def _candidate_body(resume_id: str) -> dict[str, object]:
@@ -93,8 +94,7 @@ def test_jd_text_cts_client_payload_only_contains_jd_page_pagesize() -> None:
         seen_payloads.append(json.loads(request.content.decode("utf-8")))
         return httpx.Response(200, json=_cts_response("jd-r001"))
 
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         cts_base_url="https://cts.example",
         cts_tenant_key="tenant-key",
         cts_tenant_secret="tenant-secret",
@@ -109,7 +109,7 @@ def test_jd_text_cts_client_payload_only_contains_jd_page_pagesize() -> None:
 
 
 def test_run_jd_text_baseline_uses_one_round_and_same_candidates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"))
+    settings = make_settings(runs_dir=str(tmp_path / "runs"))
     candidates = [_candidate("jd-r001"), _candidate("jd-r002")]
 
     class FakeClient:
@@ -137,7 +137,7 @@ def test_run_jd_text_baseline_uses_one_round_and_same_candidates(tmp_path: Path,
             jd="Python engineer with retrieval experience.",
             notes="",
             settings=settings,
-            client=FakeClient(),
+            client=cast(Any, FakeClient()),
         )
     )
 
@@ -152,7 +152,7 @@ def test_run_jd_text_baseline_uses_one_round_and_same_candidates(tmp_path: Path,
 
 
 def test_run_jd_text_baseline_failure_logs_zero_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), wandb_project="seektalent")
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), wandb_project="seektalent")
     failures: list[dict[str, object]] = []
 
     class EmptyClient:
@@ -175,7 +175,7 @@ def test_run_jd_text_baseline_failure_logs_zero_score(tmp_path: Path, monkeypatc
                 jd="Python engineer with retrieval experience.",
                 notes="",
                 settings=settings,
-                client=EmptyClient(),
+                client=cast(Any, EmptyClient()),
             )
         )
 
@@ -184,7 +184,7 @@ def test_run_jd_text_baseline_failure_logs_zero_score(tmp_path: Path, monkeypatc
 
 
 def test_evaluate_jd_text_run_writes_eval_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
     monkeypatch.chdir(tmp_path)
 
     class FakeJudge:
@@ -279,7 +279,7 @@ def test_log_jd_text_to_wandb_uses_chinese_version_and_refreshes_report(monkeypa
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
     upserts: list[str] = []
     monkeypatch.setattr("experiments.jd_text_baseline.wandb_logging._upsert_wandb_report", lambda settings: upserts.append(settings.wandb_project))
-    settings = AppSettings(_env_file=None, wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
+    settings = make_settings(wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
 
     log_jd_text_to_wandb(settings=settings, artifact_root=artifact_root, evaluation=_evaluation(), rounds_executed=1)
 
@@ -339,7 +339,7 @@ def test_log_jd_text_to_wandb_does_not_touch_weave(monkeypatch: pytest.MonkeyPat
     monkeypatch.setitem(sys.modules, "weave", PoisonWeave())
     monkeypatch.setitem(sys.modules, "wandb", FakeWandb())
     monkeypatch.setattr("experiments.jd_text_baseline.wandb_logging._upsert_wandb_report", lambda settings: None)
-    settings = AppSettings(_env_file=None, wandb_project="seektalent")
+    settings = make_settings(wandb_project="seektalent")
 
     log_jd_text_to_wandb(
         settings=settings,
@@ -376,7 +376,7 @@ def test_log_jd_text_failure_to_wandb_writes_zero_scores(monkeypatch: pytest.Mon
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
     upserts: list[str] = []
     monkeypatch.setattr("experiments.jd_text_baseline.wandb_logging._upsert_wandb_report", lambda settings: upserts.append(settings.wandb_project))
-    settings = AppSettings(_env_file=None, wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
+    settings = make_settings(wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
 
     log_jd_text_failure_to_wandb(
         settings=settings,

@@ -7,6 +7,7 @@ from seektalent import AppSettings, MatchRunResult, run_match, run_match_async
 from seektalent.evaluation import EvaluationResult, EvaluationStageResult
 from seektalent.models import FinalResult
 from seektalent.runtime import RunArtifacts
+from tests.settings_factory import make_settings
 
 
 def _evaluation_result() -> EvaluationResult:
@@ -73,7 +74,7 @@ def test_run_match_returns_stable_result(monkeypatch, tmp_path: Path) -> None:
         job_title="Python Engineer",
         jd="JD",
         notes="Notes",
-        settings=AppSettings(_env_file=None, mock_cts=True),
+        settings=make_settings(mock_cts=True),
         env_file="custom.env",
     )
 
@@ -104,7 +105,7 @@ def test_run_match_defaults_notes_to_empty_string(monkeypatch, tmp_path: Path) -
     monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
     monkeypatch.setattr("seektalent.api.load_process_env", lambda env_file: None)
 
-    result = run_match(job_title="Python Engineer", jd="JD", settings=AppSettings(_env_file=None, mock_cts=True), env_file=None)
+    result = run_match(job_title="Python Engineer", jd="JD", settings=make_settings(mock_cts=True), env_file=None)
 
     assert isinstance(result, MatchRunResult)
     assert captured == {"job_title": "Python Engineer", "jd": "JD", "notes": ""}
@@ -129,7 +130,7 @@ def test_run_match_async_returns_stable_result(monkeypatch, tmp_path: Path) -> N
             job_title="Python Engineer",
             jd="JD",
             notes="Notes",
-            settings=AppSettings(_env_file=None, mock_cts=True),
+            settings=make_settings(mock_cts=True),
             env_file=None,
         )
     )
@@ -156,7 +157,7 @@ def test_run_match_async_defaults_notes_to_empty_string(monkeypatch, tmp_path: P
         run_match_async(
             job_title="Python Engineer",
             jd="JD",
-            settings=AppSettings(_env_file=None, mock_cts=True),
+            settings=make_settings(mock_cts=True),
             env_file=None,
         )
     )
@@ -179,11 +180,12 @@ def test_run_match_allows_missing_evaluation_result(monkeypatch, tmp_path: Path)
     monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
     monkeypatch.setattr("seektalent.api.load_process_env", lambda env_file: None)
 
-    result = run_match(job_title="Python Engineer", jd="JD", settings=AppSettings(_env_file=None, mock_cts=True), env_file=None)
+    result = run_match(job_title="Python Engineer", jd="JD", settings=make_settings(mock_cts=True), env_file=None)
 
     assert result.evaluation_result is None
 
 
 def test_top_level_exports_are_available() -> None:
-    settings = AppSettings(_env_file=None, mock_cts=True)
+    settings = make_settings(mock_cts=True)
+    assert isinstance(settings, AppSettings)
     assert settings.mock_cts is True

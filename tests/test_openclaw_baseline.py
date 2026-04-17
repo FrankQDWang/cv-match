@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -12,11 +13,11 @@ from experiments.openclaw_baseline.cts_tools import SearchCandidatesTool
 from experiments.openclaw_baseline.harness import run_openclaw_baseline
 from experiments.openclaw_baseline.judge_eval import evaluate_openclaw_run
 from experiments.openclaw_baseline.wandb_logging import log_openclaw_failure_to_wandb, log_openclaw_to_wandb
-from seektalent.config import AppSettings
 from seektalent.evaluation import EvaluationArtifacts, EvaluationResult, EvaluationStageResult, ResumeJudgeResult
 from seektalent.models import ResumeCandidate
 from seektalent.prompting import LoadedPrompt
 from seektalent.tracing import RunTracer
+from tests.settings_factory import make_settings
 
 
 def _candidate(resume_id: str, *, source_round: int = 1) -> ResumeCandidate:
@@ -62,7 +63,7 @@ class FakeResponsesClient:
 
 
 def test_search_candidates_enforces_round_budget(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         search_max_pages_per_round=1,
@@ -81,7 +82,7 @@ def test_search_candidates_enforces_round_budget(tmp_path: Path) -> None:
 
 
 def test_search_candidates_tracks_total_cts_calls_across_rounds(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     tracer = RunTracer(settings.runs_path)
     tool = SearchCandidatesTool(settings=settings, tracer=tracer)
     tool.start_round(1)
@@ -96,7 +97,7 @@ def test_search_candidates_tracks_total_cts_calls_across_rounds(tmp_path: Path) 
 
 
 def test_run_openclaw_baseline_freezes_first_cts_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     evaluation = _evaluation()
 
     async def _fake_evaluate(**kwargs):  # noqa: ANN003
@@ -105,7 +106,7 @@ def test_run_openclaw_baseline_freezes_first_cts_result(tmp_path: Path, monkeypa
     monkeypatch.setattr("experiments.openclaw_baseline.harness.evaluate_openclaw_run", _fake_evaluate)
     monkeypatch.setattr("experiments.openclaw_baseline.harness.log_openclaw_to_wandb", lambda **kwargs: None)
 
-    responses = [
+    responses: list[dict[str, object]] = [
         {
             "id": "r1-step1",
             "output": [
@@ -178,7 +179,7 @@ def test_run_openclaw_baseline_freezes_first_cts_result(tmp_path: Path, monkeypa
             jd="Python engineer with retrieval experience.",
             notes="Shanghai preferred.",
             settings=settings,
-            responses_client=FakeResponsesClient(responses),
+            responses_client=cast(Any, FakeResponsesClient(responses)),
         )
     )
 
@@ -188,7 +189,7 @@ def test_run_openclaw_baseline_freezes_first_cts_result(tmp_path: Path, monkeypa
 
 
 def test_run_openclaw_baseline_counts_cts_calls_as_rounds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     evaluation = _evaluation()
 
     async def _fake_evaluate(**kwargs):  # noqa: ANN003
@@ -197,7 +198,7 @@ def test_run_openclaw_baseline_counts_cts_calls_as_rounds(tmp_path: Path, monkey
     monkeypatch.setattr("experiments.openclaw_baseline.harness.evaluate_openclaw_run", _fake_evaluate)
     monkeypatch.setattr("experiments.openclaw_baseline.harness.log_openclaw_to_wandb", lambda **kwargs: None)
 
-    responses = [
+    responses: list[dict[str, object]] = [
         {
             "id": "r1-step1",
             "output": [
@@ -249,7 +250,7 @@ def test_run_openclaw_baseline_counts_cts_calls_as_rounds(tmp_path: Path, monkey
             jd="Python engineer with retrieval experience.",
             notes="",
             settings=settings,
-            responses_client=FakeResponsesClient(responses),
+            responses_client=cast(Any, FakeResponsesClient(responses)),
         )
     )
 
@@ -259,7 +260,7 @@ def test_run_openclaw_baseline_counts_cts_calls_as_rounds(tmp_path: Path, monkey
 
 
 def test_run_openclaw_baseline_caps_rounds_at_ten(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     evaluation = _evaluation()
 
     async def _fake_evaluate(**kwargs):  # noqa: ANN003
@@ -313,7 +314,7 @@ def test_run_openclaw_baseline_caps_rounds_at_ten(tmp_path: Path, monkeypatch: p
             jd="Python engineer with retrieval experience.",
             notes="",
             settings=settings,
-            responses_client=FakeResponsesClient(responses),
+            responses_client=cast(Any, FakeResponsesClient(responses)),
         )
     )
 
@@ -322,7 +323,7 @@ def test_run_openclaw_baseline_caps_rounds_at_ten(tmp_path: Path, monkeypatch: p
 
 
 def test_evaluate_openclaw_run_writes_eval_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
     monkeypatch.chdir(tmp_path)
 
     class FakeJudge:
@@ -421,7 +422,7 @@ def test_log_openclaw_to_wandb_uses_openclaw_version(monkeypatch: pytest.MonkeyP
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
     upserts: list[str] = []
     monkeypatch.setattr("experiments.openclaw_baseline.wandb_logging._upsert_wandb_report", lambda settings: upserts.append(settings.wandb_project))
-    settings = AppSettings(_env_file=None, wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
+    settings = make_settings(wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
     evaluation = EvaluationResult(
         run_id="openclaw-run",
         judge_model="openai-responses:gpt-5.4",
@@ -500,7 +501,7 @@ def test_log_openclaw_to_wandb_does_not_touch_weave(monkeypatch: pytest.MonkeyPa
     monkeypatch.setitem(sys.modules, "weave", PoisonWeave())
     monkeypatch.setitem(sys.modules, "wandb", FakeWandb())
     monkeypatch.setattr("experiments.openclaw_baseline.wandb_logging._upsert_wandb_report", lambda settings: None)
-    settings = AppSettings(_env_file=None, wandb_project="seektalent")
+    settings = make_settings(wandb_project="seektalent")
 
     log_openclaw_to_wandb(
         settings=settings,
@@ -537,7 +538,7 @@ def test_log_openclaw_failure_to_wandb_writes_zero_scores(monkeypatch: pytest.Mo
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
     upserts: list[str] = []
     monkeypatch.setattr("experiments.openclaw_baseline.wandb_logging._upsert_wandb_report", lambda settings: upserts.append(settings.wandb_project))
-    settings = AppSettings(_env_file=None, wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
+    settings = make_settings(wandb_entity="frankqdwang1-personal-creations", wandb_project="seektalent")
 
     log_openclaw_failure_to_wandb(
         settings=settings,

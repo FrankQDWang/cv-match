@@ -1,9 +1,9 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any, cast
 
 from seektalent.clients.cts_client import CTSClientProtocol, CTSFetchResult
-from seektalent.config import AppSettings
 from seektalent.evaluation import EvaluationArtifacts, EvaluationResult, EvaluationStageResult
 from seektalent.models import (
     CTSQuery,
@@ -25,13 +25,14 @@ from seektalent.models import (
 )
 from seektalent.runtime import WorkflowRuntime
 from seektalent.tracing import RunTracer
+from tests.settings_factory import make_settings
 
 
-def _read_json(path: Path) -> object:
+def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _read_jsonl(path: Path) -> list[object]:
+def _read_jsonl(path: Path) -> list[Any]:
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     return [json.loads(line) for line in lines]
 
@@ -365,8 +366,17 @@ class StubFinalizer:
         )
 
 
+def _install_runtime_stubs(runtime: WorkflowRuntime, *, controller: object, resume_scorer: object) -> None:
+    runtime_any = cast(Any, runtime)
+    runtime_any.requirement_extractor = StubRequirementExtractor()
+    runtime_any.controller = controller
+    runtime_any.resume_scorer = resume_scorer
+    runtime_any.reflection_critic = StubReflection()
+    runtime_any.finalizer = StubFinalizer()
+
+
 def test_execute_search_tool_refills_after_batch_dedup(tmp_path: Path) -> None:
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         search_max_pages_per_round=3,
@@ -413,7 +423,7 @@ def test_execute_search_tool_refills_after_batch_dedup(tmp_path: Path) -> None:
 
 def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
@@ -423,12 +433,8 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
         cts_tenant_secret="tenant-secret",
     )
     runtime = WorkflowRuntime(settings)
-    runtime.requirement_extractor = StubRequirementExtractor()
-    runtime.controller = StubController()
-    runtime.resume_scorer = StubScorer()
-    runtime.reflection_critic = StubReflection()
-    runtime.finalizer = StubFinalizer()
-    runtime.evaluation_runner = _stub_evaluation_runner
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+    cast(Any, runtime).evaluation_runner = _stub_evaluation_runner
     job_title, jd, notes = _sample_inputs()
 
     artifacts = runtime.run(job_title=job_title, jd=jd, notes=notes)
@@ -480,6 +486,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert artifacts.candidate_store
     assert artifacts.normalized_store
     assert set(artifacts.normalized_store) <= set(artifacts.candidate_store)
+    assert artifacts.evaluation_result is not None
     assert artifacts.evaluation_result.final.total_score == 0.63
     assert evaluation["final"]["total_score"] == 0.63
     assert any((artifacts.run_dir / "raw_resumes").iterdir())
@@ -571,7 +578,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
 
 def test_runtime_audit_records_terminal_controller_round(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
@@ -581,12 +588,8 @@ def test_runtime_audit_records_terminal_controller_round(tmp_path: Path, monkeyp
         cts_tenant_secret="tenant-secret",
     )
     runtime = WorkflowRuntime(settings)
-    runtime.requirement_extractor = StubRequirementExtractor()
-    runtime.controller = StopOnSecondController()
-    runtime.resume_scorer = StubScorer()
-    runtime.reflection_critic = StubReflection()
-    runtime.finalizer = StubFinalizer()
-    runtime.evaluation_runner = _stub_evaluation_runner
+    _install_runtime_stubs(runtime, controller=StopOnSecondController(), resume_scorer=StubScorer())
+    cast(Any, runtime).evaluation_runner = _stub_evaluation_runner
 
     artifacts = runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
 
@@ -610,7 +613,7 @@ def test_runtime_audit_records_terminal_controller_round(tmp_path: Path, monkeyp
 
 def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
@@ -620,17 +623,13 @@ def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monk
         cts_tenant_secret="tenant-secret",
     )
     runtime = WorkflowRuntime(settings)
-    runtime.requirement_extractor = StubRequirementExtractor()
-    runtime.controller = StubController()
-    runtime.resume_scorer = StubScorer()
-    runtime.reflection_critic = StubReflection()
-    runtime.finalizer = StubFinalizer()
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
 
     async def _unexpected_evaluation_runner(**kwargs):  # noqa: ANN003
         del kwargs
         raise AssertionError("evaluation runner should not be called when eval is disabled")
 
-    runtime.evaluation_runner = _unexpected_evaluation_runner
+    cast(Any, runtime).evaluation_runner = _unexpected_evaluation_runner
 
     artifacts = runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
 
@@ -653,7 +652,7 @@ def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monk
 def test_runtime_fails_fast_when_provider_credentials_are_missing(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("seektalent.llm.load_process_env", lambda: None)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
@@ -683,18 +682,14 @@ def test_runtime_fails_fast_when_provider_credentials_are_missing(tmp_path: Path
 
 def test_runtime_aborts_when_scoring_has_a_final_failure(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         min_rounds=1,
         max_rounds=1,
     )
     runtime = WorkflowRuntime(settings)
-    runtime.requirement_extractor = StubRequirementExtractor()
-    runtime.controller = StubController()
-    runtime.resume_scorer = FailingScorer()
-    runtime.reflection_critic = StubReflection()
-    runtime.finalizer = StubFinalizer()
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=FailingScorer())
 
     try:
         runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")

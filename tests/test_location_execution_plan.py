@@ -2,10 +2,10 @@ import asyncio
 from pathlib import Path
 
 from seektalent.clients.cts_client import CTSClientProtocol, CTSFetchResult
-from seektalent.config import AppSettings
 from seektalent.models import (
     CTSQuery,
     HardConstraintSlots,
+    PreferenceSlots,
     QueryTermCandidate,
     RequirementSheet,
     ResumeCandidate,
@@ -14,6 +14,7 @@ from seektalent.models import (
 from seektalent.retrieval import build_location_execution_plan, build_round_retrieval_plan
 from seektalent.runtime import WorkflowRuntime
 from seektalent.tracing import RunTracer
+from tests.settings_factory import make_settings
 
 
 def _candidate(resume_id: str, city: str) -> ResumeCandidate:
@@ -40,7 +41,7 @@ def _requirement_sheet(locations: list[str], preferred_locations: list[str]) -> 
         role_summary="Build retrieval systems.",
         must_have_capabilities=["python"],
         hard_constraints=HardConstraintSlots(locations=locations),
-        preferences={"preferred_locations": preferred_locations},
+        preferences=PreferenceSlots(preferred_locations=preferred_locations),
         initial_query_term_pool=[
             QueryTermCandidate(
                 term="python",
@@ -117,7 +118,7 @@ class DualQueryCTS(CTSClientProtocol):
 
 
 def _runtime(tmp_path: Path, cts_client: CTSClientProtocol) -> WorkflowRuntime:
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
         search_max_pages_per_round=3,

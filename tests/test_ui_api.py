@@ -4,6 +4,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import httpx
 
@@ -14,6 +15,7 @@ from seektalent.models import FinalCandidate, FinalResult
 from seektalent.normalization import normalize_resume
 from seektalent.runtime import RunArtifacts
 from seektalent_ui.server import RunRegistry, create_server
+from tests.settings_factory import make_settings
 
 
 @dataclass
@@ -49,7 +51,7 @@ def _start_server(registry: RunRegistry):
     server = create_server("127.0.0.1", 0, registry)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    host, port = server.server_address
+    host, port = cast(tuple[str, int], server.server_address)
     return server, thread, f"http://{host}:{port}"
 
 
@@ -128,7 +130,7 @@ def _build_controller(tmp_path: Path) -> FakeRuntimeController:
 
 def test_ui_api_serves_run_lifecycle_and_candidate_detail(tmp_path: Path) -> None:
     controller = _build_controller(tmp_path)
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     registry = RunRegistry(settings, runtime_factory=_build_runtime_factory(controller))
     server, thread, base_url = _start_server(registry)
 
@@ -175,7 +177,7 @@ def test_ui_api_serves_run_lifecycle_and_candidate_detail(tmp_path: Path) -> Non
 def test_ui_api_marks_failed_runs(tmp_path: Path) -> None:
     controller = _build_controller(tmp_path)
     controller.error_message = "boom"
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     registry = RunRegistry(settings, runtime_factory=_build_runtime_factory(controller))
     server, thread, base_url = _start_server(registry)
 
@@ -200,7 +202,7 @@ def test_ui_api_marks_failed_runs(tmp_path: Path) -> None:
 
 def test_ui_api_rejects_missing_job_title(tmp_path: Path) -> None:
     controller = _build_controller(tmp_path)
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
     registry = RunRegistry(settings, runtime_factory=_build_runtime_factory(controller))
     server, thread, base_url = _start_server(registry)
 

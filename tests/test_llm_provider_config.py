@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
 
-from seektalent.config import AppSettings, load_process_env
+from seektalent.config import load_process_env
 from seektalent.controller.react_controller import ReActController
 from seektalent.finalize.finalizer import Finalizer
 from seektalent.llm import (
@@ -20,6 +21,7 @@ from seektalent.prompting import LoadedPrompt
 from seektalent.reflection.critic import ReflectionCritic
 from seektalent.requirements.extractor import RequirementExtractor
 from seektalent.scoring.scorer import ResumeScorer
+from tests.settings_factory import make_settings
 
 
 def _prompt(name: str) -> LoadedPrompt:
@@ -28,12 +30,11 @@ def _prompt(name: str) -> LoadedPrompt:
 
 def test_app_settings_rejects_unqualified_model_ids() -> None:
     with pytest.raises(ValidationError, match="provider:model"):
-        AppSettings(_env_file=None, requirements_model="gpt-5.4-mini")
+        make_settings(requirements_model="gpt-5.4-mini")
 
 
 def test_app_settings_accepts_fully_qualified_model_ids() -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         requirements_model="openai-responses:gpt-5.4-mini",
         controller_model="openai-responses:gpt-5.4-mini",
         scoring_model="anthropic:claude-sonnet-4-5",
@@ -49,8 +50,7 @@ def test_app_settings_accepts_fully_qualified_model_ids() -> None:
 
 
 def test_app_settings_accepts_explicit_judge_model() -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         scoring_model="openai-chat:deepseek-v3.2",
         judge_model="openai-chat:qwen-plus",
     )
@@ -59,8 +59,7 @@ def test_app_settings_accepts_explicit_judge_model() -> None:
 
 
 def test_app_settings_accepts_explicit_judge_reasoning_effort() -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         reasoning_effort="off",
         judge_reasoning_effort="high",
     )
@@ -69,14 +68,13 @@ def test_app_settings_accepts_explicit_judge_reasoning_effort() -> None:
 
 
 def test_app_settings_disable_eval_by_default() -> None:
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
 
     assert settings.enable_eval is False
 
 
 def test_app_settings_weave_entity_falls_back_to_wandb_entity() -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         wandb_entity="frankqdwang1-personal-creations",
     )
 
@@ -85,7 +83,7 @@ def test_app_settings_weave_entity_falls_back_to_wandb_entity() -> None:
 
 def test_app_settings_rejects_max_rounds_above_ten() -> None:
     with pytest.raises(ValidationError, match="max_rounds must be <= 10"):
-        AppSettings(_env_file=None, max_rounds=11)
+        make_settings(max_rounds=11)
 
 
 def test_model_provider_returns_prefix() -> None:
@@ -215,17 +213,18 @@ def test_build_output_spec_uses_native_output_for_openai_chat_deepseek_v32(
 
 
 def test_build_model_settings_keeps_openai_only_knobs_for_openai_models() -> None:
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
 
     model_settings = build_model_settings(settings, "openai-responses:gpt-5.4-mini")
+    raw_settings = cast(dict[str, object], model_settings)
 
     assert model_settings["thinking"] == "medium"
-    assert model_settings["openai_reasoning_summary"] == "concise"
-    assert model_settings["openai_text_verbosity"] == "low"
+    assert raw_settings["openai_reasoning_summary"] == "concise"
+    assert raw_settings["openai_text_verbosity"] == "low"
 
 
 def test_build_model_settings_supports_turning_thinking_off() -> None:
-    settings = AppSettings(_env_file=None, reasoning_effort="off")
+    settings = make_settings(reasoning_effort="off")
 
     openai_chat_settings = build_model_settings(settings, "openai-chat:gpt-4.1-mini")
     openai_responses_settings = build_model_settings(settings, "openai-responses:gpt-5.4-mini")
@@ -238,20 +237,21 @@ def test_build_model_settings_supports_turning_thinking_off() -> None:
 
 
 def test_build_model_settings_supports_judge_reasoning_override() -> None:
-    settings = AppSettings(_env_file=None, reasoning_effort="off", judge_reasoning_effort="high")
+    settings = make_settings(reasoning_effort="off", judge_reasoning_effort="high")
 
     model_settings = build_model_settings(
         settings,
         "openai-responses:gpt-5.4",
         reasoning_effort=settings.effective_judge_reasoning_effort,
     )
+    raw_settings = cast(dict[str, object], model_settings)
 
     assert model_settings["thinking"] == "high"
-    assert model_settings["openai_reasoning_summary"] == "concise"
+    assert raw_settings["openai_reasoning_summary"] == "concise"
 
 
 def test_build_model_settings_omits_openai_only_knobs_for_other_providers() -> None:
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
 
     model_settings = build_model_settings(settings, "anthropic:claude-sonnet-4-5")
 
@@ -268,7 +268,7 @@ def test_preflight_models_fails_when_native_structured_output_is_unsupported(
         profile = FakeProfile()
 
     monkeypatch.setattr("seektalent.llm.build_model", lambda model_id, **kwargs: FakeModel())
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
 
     with pytest.raises(ValueError, match="native structured output"):
         preflight_models(settings)
@@ -284,8 +284,7 @@ def test_preflight_models_allows_openai_chat_without_native_structured_output(
         profile = FakeProfile()
 
     monkeypatch.setattr("seektalent.llm.build_model", lambda model_id, **kwargs: FakeModel())
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         requirements_model="openai-chat:qwen-plus",
         controller_model="openai-chat:qwen-plus",
         scoring_model="openai-chat:qwen-plus",
@@ -317,8 +316,7 @@ def test_preflight_models_skips_judge_model_when_eval_is_disabled(
         return FakeModel()
 
     monkeypatch.setattr("seektalent.llm.build_model", fake_build_model)
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         judge_model="openai-responses:gpt-5.4",
         judge_openai_base_url="http://127.0.0.1:8317/v1/responses",
         enable_eval=False,
@@ -354,8 +352,7 @@ def test_preflight_models_checks_judge_model_when_eval_is_enabled(
         return FakeModel()
 
     monkeypatch.setattr("seektalent.llm.build_model", fake_build_model)
-    settings = AppSettings(
-        _env_file=None,
+    settings = make_settings(
         judge_model="openai-responses:gpt-5.4",
         judge_openai_base_url="http://127.0.0.1:8317/v1/responses",
         judge_openai_api_key="judge-key",
@@ -388,7 +385,7 @@ def test_preflight_models_surfaces_provider_credential_errors(
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-    settings = AppSettings(_env_file=None).with_overrides(
+    settings = make_settings(
         requirements_model=model_id,
         controller_model=model_id,
         scoring_model=model_id,
@@ -416,7 +413,7 @@ def test_all_agents_use_two_output_retries_and_no_generic_retries(
     prompt_name: str,
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    settings = AppSettings(_env_file=None)
+    settings = make_settings()
     component = builder(settings, _prompt(prompt_name))
     if isinstance(component, ResumeScorer):
         agent = component._build_agent()

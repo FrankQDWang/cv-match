@@ -313,4 +313,5 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
     assert controller_context.latest_reflection_keyword_advice is not None
     assert reflection_context.sent_query_history[0].source_plan_version == 1
     assert finalize_context.top_candidates[0].resume_id == "r-1"
+    assert round_state.search_observation is not None
     assert round_state.search_observation.city_search_summaries[0].city == "上海市"

@@ -1,10 +1,10 @@
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
 from pydantic_ai.exceptions import ModelRetry
 
-from seektalent.config import AppSettings
 from seektalent.controller.react_controller import ReActController
 from seektalent.models import (
     CTSQuery,
@@ -18,6 +18,7 @@ from seektalent.models import (
     ReflectionAdvice,
     ReflectionFilterAdvice,
     ReflectionKeywordAdvice,
+    ReflectionSummaryView,
     RequirementSheet,
     RetrievalState,
     RoundRetrievalPlan,
@@ -29,6 +30,7 @@ from seektalent.models import (
 )
 from seektalent.prompting import LoadedPrompt
 from seektalent.runtime import WorkflowRuntime
+from tests.settings_factory import make_settings
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -147,10 +149,12 @@ def _run_state_with_previous_reflection() -> RunState:
 
 def test_controller_decision_requires_proposals_for_search() -> None:
     with pytest.raises(ValidationError):
-        SearchControllerDecision(
-            thought_summary="Search.",
-            action="search_cts",
-            decision_rationale="Need recall.",
+        SearchControllerDecision.model_validate(
+            {
+                "thought_summary": "Search.",
+                "action": "search_cts",
+                "decision_rationale": "Need recall.",
+            }
         )
 
 
@@ -169,11 +173,11 @@ def test_controller_decision_rejects_stop_with_search_fields() -> None:
 
 def test_controller_decision_rejects_unknown_filter_fields() -> None:
     with pytest.raises(ValidationError):
-        ProposedFilterPlan(optional_filters={"unsupported_field": ["custom"]})
+        ProposedFilterPlan.model_validate({"optional_filters": {"unsupported_field": ["custom"]}})
 
 
 def test_runtime_requires_response_to_reflection_after_previous_round() -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True)
+    settings = make_settings(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True)
     runtime = WorkflowRuntime(settings)
     run_state = _run_state_with_previous_reflection()
     decision = SearchControllerDecision(
@@ -207,10 +211,10 @@ def test_controller_output_validator_rejects_missing_response_to_reflection(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     controller = ReActController(
-        AppSettings(_env_file=None),
+        make_settings(),
         LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
-    validator = controller._get_agent()._output_validators[0].function
+    validator = cast(Any, controller._get_agent()._output_validators[0].function)
     context = ControllerContext(
         full_jd="JD text",
         full_notes="Notes text",
@@ -221,7 +225,7 @@ def test_controller_output_validator_rejects_missing_response_to_reflection(
         max_rounds=3,
         is_final_allowed_round=False,
         target_new=5,
-        previous_reflection={"decision": "continue", "reflection_summary": "Add one term."},
+        previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
     )
     decision = SearchControllerDecision(
         thought_summary="Search again.",
@@ -240,10 +244,10 @@ def test_controller_output_validator_rejects_empty_query_terms(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     controller = ReActController(
-        AppSettings(_env_file=None),
+        make_settings(),
         LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
-    validator = controller._get_agent()._output_validators[0].function
+    validator = cast(Any, controller._get_agent()._output_validators[0].function)
     context = ControllerContext(
         full_jd="JD text",
         full_notes="Notes text",
@@ -272,10 +276,10 @@ def test_controller_output_validator_rejects_query_terms_over_budget(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     controller = ReActController(
-        AppSettings(_env_file=None),
+        make_settings(),
         LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
-    validator = controller._get_agent()._output_validators[0].function
+    validator = cast(Any, controller._get_agent()._output_validators[0].function)
     context = ControllerContext(
         full_jd="JD text",
         full_notes="Notes text",
@@ -300,7 +304,7 @@ def test_controller_output_validator_rejects_query_terms_over_budget(
 
 
 def test_runtime_sanitizes_premature_max_round_claims_in_stop_decision() -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True, max_rounds=5)
+    settings = make_settings(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True, max_rounds=5)
     runtime = WorkflowRuntime(settings)
     run_state = _run_state_with_previous_reflection()
     decision = StopControllerDecision(
@@ -313,6 +317,7 @@ def test_runtime_sanitizes_premature_max_round_claims_in_stop_decision() -> None
 
     sanitized = runtime._sanitize_controller_decision(decision=decision, run_state=run_state, round_no=2)
 
+    assert isinstance(sanitized, StopControllerDecision)
     assert "maximum rounds" not in sanitized.decision_rationale.casefold()
     assert "max rounds" not in sanitized.stop_reason.casefold()
     assert "diminishing returns" in sanitized.decision_rationale.casefold()
@@ -320,7 +325,7 @@ def test_runtime_sanitizes_premature_max_round_claims_in_stop_decision() -> None
 
 
 def test_runtime_preserves_max_round_claims_on_final_allowed_round() -> None:
-    settings = AppSettings(_env_file=None).with_overrides(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True, max_rounds=5)
+    settings = make_settings(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True, max_rounds=5)
     runtime = WorkflowRuntime(settings)
     run_state = _run_state_with_previous_reflection()
     decision = StopControllerDecision(
@@ -333,5 +338,6 @@ def test_runtime_preserves_max_round_claims_on_final_allowed_round() -> None:
 
     sanitized = runtime._sanitize_controller_decision(decision=decision, run_state=run_state, round_no=5)
 
+    assert isinstance(sanitized, StopControllerDecision)
     assert sanitized.decision_rationale == decision.decision_rationale
     assert sanitized.stop_reason == decision.stop_reason
