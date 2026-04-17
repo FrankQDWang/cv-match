@@ -21,6 +21,6 @@ jobs:
         run: |
           uv sync --group dev
           uv run --group dev python tools/check_arch_imports.py
-          uv run --group dev ruff check src tests
+          uv run --group dev ruff check src tests experiments
           uv run --group dev ty check src tests
           uv run --group dev python -m pytest -q

@@ -218,7 +218,8 @@ async def handle_message(session: CTSToolSession, message: dict[str, Any]) -> di
                 message_id,
                 {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}], "isError": False},
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
+            # MCP tool errors must be returned as tool-call responses, not crash the JSON-RPC server.
             return _response(
                 message_id,
                 {"content": [{"type": "text", "text": str(exc)}], "isError": True},
@@ -235,7 +236,8 @@ async def serve(session: CTSToolSession) -> None:
         try:
             message = json.loads(line)
             response = await handle_message(session, message)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
+            # Keep malformed input or handler failures inside the JSON-RPC error envelope.
             response = _error(None, -32603, str(exc))
         if response is not None:
             sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")

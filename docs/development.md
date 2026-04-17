@@ -19,10 +19,11 @@ uv sync --group dev
 Run Ruff lint checks:
 
 ```bash
-uv run ruff check src tests
+uv run ruff check src tests experiments
 ```
 
 Ruff is a standalone quality check, not part of `pytest`.
+`experiments/` is included in the required Ruff gate.
 It includes required anti-silent-exception checks: do not add swallowed exceptions, empty catches, broad catches,
 or useless `try`/`except` wrappers. A local `noqa` is acceptable only at a clear runtime or CLI boundary.
 
