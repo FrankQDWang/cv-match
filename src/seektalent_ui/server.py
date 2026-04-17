@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        pass
+        return 0
     finally:
         server.server_close()
     return 0

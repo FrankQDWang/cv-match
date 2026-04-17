@@ -23,6 +23,8 @@ uv run ruff check src tests
 ```
 
 Ruff is a standalone quality check, not part of `pytest`.
+It includes required anti-silent-exception checks: do not add swallowed exceptions, empty catches, broad catches,
+or useless `try`/`except` wrappers. A local `noqa` is acceptable only at a clear runtime or CLI boundary.
 
 Run ty type checks:
 

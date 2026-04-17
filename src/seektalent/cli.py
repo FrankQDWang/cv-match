@@ -680,10 +680,9 @@ def _wandb_auth_configured() -> bool:
     if os.environ.get("WANDB_API_KEY"):
         return True
     for candidate in (Path.home() / ".netrc", Path.home() / "_netrc"):
-        try:
-            text = candidate.read_text(encoding="utf-8")
-        except OSError:
+        if not candidate.exists():
             continue
+        text = candidate.read_text(encoding="utf-8")
         if "machine api.wandb.ai" in text:
             return True
     return False

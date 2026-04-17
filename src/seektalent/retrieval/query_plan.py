@@ -153,16 +153,13 @@ def derive_explore_query_terms(
     for size in (1, 2):
         for combo in combinations(ordered_terms, size):
             terms = [normalized_anchor, *[item.term for item in combo]]
-            try:
-                candidate_terms = canonicalize_controller_query_terms(
-                    terms,
-                    round_no=2,
-                    title_anchor_term=title_anchor_term,
-                    query_term_pool=query_term_pool,
-                    allow_inactive_non_anchor_terms=True,
-                )
-            except ValueError:
-                continue
+            candidate_terms = canonicalize_controller_query_terms(
+                terms,
+                round_no=2,
+                title_anchor_term=title_anchor_term,
+                query_term_pool=query_term_pool,
+                allow_inactive_non_anchor_terms=True,
+            )
             signature = tuple(term.casefold() for term in candidate_terms)
             if signature == tuple(term.casefold() for term in exploit_terms):
                 continue
