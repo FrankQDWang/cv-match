@@ -34,6 +34,14 @@ uv run ty check --watch src tests
 
 ty is a standalone required CI check, not part of `pytest`.
 
+Run the required architecture import guard:
+
+```bash
+uv run python tools/check_arch_imports.py
+```
+
+The architecture import guard prevents core `src/seektalent` code from importing UI or experiment modules.
+
 Run Tach architecture dependency observations:
 
 ```bash
