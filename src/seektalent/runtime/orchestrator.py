@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import re
 from collections import Counter
 from collections.abc import Collection
@@ -274,6 +275,16 @@ class WorkflowRuntime:
                     terminal_controller_round=terminal_controller_round,
                 ),
             )
+            tracer.write_json(
+                "search_diagnostics.json",
+                self._build_search_diagnostics(
+                    tracer=tracer,
+                    run_state=run_state,
+                    final_result=final_result,
+                    terminal_controller_round=terminal_controller_round,
+                ),
+            )
+            finalizer_completed_artifacts.append("search_diagnostics.json")
             self._emit_llm_event(
                 tracer=tracer,
                 event_type="finalizer_completed",
@@ -1213,6 +1224,196 @@ class WorkflowRuntime:
                 terminal_controller_round.model_dump(mode="json") if terminal_controller_round is not None else None
             ),
             "final": {"final_result": final_result.model_dump(mode="json")},
+        }
+
+    def _build_search_diagnostics(
+        self,
+        *,
+        tracer: RunTracer,
+        run_state: RunState,
+        final_result: FinalResult,
+        terminal_controller_round: TerminalControllerRound | None,
+    ) -> dict[str, object]:
+        observations = [
+            round_state.search_observation
+            for round_state in run_state.round_history
+            if round_state.search_observation is not None
+        ]
+        terminal_controller = None
+        if terminal_controller_round is not None:
+            terminal_controller = {
+                "round_no": terminal_controller_round.round_no,
+                "stop_reason": terminal_controller_round.controller_decision.stop_reason,
+                "response_to_reflection": terminal_controller_round.controller_decision.response_to_reflection,
+            }
+        return {
+            "run_id": tracer.run_id,
+            "input": {
+                "job_title": run_state.input_truth.job_title,
+                "jd_sha256": run_state.input_truth.jd_sha256,
+                "notes_sha256": run_state.input_truth.notes_sha256,
+            },
+            "summary": {
+                "rounds_executed": final_result.rounds_executed,
+                "total_sent_queries": len(run_state.retrieval_state.sent_query_history),
+                "total_raw_candidates": sum(item.raw_candidate_count for item in observations),
+                "total_unique_new_candidates": sum(item.unique_new_count for item in observations),
+                "final_candidate_count": len(final_result.candidates),
+                "stop_reason": final_result.stop_reason,
+                "terminal_controller": terminal_controller,
+            },
+            "llm_schema_pressure": self._collect_llm_schema_pressure(tracer.run_dir),
+            "rounds": [
+                self._build_round_search_diagnostics(run_state=run_state, round_state=round_state)
+                for round_state in run_state.round_history
+            ],
+        }
+
+    def _build_round_search_diagnostics(
+        self,
+        *,
+        run_state: RunState,
+        round_state: RoundState,
+    ) -> dict[str, object]:
+        if round_state.search_observation is None:
+            raise ValueError("round_state.search_observation is required for search diagnostics")
+        reflection = round_state.reflection_advice
+        scored_this_round = [
+            candidate
+            for candidate in run_state.scorecards_by_resume_id.values()
+            if candidate.source_round == round_state.round_no
+        ]
+        sent_queries = [
+            item
+            for item in run_state.retrieval_state.sent_query_history
+            if item.round_no == round_state.round_no
+        ]
+        return {
+            "round_no": round_state.round_no,
+            "query_terms": round_state.retrieval_plan.query_terms,
+            "keyword_query": round_state.retrieval_plan.keyword_query,
+            "query_term_details": self._query_term_details(
+                terms=round_state.retrieval_plan.query_terms,
+                query_term_pool=run_state.retrieval_state.query_term_pool,
+            ),
+            "sent_queries": [
+                {
+                    "query_role": item.query_role,
+                    "city": item.city,
+                    "phase": item.phase,
+                    "batch_no": item.batch_no,
+                    "requested_count": item.requested_count,
+                    "query_terms": item.query_terms,
+                    "keyword_query": item.keyword_query,
+                }
+                for item in sent_queries
+            ],
+            "filters": {
+                "projected_cts_filters": round_state.retrieval_plan.projected_cts_filters,
+                "runtime_only_constraints": [
+                    item.model_dump(mode="json")
+                    for item in round_state.retrieval_plan.runtime_only_constraints
+                ],
+                "adapter_notes": (
+                    round_state.constraint_projection_result.adapter_notes
+                    if round_state.constraint_projection_result is not None
+                    else []
+                ),
+            },
+            "search": {
+                "raw_candidate_count": round_state.search_observation.raw_candidate_count,
+                "unique_new_count": round_state.search_observation.unique_new_count,
+                "shortage_count": round_state.search_observation.shortage_count,
+                "duplicate_count": sum(item.batch_duplicate_count for item in round_state.search_attempts),
+                "fetch_attempt_count": round_state.search_observation.fetch_attempt_count,
+                "exhausted_reason": round_state.search_observation.exhausted_reason,
+            },
+            "scoring": {
+                "newly_scored_count": len(scored_this_round),
+                "top_pool_count": len(round_state.top_candidates),
+                "fit_count": sum(1 for item in scored_this_round if item.fit_bucket == "fit"),
+                "not_fit_count": sum(1 for item in scored_this_round if item.fit_bucket == "not_fit"),
+                "top_pool_snapshot": [
+                    {
+                        "resume_id": item.resume_id,
+                        "fit_bucket": item.fit_bucket,
+                        "overall_score": item.overall_score,
+                        "must_have_match_score": item.must_have_match_score,
+                        "risk_score": item.risk_score,
+                        "source_round": item.source_round,
+                    }
+                    for item in round_state.top_candidates
+                ],
+            },
+            "reflection": {
+                "suggest_stop": reflection.suggest_stop if reflection is not None else False,
+                "suggested_activate_terms": (
+                    reflection.keyword_advice.suggested_activate_terms if reflection is not None else []
+                ),
+                "suggested_drop_terms": (
+                    reflection.keyword_advice.suggested_drop_terms if reflection is not None else []
+                ),
+                "suggested_drop_filter_fields": (
+                    reflection.filter_advice.suggested_drop_filter_fields if reflection is not None else []
+                ),
+                "reflection_summary": reflection.reflection_summary if reflection is not None else None,
+            },
+            "controller_response_to_previous_reflection": round_state.controller_decision.response_to_reflection,
+        }
+
+    def _query_term_details(
+        self,
+        *,
+        terms: list[str],
+        query_term_pool: list[QueryTermCandidate],
+    ) -> list[dict[str, object]]:
+        term_index = {item.term.casefold(): item for item in query_term_pool}
+        details: list[dict[str, object]] = []
+        for term in terms:
+            candidate = term_index.get(term.casefold())
+            details.append(
+                {
+                    "term": term,
+                    "source": candidate.source if candidate is not None else None,
+                    "category": candidate.category if candidate is not None else None,
+                }
+            )
+        return details
+
+    def _collect_llm_schema_pressure(self, run_dir: Path) -> list[dict[str, object]]:
+        pressure: list[dict[str, object]] = []
+        requirements_call = run_dir / "requirements_call.json"
+        pressure.append(self._llm_schema_pressure_item(json.loads(requirements_call.read_text(encoding="utf-8"))))
+
+        rounds_dir = run_dir / "rounds"
+        if rounds_dir.exists():
+            for round_dir in sorted(rounds_dir.glob("round_*")):
+                controller_call = round_dir / "controller_call.json"
+                if controller_call.exists():
+                    pressure.append(
+                        self._llm_schema_pressure_item(json.loads(controller_call.read_text(encoding="utf-8")))
+                    )
+                scoring_calls = round_dir / "scoring_calls.jsonl"
+                if scoring_calls.exists():
+                    for line in scoring_calls.read_text(encoding="utf-8").splitlines():
+                        if line.strip():
+                            pressure.append(self._llm_schema_pressure_item(json.loads(line)))
+                reflection_call = round_dir / "reflection_call.json"
+                if reflection_call.exists():
+                    pressure.append(
+                        self._llm_schema_pressure_item(json.loads(reflection_call.read_text(encoding="utf-8")))
+                    )
+
+        finalizer_call = run_dir / "finalizer_call.json"
+        pressure.append(self._llm_schema_pressure_item(json.loads(finalizer_call.read_text(encoding="utf-8"))))
+        return pressure
+
+    def _llm_schema_pressure_item(self, snapshot: dict[str, object]) -> dict[str, object]:
+        return {
+            "stage": snapshot["stage"],
+            "call_id": snapshot["call_id"],
+            "output_retries": snapshot["output_retries"],
+            "validator_retry_count": snapshot.get("validator_retry_count", 0),
         }
 
     def _render_run_summary(

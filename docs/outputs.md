@@ -30,6 +30,7 @@ Common top-level files include:
 | `requirement_sheet.json` | Structured requirement sheet used by the Agent runtime. |
 | `scoring_policy.json` | Frozen scoring policy derived from requirements. |
 | `sent_query_history.json` | Cross-round record of sent query metadata. |
+| `search_diagnostics.json` | Cross-round search funnel ledger with query, filter, recall, dedup, scoring, reflection, and LLM schema-pressure signals. |
 | `finalizer_context.json` | Finalizer input context. |
 | `finalizer_call.json` | LLM call snapshot for the finalizer. |
 | `final_candidates.json` | Final structured shortlist result. |
@@ -80,6 +81,7 @@ Common per-round files include:
 - Read `trace.log` first when debugging a failed or confusing run.
 - Use `events.jsonl` for scripting, indexing, or machine processing.
 - Use `round_review.md` and `run_summary.md` for quick human inspection.
+- Use `search_diagnostics.json` when a JD has weak or missing candidates and you need to attribute the issue to query terms, filters, CTS recall, dedup, scoring retention, reflection, or controller response.
 - Use `final_candidates.json` when you need structured downstream consumption.
 
 ## Notes

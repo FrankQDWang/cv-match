@@ -442,6 +442,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     sent_query_records = _read_json(round_dir / "sent_query_records.json")
     cts_queries = _read_json(round_dir / "cts_queries.json")
     search_observation = _read_json(round_dir / "search_observation.json")
+    search_attempts = _read_json(round_dir / "search_attempts.json")
     requirements_call = _read_json(artifacts.run_dir / "requirements_call.json")
     requirement_draft = _read_json(artifacts.run_dir / "requirement_extraction_draft.json")
     controller_call = _read_json(round_dir / "controller_call.json")
@@ -455,6 +456,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     sent_query_history = _read_json(artifacts.run_dir / "sent_query_history.json")
     run_config = _read_json(artifacts.run_dir / "run_config.json")
     final_candidates = _read_json(artifacts.run_dir / "final_candidates.json")
+    search_diagnostics = _read_json(artifacts.run_dir / "search_diagnostics.json")
     run_summary = (artifacts.run_dir / "run_summary.md").read_text(encoding="utf-8")
     round_review = (round_dir / "round_review.md").read_text(encoding="utf-8")
     events = _read_jsonl(artifacts.run_dir / "events.jsonl")
@@ -522,6 +524,35 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert judge_packet["requirements"]["requirement_sheet"]["role_title"] == "Senior Python Engineer"
     assert judge_packet["rounds"][0]["controller_decision"]["action"] == "search_cts"
     assert judge_packet["final"]["final_result"]["summary"] == final_candidates["summary"]
+
+    diagnostic_round = search_diagnostics["rounds"][0]
+    schema_pressure_stages = {item["stage"] for item in search_diagnostics["llm_schema_pressure"]}
+    assert search_diagnostics["run_id"] == artifacts.run_id
+    assert search_diagnostics["input"]["job_title"] == job_title
+    assert search_diagnostics["input"]["jd_sha256"]
+    assert search_diagnostics["summary"]["rounds_executed"] == 1
+    assert search_diagnostics["summary"]["total_sent_queries"] == len(sent_query_history)
+    assert search_diagnostics["summary"]["total_raw_candidates"] == search_observation["raw_candidate_count"]
+    assert search_diagnostics["summary"]["total_unique_new_candidates"] == search_observation["unique_new_count"]
+    assert search_diagnostics["summary"]["final_candidate_count"] == len(final_candidates["candidates"])
+    assert search_diagnostics["summary"]["stop_reason"] == final_candidates["stop_reason"]
+    assert diagnostic_round["query_terms"] == retrieval_plan["query_terms"]
+    assert diagnostic_round["keyword_query"] == retrieval_plan["keyword_query"]
+    assert diagnostic_round["query_term_details"][0]["term"] == "python"
+    assert "active" not in diagnostic_round["query_term_details"][0]
+    assert diagnostic_round["filters"]["projected_cts_filters"] == retrieval_plan["projected_cts_filters"]
+    assert diagnostic_round["search"]["duplicate_count"] == sum(
+        item["batch_duplicate_count"] for item in search_attempts
+    )
+    assert diagnostic_round["search"]["unique_new_count"] == search_observation["unique_new_count"]
+    assert diagnostic_round["scoring"]["newly_scored_count"] == len(scorecards)
+    assert diagnostic_round["scoring"]["top_pool_count"] == len(top_pool_snapshot)
+    assert diagnostic_round["scoring"]["fit_count"] == len(scorecards)
+    assert diagnostic_round["reflection"]["reflection_summary"] == "No reflection changes."
+    assert diagnostic_round["controller_response_to_previous_reflection"] is None
+    assert {"requirements", "controller", "scoring", "reflection", "finalize"} <= schema_pressure_stages
+    assert all("output_retries" in item for item in search_diagnostics["llm_schema_pressure"])
+    assert all("validator_retry_count" in item for item in search_diagnostics["llm_schema_pressure"])
 
     assert "## Controller" in round_review
     assert "## Location Execution" in round_review
@@ -591,6 +622,7 @@ def test_runtime_audit_records_terminal_controller_round(tmp_path: Path, monkeyp
 
     run_summary = (artifacts.run_dir / "run_summary.md").read_text(encoding="utf-8")
     judge_packet = _read_json(artifacts.run_dir / "judge_packet.json")
+    search_diagnostics = _read_json(artifacts.run_dir / "search_diagnostics.json")
     events = _read_jsonl(artifacts.run_dir / "events.jsonl")
     round_02_dir = artifacts.run_dir / "rounds" / "round_02"
 
@@ -601,6 +633,8 @@ def test_runtime_audit_records_terminal_controller_round(tmp_path: Path, monkeyp
     assert len(judge_packet["rounds"]) == 1
     assert judge_packet["terminal_controller_round"]["round_no"] == 2
     assert judge_packet["terminal_controller_round"]["controller_decision"]["action"] == "stop"
+    assert search_diagnostics["summary"]["terminal_controller"]["round_no"] == 2
+    assert search_diagnostics["summary"]["terminal_controller"]["response_to_reflection"]
     assert "- Stop decision round: `2`" in run_summary
     assert "Terminal decision: The pool is stable enough for the stop-round audit fixture." in run_summary
     run_finished_event = next(item for item in events if item["event_type"] == "run_finished")
@@ -632,11 +666,14 @@ def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monk
     events = _read_jsonl(artifacts.run_dir / "events.jsonl")
     run_summary = (artifacts.run_dir / "run_summary.md").read_text(encoding="utf-8")
     run_config = _read_json(artifacts.run_dir / "run_config.json")
+    search_diagnostics = _read_json(artifacts.run_dir / "search_diagnostics.json")
 
     assert artifacts.evaluation_result is None
     assert not (artifacts.run_dir / "judge_packet.json").exists()
     assert not (artifacts.run_dir / "evaluation").exists()
     assert not (artifacts.run_dir / "raw_resumes").exists()
+    assert search_diagnostics["summary"]["rounds_executed"] == 1
+    assert search_diagnostics["summary"]["final_candidate_count"] > 0
     assert "Judge packet" not in run_summary
     assert "evaluation_completed" not in {item["event_type"] for item in events}
     assert "evaluation_skipped" in {item["event_type"] for item in events}
