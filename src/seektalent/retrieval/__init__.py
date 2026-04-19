@@ -3,6 +3,7 @@ from seektalent.retrieval.filter_projection import (
     canonicalize_filter_plan,
     project_constraints_to_cts,
 )
+from seektalent.retrieval.query_compiler import compile_query_term_pool
 from seektalent.retrieval.query_plan import (
     allocate_balanced_city_targets,
     build_location_execution_plan,
@@ -21,6 +22,7 @@ __all__ = [
     "build_round_retrieval_plan",
     "canonicalize_filter_plan",
     "canonicalize_controller_query_terms",
+    "compile_query_term_pool",
     "derive_explore_query_terms",
     "project_constraints_to_cts",
     "rotate_locations",

@@ -14,8 +14,8 @@ Assess whether the retrieval direction, pool quality, and coverage are improving
 - Do not mutate business truth or return a CTS payload.
 - Work from full `JD`, full `notes`, `RequirementSheet`, retrieval outcome, and sent query history.
 - `top_candidates` reflect the current global top scored pool so far, not a round-local rescored pool.
-- Treat `title_anchor_term` as fixed. Do not suggest deleting, replacing, or adding another title anchor.
-- Only critique existing non-anchor query terms already present in the term bank.
+- Treat compiler-admitted `role_anchor` terms as the only query anchors. Do not suggest deleting, replacing, or inventing anchors.
+- Only critique existing query terms already present in the term bank.
 - You may suggest activating an inactive reserve term from the existing term bank.
 - Do not invent brand-new query terms outside the existing term bank.
 - Do not convert preferences into hard constraints.

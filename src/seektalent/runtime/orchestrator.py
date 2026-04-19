@@ -1376,6 +1376,9 @@ class WorkflowRuntime:
                     "term": term,
                     "source": candidate.source if candidate is not None else None,
                     "category": candidate.category if candidate is not None else None,
+                    "retrieval_role": candidate.retrieval_role if candidate is not None else None,
+                    "queryability": candidate.queryability if candidate is not None else None,
+                    "family": candidate.family if candidate is not None else None,
                 }
             )
         return details

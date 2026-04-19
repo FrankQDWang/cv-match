@@ -12,7 +12,6 @@ from seektalent.models import (
     HardConstraintSlots,
     InputTruth,
     PreferenceSlots,
-    QueryTermCandidate,
     RequirementDigest,
     RequirementExtractionDraft,
     RequirementSheet,
@@ -20,9 +19,9 @@ from seektalent.models import (
     ScoringPolicy,
     unique_strings,
 )
+from seektalent.retrieval.query_compiler import compile_query_term_pool
 
 UNLIMITED = "不限"
-ACTIVE_NON_ANCHOR_WINDOW = 4
 DEGREE_PATTERNS = (
     ("博士及以上", ("博士及以上", "博士以上", "博士研究生及以上")),
     ("硕士及以上", ("硕士及以上", "研究生及以上", "硕士以上", "研究生以上", "硕士研究生及以上")),
@@ -104,6 +103,23 @@ def normalize_requirement_draft(draft: RequirementExtractionDraft, *, job_title:
         allowed_locations=allowed_locations,
         preferred_locations=draft.preferred_locations,
     )
+    hard_constraints = HardConstraintSlots(
+        locations=allowed_locations,
+        school_names=_clean_list(draft.school_names, limit=6),
+        degree_requirement=_normalize_degree_requirement(draft.degree_requirement),
+        school_type_requirement=_normalize_school_type_requirement(draft.school_type_requirement),
+        experience_requirement=_normalize_experience_requirement(draft.experience_requirement),
+        gender_requirement=_normalize_gender_requirement(draft.gender_requirement),
+        age_requirement=_normalize_age_requirement(draft.age_requirement),
+        company_names=_clean_list(draft.company_names, limit=6),
+    )
+    preferences = PreferenceSlots(
+        preferred_locations=preferred_locations,
+        preferred_companies=_clean_list(draft.preferred_companies, limit=6),
+        preferred_domains=_clean_list(draft.preferred_domains, limit=4),
+        preferred_backgrounds=_clean_list(draft.preferred_backgrounds, limit=6),
+        preferred_query_terms=preferred_query_terms[:4],
+    )
     return RequirementSheet(
         role_title=role_title,
         title_anchor_term=title_anchor_term,
@@ -111,27 +127,15 @@ def normalize_requirement_draft(draft: RequirementExtractionDraft, *, job_title:
         must_have_capabilities=must_have,
         preferred_capabilities=preferred,
         exclusion_signals=_clean_list(draft.exclusion_signals, limit=8),
-        hard_constraints=HardConstraintSlots(
-            locations=allowed_locations,
-            school_names=_clean_list(draft.school_names, limit=6),
-            degree_requirement=_normalize_degree_requirement(draft.degree_requirement),
-            school_type_requirement=_normalize_school_type_requirement(draft.school_type_requirement),
-            experience_requirement=_normalize_experience_requirement(draft.experience_requirement),
-            gender_requirement=_normalize_gender_requirement(draft.gender_requirement),
-            age_requirement=_normalize_age_requirement(draft.age_requirement),
-            company_names=_clean_list(draft.company_names, limit=6),
-        ),
-        preferences=PreferenceSlots(
-            preferred_locations=preferred_locations,
-            preferred_companies=_clean_list(draft.preferred_companies, limit=6),
-            preferred_domains=_clean_list(draft.preferred_domains, limit=4),
-            preferred_backgrounds=_clean_list(draft.preferred_backgrounds, limit=6),
-            preferred_query_terms=preferred_query_terms[:4],
-        ),
-        initial_query_term_pool=_build_query_term_pool(
+        hard_constraints=hard_constraints,
+        preferences=preferences,
+        initial_query_term_pool=compile_query_term_pool(
+            job_title=role_title,
             title_anchor_term=title_anchor_term,
             jd_query_terms=jd_query_terms,
             notes_query_terms=notes_query_terms,
+            hard_constraints=hard_constraints,
+            preferences=preferences,
         ),
         scoring_rationale=scoring_rationale,
     )
@@ -292,44 +296,6 @@ def _replace_chinese_number(match: re.Match[str]) -> str:
     tens = 1 if not left else CHINESE_DIGITS[left]
     ones = 0 if not right else CHINESE_DIGITS[right]
     return str(tens * 10 + ones)
-
-
-def _build_query_term_pool(
-    *,
-    title_anchor_term: str,
-    jd_query_terms: list[str],
-    notes_query_terms: list[str],
-) -> list[QueryTermCandidate]:
-    pool: list[QueryTermCandidate] = []
-    pool.append(
-        QueryTermCandidate(
-            term=title_anchor_term,
-            source="job_title",
-            category="role_anchor",
-            priority=1,
-            evidence="Job title anchor.",
-            first_added_round=0,
-        )
-    )
-    for index, term in enumerate(
-        _merge_query_terms(jd_query_terms=jd_query_terms, notes_query_terms=notes_query_terms, limit=8),
-        start=2,
-    ):
-        key = term.casefold()
-        category = "tooling" if "python" in key or "pydantic" in key or "trace" in key or "logging" in key else "domain"
-        source = "jd" if any(term.casefold() == item.casefold() for item in jd_query_terms) else "notes"
-        pool.append(
-            QueryTermCandidate(
-                term=term,
-                source=source,
-                category=category,
-                priority=index,
-                evidence="JD query term." if source == "jd" else "Notes query term.",
-                first_added_round=0,
-                active=index <= ACTIVE_NON_ANCHOR_WINDOW + 1,
-            )
-        )
-    return pool
 
 
 def _merge_query_terms(*, jd_query_terms: list[str], notes_query_terms: list[str], limit: int) -> list[str]:

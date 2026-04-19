@@ -16,6 +16,8 @@ ScoringConfidence = Literal["high", "medium", "low"]
 ConstraintValue = str | int | list[str]
 QueryTermSource = Literal["job_title", "jd", "notes", "reflection"]
 QueryTermCategory = Literal["role_anchor", "domain", "tooling", "expansion"]
+QueryRetrievalRole = Literal["role_anchor", "core_skill", "framework_tool", "domain_context", "filter_only", "score_only"]
+Queryability = Literal["admitted", "score_only", "filter_only", "blocked"]
 QueryRole = Literal["exploit", "explore"]
 LocationExecutionMode = Literal["none", "single", "priority_then_fallback", "balanced_all"]
 LocationExecutionPhase = Literal["priority", "balanced"]
@@ -155,6 +157,25 @@ class PreferenceSlots(BaseModel):
     preferred_query_terms: list[str] = Field(default_factory=list)
 
 
+def _default_retrieval_role(category: str) -> QueryRetrievalRole:
+    if category == "role_anchor":
+        return "role_anchor"
+    if category == "tooling":
+        return "framework_tool"
+    return "domain_context"
+
+
+def _default_query_family(term: str, category: str) -> str:
+    clean = "".join(char.lower() for char in term.strip() if char.isalnum())
+    if not clean:
+        clean = "unknown"
+    if category == "role_anchor":
+        return f"role.{clean}"
+    if category == "tooling":
+        return f"framework.{clean}"
+    return f"domain.{clean}"
+
+
 class QueryTermCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -165,6 +186,20 @@ class QueryTermCandidate(BaseModel):
     evidence: str
     first_added_round: int
     active: bool = True
+    retrieval_role: QueryRetrievalRole
+    queryability: Queryability = "admitted"
+    family: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def fill_search_metadata(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if "retrieval_role" not in data:
+            data["retrieval_role"] = _default_retrieval_role(str(data.get("category", "")))
+        if "family" not in data:
+            data["family"] = _default_query_family(str(data.get("term", "")), str(data.get("category", "")))
+        return data
 
 
 class RequirementSheet(BaseModel):

@@ -1,0 +1,350 @@
+from __future__ import annotations
+
+import re
+
+from seektalent.models import (
+    HardConstraintSlots,
+    PreferenceSlots,
+    QueryTermCandidate,
+    QueryTermCategory,
+    QueryTermSource,
+    Queryability,
+    QueryRetrievalRole,
+    unique_strings,
+)
+
+ACTIVE_NON_ANCHOR_WINDOW = 4
+TITLE_SUFFIXES = (
+    "算法工程师",
+    "开发工程师",
+    "工程师",
+    "架构师",
+    "专家",
+    "经理",
+    "负责人",
+    "岗位",
+    "职位",
+)
+SCHOOL_TYPE_TERMS = {"985", "211", "双一流", "统招", "全日制", "海外", "海归", "强基计划", "双高计划", "the100"}
+DEGREE_TOKENS = ("博士", "硕士", "研究生", "本科", "学士", "大专", "专科", "学历")
+ABSTRACT_PATTERNS = (
+    "任务拆解",
+    "长链路业务问题",
+    "复杂业务问题",
+    "业务问题",
+    "沟通",
+    "协作",
+    "抗压",
+    "主人翁",
+    "自驱",
+    "抽象能力",
+)
+BLOCKED_PATTERNS = ("agentloop", "veadk", "googleadk")
+ROLE_AGENT_KEYS = {"agent", "aiagent", "llmagent", "智能体", "多智能体"}
+KNOWN_FRAMEWORKS = {
+    "langchain": "framework.langchain",
+    "langgraph": "framework.langgraph",
+    "autogen": "framework.autogen",
+    "crewai": "framework.crewai",
+    "llamaindex": "framework.llamaindex",
+    "fastapi": "framework.fastapi",
+    "flask": "framework.flask",
+    "django": "framework.django",
+    "milvus": "framework.milvus",
+    "faiss": "framework.faiss",
+    "chroma": "framework.chroma",
+    "docker": "framework.docker",
+    "kubernetes": "framework.kubernetes",
+    "k8s": "framework.kubernetes",
+    "pydantic": "framework.pydantic",
+    "vllm": "framework.vllm",
+    "pytorch": "framework.pytorch",
+    "tensorflow": "framework.tensorflow",
+}
+KNOWN_SKILLS = {
+    "python": "skill.python",
+    "java": "skill.java",
+    "rag": "skill.rag",
+    "functioncalling": "skill.function_calling",
+    "prompt": "skill.prompt",
+    "llmops": "skill.llmops",
+    "检索": "skill.retrieval",
+    "向量检索": "skill.retrieval",
+    "后端": "skill.backend",
+}
+DOMAIN_FAMILIES = {
+    "llm": "domain.llm",
+    "大模型": "domain.llm",
+    "多智能体": "domain.multi_agent",
+    "上下文管理": "domain.context_engineering",
+    "上下文工程": "domain.context_engineering",
+    "记忆系统": "domain.memory",
+}
+
+
+def compile_query_term_pool(
+    *,
+    job_title: str,
+    title_anchor_term: str,
+    jd_query_terms: list[str],
+    notes_query_terms: list[str],
+    hard_constraints: HardConstraintSlots | None = None,
+    preferences: PreferenceSlots | None = None,
+) -> list[QueryTermCandidate]:
+    pool: list[QueryTermCandidate] = []
+    seen: set[str] = set()
+    active_non_anchor_count = 0
+    constraint_keys = _constraint_keys(hard_constraints, preferences)
+
+    def add_candidate(
+        *,
+        term: str,
+        source: QueryTermSource,
+        evidence: str,
+        priority: int,
+        role: QueryRetrievalRole | None = None,
+        queryability: Queryability | None = None,
+        category: QueryTermCategory | None = None,
+        family: str | None = None,
+    ) -> None:
+        nonlocal active_non_anchor_count
+        clean = _clean_text(term)
+        if not clean:
+            return
+        dedupe_key = clean.casefold()
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        inferred_role, inferred_queryability, inferred_category, inferred_family = _classify_term(clean, constraint_keys)
+        role = role or inferred_role
+        queryability = queryability or inferred_queryability
+        category = category or inferred_category
+        family = family or inferred_family
+        active = queryability == "admitted"
+        if role != "role_anchor":
+            if active:
+                active_non_anchor_count += 1
+                active = active_non_anchor_count <= ACTIVE_NON_ANCHOR_WINDOW
+        candidate = QueryTermCandidate(
+            term=clean,
+            source=source,
+            category=category,
+            priority=priority,
+            evidence=evidence,
+            first_added_round=0,
+            active=active,
+            retrieval_role=role,
+            queryability=queryability,
+            family=family,
+        )
+        pool.append(candidate)
+
+    priority = 1
+    for anchor in _compile_role_anchors(job_title=job_title, title_anchor_term=title_anchor_term):
+        add_candidate(
+            term=anchor,
+            source="job_title",
+            category="role_anchor",
+            role="role_anchor",
+            queryability="admitted",
+            family=_family_for_role(anchor),
+            priority=priority,
+            evidence="Compiled job title anchor.",
+        )
+        priority += 1
+
+    if _needs_large_model_domain(job_title, title_anchor_term, jd_query_terms, notes_query_terms):
+        add_candidate(
+            term="大模型",
+            source="job_title",
+            category="domain",
+            role="domain_context",
+            queryability="admitted",
+            family="domain.llm",
+            priority=priority,
+            evidence="Compiled broad domain from job title.",
+        )
+        priority += 1
+
+    for term, source in _merge_query_terms(jd_query_terms=jd_query_terms, notes_query_terms=notes_query_terms, limit=8):
+        add_candidate(
+            term=term,
+            source=source,
+            priority=priority,
+            evidence="JD query term." if source == "jd" else "Notes query term.",
+        )
+        priority += 1
+
+    if not any(item.queryability == "admitted" and item.retrieval_role == "role_anchor" for item in pool):
+        raise ValueError("query compiler produced no admitted role anchor")
+    if not any(
+        item.queryability == "admitted" and item.retrieval_role != "role_anchor"
+        for item in pool
+    ):
+        raise ValueError("query compiler produced no admitted non-anchor terms")
+    return pool
+
+
+def _compile_role_anchors(*, job_title: str, title_anchor_term: str) -> list[str]:
+    title = _clean_text(job_title)
+    anchor = _clean_text(title_anchor_term)
+    compact = _compact_key(f"{title} {anchor}")
+    if "agent" in compact or "智能体" in compact:
+        if "aiagent" in compact and "llmagent" not in compact:
+            return ["AI Agent"]
+        return ["Agent"]
+    return unique_strings([_strip_title_suffix(anchor) or _strip_title_suffix(title) or anchor or title])
+
+
+def _needs_large_model_domain(
+    job_title: str,
+    title_anchor_term: str,
+    jd_query_terms: list[str],
+    notes_query_terms: list[str],
+) -> bool:
+    text = " ".join([job_title, title_anchor_term, *jd_query_terms, *notes_query_terms])
+    key = _compact_key(text)
+    if "大模型" in text or "llm" in key:
+        return "算法" in text or "agent" in key
+    return "agent算法" in key
+
+
+def _classify_term(term: str, constraint_keys: set[str]) -> tuple[QueryRetrievalRole, Queryability, QueryTermCategory, str]:
+    key = term.casefold()
+    compact = _compact_key(term)
+    if key in constraint_keys or compact in constraint_keys or _is_filter_only(term, compact):
+        return "filter_only", "filter_only", "domain", _filter_family(term, compact)
+    if any(pattern in compact for pattern in BLOCKED_PATTERNS):
+        return "score_only", "blocked", "expansion", f"blocked.{compact}"
+    if any(pattern in key or pattern in term for pattern in ABSTRACT_PATTERNS):
+        return "score_only", "score_only", "expansion", f"score.{compact or 'abstract'}"
+    if _is_role_anchor(term, compact):
+        return "role_anchor", "admitted", "role_anchor", _family_for_role(term)
+    for known, family in KNOWN_FRAMEWORKS.items():
+        if known in compact:
+            return "framework_tool", "admitted", "tooling", family
+    for known, family in KNOWN_SKILLS.items():
+        if known in key or known in compact:
+            return "core_skill", "admitted", "domain", family
+    for known, family in DOMAIN_FAMILIES.items():
+        if known in key or known in compact:
+            return "domain_context", "admitted", "domain", family
+    return "domain_context", "admitted", "domain", f"domain.{compact or 'unknown'}"
+
+
+def _is_role_anchor(term: str, compact: str) -> bool:
+    return compact in ROLE_AGENT_KEYS or term in {"AI Agent", "LLM Agent", "Agent", "智能体", "多智能体"}
+
+
+def _is_filter_only(term: str, compact: str) -> bool:
+    if compact in SCHOOL_TYPE_TERMS:
+        return True
+    if any(token in term for token in DEGREE_TOKENS):
+        return True
+    if re.fullmatch(r"\d{1,2}(?:-|~|至|到)?\d{0,2}年(?:以上|以下|以内|经验)?", term):
+        return True
+    if re.fullmatch(r"\d{1,2}(?:-|~|至|到)?\d{0,2}岁(?:以上|以下|以内)?", term):
+        return True
+    return term in {"男", "女", "男性", "女性", "男女不限", "性别不限", "不限"}
+
+
+def _filter_family(term: str, compact: str) -> str:
+    if compact in SCHOOL_TYPE_TERMS:
+        return "constraint.school_type"
+    if any(token in term for token in DEGREE_TOKENS):
+        return "constraint.degree"
+    if "岁" in term or "年龄" in term:
+        return "constraint.age"
+    if term in {"男", "女", "男性", "女性", "男女不限", "性别不限"}:
+        return "constraint.gender"
+    if "年" in term or "经验" in term:
+        return "constraint.experience"
+    return "constraint.filter"
+
+
+def _constraint_keys(
+    hard_constraints: HardConstraintSlots | None,
+    preferences: PreferenceSlots | None,
+) -> set[str]:
+    values: list[str] = []
+    if hard_constraints is not None:
+        values.extend(hard_constraints.locations)
+        values.extend(hard_constraints.school_names)
+        values.extend(hard_constraints.company_names)
+        if hard_constraints.degree_requirement is not None:
+            values.extend([
+                hard_constraints.degree_requirement.canonical_degree,
+                hard_constraints.degree_requirement.raw_text,
+            ])
+        if hard_constraints.school_type_requirement is not None:
+            values.extend(hard_constraints.school_type_requirement.canonical_types)
+            values.append(hard_constraints.school_type_requirement.raw_text)
+        if hard_constraints.experience_requirement is not None:
+            values.append(hard_constraints.experience_requirement.raw_text)
+        if hard_constraints.gender_requirement is not None:
+            values.extend([
+                hard_constraints.gender_requirement.canonical_gender,
+                hard_constraints.gender_requirement.raw_text,
+            ])
+        if hard_constraints.age_requirement is not None:
+            values.append(hard_constraints.age_requirement.raw_text)
+    if preferences is not None:
+        values.extend(preferences.preferred_locations)
+        values.extend(preferences.preferred_companies)
+    keys: set[str] = set()
+    for value in values:
+        clean = _clean_text(str(value))
+        if not clean:
+            continue
+        keys.add(clean.casefold())
+        keys.add(_compact_key(clean))
+    return keys
+
+
+def _merge_query_terms(
+    *,
+    jd_query_terms: list[str],
+    notes_query_terms: list[str],
+    limit: int,
+) -> list[tuple[str, QueryTermSource]]:
+    merged: list[tuple[str, QueryTermSource]] = []
+    seen: set[str] = set()
+    max_len = max(len(jd_query_terms), len(notes_query_terms))
+    for index in range(max_len):
+        for terms, source in ((jd_query_terms, "jd"), (notes_query_terms, "notes")):
+            if index >= len(terms):
+                continue
+            clean = _clean_text(terms[index])
+            key = clean.casefold()
+            if not clean or key in seen:
+                continue
+            seen.add(key)
+            merged.append((clean, source))
+            if len(merged) >= limit:
+                return merged
+    return merged
+
+
+def _strip_title_suffix(value: str) -> str:
+    clean = _clean_text(value)
+    for suffix in TITLE_SUFFIXES:
+        if clean.casefold().endswith(suffix.casefold()):
+            return clean[: -len(suffix)].strip()
+    return clean
+
+
+def _family_for_role(term: str) -> str:
+    compact = _compact_key(term)
+    if "agent" in compact or "智能体" in term:
+        return "role.agent"
+    return f"role.{compact or 'unknown'}"
+
+
+def _compact_key(value: str) -> str:
+    return "".join(char.casefold() for char in value if char.isalnum())
+
+
+def _clean_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    return " ".join(value.split()).strip()

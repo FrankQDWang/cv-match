@@ -1,3 +1,5 @@
+import pytest
+
 from seektalent.models import QueryTermCandidate, SentQueryRecord
 from seektalent.retrieval.query_plan import (
     canonicalize_controller_query_terms,
@@ -33,6 +35,122 @@ def test_query_plan_enforces_round_budget() -> None:
         query_term_pool=pool,
     )
     assert terms == ["python", "resume matching"]
+
+
+def test_query_plan_accepts_compiled_anchor_alias_without_literal_title_anchor() -> None:
+    pool = [
+        QueryTermCandidate(
+            term="AI Agent",
+            source="job_title",
+            category="role_anchor",
+            priority=1,
+            evidence="compiled title",
+            first_added_round=0,
+            retrieval_role="role_anchor",
+            queryability="admitted",
+            family="role.agent",
+        ),
+        QueryTermCandidate(
+            term="LangChain",
+            source="jd",
+            category="tooling",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="framework_tool",
+            queryability="admitted",
+            family="framework.langchain",
+        ),
+    ]
+
+    assert canonicalize_controller_query_terms(
+        ["AI Agent", "LangChain"],
+        round_no=1,
+        title_anchor_term="AI Agent工程师",
+        query_term_pool=pool,
+    ) == ["AI Agent", "LangChain"]
+
+
+def test_query_plan_rejects_non_admitted_terms() -> None:
+    pool = [
+        QueryTermCandidate(
+            term="AI Agent",
+            source="job_title",
+            category="role_anchor",
+            priority=1,
+            evidence="compiled title",
+            first_added_round=0,
+            retrieval_role="role_anchor",
+            queryability="admitted",
+            family="role.agent",
+        ),
+        QueryTermCandidate(
+            term="211",
+            source="jd",
+            category="domain",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            active=False,
+            retrieval_role="filter_only",
+            queryability="filter_only",
+            family="constraint.school_type",
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="compiler-admitted"):
+        canonicalize_controller_query_terms(
+            ["AI Agent", "211"],
+            round_no=1,
+            title_anchor_term="AI Agent工程师",
+            query_term_pool=pool,
+        )
+
+
+def test_query_plan_rejects_duplicate_families() -> None:
+    pool = [
+        QueryTermCandidate(
+            term="AI Agent",
+            source="job_title",
+            category="role_anchor",
+            priority=1,
+            evidence="compiled title",
+            first_added_round=0,
+            retrieval_role="role_anchor",
+            queryability="admitted",
+            family="role.agent",
+        ),
+        QueryTermCandidate(
+            term="LangChain",
+            source="jd",
+            category="tooling",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="framework_tool",
+            queryability="admitted",
+            family="framework.langchain",
+        ),
+        QueryTermCandidate(
+            term="LangChain框架",
+            source="notes",
+            category="tooling",
+            priority=3,
+            evidence="notes",
+            first_added_round=0,
+            retrieval_role="framework_tool",
+            queryability="admitted",
+            family="framework.langchain",
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="families"):
+        canonicalize_controller_query_terms(
+            ["AI Agent", "LangChain", "LangChain框架"],
+            round_no=2,
+            title_anchor_term="AI Agent工程师",
+            query_term_pool=pool,
+        )
 
 
 def test_query_plan_serializes_terms_with_quotes() -> None:

@@ -12,13 +12,13 @@ Decide whether to continue or stop. If continuing, propose this round's query te
 
 - `action` must be `search_cts` or `stop`.
 - When `action=search_cts`, provide both `proposed_query_terms` and `proposed_filter_plan`.
-- When `action=search_cts`, always keep the fixed `title_anchor_term`.
 - `current_top_pool` is the global top scored pool so far, not a round-local rescored pool.
 - If `action=stop`, ground `decision_rationale` and `stop_reason` only in facts visible in `CONTROLLER_CONTEXT`.
 - You only own the primary round query. Runtime may derive a secondary exploration query after round 1.
-- Round 1 must return exactly 2 query terms: `title_anchor_term + 1 JD term`.
-- Round 2 and later must return 2 or 3 query terms: `title_anchor_term + 1~2 JD terms`.
-- All non-anchor query terms must come from the current active query term pool.
+- Round 1 must return exactly 2 query terms: 1 compiler-admitted anchor + 1 active admitted non-anchor term.
+- Round 2 and later must return 2 or 3 query terms: 1 compiler-admitted anchor + 1~2 active admitted non-anchor terms.
+- All query terms must come from the current query term pool with `queryability=admitted`.
+- Use exactly one term whose `retrieval_role` is `role_anchor`; do not repeat a `family` inside one query.
 - Pick only the highest-signal terms for this round. Do not dump the full requirement list.
 - When `previous_reflection` exists, provide `response_to_reflection`.
 - Work from full `JD`, full `notes`, and `RequirementSheet`.

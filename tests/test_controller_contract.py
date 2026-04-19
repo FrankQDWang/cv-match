@@ -70,6 +70,53 @@ def _requirement_sheet() -> RequirementSheet:
     )
 
 
+def _agent_requirement_sheet() -> RequirementSheet:
+    return RequirementSheet(
+        role_title="AI Agent工程师",
+        title_anchor_term="AI Agent工程师",
+        role_summary="Build Agent systems.",
+        must_have_capabilities=["AI Agent", "LangChain"],
+        hard_constraints=HardConstraintSlots(locations=["上海市"]),
+        initial_query_term_pool=[
+            QueryTermCandidate(
+                term="AI Agent",
+                source="job_title",
+                category="role_anchor",
+                priority=1,
+                evidence="Compiled title",
+                first_added_round=0,
+                retrieval_role="role_anchor",
+                queryability="admitted",
+                family="role.agent",
+            ),
+            QueryTermCandidate(
+                term="LangChain",
+                source="jd",
+                category="tooling",
+                priority=2,
+                evidence="JD body",
+                first_added_round=0,
+                retrieval_role="framework_tool",
+                queryability="admitted",
+                family="framework.langchain",
+            ),
+            QueryTermCandidate(
+                term="AgentLoop调优",
+                source="jd",
+                category="expansion",
+                priority=3,
+                evidence="JD body",
+                first_added_round=0,
+                active=False,
+                retrieval_role="score_only",
+                queryability="blocked",
+                family="blocked.agentloop调优",
+            ),
+        ],
+        scoring_rationale="Score Agent fit first.",
+    )
+
+
 def _run_state_with_previous_reflection() -> RunState:
     requirement_sheet = _requirement_sheet()
     return RunState(
@@ -268,6 +315,71 @@ def test_controller_output_validator_rejects_empty_query_terms(
     )
 
     with pytest.raises(ModelRetry, match="proposed_query_terms"):
+        validator(type("Ctx", (), {"deps": context})(), decision)
+
+
+def test_controller_output_validator_accepts_compiled_anchor_alias_without_literal_title_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+    requirement_sheet = _agent_requirement_sheet()
+    context = ControllerContext(
+        full_jd="JD text",
+        full_notes="Notes text",
+        requirement_sheet=requirement_sheet,
+        query_term_pool=requirement_sheet.initial_query_term_pool,
+        round_no=1,
+        min_rounds=1,
+        max_rounds=3,
+        is_final_allowed_round=False,
+        target_new=5,
+    )
+    decision = SearchControllerDecision(
+        thought_summary="Search.",
+        action="search_cts",
+        decision_rationale="Need Agent recall.",
+        proposed_query_terms=["AI Agent", "LangChain"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+
+    assert validator(type("Ctx", (), {"deps": context})(), decision) is decision
+
+
+def test_controller_output_validator_rejects_blocked_compiler_terms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+    requirement_sheet = _agent_requirement_sheet()
+    context = ControllerContext(
+        full_jd="JD text",
+        full_notes="Notes text",
+        requirement_sheet=requirement_sheet,
+        query_term_pool=requirement_sheet.initial_query_term_pool,
+        round_no=1,
+        min_rounds=1,
+        max_rounds=3,
+        is_final_allowed_round=False,
+        target_new=5,
+    )
+    decision = SearchControllerDecision(
+        thought_summary="Search.",
+        action="search_cts",
+        decision_rationale="Need Agent recall.",
+        proposed_query_terms=["AI Agent", "AgentLoop调优"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+
+    with pytest.raises(ModelRetry, match="compiler-admitted"):
         validator(type("Ctx", (), {"deps": context})(), decision)
 
 

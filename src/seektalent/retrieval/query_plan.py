@@ -28,28 +28,38 @@ def canonicalize_controller_query_terms(
     unique_terms = unique_strings(terms)
     if len(terms) != len(unique_terms):
         raise ValueError("proposed_query_terms must not contain duplicates.")
-    normalized_anchor = normalize_term(title_anchor_term)
-    if sum(1 for term in unique_terms if term.casefold() == normalized_anchor.casefold()) != 1:
-        raise ValueError("proposed_query_terms must contain the fixed title anchor exactly once.")
     if len(unique_terms) < 2:
         raise ValueError("proposed_query_terms must contain at least 2 terms.")
     if len(unique_terms) > 3:
         raise ValueError("proposed_query_terms must not exceed 3 terms.")
-    non_anchor_terms = [term for term in unique_terms if term.casefold() != normalized_anchor.casefold()]
+    del title_anchor_term
+    term_index = _query_term_index(query_term_pool)
+    missing_terms = [term for term in unique_terms if term.casefold() not in term_index]
+    if missing_terms:
+        raise ValueError(f"query terms must come from the compiled query term pool: {', '.join(missing_terms)}")
+    candidates = [term_index[term.casefold()] for term in unique_terms]
+    not_admitted = [item.term for item in candidates if item.queryability != "admitted"]
+    if not_admitted:
+        raise ValueError(f"query terms must be compiler-admitted: {', '.join(not_admitted)}")
+    anchors = [item for item in candidates if _is_anchor_candidate(item)]
+    if len(anchors) != 1:
+        raise ValueError("proposed_query_terms must contain exactly one compiler-admitted anchor.")
+    anchor = anchors[0]
+    non_anchor_candidates = [item for item in candidates if item.term.casefold() != anchor.term.casefold()]
+    non_anchor_terms = [item.term for item in non_anchor_candidates]
     if round_no == 1 and len(non_anchor_terms) != 1:
-        raise ValueError("round 1 requires exactly 1 non-anchor JD term.")
+        raise ValueError("round 1 requires exactly 1 non-anchor admitted term.")
     if round_no > 1 and len(non_anchor_terms) not in {1, 2}:
-        raise ValueError("rounds after 1 require 1 or 2 non-anchor JD terms.")
-    allowed_non_anchor_terms = {
-        item.term.casefold()
-        for item in query_term_pool
-        if (allow_inactive_non_anchor_terms or item.active) and item.term.casefold() != normalized_anchor.casefold()
-    }
-    invalid_terms = [term for term in non_anchor_terms if term.casefold() not in allowed_non_anchor_terms]
-    if invalid_terms:
-        source = "JD pool" if allow_inactive_non_anchor_terms else "active JD pool"
-        raise ValueError(f"non-anchor query terms must come from the {source}: {', '.join(invalid_terms)}")
-    return [normalized_anchor, *non_anchor_terms]
+        raise ValueError("rounds after 1 require 1 or 2 non-anchor admitted terms.")
+    inactive_terms = [
+        item.term for item in non_anchor_candidates if not allow_inactive_non_anchor_terms and not item.active
+    ]
+    if inactive_terms:
+        raise ValueError(f"non-anchor query terms must be active compiler-admitted terms: {', '.join(inactive_terms)}")
+    duplicate_families = _duplicate_families(candidates)
+    if duplicate_families:
+        raise ValueError(f"query terms must not repeat compiler families: {', '.join(duplicate_families)}")
+    return [anchor.term, *non_anchor_terms]
 
 
 def serialize_keyword_query(terms: list[str]) -> str:
@@ -70,21 +80,38 @@ def select_query_terms(
     round_no: int,
     title_anchor_term: str,
 ) -> list[str]:
-    normalized_anchor = normalize_term(title_anchor_term)
+    del title_anchor_term
+    anchors = sorted(
+        [item for item in query_term_pool if item.active and _is_anchor_candidate(item)],
+        key=_term_sort_key,
+    )
+    if not anchors:
+        raise ValueError("compiled query term pool must include one active admitted anchor.")
     ordered = sorted(
         [
             item
             for item in query_term_pool
-            if item.active and item.term.casefold() != normalized_anchor.casefold()
+            if item.active and item.queryability == "admitted" and not _is_anchor_candidate(item)
         ],
-        key=lambda item: (item.priority, item.first_added_round, item.term.casefold()),
+        key=_term_sort_key,
     )
     non_anchor_budget = 1 if round_no == 1 else min(2, len(ordered))
-    terms = [normalized_anchor, *[item.term for item in ordered[:non_anchor_budget]]]
+    selected: list[QueryTermCandidate] = []
+    used_families = {anchors[0].family}
+    for item in ordered:
+        if item.family in used_families:
+            continue
+        selected.append(item)
+        used_families.add(item.family)
+        if len(selected) >= non_anchor_budget:
+            break
+    if not selected:
+        raise ValueError("compiled query term pool must include active admitted non-anchor terms.")
+    terms = [anchors[0].term, *[item.term for item in selected]]
     return canonicalize_controller_query_terms(
         terms,
         round_no=round_no,
-        title_anchor_term=title_anchor_term,
+        title_anchor_term="",
         query_term_pool=query_term_pool,
     )
 
@@ -104,8 +131,10 @@ def derive_explore_query_terms(
         query_term_pool=query_term_pool,
         allow_inactive_non_anchor_terms=True,
     )
-    normalized_anchor = normalize_term(title_anchor_term)
-    exploit_non_anchor_terms = [term for term in exploit_terms if term.casefold() != normalized_anchor.casefold()]
+    term_index = _query_term_index(query_term_pool)
+    exploit_candidates = [term_index[term.casefold()] for term in exploit_terms]
+    anchor = next(item for item in exploit_candidates if _is_anchor_candidate(item))
+    exploit_non_anchor_terms = [item.term for item in exploit_candidates if item.term.casefold() != anchor.term.casefold()]
     if not exploit_non_anchor_terms:
         return None
 
@@ -119,13 +148,17 @@ def derive_explore_query_terms(
     for (_, query_terms), _ in unique_logical_queries.items():
         used_queries.add(query_terms)
         for term in query_terms:
-            if term == normalized_anchor.casefold():
+            if term == anchor.term.casefold():
                 continue
             term_usage[term] = term_usage.get(term, 0) + 1
 
     exploit_term_keys = {term.casefold() for term in exploit_non_anchor_terms}
     ordered_terms = sorted(
-        [item for item in query_term_pool if item.term.casefold() != normalized_anchor.casefold()],
+        [
+            item
+            for item in query_term_pool
+            if item.queryability == "admitted" and not _is_anchor_candidate(item)
+        ],
         key=lambda item: (
             0 if item.active and item.term.casefold() not in exploit_term_keys else 1,
             0 if not item.active and item.term.casefold() not in exploit_term_keys else 1,
@@ -152,14 +185,17 @@ def derive_explore_query_terms(
     used_candidates: list[tuple[tuple[int, int, int, int, tuple[str, ...]], list[str]]] = []
     for size in (1, 2):
         for combo in combinations(ordered_terms, size):
-            terms = [normalized_anchor, *[item.term for item in combo]]
-            candidate_terms = canonicalize_controller_query_terms(
-                terms,
-                round_no=2,
-                title_anchor_term=title_anchor_term,
-                query_term_pool=query_term_pool,
-                allow_inactive_non_anchor_terms=True,
-            )
+            terms = [anchor.term, *[item.term for item in combo]]
+            try:
+                candidate_terms = canonicalize_controller_query_terms(
+                    terms,
+                    round_no=2,
+                    title_anchor_term=title_anchor_term,
+                    query_term_pool=query_term_pool,
+                    allow_inactive_non_anchor_terms=True,
+                )
+            except ValueError:
+                continue
             signature = tuple(term.casefold() for term in candidate_terms)
             if signature == tuple(term.casefold() for term in exploit_terms):
                 continue
@@ -170,6 +206,29 @@ def derive_explore_query_terms(
     if used_candidates:
         return min(used_candidates, key=lambda item: item[0])[1]
     return None
+
+
+def _query_term_index(query_term_pool: list[QueryTermCandidate]) -> dict[str, QueryTermCandidate]:
+    return {normalize_term(item.term).casefold(): item for item in query_term_pool}
+
+
+def _is_anchor_candidate(item: QueryTermCandidate) -> bool:
+    return item.queryability == "admitted" and item.retrieval_role == "role_anchor"
+
+
+def _term_sort_key(item: QueryTermCandidate) -> tuple[int, int, str]:
+    return (item.priority, item.first_added_round, item.term.casefold())
+
+
+def _duplicate_families(candidates: list[QueryTermCandidate]) -> list[str]:
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for item in candidates:
+        if item.family in seen:
+            duplicates.append(item.family)
+            continue
+        seen.add(item.family)
+    return unique_strings(duplicates)
 
 
 def build_location_execution_plan(
