@@ -135,6 +135,7 @@ def _controller_context(
         round_no=round_no,
         min_rounds=min_rounds,
         max_rounds=max_rounds,
+        retrieval_rounds_completed=max(0, round_no - 1),
         rounds_remaining_after_current=max(0, max_rounds - round_no),
         budget_used_ratio=round_no / max_rounds,
         near_budget_limit=(round_no / max_rounds) >= 0.8,

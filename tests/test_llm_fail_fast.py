@@ -86,6 +86,7 @@ def _controller_context() -> ControllerContext:
         round_no=1,
         min_rounds=1,
         max_rounds=3,
+        retrieval_rounds_completed=0,
         rounds_remaining_after_current=2,
         budget_used_ratio=1 / 3,
         near_budget_limit=False,

@@ -561,6 +561,47 @@ def test_runtime_forces_continue_when_stop_guidance_blocks_stop(tmp_path: Path) 
     assert terminal_controller_round.stop_guidance.can_stop is True
 
 
+def test_runtime_min_rounds_count_completed_retrieval_rounds(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=3,
+        max_rounds=4,
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StopAfterSecondRoundController(), resume_scorer=StubScorer())
+    tracer = RunTracer(tmp_path / "trace-runs")
+    job_title, jd, notes = _sample_inputs()
+
+    try:
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        _, stop_reason, rounds_executed, terminal_controller_round = asyncio.run(
+            runtime._run_rounds(run_state=run_state, tracer=tracer)
+        )
+    finally:
+        tracer.close()
+
+    round_03_context = json.loads(
+        (tracer.run_dir / "rounds" / "round_03" / "controller_context.json").read_text(encoding="utf-8")
+    )
+    round_03_decision = json.loads(
+        (tracer.run_dir / "rounds" / "round_03" / "controller_decision.json").read_text(encoding="utf-8")
+    )
+
+    assert round_03_context["retrieval_rounds_completed"] == 2
+    assert round_03_context["stop_guidance"]["can_stop"] is False
+    assert "2 retrieval rounds completed" in round_03_context["stop_guidance"]["reason"]
+    assert round_03_decision["action"] == "search_cts"
+    assert "2 retrieval rounds completed" in round_03_decision["decision_rationale"]
+    assert (tracer.run_dir / "rounds" / "round_03" / "retrieval_plan.json").exists()
+    assert rounds_executed == 3
+    assert len(run_state.round_history) == 3
+    assert stop_reason == "controller_stop"
+    assert terminal_controller_round is not None
+    assert terminal_controller_round.round_no == 4
+    assert terminal_controller_round.stop_guidance.can_stop is True
+
+
 def test_runtime_query_pool_can_activate_reserve_term_without_losing_all_active_terms(tmp_path: Path) -> None:
     runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
     pool = [

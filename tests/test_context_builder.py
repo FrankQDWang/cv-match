@@ -275,6 +275,7 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
     )
 
     assert controller_context.shortage_history == [2]
+    assert controller_context.retrieval_rounds_completed == 1
     assert controller_context.rounds_remaining_after_current == 1
     assert controller_context.budget_used_ratio == pytest.approx(2 / 3)
     assert controller_context.near_budget_limit is False
@@ -295,6 +296,7 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
     assert reflection_context.dropped_candidates[0].resume_id == "r-2"
     assert finalize_context.top_candidates[0].resume_id == "r-1"
     assert final_round_context.is_final_allowed_round is True
+    assert final_round_context.retrieval_rounds_completed == 1
     assert final_round_context.rounds_remaining_after_current == 0
     assert final_round_context.near_budget_limit is True
     assert final_round_context.stop_guidance.can_stop is True

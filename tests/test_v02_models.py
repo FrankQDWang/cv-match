@@ -254,6 +254,7 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
         round_no=2,
         min_rounds=3,
         max_rounds=5,
+        retrieval_rounds_completed=1,
         rounds_remaining_after_current=3,
         budget_used_ratio=0.4,
         near_budget_limit=False,
@@ -261,8 +262,8 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
         target_new=5,
         stop_guidance=StopGuidance(
             can_stop=False,
-            reason="round 2 is below min_rounds 3.",
-            continue_reasons=["round 2 is below min_rounds 3."],
+            reason="1 retrieval rounds completed; min_rounds is 3.",
+            continue_reasons=["1 retrieval rounds completed; min_rounds is 3."],
             tried_families=["role.python", "domain.resumematching"],
             top_pool_strength="weak",
         ),

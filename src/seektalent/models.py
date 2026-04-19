@@ -660,6 +660,7 @@ class ControllerContext(BaseModel):
     round_no: int
     min_rounds: int
     max_rounds: int
+    retrieval_rounds_completed: int
     rounds_remaining_after_current: int
     budget_used_ratio: float
     near_budget_limit: bool

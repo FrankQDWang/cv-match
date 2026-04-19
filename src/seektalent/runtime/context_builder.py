@@ -31,6 +31,7 @@ def build_controller_context(
     previous_reflection = last_round.reflection_advice if last_round is not None else None
     latest_search_observation = last_round.search_observation if last_round is not None else None
     top_pool = top_candidates(run_state)
+    retrieval_rounds_completed = len(run_state.round_history)
     rounds_remaining_after_current = max(0, max_rounds - round_no)
     budget_used_ratio = round_no / max_rounds
     return ControllerContext(
@@ -40,6 +41,7 @@ def build_controller_context(
         round_no=round_no,
         min_rounds=min_rounds,
         max_rounds=max_rounds,
+        retrieval_rounds_completed=retrieval_rounds_completed,
         rounds_remaining_after_current=rounds_remaining_after_current,
         budget_used_ratio=budget_used_ratio,
         near_budget_limit=budget_used_ratio >= 0.8,
@@ -49,6 +51,7 @@ def build_controller_context(
             run_state=run_state,
             top_pool=top_pool,
             round_no=round_no,
+            retrieval_rounds_completed=retrieval_rounds_completed,
             min_rounds=min_rounds,
             max_rounds=max_rounds,
         ),
@@ -134,6 +137,7 @@ def _build_stop_guidance(
     run_state: RunState,
     top_pool: list[ScoredCandidate],
     round_no: int,
+    retrieval_rounds_completed: int,
     min_rounds: int,
     max_rounds: int,
 ) -> StopGuidance:
@@ -158,12 +162,15 @@ def _build_stop_guidance(
     )
 
     continue_reasons: list[str] = []
-    if round_no >= max_rounds:
+    if retrieval_rounds_completed < min_rounds:
+        continue_reasons.append(
+            f"{retrieval_rounds_completed} retrieval rounds completed; min_rounds is {min_rounds}."
+        )
+        reason = continue_reasons[0]
+    elif round_no >= max_rounds:
         reason = "max_rounds reached; stop is allowed."
     else:
-        if round_no < min_rounds:
-            continue_reasons.append(f"round {round_no} is below min_rounds {min_rounds}.")
-        elif top_pool_strength in {"empty", "weak"} and untried_families:
+        if top_pool_strength in {"empty", "weak"} and untried_families:
             continue_reasons.append("top pool is weak and admitted families remain untried.")
         elif top_pool_strength != "strong" and productive_round_count < 2 and untried_families:
             continue_reasons.append(
