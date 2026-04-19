@@ -7,12 +7,14 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from pydantic import ValidationError
 
 from seektalent import __version__
 from seektalent.api import MatchRunResult, run_match
 from seektalent.config import AppSettings, load_process_env
+from seektalent.evaluation import migrate_judge_assets
 from seektalent.resources import (
     REQUIRED_PROMPTS,
     package_prompt_dir,
@@ -363,6 +365,21 @@ def _inspect_payload() -> dict[str, object]:
             "outputs": "Human-readable checks on stdout by default. In --json mode, stdout contains one JSON object.",
             "side_effects": "May create the configured output directory to verify writability.",
         },
+        "migrate-judge-assets": {
+            "description": "Backfill the local judge asset database from run artifacts.",
+            "machine_readable": False,
+            "arguments": [
+                _arg_spec("--runs-dir", "path", "Directory containing run artifacts.", default="runs"),
+                _arg_spec("--project-root", "path", "Project root containing .seektalent.", default="."),
+                _arg_spec("--json", "flag", "Emit a single JSON object."),
+            ],
+            "examples": [
+                "seektalent migrate-judge-assets --runs-dir runs --project-root .",
+                "seektalent migrate-judge-assets --json",
+            ],
+            "outputs": "Prints a migration summary. In --json mode, stdout contains one JSON object.",
+            "side_effects": "Creates or updates .seektalent/judge_cache.sqlite3 under the selected project root.",
+        },
         "init": {
             "description": "Write a starter env file in the current directory.",
             "machine_readable": False,
@@ -463,6 +480,18 @@ def _inspect_payload() -> dict[str, object]:
             "doctor": {
                 "flag": "--json",
                 "stdout_success_fields": ["ok", "checks"],
+            },
+            "migrate-judge-assets": {
+                "flag": "--json",
+                "stdout_success_fields": [
+                    "runs_scanned",
+                    "jd_assets_upserted",
+                    "resume_assets_upserted",
+                    "judge_labels_upserted",
+                    "conflicts",
+                    "missing_raw_resumes",
+                    "unresolved_legacy_rows",
+                ],
             },
         },
         "failure_contract": {
@@ -597,6 +626,24 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     print(f"summary_path: {summary_path}")
     for item in results:
         print(f"{item['jd_id']}: run_id={item['run_id']} run_dir={item['run_dir']}")
+    return 0
+
+
+def _migrate_judge_assets_command(args: argparse.Namespace) -> int:
+    report = migrate_judge_assets(
+        project_root=resolve_user_path(args.project_root),
+        runs_dir=resolve_user_path(args.runs_dir),
+    )
+    if args.json_output:
+        _emit_json(sys.stdout, report)
+        return 0
+    print(f"runs_scanned: {report['runs_scanned']}")
+    print(f"jd_assets_upserted: {report['jd_assets_upserted']}")
+    print(f"resume_assets_upserted: {report['resume_assets_upserted']}")
+    print(f"judge_labels_upserted: {report['judge_labels_upserted']}")
+    print(f"conflicts: {len(cast(list[object], report['conflicts']))}")
+    print(f"missing_raw_resumes: {len(cast(list[object], report['missing_raw_resumes']))}")
+    print(f"unresolved_legacy_rows: {len(cast(list[object], report['unresolved_legacy_rows']))}")
     return 0
 
 
@@ -875,6 +922,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable reflection for this run.",
     )
     benchmark_parser.set_defaults(handler=_benchmark_command)
+
+    migrate_parser = subparsers.add_parser(
+        "migrate-judge-assets",
+        help="Backfill the local judge asset database from run artifacts.",
+    )
+    migrate_parser.add_argument("--runs-dir", default="runs", help="Directory containing run artifacts.")
+    migrate_parser.add_argument("--project-root", default=".", help="Project root containing .seektalent.")
+    migrate_parser.add_argument("--json", dest="json_output", action="store_true", help="Emit a single JSON object.")
+    migrate_parser.set_defaults(handler=_migrate_judge_assets_command)
 
     init_parser = subparsers.add_parser("init", help="Write a starter env file in the current directory.")
     init_parser.add_argument("--env-file", default=".env", help="Where to write the generated env file.")

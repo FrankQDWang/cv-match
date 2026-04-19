@@ -21,7 +21,7 @@ obsidian/
 .seektalent/
 wandb/
 tea_debug.log
-artifacts/benchmarks/agent_jds.jsonl
+artifacts/
 
 # Frontend-generated files
 node_modules/

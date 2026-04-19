@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import sqlite3
 import sys
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -19,9 +22,11 @@ from seektalent.evaluation import (
     _upsert_wandb_report,
     _version_means_rows,
     evaluate_run,
+    migrate_judge_assets,
     ndcg_at_10,
     precision_at_10,
     snapshot_sha256,
+    task_sha256,
 )
 from seektalent.models import ResumeCandidate
 from seektalent.prompting import LoadedPrompt
@@ -49,6 +54,13 @@ def test_snapshot_sha256_is_stable_for_key_order() -> None:
     right = {"a": 1, "b": 2}
 
     assert snapshot_sha256(left) == snapshot_sha256(right)
+
+
+def test_task_sha256_keeps_empty_notes_compatible_with_jd_hash() -> None:
+    jd = "Build AI agents."
+
+    assert task_sha256(jd, "") == sha256(jd.encode("utf-8")).hexdigest()
+    assert task_sha256(jd, "Prefer LangGraph") != task_sha256(jd, "Prefer RAG")
 
 
 def test_ndcg_at_10_is_one_for_full_ten_result_perfect_recall() -> None:
@@ -253,20 +265,25 @@ def test_judge_cache_round_trip(tmp_path: Path) -> None:
     cache = JudgeCache(tmp_path)
     try:
         result = ResumeJudgeResult(score=3, rationale="Strong direct match.")
-        cache.put(
-            jd_sha256_value="jd",
+        cache.put_label(
+            task_sha256_value="task",
             snapshot_sha256_value="resume",
-            model_id="openai-chat:deepseek-v3.2",
+            judge_model="openai-chat:deepseek-v3.2",
             result=result,
         )
 
-        loaded = cache.get(
-            jd_sha256_value="jd",
+        loaded = cache.get_label(
+            task_sha256_value="task",
             snapshot_sha256_value="resume",
-            model_id="openai-chat:deepseek-v3.2",
+        )
+        loaded_with_other_model = cache.get(
+            jd_sha256_value="task",
+            snapshot_sha256_value="resume",
+            model_id="openai-chat:qwen-plus",
         )
 
         assert loaded == result
+        assert loaded_with_other_model == result
     finally:
         cache.close()
 
@@ -311,7 +328,7 @@ def test_evaluate_run_keeps_no_judge_artifacts_on_failure(tmp_path: Path, monkey
 
     assert not (run_dir / "evaluation").exists()
     assert not (run_dir / "raw_resumes").exists()
-    assert not (tmp_path / ".seektalent" / "judge_cache.sqlite3").exists()
+    assert (tmp_path / ".seektalent" / "judge_cache.sqlite3").exists()
 
 
 def test_evaluate_run_does_not_log_wandb_when_weave_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -362,7 +379,7 @@ def test_evaluate_run_does_not_log_wandb_when_weave_fails(tmp_path: Path, monkey
 
     assert wandb_calls == []
     assert not (run_dir / "evaluation").exists()
-    assert not (tmp_path / ".seektalent" / "judge_cache.sqlite3").exists()
+    assert (tmp_path / ".seektalent" / "judge_cache.sqlite3").exists()
 
 
 def test_resume_judge_includes_notes_block_only_when_present(tmp_path: Path) -> None:
@@ -400,6 +417,58 @@ def test_resume_judge_includes_notes_block_only_when_present(tmp_path: Path) -> 
     assert "Prefer agent experience" in prompts[0]
     assert "RESUME_SNAPSHOT" in prompts[0]
     assert "NOTES" not in prompts[1]
+
+
+def test_resume_judge_cache_uses_task_and_resume_without_model(tmp_path: Path) -> None:
+    cache = JudgeCache(tmp_path)
+    candidate = ResumeCandidate(
+        resume_id="resume-1",
+        source_resume_id="resume-1",
+        snapshot_sha256="snapshot-1",
+        dedup_key="resume-1",
+        expected_job_category="Engineer",
+        now_location="上海",
+        work_year=5,
+        search_text="engineer",
+        raw={"resume_id": "resume-1"},
+    )
+    cached = ResumeJudgeResult(score=3, rationale="Cached fit.")
+    cache.put_label(
+        task_sha256_value=task_sha256("JD text", "Prefer agent experience"),
+        snapshot_sha256_value="snapshot-1",
+        judge_model="openai-chat:old-model",
+        result=cached,
+    )
+    prompts: list[str] = []
+
+    class FakeAgent:
+        async def run(self, prompt_text: str):  # noqa: ANN001
+            prompts.append(prompt_text)
+            return SimpleNamespace(output=ResumeJudgeResult(score=0, rationale="should not run"))
+
+    settings = make_settings(judge_model="openai-chat:new-model")
+    judge = ResumeJudge(settings, LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge", sha256="hash"))
+    cast(Any, judge)._build_agent = lambda: FakeAgent()
+    try:
+        results, writes = asyncio.run(
+            judge.judge_many(
+                jd="JD text",
+                notes="Prefer agent experience",
+                candidates=[candidate],
+                cache=cache,
+            )
+        )
+        different_notes = cache.get_label(
+            task_sha256_value=task_sha256("JD text", "Different notes"),
+            snapshot_sha256_value="snapshot-1",
+        )
+    finally:
+        cache.close()
+
+    assert results["resume-1"] == (cached, True, 0)
+    assert writes == []
+    assert prompts == []
+    assert different_notes is None
 
 
 def test_evaluate_run_passes_notes_to_judge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -450,6 +519,150 @@ def test_evaluate_run_passes_notes_to_judge(tmp_path: Path, monkeypatch: pytest.
     )
 
     assert seen == {"jd": "JD text", "notes": "Notes text"}
+
+
+def test_evaluate_run_persists_jd_resume_and_label_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: None)
+    monkeypatch.setattr("seektalent.evaluation._log_to_weave", lambda **kwargs: None)
+
+    class FakeAgent:
+        async def run(self, prompt_text: str):  # noqa: ANN001
+            assert "JOB_DESCRIPTION" in prompt_text
+            return SimpleNamespace(output=ResumeJudgeResult(score=3, rationale="Strong fit."))
+
+    monkeypatch.setattr("seektalent.evaluation.ResumeJudge._build_agent", lambda self: FakeAgent())
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), judge_model="openai-chat:deepseek-v3.2")
+    prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="prompt-hash")
+    candidate = ResumeCandidate(
+        resume_id="resume-1",
+        source_resume_id="source-1",
+        snapshot_sha256="snapshot-1",
+        dedup_key="resume-1",
+        expected_job_category="Engineer",
+        now_location="上海",
+        work_year=5,
+        search_text="engineer",
+        raw={"resume_id": "resume-1", "skill": "agent"},
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    artifacts = asyncio.run(
+        evaluate_run(
+            settings=settings,
+            prompt=prompt,
+            run_id="run-1",
+            run_dir=run_dir,
+            jd="JD text",
+            notes="Notes text",
+            round_01_candidates=[candidate],
+            final_candidates=[candidate],
+            rounds_executed=1,
+        )
+    )
+
+    conn = sqlite3.connect(tmp_path / ".seektalent" / "judge_cache.sqlite3")
+    conn.row_factory = sqlite3.Row
+    try:
+        task_hash = task_sha256("JD text", "Notes text")
+        jd_row = conn.execute("SELECT * FROM jd_assets WHERE task_sha256 = ?", (task_hash,)).fetchone()
+        resume_row = conn.execute("SELECT * FROM resume_assets WHERE snapshot_sha256 = ?", ("snapshot-1",)).fetchone()
+        label_row = conn.execute(
+            "SELECT * FROM judge_labels WHERE task_sha256 = ? AND snapshot_sha256 = ?",
+            (task_hash, "snapshot-1"),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert artifacts.result.final.candidates[0].cache_hit is False
+    assert jd_row["jd_text"] == "JD text"
+    assert jd_row["notes_text"] == "Notes text"
+    assert json.loads(resume_row["raw_json"]) == {"resume_id": "resume-1", "skill": "agent"}
+    assert label_row["score"] == 3
+    assert label_row["judge_model"] == "openai-chat:deepseek-v3.2"
+    assert label_row["judge_prompt_sha256"] == "prompt-hash"
+
+
+def test_migrate_judge_assets_backfills_runs_and_reports_conflicts(tmp_path: Path) -> None:
+    def write_run(run_name: str, *, score: int, rationale: str) -> None:
+        run_dir = tmp_path / "runs" / run_name
+        (run_dir / "raw_resumes").mkdir(parents=True)
+        (run_dir / "evaluation").mkdir()
+        input_truth = {
+            "job_title": "Agent Engineer",
+            "jd": "JD text",
+            "notes": "Notes text",
+            "job_title_sha256": "title",
+            "jd_sha256": "jd",
+            "notes_sha256": "notes",
+        }
+        (run_dir / "input_truth.json").write_text(json.dumps(input_truth), encoding="utf-8")
+        raw_resume = {
+            "resume_id": "resume-1",
+            "source_resume_id": "source-1",
+            "snapshot_sha256": "snapshot-1",
+            "captured_at": "2026-04-19T00:00:00+08:00",
+            "candidate": {"resume_id": "resume-1", "skill": "agent"},
+        }
+        (run_dir / "raw_resumes" / "snapshot-1.json").write_text(json.dumps(raw_resume), encoding="utf-8")
+        evaluation = {
+            "run_id": run_name,
+            "judge_model": "openai-responses:gpt-5.4",
+            "jd_sha256": sha256("JD text".encode("utf-8")).hexdigest(),
+            "round_01": {"stage": "round_01", "candidates": []},
+            "final": {
+                "stage": "final",
+                "candidates": [
+                    {
+                        "rank": 1,
+                        "resume_id": "resume-1",
+                        "source_resume_id": "source-1",
+                        "snapshot_sha256": "snapshot-1",
+                        "raw_resume_path": "raw_resumes/snapshot-1.json",
+                        "judge_score": score,
+                        "judge_rationale": rationale,
+                    }
+                ],
+            },
+        }
+        (run_dir / "evaluation" / "evaluation.json").write_text(json.dumps(evaluation), encoding="utf-8")
+
+    cache = JudgeCache(tmp_path)
+    try:
+        cache.put(
+            jd_sha256_value="missing-jd",
+            snapshot_sha256_value="missing-snapshot",
+            model_id="openai-responses:gpt-5.4",
+            result=ResumeJudgeResult(score=1, rationale="legacy only"),
+        )
+    finally:
+        cache.close()
+    write_run("20260418_000000_old", score=1, rationale="Old label.")
+    write_run("20260419_000000_new", score=3, rationale="New label.")
+
+    report = migrate_judge_assets(project_root=tmp_path, runs_dir=tmp_path / "runs")
+
+    conn = sqlite3.connect(tmp_path / ".seektalent" / "judge_cache.sqlite3")
+    conn.row_factory = sqlite3.Row
+    try:
+        task_hash = task_sha256("JD text", "Notes text")
+        label = conn.execute(
+            "SELECT * FROM judge_labels WHERE task_sha256 = ? AND snapshot_sha256 = ?",
+            (task_hash, "snapshot-1"),
+        ).fetchone()
+        resume = conn.execute("SELECT * FROM resume_assets WHERE snapshot_sha256 = ?", ("snapshot-1",)).fetchone()
+        jd = conn.execute("SELECT * FROM jd_assets WHERE task_sha256 = ?", (task_hash,)).fetchone()
+    finally:
+        conn.close()
+
+    assert report["runs_scanned"] == 2
+    assert len(report["conflicts"]) == 1
+    assert len(report["unresolved_legacy_rows"]) == 1
+    assert label["score"] == 3
+    assert label["source_run_id"] == "20260419_000000_new"
+    assert json.loads(resume["raw_json"]) == {"resume_id": "resume-1", "skill": "agent"}
+    assert jd["job_title"] == "Agent Engineer"
 
 
 def test_evaluate_run_logs_weave_and_wandb(
