@@ -1,3 +1,5 @@
+import pytest
+
 from seektalent.models import (
     CTSQuery,
     CitySearchSummary,
@@ -52,6 +54,14 @@ def _requirement_sheet() -> RequirementSheet:
                 source="jd",
                 category="domain",
                 priority=2,
+                evidence="JD body",
+                first_added_round=0,
+            ),
+            QueryTermCandidate(
+                term="trace",
+                source="jd",
+                category="tooling",
+                priority=3,
                 evidence="JD body",
                 first_added_round=0,
             ),
@@ -265,6 +275,15 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
     )
 
     assert controller_context.shortage_history == [2]
+    assert controller_context.rounds_remaining_after_current == 1
+    assert controller_context.budget_used_ratio == pytest.approx(2 / 3)
+    assert controller_context.near_budget_limit is False
+    assert controller_context.stop_guidance.can_stop is False
+    assert controller_context.stop_guidance.top_pool_strength == "weak"
+    assert controller_context.stop_guidance.tried_families == ["role.python", "domain.resumematching"]
+    assert controller_context.stop_guidance.untried_admitted_families == ["framework.trace"]
+    assert controller_context.stop_guidance.productive_round_count == 1
+    assert controller_context.stop_guidance.zero_gain_round_count == 0
     assert controller_context.is_final_allowed_round is False
     assert controller_context.latest_search_observation is not None
     assert controller_context.latest_search_observation.shortage_count == 2
@@ -276,3 +295,6 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
     assert reflection_context.dropped_candidates[0].resume_id == "r-2"
     assert finalize_context.top_candidates[0].resume_id == "r-1"
     assert final_round_context.is_final_allowed_round is True
+    assert final_round_context.rounds_remaining_after_current == 0
+    assert final_round_context.near_budget_limit is True
+    assert final_round_context.stop_guidance.can_stop is True

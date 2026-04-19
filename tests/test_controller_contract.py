@@ -27,6 +27,7 @@ from seektalent.models import (
     ScoringPolicy,
     SearchControllerDecision,
     StopControllerDecision,
+    StopGuidance,
 )
 from seektalent.prompting import LoadedPrompt
 from seektalent.runtime import WorkflowRuntime
@@ -114,6 +115,37 @@ def _agent_requirement_sheet() -> RequirementSheet:
             ),
         ],
         scoring_rationale="Score Agent fit first.",
+    )
+
+
+def _controller_context(
+    *,
+    requirement_sheet: RequirementSheet | None = None,
+    round_no: int = 1,
+    min_rounds: int = 1,
+    max_rounds: int = 3,
+    previous_reflection: ReflectionSummaryView | None = None,
+) -> ControllerContext:
+    sheet = requirement_sheet or _requirement_sheet()
+    return ControllerContext(
+        full_jd="JD text",
+        full_notes="Notes text",
+        requirement_sheet=sheet,
+        query_term_pool=sheet.initial_query_term_pool,
+        round_no=round_no,
+        min_rounds=min_rounds,
+        max_rounds=max_rounds,
+        rounds_remaining_after_current=max(0, max_rounds - round_no),
+        budget_used_ratio=round_no / max_rounds,
+        near_budget_limit=(round_no / max_rounds) >= 0.8,
+        is_final_allowed_round=round_no >= max_rounds,
+        target_new=5,
+        stop_guidance=StopGuidance(
+            can_stop=True,
+            reason="stop allowed by test fixture.",
+            top_pool_strength="usable",
+        ),
+        previous_reflection=previous_reflection,
     )
 
 
@@ -262,16 +294,8 @@ def test_controller_output_validator_rejects_missing_response_to_reflection(
         LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
     validator = cast(Any, controller._get_agent()._output_validators[0].function)
-    context = ControllerContext(
-        full_jd="JD text",
-        full_notes="Notes text",
-        requirement_sheet=_requirement_sheet(),
-        query_term_pool=_requirement_sheet().initial_query_term_pool,
+    context = _controller_context(
         round_no=2,
-        min_rounds=1,
-        max_rounds=3,
-        is_final_allowed_round=False,
-        target_new=5,
         previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
     )
     decision = SearchControllerDecision(
@@ -295,17 +319,7 @@ def test_controller_output_validator_rejects_empty_query_terms(
         LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
     validator = cast(Any, controller._get_agent()._output_validators[0].function)
-    context = ControllerContext(
-        full_jd="JD text",
-        full_notes="Notes text",
-        requirement_sheet=_requirement_sheet(),
-        query_term_pool=_requirement_sheet().initial_query_term_pool,
-        round_no=1,
-        min_rounds=1,
-        max_rounds=3,
-        is_final_allowed_round=False,
-        target_new=5,
-    )
+    context = _controller_context()
     decision = SearchControllerDecision(
         thought_summary="Search again.",
         action="search_cts",
@@ -328,17 +342,7 @@ def test_controller_output_validator_accepts_compiled_anchor_alias_without_liter
     )
     validator = cast(Any, controller._get_agent()._output_validators[0].function)
     requirement_sheet = _agent_requirement_sheet()
-    context = ControllerContext(
-        full_jd="JD text",
-        full_notes="Notes text",
-        requirement_sheet=requirement_sheet,
-        query_term_pool=requirement_sheet.initial_query_term_pool,
-        round_no=1,
-        min_rounds=1,
-        max_rounds=3,
-        is_final_allowed_round=False,
-        target_new=5,
-    )
+    context = _controller_context(requirement_sheet=requirement_sheet)
     decision = SearchControllerDecision(
         thought_summary="Search.",
         action="search_cts",
@@ -360,17 +364,7 @@ def test_controller_output_validator_rejects_blocked_compiler_terms(
     )
     validator = cast(Any, controller._get_agent()._output_validators[0].function)
     requirement_sheet = _agent_requirement_sheet()
-    context = ControllerContext(
-        full_jd="JD text",
-        full_notes="Notes text",
-        requirement_sheet=requirement_sheet,
-        query_term_pool=requirement_sheet.initial_query_term_pool,
-        round_no=1,
-        min_rounds=1,
-        max_rounds=3,
-        is_final_allowed_round=False,
-        target_new=5,
-    )
+    context = _controller_context(requirement_sheet=requirement_sheet)
     decision = SearchControllerDecision(
         thought_summary="Search.",
         action="search_cts",
@@ -392,17 +386,7 @@ def test_controller_output_validator_rejects_query_terms_over_budget(
         LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
     validator = cast(Any, controller._get_agent()._output_validators[0].function)
-    context = ControllerContext(
-        full_jd="JD text",
-        full_notes="Notes text",
-        requirement_sheet=_requirement_sheet(),
-        query_term_pool=_requirement_sheet().initial_query_term_pool,
-        round_no=1,
-        min_rounds=1,
-        max_rounds=3,
-        is_final_allowed_round=False,
-        target_new=5,
-    )
+    context = _controller_context()
     decision = SearchControllerDecision(
         thought_summary="Search again.",
         action="search_cts",

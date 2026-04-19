@@ -13,6 +13,8 @@ Decide whether to continue or stop. If continuing, propose this round's query te
 - `action` must be `search_cts` or `stop`.
 - When `action=search_cts`, provide both `proposed_query_terms` and `proposed_filter_plan`.
 - `current_top_pool` is the global top scored pool so far, not a round-local rescored pool.
+- If `stop_guidance.can_stop` is false, return `action=search_cts`.
+- If stopping, cite visible `stop_guidance` facts such as `reason`, `top_pool_strength`, productive or zero-gain round counts, and untried admitted families.
 - If `action=stop`, ground `decision_rationale` and `stop_reason` only in facts visible in `CONTROLLER_CONTEXT`.
 - You only own the primary round query. Runtime may derive a secondary exploration query after round 1.
 - Round 1 must return exactly 2 query terms: 1 compiler-admitted anchor + 1 active admitted non-anchor term.
@@ -20,6 +22,8 @@ Decide whether to continue or stop. If continuing, propose this round's query te
 - All query terms must come from the current query term pool with `queryability=admitted`.
 - Use exactly one term whose `retrieval_role` is `role_anchor`; do not repeat a `family` inside one query.
 - Pick only the highest-signal terms for this round. Do not dump the full requirement list.
+- Prefer high-signal non-anchor terms with `retrieval_role=core_skill` or `framework_tool` over generic `domain_context` terms when they fit the round.
+- When `near_budget_limit` is true, prefer exploit/high-signal narrowing over broad exploration.
 - When `previous_reflection` exists, provide `response_to_reflection`.
 - Work from full `JD`, full `notes`, and `RequirementSheet`.
 - Do not return a CTS payload.

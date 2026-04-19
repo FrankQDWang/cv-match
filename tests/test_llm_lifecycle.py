@@ -31,6 +31,7 @@ from seektalent.models import (
     ScoredCandidate,
     ScoringContext,
     ScoringPolicy,
+    StopGuidance,
 )
 from seektalent.prompting import LoadedPrompt
 from seektalent.reflection.critic import ReflectionCritic
@@ -78,15 +79,25 @@ def _requirement_sheet() -> RequirementSheet:
 
 
 def _controller_context() -> ControllerContext:
+    requirement_sheet = _requirement_sheet()
     return ControllerContext(
         full_jd="JD text",
         full_notes="Notes text",
-        requirement_sheet=_requirement_sheet(),
+        requirement_sheet=requirement_sheet,
         round_no=1,
         min_rounds=1,
         max_rounds=3,
+        rounds_remaining_after_current=2,
+        budget_used_ratio=1 / 3,
+        near_budget_limit=False,
         is_final_allowed_round=False,
         target_new=5,
+        stop_guidance=StopGuidance(
+            can_stop=True,
+            reason="stop allowed by test fixture.",
+            top_pool_strength="usable",
+        ),
+        query_term_pool=requirement_sheet.initial_query_term_pool,
     )
 
 

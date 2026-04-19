@@ -267,6 +267,30 @@ class StopAfterSecondRoundController:
         )
 
 
+class StopOnSecondRoundController:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.last_validator_retry_count = 0
+
+    async def decide(self, *, context):
+        self.calls += 1
+        if self.calls == 1:
+            return SearchControllerDecision(
+                thought_summary="Round 1 anchor search.",
+                action="search_cts",
+                decision_rationale="Start with the two strongest anchor terms.",
+                proposed_query_terms=["python", "resume matching"],
+                proposed_filter_plan=ProposedFilterPlan(),
+            )
+        return StopControllerDecision(
+            thought_summary="Stop before trying all admitted families.",
+            action="stop",
+            decision_rationale="The current pool seems stable enough.",
+            response_to_reflection="Acknowledged the latest reflection.",
+            stop_reason="controller_stop",
+        )
+
+
 def _install_runtime_stubs(runtime: WorkflowRuntime, *, controller: object, resume_scorer: object) -> None:
     runtime_any = cast(Any, runtime)
     runtime_any.requirement_extractor = StubRequirementExtractor()
@@ -496,10 +520,45 @@ def test_runtime_records_terminal_controller_round_separately(tmp_path: Path) ->
     assert terminal_controller_round is not None
     assert terminal_controller_round.round_no == 3
     assert terminal_controller_round.controller_decision.action == "stop"
+    assert terminal_controller_round.stop_guidance.can_stop is True
     assert (tracer.run_dir / "rounds" / "round_03" / "controller_decision.json").exists()
     assert not (tracer.run_dir / "rounds" / "round_03" / "retrieval_plan.json").exists()
     assert not (tracer.run_dir / "rounds" / "round_03" / "search_observation.json").exists()
     assert not (tracer.run_dir / "rounds" / "round_03" / "reflection_advice.json").exists()
+
+
+def test_runtime_forces_continue_when_stop_guidance_blocks_stop(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=3,
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StopOnSecondRoundController(), resume_scorer=StubScorer())
+    tracer = RunTracer(tmp_path / "trace-runs")
+    job_title, jd, notes = _sample_inputs()
+
+    try:
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        _, stop_reason, rounds_executed, terminal_controller_round = asyncio.run(
+            runtime._run_rounds(run_state=run_state, tracer=tracer)
+        )
+    finally:
+        tracer.close()
+
+    round_02_decision = json.loads(
+        (tracer.run_dir / "rounds" / "round_02" / "controller_decision.json").read_text(encoding="utf-8")
+    )
+
+    assert round_02_decision["action"] == "search_cts"
+    assert "admitted families remain untried" in round_02_decision["decision_rationale"]
+    assert round_02_decision["proposed_query_terms"] == ["python", "trace", "resume matching"]
+    assert rounds_executed == 2
+    assert stop_reason == "controller_stop"
+    assert terminal_controller_round is not None
+    assert terminal_controller_round.round_no == 3
+    assert terminal_controller_round.stop_guidance.can_stop is True
 
 
 def test_runtime_query_pool_can_activate_reserve_term_without_losing_all_active_terms(tmp_path: Path) -> None:

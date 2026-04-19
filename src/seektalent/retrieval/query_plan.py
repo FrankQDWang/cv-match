@@ -93,7 +93,7 @@ def select_query_terms(
             for item in query_term_pool
             if item.active and item.queryability == "admitted" and not _is_anchor_candidate(item)
         ],
-        key=_term_sort_key,
+        key=_non_anchor_sort_key,
     )
     non_anchor_budget = 1 if round_no == 1 else min(2, len(ordered))
     selected: list[QueryTermCandidate] = []
@@ -163,6 +163,7 @@ def derive_explore_query_terms(
             0 if item.active and item.term.casefold() not in exploit_term_keys else 1,
             0 if not item.active and item.term.casefold() not in exploit_term_keys else 1,
             term_usage.get(item.term.casefold(), 0),
+            _signal_rank(item),
             item.priority,
             item.first_added_round,
             item.term.casefold(),
@@ -218,6 +219,20 @@ def _is_anchor_candidate(item: QueryTermCandidate) -> bool:
 
 def _term_sort_key(item: QueryTermCandidate) -> tuple[int, int, str]:
     return (item.priority, item.first_added_round, item.term.casefold())
+
+
+def _non_anchor_sort_key(item: QueryTermCandidate) -> tuple[int, int, int, str]:
+    return (_signal_rank(item), item.priority, item.first_added_round, item.term.casefold())
+
+
+def _signal_rank(item: QueryTermCandidate) -> int:
+    if item.retrieval_role == "core_skill":
+        return 0
+    if item.retrieval_role == "framework_tool":
+        return 1
+    if item.retrieval_role == "domain_context":
+        return 2
+    return 3
 
 
 def _duplicate_families(candidates: list[QueryTermCandidate]) -> list[str]:

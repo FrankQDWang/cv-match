@@ -19,6 +19,7 @@ QueryTermCategory = Literal["role_anchor", "domain", "tooling", "expansion"]
 QueryRetrievalRole = Literal["role_anchor", "core_skill", "framework_tool", "domain_context", "filter_only", "score_only"]
 Queryability = Literal["admitted", "score_only", "filter_only", "blocked"]
 QueryRole = Literal["exploit", "explore"]
+TopPoolStrength = Literal["empty", "weak", "usable", "strong"]
 LocationExecutionMode = Literal["none", "single", "priority_then_fallback", "balanced_all"]
 LocationExecutionPhase = Literal["priority", "balanced"]
 FilterField = Literal[
@@ -617,6 +618,19 @@ class TopPoolEntryView(BaseModel):
     reasoning_summary: str
 
 
+class StopGuidance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    can_stop: bool
+    reason: str
+    continue_reasons: list[str] = Field(default_factory=list)
+    tried_families: list[str] = Field(default_factory=list)
+    untried_admitted_families: list[str] = Field(default_factory=list)
+    productive_round_count: int = 0
+    zero_gain_round_count: int = 0
+    top_pool_strength: TopPoolStrength
+
+
 class SearchObservationView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -646,8 +660,12 @@ class ControllerContext(BaseModel):
     round_no: int
     min_rounds: int
     max_rounds: int
+    rounds_remaining_after_current: int
+    budget_used_ratio: float
+    near_budget_limit: bool
     is_final_allowed_round: bool
     target_new: int
+    stop_guidance: StopGuidance
     requirement_digest: RequirementDigest | None = None
     query_term_pool: list[QueryTermCandidate] = Field(default_factory=list)
     current_top_pool: list[TopPoolEntryView] = Field(default_factory=list)
@@ -758,6 +776,7 @@ class TerminalControllerRound(BaseModel):
 
     round_no: int
     controller_decision: StopControllerDecision
+    stop_guidance: StopGuidance
 
 
 class RoundState(BaseModel):

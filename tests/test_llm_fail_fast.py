@@ -24,6 +24,7 @@ from seektalent.models import (
     ScoringContext,
     ScoringPolicy,
     SearchObservation,
+    StopGuidance,
 )
 from seektalent.prompting import LoadedPrompt
 from seektalent.requirements import RequirementExtractor
@@ -85,8 +86,16 @@ def _controller_context() -> ControllerContext:
         round_no=1,
         min_rounds=1,
         max_rounds=3,
+        rounds_remaining_after_current=2,
+        budget_used_ratio=1 / 3,
+        near_budget_limit=False,
         is_final_allowed_round=False,
         target_new=10,
+        stop_guidance=StopGuidance(
+            can_stop=True,
+            reason="stop allowed by test fixture.",
+            top_pool_strength="usable",
+        ),
         query_term_pool=requirement_sheet.initial_query_term_pool,
     )
 

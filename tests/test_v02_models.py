@@ -29,6 +29,7 @@ from seektalent.models import (
     SearchAttempt,
     SearchObservation,
     SentQueryRecord,
+    StopGuidance,
 )
 
 
@@ -253,8 +254,18 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
         round_no=2,
         min_rounds=3,
         max_rounds=5,
+        rounds_remaining_after_current=3,
+        budget_used_ratio=0.4,
+        near_budget_limit=False,
         is_final_allowed_round=False,
         target_new=5,
+        stop_guidance=StopGuidance(
+            can_stop=False,
+            reason="round 2 is below min_rounds 3.",
+            continue_reasons=["round 2 is below min_rounds 3."],
+            tried_families=["role.python", "domain.resumematching"],
+            top_pool_strength="weak",
+        ),
         requirement_digest=digest,
         query_term_pool=requirement_sheet.initial_query_term_pool,
         latest_reflection_keyword_advice=reflection_advice.keyword_advice,
@@ -311,6 +322,8 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
 
     assert round_state.retrieval_plan.query_terms == ["python", "resume matching"]
     assert controller_context.latest_reflection_keyword_advice is not None
+    assert controller_context.rounds_remaining_after_current == 3
+    assert controller_context.stop_guidance.can_stop is False
     assert reflection_context.sent_query_history[0].source_plan_version == 1
     assert finalize_context.top_candidates[0].resume_id == "r-1"
     assert round_state.search_observation is not None

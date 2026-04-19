@@ -578,8 +578,12 @@ class WorkflowRuntime:
                 run_state=run_state,
                 round_no=round_no,
             )
-            if controller_decision.action == "stop" and round_no < self.settings.min_rounds:
-                controller_decision = self._force_continue_decision(run_state=run_state, round_no=round_no)
+            if isinstance(controller_decision, StopControllerDecision) and not controller_context.stop_guidance.can_stop:
+                controller_decision = self._force_continue_decision(
+                    run_state=run_state,
+                    round_no=round_no,
+                    reason=controller_context.stop_guidance.reason,
+                )
             tracer.write_json(
                 f"rounds/round_{round_no:02d}/controller_decision.json",
                 controller_decision.model_dump(mode="json"),
@@ -621,6 +625,7 @@ class WorkflowRuntime:
                 terminal_controller_round = TerminalControllerRound(
                     round_no=round_no,
                     controller_decision=controller_decision,
+                    stop_guidance=controller_context.stop_guidance,
                 )
                 break
 
@@ -904,18 +909,18 @@ class WorkflowRuntime:
         )
         return " ".join(cleaned.split())
 
-    def _force_continue_decision(self, *, run_state: RunState, round_no: int) -> SearchControllerDecision:
+    def _force_continue_decision(self, *, run_state: RunState, round_no: int, reason: str) -> SearchControllerDecision:
         return SearchControllerDecision(
-            thought_summary="Runtime override: continue until min_rounds is satisfied.",
+            thought_summary="Runtime override: stop guidance requires continuing.",
             action="search_cts",
-            decision_rationale="Early stop is not allowed before min_rounds.",
+            decision_rationale=f"Runtime stop guidance requires continuing: {reason}",
             proposed_query_terms=select_query_terms(
                 run_state.retrieval_state.query_term_pool,
                 round_no=round_no,
                 title_anchor_term=run_state.requirement_sheet.title_anchor_term,
             ),
             proposed_filter_plan=build_default_filter_plan(run_state.requirement_sheet),
-            response_to_reflection="Runtime override before min_rounds.",
+            response_to_reflection=f"Runtime override: {reason}",
         )
 
     async def _reflect_round(
@@ -1245,6 +1250,7 @@ class WorkflowRuntime:
                 "round_no": terminal_controller_round.round_no,
                 "stop_reason": terminal_controller_round.controller_decision.stop_reason,
                 "response_to_reflection": terminal_controller_round.controller_decision.response_to_reflection,
+                "stop_guidance": terminal_controller_round.stop_guidance.model_dump(mode="json"),
             }
         return {
             "run_id": tracer.run_id,

@@ -191,6 +191,62 @@ def test_query_plan_selects_only_active_terms() -> None:
     assert select_query_terms(pool, round_no=1, title_anchor_term="python") == ["python", "resume matching"]
 
 
+def test_query_plan_prefers_high_signal_non_anchor_roles() -> None:
+    pool = [
+        QueryTermCandidate(
+            term="AI Agent",
+            source="job_title",
+            category="role_anchor",
+            priority=1,
+            evidence="title",
+            first_added_round=0,
+            retrieval_role="role_anchor",
+            queryability="admitted",
+            family="role.agent",
+        ),
+        QueryTermCandidate(
+            term="大模型应用",
+            source="jd",
+            category="domain",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="domain_context",
+            queryability="admitted",
+            family="domain.llm_app",
+        ),
+        QueryTermCandidate(
+            term="Python",
+            source="jd",
+            category="domain",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="core_skill",
+            queryability="admitted",
+            family="skill.python",
+        ),
+        QueryTermCandidate(
+            term="LangChain",
+            source="jd",
+            category="tooling",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="framework_tool",
+            queryability="admitted",
+            family="framework.langchain",
+        ),
+    ]
+
+    assert select_query_terms(pool, round_no=1, title_anchor_term="AI Agent工程师") == ["AI Agent", "Python"]
+    assert select_query_terms(pool, round_no=2, title_anchor_term="AI Agent工程师") == [
+        "AI Agent",
+        "Python",
+        "LangChain",
+    ]
+
+
 def test_query_plan_derives_distinct_explore_query_from_active_and_reserve_terms() -> None:
     pool = [
         QueryTermCandidate(
@@ -246,6 +302,74 @@ def test_query_plan_derives_distinct_explore_query_from_active_and_reserve_terms
     )
 
     assert explore_terms == ["python", "ranking"]
+
+
+def test_query_plan_explore_prefers_high_signal_alternatives() -> None:
+    pool = [
+        QueryTermCandidate(
+            term="AI Agent",
+            source="job_title",
+            category="role_anchor",
+            priority=1,
+            evidence="title",
+            first_added_round=0,
+            retrieval_role="role_anchor",
+            queryability="admitted",
+            family="role.agent",
+        ),
+        QueryTermCandidate(
+            term="业务系统",
+            source="jd",
+            category="domain",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="domain_context",
+            queryability="admitted",
+            family="domain.business",
+        ),
+        QueryTermCandidate(
+            term="Python",
+            source="jd",
+            category="domain",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="core_skill",
+            queryability="admitted",
+            family="skill.python",
+        ),
+        QueryTermCandidate(
+            term="LangChain",
+            source="jd",
+            category="tooling",
+            priority=2,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="framework_tool",
+            queryability="admitted",
+            family="framework.langchain",
+        ),
+    ]
+
+    explore_terms = derive_explore_query_terms(
+        ["AI Agent", "业务系统"],
+        title_anchor_term="AI Agent工程师",
+        query_term_pool=pool,
+        sent_query_history=[
+            SentQueryRecord(
+                round_no=1,
+                query_terms=["AI Agent", "业务系统"],
+                keyword_query='"AI Agent" 业务系统',
+                batch_no=1,
+                requested_count=10,
+                source_plan_version=1,
+                rationale="round 1",
+            )
+        ],
+    )
+
+    assert explore_terms == ["AI Agent", "Python"]
 
 
 def test_query_plan_allows_explore_query_to_shrink_when_no_new_three_term_combo_exists() -> None:

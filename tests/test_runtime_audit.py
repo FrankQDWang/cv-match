@@ -633,8 +633,10 @@ def test_runtime_audit_records_terminal_controller_round(tmp_path: Path, monkeyp
     assert len(judge_packet["rounds"]) == 1
     assert judge_packet["terminal_controller_round"]["round_no"] == 2
     assert judge_packet["terminal_controller_round"]["controller_decision"]["action"] == "stop"
+    assert judge_packet["terminal_controller_round"]["stop_guidance"]["can_stop"] is True
     assert search_diagnostics["summary"]["terminal_controller"]["round_no"] == 2
     assert search_diagnostics["summary"]["terminal_controller"]["response_to_reflection"]
+    assert search_diagnostics["summary"]["terminal_controller"]["stop_guidance"]["can_stop"] is True
     assert "- Stop decision round: `2`" in run_summary
     assert "Terminal decision: The pool is stable enough for the stop-round audit fixture." in run_summary
     run_finished_event = next(item for item in events if item["event_type"] == "run_finished")
