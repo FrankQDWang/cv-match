@@ -43,7 +43,8 @@ Repo 当前 public shape 是 deterministic Python Agent。`docs/architecture.md`
 | Phase 2.2.1: Generic Retrieval Baseline and De-specialization | Done | 0.4.7 已移除 Agent/LLM active 特例并完成 12 条 eval replay；作为后续 generic baseline。 |
 | Phase 2.3A: Artifact Slimming Only | Done | 0.4.8 已完成 metadata-only call artifacts、slim refs/hash artifacts，并完成 4 条真实 LLM/CTS eval replay。 |
 | Phase 2.3B.1: Finalizer Draft Slimming | Done | finalizer model-facing draft schema 已落地，runtime materialize 现有 public `FinalResult`；4 条真实 LLM/CTS eval replay 完成且 finalizer validator retries 为 0。 |
-| Phase 2.3B.2+ / 2.3C+ | Pending | 下一步是 reflection schema slimming，再单独做 scoring schema experiment；之后才进入 reasoning model A/B、bounded reflection、verifier、session/action layers。 |
+| Phase 2.3B.2: Reflection Schema Slimming | Done | 0.4.9 已删除 reflection prose assessment 和 persisted critique 字段，4 条真实 LLM/CTS eval replay 完成且 reflection validator retries 为 0。 |
+| Phase 2.3C+ | Pending | 下一步单独做 scoring schema experiment；之后才进入 reasoning model A/B、bounded reflection、verifier、session/action layers。 |
 | Final: Data-Driven Domain Adaptation Loop | Last | 只有 generic baseline 稳定后，才做数据驱动领域适应；不靠人工维护词表。 |
 
 Phase 1 已完成：`search_diagnostics.json` 已成为 run artifact。它把每轮 query、filter、CTS recall、dedup、scoring、reflection、controller response 和 LLM schema pressure 汇总到一个跨 round 诊断账本里。对应归档计划是 `docs/plans/completed/phase-1-search-diagnostics.md`，artifact 说明在 `docs/outputs.md`。
@@ -378,9 +379,36 @@ Finalizer gate 状态：
 - public `FinalResult` / `FinalCandidate` shape 保持不变。
 - final candidates 数量均为 10。
 
-#### Phase 2.3B.2 / 2.3C Remaining
+#### Phase 2.3B.2: Reflection Schema Slimming
 
-状态：Phase 2.3B.2 Reflection Schema Slimming 和 Phase 2.3C Scoring Schema Experiment 仍待单独执行。
+状态：已完成；0.4.9 已删除 reflection model-facing 和 persisted advice 中的 prose assessment 字段，并删除 keyword/filter advice 上的 persisted `critique`。runtime 继续从 structured advice materialize `reflection_summary`。4 条真实 LLM/CTS replay 中 reflection validator retries 均为 0，final candidates 数量均为 10。
+
+指标：
+
+| 阶段 | summary | 样本数 | 平均 rounds | 平均 final candidates | zero-final | 平均 unique new candidates | 平均 final total | 平均 precision@10 | 平均 ndcg@10 | 平均 round1 total |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Phase 2.3B.2 reflection schema slimming | `runs/phase_2_3b_reflection_slimming_eval_0_4_9_20260421_125311/benchmark_summary_20260421_132425.json` | 4 | 3.25 | 10.00 | 0 | 27.00 | 0.5709 | 0.5750 | 0.5613 | 0.1941 |
+
+同 JD / 上一阶段对比：相对 Phase 2.3B.1
+
+| JD | 2.3B.1 run | 2.3B.1 final total | 2.3B.2 run | 2.3B.2 final total | Δ total | Δ precision@10 | Δ ndcg@10 | Δ candidates |
+| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| `agent_jd_004` | `f5ac2bca` | 0.5762 | `a66cf579` | 0.4235 | -0.1526 | -0.2000 | -0.0421 | +0 |
+| `agent_jd_007` | `24b7a246` | 0.4229 | `fbb4e433` | 0.6097 | +0.1868 | +0.2000 | +0.1561 | +0 |
+| `llm_training_jd_001` | `1bc700cf` | 0.7690 | `fed9001e` | 0.6641 | -0.1049 | -0.1000 | -0.1163 | +0 |
+| `bigdata_jd_001` | `f2877412` | 0.8080 | `a39bc9f5` | 0.5862 | -0.2218 | -0.3000 | -0.0394 | +0 |
+
+Reflection gate 状态：
+
+- 13/13 reflection call validator retry count 为 0。
+- 4/4 finalizer validator retry count 为 0。
+- Generated run artifacts 中没有 `strategy_assessment`、`quality_assessment`、`coverage_assessment` 或 persisted `critique` 字段。
+- `round_review.md` 保留 `Reflection summary` 和 `Reflection decision`，不再渲染三段 assessment heading。
+- Replay 后补了一个小的 reflection stop-discipline guard：如果仍有未尝试 admitted non-anchor term 且 top pool 未达到 strong，runtime 会把 reflection stop advice materialize 成 continue。该补丁用于避免 `bigdata_jd_001` 这类过早跳过 `Paimon` 的情况；上表指标来自补丁前的 0.4.9 replay。
+
+#### Phase 2.3C Remaining
+
+状态：Phase 2.3C Scoring Schema Experiment 仍待单独执行。
 
 #### Phase 2.3 Shared Acceptance
 
@@ -549,4 +577,4 @@ Finalizer gate 状态：
 4. 降低 token/CTS 成本。
 5. 增加 agent 自主性。
 
-当前下一步建议：继续 Phase 2.3B.2 Reflection Schema Slimming；之后再单独做 Phase 2.3C Scoring Schema Experiment。不要为了修复单个 Agent 样本而恢复领域词表、domain router、retrieval surface active rule、自动规则升级或 query policy 微服务。
+当前下一步建议：单独做 Phase 2.3C Scoring Schema Experiment。不要为了修复单个 Agent 样本而恢复领域词表、domain router、retrieval surface active rule、自动规则升级或 query policy 微服务。

@@ -403,9 +403,6 @@ class StubReflection:
     async def reflect(self, *, context) -> ReflectionAdvice:
         del context
         return ReflectionAdvice(
-            strategy_assessment="Current strategy is acceptable.",
-            quality_assessment="The top pool quality is acceptable.",
-            coverage_assessment="Coverage is sufficient for one round.",
             keyword_advice=ReflectionKeywordAdvice(),
             filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
             suggest_stop=False,
@@ -726,6 +723,10 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert "Current global top pool" in round_review
     assert "Common drop reasons" in round_review
     assert "Reflection summary" in round_review
+    assert "Reflection decision" in round_review
+    assert "Strategy assessment" not in round_review
+    assert "Quality assessment" not in round_review
+    assert "Coverage assessment" not in round_review
     assert "Next step" in round_review
     assert "# Run Summary" in run_summary
     assert "Judge packet" in run_summary

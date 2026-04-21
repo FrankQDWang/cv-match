@@ -271,9 +271,6 @@ def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> 
     critic = ReflectionCritic(_settings(monkeypatch), _prompt("reflection"))
     reflection_agent = _StubAgent(
         ReflectionAdvice(
-            strategy_assessment="Stay the course.",
-            quality_assessment="Pool quality is acceptable.",
-            coverage_assessment="Coverage is improving.",
             keyword_advice=ReflectionKeywordAdvice(),
             filter_advice=ReflectionFilterAdvice(),
             suggest_stop=False,

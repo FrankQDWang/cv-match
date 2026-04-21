@@ -214,9 +214,6 @@ def _run_state_with_previous_reflection() -> RunState:
                     )
                 ],
                 reflection_advice=ReflectionAdvice(
-                    strategy_assessment="Need one more domain term.",
-                    quality_assessment="Top pool is acceptable.",
-                    coverage_assessment="Coverage is still narrow.",
                     keyword_advice=ReflectionKeywordAdvice(suggested_keep_terms=["trace"]),
                     filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
                     suggest_stop=False,

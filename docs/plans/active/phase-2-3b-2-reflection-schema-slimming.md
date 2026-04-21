@@ -269,17 +269,46 @@ Expected if replay is run:
 - No obvious regression in query/filter/round behavior versus the latest 0.4.8 acceptance subset.
 - Reflection structured-output retries do not spike.
 
+Execution status, 2026-04-21:
+
+- Implemented 2.3B.2 code changes and bumped package version to `0.4.9`.
+- Local validation passed:
+  - `uv run pytest tests/test_reflection_contract.py tests/test_v02_models.py -q`
+  - `uv run pytest tests/test_reflection_contract.py tests/test_controller_contract.py tests/test_context_builder.py tests/test_runtime_state_flow.py tests/test_runtime_audit.py tests/test_llm_lifecycle.py tests/test_v02_models.py -q`
+  - `uv run pytest`
+- User-requested replay was eval-enabled:
+  - output dir: `runs/phase_2_3b_reflection_slimming_eval_0_4_9_20260421_125311`
+  - summary: `runs/phase_2_3b_reflection_slimming_eval_0_4_9_20260421_125311/benchmark_summary_20260421_132425.json`
+  - `--benchmark-max-concurrency 1`
+  - `SEEKTALENT_JUDGE_MAX_CONCURRENCY=5`
+  - `--enable-eval`
+- Replay completed all 4 rows with non-null `evaluation_result` and 10 final candidates each:
+  - `agent_jd_004`: run `a66cf579`, final total `0.4235`, precision@10 `0.4000`, nDCG@10 `0.4785`
+  - `agent_jd_007`: run `fbb4e433`, final total `0.6097`, precision@10 `0.6000`, nDCG@10 `0.6325`
+  - `llm_training_jd_001`: run `fed9001e`, final total `0.6641`, precision@10 `0.7000`, nDCG@10 `0.5804`
+  - `bigdata_jd_001`: run `a39bc9f5`, final total `0.5862`, precision@10 `0.6000`, nDCG@10 `0.5539`
+- Replay aggregate: average rounds `3.25`, average final candidates `10.00`, zero-final `0`, average unique new candidates `27.00`, average final total `0.5709`, average precision@10 `0.5750`, average nDCG@10 `0.5613`.
+- 13/13 reflection calls and 4/4 finalizer calls had validator retry count `0`.
+- Generated artifacts had no `strategy_assessment`, `quality_assessment`, `coverage_assessment`, or persisted `critique` fields.
+- `round_review.md` retained `Reflection summary` and `Reflection decision`, and did not render the removed assessment headings.
+- Post-replay analysis found the aggregate drop was mixed: `llm_training_jd_001` changed before reflection could affect the run, while `bigdata_jd_001` likely regressed because reflection recommended stopping before trying `Paimon`.
+- Follow-up code tightened stop discipline after the replay: when reflection suggests stop while untried admitted non-anchor terms remain and the top pool is not strong, runtime materializes the advice as continue. This follow-up is covered by tests but was not re-run as a second real replay under the same `0.4.9` version label.
+
 ## Decision Log
 
 - 2026-04-21: Reflection slimming is planned after finalizer draft slimming because reflection can affect subsequent search behavior through structured query/filter advice.
 - 2026-04-21: Keep runtime-built `reflection_summary` as the single business-readable reflection prose artifact instead of asking the model for three assessment fields.
 - 2026-04-21: Explicitly skipped W&B suite/report correction and Phase 2.3A artifact-size closure per user direction to accelerate into 2.3B.
+- 2026-04-21: Kept `ReflectionAdviceDraft.keyword_advice`, `filter_advice`, and `suggest_stop` required so empty model output still fails fast after removing prose fields.
+- 2026-04-21: Accepted 0.4.9 replay because reflection/finalizer validator retries stayed at 0, all rows produced final candidates, and no removed reflection fields persisted in generated artifacts.
+- 2026-04-21: Added a post-replay reflection stop-discipline guard instead of restoring prose fields: unused admitted reserve terms should be tried unless the top pool is already strong.
 
 ## Risks and Unknowns
 
 - If controller context or runtime search updates read removed prose fields outside the known paths, update this plan before coding.
 - If removing `critique` breaks tests that inspect business-readable reflection wording, preserve the wording through `reflection_summary` rather than restoring persisted critique fields.
 - If real replay shows query/filter drift, inspect the reflection prompt first; do not add fallback chains.
+- Execution found no dependency outside the scoped reflection/runtime/test/doc/version files.
 
 ## Stop Rules
 
@@ -291,16 +320,16 @@ Expected if replay is run:
 
 ## Status
 
-- Current milestone: Waiting for Phase 2.3B.1 completion, then M1.
-- Last completed: Plan created.
-- Next action: Execute only after finalizer draft slimming is merged or explicitly skipped.
-- Blockers: Phase 2.3B.1 must run first.
+- Current milestone: Completed.
+- Last completed: M4 full local validation and 4-row eval replay.
+- Next action: Move to Phase 2.3C scoring schema experiment as a separate gate.
+- Blockers: None for Phase 2.3B.2.
 
 ## Done Checklist
 
-- [ ] Goal satisfied
-- [ ] Non-goals preserved
-- [ ] Tests or validation commands pass
-- [ ] Decision log updated
-- [ ] Risks and unknowns updated
-- [ ] Status reflects final state
+- [x] Goal satisfied
+- [x] Non-goals preserved
+- [x] Tests or validation commands pass
+- [x] Decision log updated
+- [x] Risks and unknowns updated
+- [x] Status reflects final state

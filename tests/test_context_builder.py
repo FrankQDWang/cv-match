@@ -325,9 +325,6 @@ def test_context_builder_projects_contexts_from_run_state() -> None:
                 top_pool_ids=["r-1"],
                 dropped_candidate_ids=["r-2"],
                 reflection_advice=ReflectionAdvice(
-                    strategy_assessment="Current anchors are directionally correct.",
-                    quality_assessment="Top candidate quality is acceptable.",
-                    coverage_assessment="Coverage is still narrow.",
                     keyword_advice=ReflectionKeywordAdvice(suggested_activate_terms=["trace"]),
                     filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
                     reflection_summary="Continue with one additional domain term next round.",

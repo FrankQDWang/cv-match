@@ -143,21 +143,12 @@ class SequenceReflection:
         self.calls += 1
         if self.calls == 1:
             return ReflectionAdvice(
-                strategy_assessment="Current anchors are aligned with the role.",
-                quality_assessment="Top pool has signal but still lacks breadth.",
-                coverage_assessment="Coverage is narrow after the first pass.",
-                keyword_advice=ReflectionKeywordAdvice(
-                    suggested_keep_terms=["trace"],
-                    critique="Keep the tracing term available next round.",
-                ),
+                keyword_advice=ReflectionKeywordAdvice(suggested_keep_terms=["trace"]),
                 filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
                 suggest_stop=False,
                 reflection_summary="Continue with one extra tracing term.",
             )
         return ReflectionAdvice(
-            strategy_assessment="Second round is aligned.",
-            quality_assessment="Top pool quality is now stable.",
-            coverage_assessment="Marginal recall is low.",
             keyword_advice=ReflectionKeywordAdvice(),
             filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
             suggest_stop=True,
@@ -636,9 +627,6 @@ def test_runtime_query_pool_can_activate_reserve_term_without_losing_all_active_
     updated = runtime._update_query_term_pool(
         pool,
         ReflectionAdvice(
-            strategy_assessment="Need a different framework term.",
-            quality_assessment="Current pool is narrow.",
-            coverage_assessment="Broaden one reserve term.",
             keyword_advice=ReflectionKeywordAdvice(
                 suggested_activate_terms=["langchain"],
                 suggested_drop_terms=["rag"],
@@ -677,9 +665,6 @@ def test_runtime_query_pool_keeps_one_active_non_anchor_term(tmp_path: Path) -> 
     updated = runtime._update_query_term_pool(
         pool,
         ReflectionAdvice(
-            strategy_assessment="Pool is weak.",
-            quality_assessment="Drop the only non-anchor term.",
-            coverage_assessment="No reserve terms are available.",
             keyword_advice=ReflectionKeywordAdvice(suggested_drop_terms=["rag"]),
             filter_advice=ReflectionFilterAdvice(),
             reflection_summary="Attempted to drop the only active non-anchor term.",

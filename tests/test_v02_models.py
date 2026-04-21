@@ -227,14 +227,8 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
         ],
     )
     reflection_advice = ReflectionAdvice(
-        strategy_assessment="Current anchors are directionally correct.",
-        quality_assessment="Top candidate quality is acceptable.",
-        coverage_assessment="Coverage is still narrow.",
-        keyword_advice=ReflectionKeywordAdvice(
-            suggested_activate_terms=["LLM application"],
-            critique="Activate one reserve domain term.",
-        ),
-        filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"], critique="Keep role title pinned."),
+        keyword_advice=ReflectionKeywordAdvice(suggested_activate_terms=["LLM application"]),
+        filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
         suggest_stop=False,
         reflection_summary="Continue with one additional domain term next round.",
     )

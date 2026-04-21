@@ -236,7 +236,6 @@ class ReflectionKeywordAdvice(BaseModel):
     suggested_keep_terms: list[str] = Field(default_factory=list)
     suggested_deprioritize_terms: list[str] = Field(default_factory=list)
     suggested_drop_terms: list[str] = Field(default_factory=list)
-    critique: str = ""
 
 
 class ReflectionKeywordAdviceDraft(BaseModel):
@@ -254,7 +253,6 @@ class ReflectionFilterAdvice(BaseModel):
     suggested_keep_filter_fields: list[FilterField] = Field(default_factory=list)
     suggested_drop_filter_fields: list[FilterField] = Field(default_factory=list)
     suggested_add_filter_fields: list[FilterField] = Field(default_factory=list)
-    critique: str = ""
 
 
 class ReflectionFilterAdviceDraft(BaseModel):
@@ -268,12 +266,12 @@ class ReflectionFilterAdviceDraft(BaseModel):
 class ReflectionAdvice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    strategy_assessment: str = Field(min_length=1, description="Short critique of the current retrieval direction.")
-    quality_assessment: str = Field(min_length=1, description="Short critique of top-pool quality.")
-    coverage_assessment: str = Field(min_length=1, description="Short critique of recall and coverage.")
     keyword_advice: ReflectionKeywordAdvice = Field(default_factory=ReflectionKeywordAdvice, description="Field-safe query-term advice for the next round.")
     filter_advice: ReflectionFilterAdvice = Field(default_factory=ReflectionFilterAdvice, description="Field-level non-location filter advice for the next round.")
-    suggest_stop: bool = Field(default=False, description="Whether the critic recommends stopping after this round.")
+    suggest_stop: bool = Field(
+        default=False,
+        description="Advisory only: whether reflection recommends stopping after this round. Runtime/controller own the final stop decision.",
+    )
     suggested_stop_reason: str | None = Field(default=None, description="Concrete stop reason when suggest_stop is true.")
     reflection_summary: str = Field(min_length=1, description="Compact log-safe summary of the reflection output.")
 
@@ -289,12 +287,11 @@ class ReflectionAdvice(BaseModel):
 class ReflectionAdviceDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    strategy_assessment: str = Field(min_length=1, description="Short critique of the current retrieval direction.")
-    quality_assessment: str = Field(min_length=1, description="Short critique of top-pool quality.")
-    coverage_assessment: str = Field(min_length=1, description="Short critique of recall and coverage.")
-    keyword_advice: ReflectionKeywordAdviceDraft = Field(default_factory=ReflectionKeywordAdviceDraft, description="Field-safe query-term advice for the next round.")
-    filter_advice: ReflectionFilterAdviceDraft = Field(default_factory=ReflectionFilterAdviceDraft, description="Field-level non-location filter advice for the next round.")
-    suggest_stop: bool = Field(default=False, description="Whether the critic recommends stopping after this round.")
+    keyword_advice: ReflectionKeywordAdviceDraft = Field(description="Field-safe query-term advice for the next round.")
+    filter_advice: ReflectionFilterAdviceDraft = Field(description="Field-level non-location filter advice for the next round.")
+    suggest_stop: bool = Field(
+        description="Advisory only: whether reflection recommends stopping after this round. Runtime/controller own the final stop decision."
+    )
     suggested_stop_reason: str | None = Field(default=None, description="Concrete stop reason when suggest_stop is true.")
 
     @model_validator(mode="after")

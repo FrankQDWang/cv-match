@@ -992,9 +992,6 @@ class WorkflowRuntime:
     ) -> ReflectionAdvice:
         if not self.settings.enable_reflection:
             advice = ReflectionAdvice(
-                strategy_assessment="Reflection disabled.",
-                quality_assessment="Reflection disabled.",
-                coverage_assessment="Reflection disabled.",
                 reflection_summary="Reflection disabled.",
             )
             return advice
@@ -2804,12 +2801,11 @@ class WorkflowRuntime:
                     "## Reflection",
                     "",
                     f"- Reflection summary: {reflection.reflection_summary}",
-                    f"- Strategy assessment: {reflection.strategy_assessment}",
-                    f"- Quality assessment: {reflection.quality_assessment}",
-                    f"- Coverage assessment: {reflection.coverage_assessment}",
                     f"- Reflection decision: `{'stop' if reflection.suggest_stop else 'continue'}`",
                 ]
             )
+            if reflection.suggested_stop_reason:
+                lines.append(f"- Stop reason: {reflection.suggested_stop_reason}")
         else:
             lines.extend(["", "## Reflection", "", "- Reflection summary: Reflection disabled."])
         lines.extend(["", f"- Next step: `{next_step}`"])
