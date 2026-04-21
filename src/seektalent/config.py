@@ -18,6 +18,7 @@ MODEL_FIELDS = (
     "finalize_model",
     "reflection_model",
     "judge_model",
+    "tui_summary_model",
 )
 PROVIDER_ENV_VARS = {
     "OPENAI_API_KEY",
@@ -76,6 +77,7 @@ class AppSettings(BaseSettings):
     finalize_model: str = "openai-responses:gpt-5.4-mini"
     reflection_model: str = "openai-responses:gpt-5.4"
     judge_model: str | None = None
+    tui_summary_model: str = "openai-chat:deepseek-chat"
     judge_openai_base_url: str | None = None
     judge_openai_api_key: str | None = None
     reasoning_effort: ReasoningEffort = "medium"

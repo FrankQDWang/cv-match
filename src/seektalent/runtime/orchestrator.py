@@ -68,6 +68,7 @@ from seektalent.retrieval import (
     serialize_keyword_query,
     select_query_terms,
 )
+from seektalent.resume_quality import ResumeQualityCommenter
 from seektalent.runtime.context_builder import (
     build_controller_context,
     build_finalize_context,
@@ -154,6 +155,7 @@ class WorkflowRuntime:
         self.requirement_extractor = RequirementExtractor(settings, prompt_map["requirements"])
         self.controller = ReActController(settings, prompt_map["controller"])
         self.resume_scorer = ResumeScorer(settings, prompt_map["scoring"])
+        self.resume_quality_commenter = ResumeQualityCommenter(settings)
         self.reflection_critic = ReflectionCritic(settings, prompt_map["reflection"])
         self.finalizer = Finalizer(settings, prompt_map["finalize"])
         self.judge_prompt = prompt_map["judge"]
@@ -983,6 +985,17 @@ class WorkflowRuntime:
                     "top_pool_count": len(current_top_candidates),
                 },
             )
+            resume_quality_comment: str | None = None
+            resume_quality_comment_error: str | None = None
+            try:
+                resume_quality_comment = await self.resume_quality_commenter.comment(
+                    round_no=round_no,
+                    query_terms=retrieval_plan.query_terms,
+                    candidates=sorted(scored_this_round, key=scored_candidate_sort_key)[:5],
+                    normalized_store=run_state.normalized_store,
+                ) or None
+            except Exception as exc:  # noqa: BLE001
+                resume_quality_comment_error = str(exc)
             round_state = RoundState(
                 round_no=round_no,
                 controller_decision=controller_decision,
@@ -1155,6 +1168,8 @@ class WorkflowRuntime:
                     newly_scored_count=newly_scored_count,
                     pool_decisions=pool_decisions,
                     reflection=reflection_advice,
+                    resume_quality_comment=resume_quality_comment,
+                    resume_quality_comment_error=resume_quality_comment_error,
                 ),
             )
 
@@ -1172,6 +1187,8 @@ class WorkflowRuntime:
         newly_scored_count: int,
         pool_decisions: list[PoolDecision],
         reflection: ReflectionAdvice | None,
+        resume_quality_comment: str | None = None,
+        resume_quality_comment_error: str | None = None,
     ) -> dict[str, object]:
         scored_this_round = [
             candidate
@@ -1195,6 +1212,8 @@ class WorkflowRuntime:
                 run_state=run_state,
                 candidates=sorted(scored_this_round, key=scored_candidate_sort_key)[:5],
             ),
+            "resume_quality_comment": resume_quality_comment,
+            "resume_quality_comment_error": resume_quality_comment_error,
             "reflection_summary": reflection.reflection_summary if reflection is not None else "",
         }
 

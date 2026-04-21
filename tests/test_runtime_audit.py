@@ -412,6 +412,20 @@ class StubReflection:
         )
 
 
+class StubResumeQualityCommenter:
+    async def comment(self, **kwargs) -> str:
+        assert kwargs["round_no"] == 1
+        assert kwargs["query_terms"] == ["python", "resume matching"]
+        assert kwargs["candidates"]
+        return "本轮简历整体质量较好，Python 和检索经验集中，少数候选人管理经验仍需复核。"
+
+
+class FailingResumeQualityCommenter:
+    async def comment(self, **kwargs) -> str:
+        del kwargs
+        raise RuntimeError("quality comment failed")
+
+
 class StubFinalizer:
     last_validator_retry_count = 0
 
@@ -807,6 +821,56 @@ def test_runtime_emits_tui_progress_events(tmp_path: Path, monkeypatch) -> None:
     assert round_event.payload["not_fit_count"] == 0
     assert round_event.payload["top_pool_selected_count"] > 0
     assert round_event.payload["representative_candidates"]
+    assert round_event.payload["reflection_summary"] == "No reflection changes."
+
+
+def test_runtime_round_payload_includes_resume_quality_comment(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=1,
+        enable_eval=False,
+        cts_tenant_key="tenant-key",
+        cts_tenant_secret="tenant-secret",
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+    cast(Any, runtime).resume_quality_commenter = StubResumeQualityCommenter()
+    progress_events: list[ProgressEvent] = []
+
+    runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes", progress_callback=progress_events.append)
+
+    round_event = next(event for event in progress_events if event.type == "round_completed")
+    assert round_event.payload["resume_quality_comment"] == "本轮简历整体质量较好，Python 和检索经验集中，少数候选人管理经验仍需复核。"
+    assert round_event.payload["resume_quality_comment_error"] is None
+    assert round_event.payload["reflection_summary"] == "No reflection changes."
+
+
+def test_runtime_resume_quality_comment_failure_does_not_block_reflection(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=1,
+        enable_eval=False,
+        cts_tenant_key="tenant-key",
+        cts_tenant_secret="tenant-secret",
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+    cast(Any, runtime).resume_quality_commenter = FailingResumeQualityCommenter()
+    progress_events: list[ProgressEvent] = []
+
+    runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes", progress_callback=progress_events.append)
+
+    event_types = [event.type for event in progress_events]
+    round_event = next(event for event in progress_events if event.type == "round_completed")
+    assert "reflection_completed" in event_types
+    assert round_event.payload["resume_quality_comment"] is None
+    assert round_event.payload["resume_quality_comment_error"] == "quality comment failed"
     assert round_event.payload["reflection_summary"] == "No reflection changes."
 
 

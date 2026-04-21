@@ -6,6 +6,89 @@ from seektalent.models import FinalCandidate, FinalResult
 from seektalent.progress import ProgressEvent
 
 
+async def _fake_run_search(**kwargs):
+    del kwargs
+    raise AssertionError("run_search should not be called by construction tests")
+
+
+def test_tui_session_uses_fullscreen_application() -> None:
+    from seektalent.tui import TuiSession
+
+    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
+
+    assert session.app.full_screen is True
+
+
+def test_tui_session_submission_clears_input_buffer() -> None:
+    from seektalent.tui import TuiSession
+
+    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
+    session.buffer.text = "AI agent开发"
+
+    session.submit_current_input(view_height=10)
+
+    assert session.state.input_step == "jd"
+    assert session.buffer.text == ""
+    assert "\n".join(session.state.transcript_lines).count("AI agent开发") == 1
+
+
+def test_tui_session_progress_strips_rich_markup() -> None:
+    from seektalent.tui import TuiSession
+
+    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
+    event = ProgressEvent(type="run_completed", message="done", payload={})
+
+    session.handle_progress(event, app=session.app)
+
+    rendered = "\n".join(session.state.transcript_lines)
+    assert "[dim]" not in rendered
+    assert "业务 trace 完成" in rendered
+
+
+def test_transcript_state_stops_following_when_user_scrolls_up() -> None:
+    from seektalent.tui import TuiState
+
+    state = TuiState()
+    state.append_lines([f"line {index}" for index in range(20)], view_height=5)
+    state.scroll_to_bottom(view_height=5)
+    state.scroll_up(3, view_height=5)
+    before = state.scroll_offset
+
+    state.append_lines(["new line"], view_height=5)
+
+    assert state.follow is False
+    assert state.scroll_offset == before
+
+
+def test_transcript_state_resumes_following_near_bottom() -> None:
+    from seektalent.tui import TuiState
+
+    state = TuiState()
+    state.append_lines([f"line {index}" for index in range(20)], view_height=5)
+    state.scroll_to_bottom(view_height=5)
+    state.scroll_up(5, view_height=5)
+
+    state.scroll_down(4, view_height=5)
+
+    assert state.follow is True
+
+
+def test_submitted_inputs_render_once_in_transcript_state() -> None:
+    from seektalent.tui import TuiState
+
+    state = TuiState()
+    state.submit_input("Job Title", "AI agent开发", view_height=10)
+
+    assert "\n".join(state.transcript_lines).count("AI agent开发") == 1
+
+
+def test_shimmer_config_is_faster() -> None:
+    from seektalent.tui import SHIMMER_CHARS_PER_SECOND, SHIMMER_REFRESH_PER_SECOND
+
+    assert SHIMMER_REFRESH_PER_SECOND >= 20
+    assert SHIMMER_CHARS_PER_SECOND >= 20
+
+
 def test_submitted_message_keeps_full_pasted_text() -> None:
     from seektalent.tui import _submitted_message
 
@@ -54,6 +137,56 @@ def test_round_completed_progress_is_business_summary_first() -> None:
     assert "代表候选人" in rendered
     assert "r1 · 92 分" in rendered
     assert "本轮反思：本轮关键词有效" in rendered
+
+
+def test_quality_comment_renders_after_candidates_before_reflection() -> None:
+    from seektalent.tui import _render_progress_lines
+
+    event = ProgressEvent(
+        type="round_completed",
+        message="round 2 completed",
+        round_no=2,
+        payload={
+            "query_terms": ["python", "推荐系统"],
+            "raw_candidate_count": 12,
+            "unique_new_count": 7,
+            "newly_scored_count": 5,
+            "fit_count": 3,
+            "not_fit_count": 2,
+            "top_pool_selected_count": 2,
+            "top_pool_retained_count": 6,
+            "top_pool_dropped_count": 1,
+            "representative_candidates": ["r1 · 92 分", "r2 · 84 分"],
+            "resume_quality_comment": "整体相关度较高，但少数候选人 Agent 深度不足。",
+            "reflection_summary": "本轮关键词有效，下一轮保留 python。",
+        },
+    )
+
+    rendered = "\n".join(_render_progress_lines(event))
+
+    assert rendered.index("代表候选人") < rendered.index("本轮简历质量")
+    assert rendered.index("本轮简历质量") < rendered.index("本轮反思")
+
+
+def test_quality_comment_failure_renders_before_reflection() -> None:
+    from seektalent.tui import _render_progress_lines
+
+    event = ProgressEvent(
+        type="round_completed",
+        message="round 2 completed",
+        round_no=2,
+        payload={
+            "representative_candidates": ["r1 · 92 分"],
+            "resume_quality_comment": None,
+            "resume_quality_comment_error": "model failed",
+            "reflection_summary": "继续扩大搜索。",
+        },
+    )
+
+    rendered = "\n".join(_render_progress_lines(event))
+
+    assert "本轮简历质量短评生成失败" in rendered
+    assert rendered.index("本轮简历质量短评生成失败") < rendered.index("本轮反思")
 
 
 def test_thinking_progress_uses_blinking_status_line() -> None:
