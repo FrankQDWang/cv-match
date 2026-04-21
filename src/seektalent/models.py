@@ -739,6 +739,21 @@ class FinalCandidate(BaseModel):
     source_round: int = Field(description="Round number in which this candidate first entered the pool.")
 
 
+class FinalCandidateDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resume_id: str = Field(description="Stable resume identifier copied from the scored candidate.")
+    match_summary: str = Field(min_length=1, description="Short presentation summary of the candidate match.")
+    why_selected: str = Field(min_length=1, description="Short explanation of why the candidate was selected.")
+
+
+class FinalResultDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str = Field(min_length=1, description="Short top-level summary of the final shortlist.")
+    candidates: list[FinalCandidateDraft] = Field(description="Candidate presentation text in runtime ranking order.")
+
+
 class FinalResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

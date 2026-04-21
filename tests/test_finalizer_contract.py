@@ -1,10 +1,12 @@
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic_ai.exceptions import ModelRetry
 
 from seektalent.finalize.finalizer import Finalizer
-from seektalent.models import FinalCandidate, FinalResult, FinalizeContext, ScoredCandidate
+from seektalent.models import FinalCandidateDraft, FinalResultDraft, FinalizeContext, ScoredCandidate
 from seektalent.prompting import LoadedPrompt
 from tests.settings_factory import make_settings
 
@@ -31,21 +33,20 @@ def _scored_candidate(resume_id: str, *, source_round: int, score: int) -> Score
     )
 
 
-def _candidate(resume_id: str, *, rank: int, source_round: int) -> FinalCandidate:
-    return FinalCandidate(
+def _draft_candidate(resume_id: str) -> FinalCandidateDraft:
+    return FinalCandidateDraft(
         resume_id=resume_id,
-        rank=rank,
-        final_score=90,
-        fit_bucket="fit",
         match_summary="Strong backend match.",
-        strengths=["Relevant backend work."],
-        weaknesses=[],
-        matched_must_haves=["python"],
-        matched_preferences=["trace"],
-        risk_flags=[],
         why_selected="Strong role fit.",
-        source_round=source_round,
     )
+
+
+class _StubAgent:
+    def __init__(self, output: FinalResultDraft) -> None:
+        self.output = output
+
+    async def run(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        return SimpleNamespace(output=self.output)
 
 
 def _validator(monkeypatch: pytest.MonkeyPatch):
@@ -75,15 +76,11 @@ def test_finalizer_output_validator_rejects_duplicate_resume_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     validator = _validator(monkeypatch)
-    output = FinalResult(
-        run_id="run-1",
-        run_dir="/tmp/run-1",
-        rounds_executed=2,
-        stop_reason="reflection_stop",
+    output = FinalResultDraft(
         summary="Returned 2 candidates.",
         candidates=[
-            _candidate("r-1", rank=1, source_round=1),
-            _candidate("r-1", rank=2, source_round=1),
+            _draft_candidate("r-1"),
+            _draft_candidate("r-1"),
         ],
     )
 
@@ -95,36 +92,29 @@ def test_finalizer_output_validator_rejects_unknown_resume_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     validator = _validator(monkeypatch)
-    output = FinalResult(
-        run_id="run-1",
-        run_dir="/tmp/run-1",
-        rounds_executed=2,
-        stop_reason="reflection_stop",
+    output = FinalResultDraft(
         summary="Returned 1 candidate.",
-        candidates=[_candidate("r-9", rank=1, source_round=1)],
+        candidates=[_draft_candidate("r-9")],
     )
 
     with pytest.raises(ModelRetry, match="Unknown resume_id"):
         validator(type("Ctx", (), {"deps": _deps()})(), output)
 
 
-def test_finalizer_output_validator_rejects_non_contiguous_ranks(
+def test_finalizer_output_validator_rejects_out_of_order_resume_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     validator = _validator(monkeypatch)
-    output = FinalResult(
-        run_id="run-1",
-        run_dir="/tmp/run-1",
-        rounds_executed=2,
-        stop_reason="reflection_stop",
-        summary="Returned 2 candidates.",
+    output = FinalResultDraft(
+        summary="Returned 3 candidates.",
         candidates=[
-            _candidate("r-1", rank=1, source_round=1),
-            _candidate("r-2", rank=3, source_round=2),
+            _draft_candidate("r-1"),
+            _draft_candidate("r-3"),
+            _draft_candidate("r-2"),
         ],
     )
 
-    with pytest.raises(ModelRetry, match="contiguous"):
+    with pytest.raises(ModelRetry, match="runtime ranking order"):
         validator(type("Ctx", (), {"deps": _deps()})(), output)
 
 
@@ -132,36 +122,15 @@ def test_finalizer_output_validator_rejects_incomplete_shortlist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     validator = _validator(monkeypatch)
-    output = FinalResult(
-        run_id="run-1",
-        run_dir="/tmp/run-1",
-        rounds_executed=2,
-        stop_reason="reflection_stop",
+    output = FinalResultDraft(
         summary="Returned 2 candidates.",
         candidates=[
-            _candidate("r-1", rank=1, source_round=1),
-            _candidate("r-2", rank=2, source_round=2),
+            _draft_candidate("r-1"),
+            _draft_candidate("r-2"),
         ],
     )
 
-    with pytest.raises(ModelRetry, match="include every runtime-ranked candidate"):
-        validator(type("Ctx", (), {"deps": _deps()})(), output)
-
-
-def test_finalizer_output_validator_rejects_source_round_mismatch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    validator = _validator(monkeypatch)
-    output = FinalResult(
-        run_id="run-1",
-        run_dir="/tmp/run-1",
-        rounds_executed=2,
-        stop_reason="reflection_stop",
-        summary="Returned 1 candidate.",
-        candidates=[_candidate("r-2", rank=1, source_round=1)],
-    )
-
-    with pytest.raises(ModelRetry, match="source_round"):
+    with pytest.raises(ModelRetry, match="count must equal runtime top candidate count"):
         validator(type("Ctx", (), {"deps": _deps()})(), output)
 
 
@@ -169,19 +138,65 @@ def test_finalizer_output_validator_accepts_complete_runtime_shortlist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     validator = _validator(monkeypatch)
-    output = FinalResult(
-        run_id="run-1",
-        run_dir="/tmp/run-1",
-        rounds_executed=2,
-        stop_reason="reflection_stop",
+    output = FinalResultDraft(
         summary="Returned 3 candidates.",
         candidates=[
-            _candidate("r-1", rank=1, source_round=1),
-            _candidate("r-2", rank=2, source_round=2),
-            _candidate("r-3", rank=3, source_round=2),
+            _draft_candidate("r-1"),
+            _draft_candidate("r-2"),
+            _draft_candidate("r-3"),
         ],
     )
 
     validated = validator(type("Ctx", (), {"deps": _deps()})(), output)
 
     assert validated == output
+
+
+def test_finalizer_materializes_public_result_from_draft(monkeypatch: pytest.MonkeyPatch) -> None:
+    finalizer = Finalizer(
+        make_settings(),
+        LoadedPrompt(name="finalize", path=Path("finalize.md"), content="finalize prompt", sha256="hash"),
+    )
+    draft = FinalResultDraft(
+        summary="Returned 2 candidates.",
+        candidates=[
+            FinalCandidateDraft(
+                resume_id="r-1",
+                match_summary="Strong first match.",
+                why_selected="Best Python fit.",
+            ),
+            FinalCandidateDraft(
+                resume_id="r-2",
+                match_summary="Strong second match.",
+                why_selected="Good tracing fit.",
+            ),
+        ],
+    )
+    monkeypatch.setattr(finalizer, "_get_agent", lambda: _StubAgent(draft))
+
+    result = asyncio.run(
+        finalizer.finalize(
+            run_id="run-1",
+            run_dir="/tmp/run-1",
+            rounds_executed=2,
+            stop_reason="reflection_stop",
+            ranked_candidates=_deps().top_candidates[:2],
+        )
+    )
+
+    assert result.run_id == "run-1"
+    assert result.run_dir == "/tmp/run-1"
+    assert result.rounds_executed == 2
+    assert result.stop_reason == "reflection_stop"
+    assert result.summary == draft.summary
+    assert [candidate.resume_id for candidate in result.candidates] == ["r-1", "r-2"]
+    assert [candidate.rank for candidate in result.candidates] == [1, 2]
+    assert [candidate.final_score for candidate in result.candidates] == [95, 90]
+    assert result.candidates[0].fit_bucket == "fit"
+    assert result.candidates[0].strengths == ["Relevant backend work."]
+    assert result.candidates[0].matched_must_haves == ["python"]
+    assert result.candidates[0].matched_preferences == ["trace"]
+    assert result.candidates[0].source_round == 1
+    assert result.candidates[0].match_summary == "Strong first match."
+    assert result.candidates[0].why_selected == "Best Python fit."
+    assert finalizer.last_draft_output == draft

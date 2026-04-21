@@ -12,8 +12,8 @@ from seektalent.controller.react_controller import ReActController
 from seektalent.finalize.finalizer import Finalizer
 from seektalent.models import (
     ControllerContext,
-    FinalCandidate,
-    FinalResult,
+    FinalCandidateDraft,
+    FinalResultDraft,
     HardConstraintSlots,
     InputTruth,
     LocationExecutionPlan,
@@ -287,26 +287,13 @@ def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> 
 
     finalizer = Finalizer(_settings(monkeypatch), _prompt("finalize"))
     finalizer_agent = _StubAgent(
-        FinalResult(
-            run_id="run-1",
-            run_dir="/tmp/run-1",
-            rounds_executed=1,
-            stop_reason="controller_stop",
+        FinalResultDraft(
             summary="Shortlist ready.",
             candidates=[
-                FinalCandidate(
+                FinalCandidateDraft(
                     resume_id="resume-1",
-                    rank=1,
-                    final_score=85,
-                    fit_bucket="fit",
                     match_summary="Strong fit.",
-                    strengths=["Strong Python"],
-                    weaknesses=[],
-                    matched_must_haves=["python"],
-                    matched_preferences=[],
-                    risk_flags=[],
                     why_selected="Strong fit.",
-                    source_round=1,
                 )
             ],
         )

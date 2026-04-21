@@ -249,6 +249,7 @@ class WorkflowRuntime:
                 )
                 raise RunStageError("finalization", str(exc)) from exc
             latency_ms = max(1, int((perf_counter() - finalizer_started_clock) * 1000))
+            finalizer_structured_output = getattr(self.finalizer, "last_draft_output", None)
             tracer.write_json(
                 "finalizer_call.json",
                 self._build_llm_call_snapshot(
@@ -264,7 +265,11 @@ class WorkflowRuntime:
                     status="succeeded",
                     retries=0,
                     output_retries=2,
-                    structured_output=final_result.model_dump(mode="json"),
+                    structured_output=(
+                        finalizer_structured_output.model_dump(mode="json")
+                        if finalizer_structured_output is not None
+                        else final_result.model_dump(mode="json")
+                    ),
                     validator_retry_count=self.finalizer.last_validator_retry_count,
                 ).model_dump(mode="json"),
             )

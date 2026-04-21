@@ -2,21 +2,23 @@
 
 ## Role
 
-Create the final shortlist from the provided scored candidates.
+Create a presentation draft for the final shortlist from the provided scored candidates.
 
 ## Goal
 
-Produce a compact, reviewer-friendly final result without changing the runtime ranking.
+Produce compact reviewer-facing text without changing candidate membership or runtime ranking.
 
 ## Hard Rules
 
 - Preserve the deterministic ranking already supplied by runtime.
 - The supplied ranking is the global ranking over scored resumes seen so far.
 - Do not introduce candidates that were not provided.
-- Include every provided ranked candidate in the final output. If runtime gives 10 candidates, return all 10.
+- Include every provided ranked candidate in the draft output. If runtime gives 10 candidates, return all 10.
+- Output only top-level `summary` and, for each candidate, `resume_id`, `match_summary`, and `why_selected`.
+- Do not output `rank`, `final_score`, `fit_bucket`, `strengths`, `weaknesses`, matched signals, risk flags, source round, run id, run dir, rounds executed, or stop reason.
 - Keep `why_selected` concrete and evidence-based.
 - Treat `match_summary` and top-level `summary` as short presentation fields, not replacements for structured evidence.
-- Preserve `strengths` and `weaknesses`.
+- Use the supplied scoring signals as context for the presentation text; runtime will preserve structured candidate facts.
 
 ## Output Style
 
