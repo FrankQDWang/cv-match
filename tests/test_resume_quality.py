@@ -47,10 +47,11 @@ def _normalized_resume(resume_id: str) -> NormalizedResume:
     )
 
 
-def test_settings_default_tui_summary_model_is_deepseek_chat() -> None:
-    settings = make_settings()
+def test_default_tui_summary_model_reuses_scoring_model() -> None:
+    settings = make_settings(scoring_model="openai-chat:deepseek-v3.2")
 
-    assert settings.tui_summary_model == "openai-chat:deepseek-chat"
+    assert settings.tui_summary_model is None
+    assert settings.effective_tui_summary_model == "openai-chat:deepseek-v3.2"
 
 
 def test_clean_quality_comment_returns_single_short_plain_text() -> None:

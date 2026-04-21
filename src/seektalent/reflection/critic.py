@@ -45,6 +45,13 @@ def _filter_summary(draft: ReflectionAdviceDraft) -> str:
     return "; ".join(parts) if parts else "no filter changes"
 
 
+def _clean_rationale(text: str) -> str:
+    cleaned = " ".join(text.split()).strip()
+    if len(cleaned) <= 900:
+        return cleaned
+    return f"{cleaned[:897].rstrip()}..."
+
+
 def _term_key(term: str) -> str:
     return " ".join(term.strip().split()).casefold()
 
@@ -122,7 +129,11 @@ def render_reflection_prompt(context: ReflectionContext) -> str:
     }
     return "\n\n".join(
         [
-            "TASK\nReview this retrieval round and return structured keyword/filter advice plus stop advice.",
+            (
+                "TASK\n"
+                "Review this retrieval round and return structured keyword/filter advice, "
+                "a reflection_rationale explanation, and stop advice."
+            ),
             (
                 "ROUND RESULT\n"
                 f"- Round: {context.round_no}\n"
@@ -181,6 +192,7 @@ def materialize_reflection_advice(*, context: ReflectionContext, draft: Reflecti
             suggested_drop_filter_fields=draft.filter_advice.suggested_drop_filter_fields,
             suggested_add_filter_fields=draft.filter_advice.suggested_add_filter_fields,
         ),
+        reflection_rationale=_clean_rationale(draft.reflection_rationale),
         suggest_stop=suggest_stop,
         suggested_stop_reason=suggested_stop_reason,
         reflection_summary=" ".join(summary_parts),

@@ -42,18 +42,13 @@ def run_chat_session(
     try:
         _print_intro(console, cwd or Path.cwd())
         job_title = _read_required_text(console, prompt, label="Job Title")
-        console.print(_submitted_message("Job Title", job_title))
-        console.print()
 
+        console.print("Paste [bold]JD[/].")
+        console.print("[dim]Enter submit · Ctrl+J newline · Ctrl+C quit[/]")
         jd = _read_required_text(console, prompt, label="JD")
-        console.print(_submitted_message("JD", jd))
-        console.print()
 
         console.print("Paste [bold]Notes[/] [dim](optional)[/]. Press [bold]Enter[/] to skip.")
-        notes = prompt("› ").rstrip().strip()
-        if notes:
-            console.print(_submitted_message("Notes", notes))
-            console.print()
+        notes = _read_prompt_text(console, prompt).strip()
 
         status = _ShimmerStatus(console)
         status.start("业务 trace 等待第一步输出")
@@ -160,10 +155,16 @@ def _fit_text(text: str, width: int) -> str:
 
 def _read_required_text(console: Console, prompt: PromptFn, *, label: str) -> str:
     while True:
-        text = prompt("› ").rstrip()
+        text = _read_prompt_text(console, prompt)
         if text.strip():
             return text.strip()
         console.print(f"{escape(label)} cannot be empty. Paste it and press [bold]Enter[/].")
+
+
+def _read_prompt_text(console: Console, prompt: PromptFn) -> str:
+    text = prompt("› ").rstrip()
+    console.print()
+    return text
 
 
 def _print_progress(console: Console, event: ProgressEvent, *, status: "_ShimmerStatus | None" = None) -> None:
@@ -174,10 +175,6 @@ def _print_progress(console: Console, event: ProgressEvent, *, status: "_Shimmer
         console.print(line)
     if status is not None:
         status.set(_idle_status_text(event))
-
-
-def _submitted_message(label: str, text: str) -> str:
-    return "\n".join([f"[dim]{escape(label)}[/]", escape(text)])
 
 
 def _result_message(result: MatchRunResult) -> str:
@@ -221,6 +218,12 @@ def _render_progress_lines(event: ProgressEvent) -> list[str]:
         return [f"[dim][blink]业务 trace 完成：{escape(event.message)}[/][/]"]
     if event.type == "run_failed":
         return [f"[dim]·[/] 运行失败：{escape(event.message)}"]
+    if event.type == "resume_quality_comment_failed":
+        lines = [f"[dim]· {escape(event.message)}[/]"]
+        error = str(payload.get("error") or "").strip()
+        if error:
+            lines.append(f"[dim]  原因：{escape(_clip_text(error, 180))}[/]")
+        return lines
     if event.type in {
         "requirements_completed",
         "controller_completed",
@@ -229,7 +232,6 @@ def _render_progress_lines(event: ProgressEvent) -> list[str]:
         "scoring_started",
         "scoring_completed",
         "resume_quality_comment_completed",
-        "resume_quality_comment_failed",
         "reflection_completed",
         "finalizer_completed",
     }:
@@ -254,6 +256,12 @@ def _status_text(event: ProgressEvent) -> str:
     else:
         detail = event.message
     return f"{stage} 正在思考：{detail}"
+
+
+def _clip_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 3)].rstrip()}..."
 
 
 def _idle_status_text(event: ProgressEvent) -> str:
@@ -302,6 +310,9 @@ def _render_round_completed(event: ProgressEvent, payload: dict[str, Any]) -> li
     reflection_summary = str(payload.get("reflection_summary") or "").strip()
     if reflection_summary:
         lines.append(f"本轮反思：{escape(reflection_summary)}")
+    reflection_rationale = str(payload.get("reflection_rationale") or "").strip()
+    if reflection_rationale:
+        lines.append(f"反思理由：{escape(reflection_rationale)}")
     return lines
 
 

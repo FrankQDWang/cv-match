@@ -392,4 +392,5 @@ def _reflection_summary(advice) -> ReflectionSummaryView | None:
         decision="stop" if advice.suggest_stop else "continue",
         stop_reason=advice.suggested_stop_reason,
         reflection_summary=advice.reflection_summary,
+        reflection_rationale=advice.reflection_rationale,
     )

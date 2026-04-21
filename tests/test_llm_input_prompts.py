@@ -262,6 +262,7 @@ def test_reflection_prompt_contains_round_review_and_candidate_ids() -> None:
     )
 
     assert "TASK" in prompt
+    assert "reflection_rationale" in prompt
     assert "ROUND RESULT" in prompt
     assert "CURRENT QUERY" in prompt
     assert "TOP CANDIDATES" in prompt

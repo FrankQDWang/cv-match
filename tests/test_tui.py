@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,17 @@ from seektalent.progress import ProgressEvent
 
 def _console(width: int = 80) -> Console:
     return Console(record=True, width=width, force_terminal=False, color_system=None)
+
+
+def _echoing_ask(console: Console, answers: list[str]):
+    remaining = iter(answers)
+
+    def ask(prompt_text: str) -> str:
+        answer = next(remaining)
+        console.print(f"{prompt_text}{answer}")
+        return answer
+
+    return ask
 
 
 def test_print_intro_matches_051_header_and_job_title_prompt() -> None:
@@ -76,7 +88,6 @@ def test_run_chat_session_prints_natural_transcript_without_duplicate_title_or_e
     from seektalent.api import MatchRunResult
     from seektalent.tui import run_chat_session
 
-    answers = iter(["AI Agent开发工程师", "职位描述\nAI Agent JD", ""])
     console = _console()
 
     async def fake_run_search(**kwargs):
@@ -100,7 +111,7 @@ def test_run_chat_session_prints_natural_transcript_without_duplicate_title_or_e
         )
 
     exit_code = run_chat_session(
-        ask=lambda prompt_text: next(answers),
+        ask=_echoing_ask(console, ["AI Agent开发工程师", "职位描述\nAI Agent JD", ""]),
         console=console,
         run_search=fake_run_search,
         cwd=Path("/tmp/project"),
@@ -109,8 +120,13 @@ def test_run_chat_session_prints_natural_transcript_without_duplicate_title_or_e
     rendered = console.export_text()
     assert exit_code == 0
     assert rendered.count("Paste Job Title.") == 1
+    assert rendered.count("Paste JD.") == 1
     assert rendered.count("AI Agent开发工程师") == 1
+    assert rendered.count("职位描述") == 1
+    assert rendered.count("AI Agent JD") == 1
     assert rendered.count("Paste Notes (optional). Press Enter to skip.") == 1
+    assert "\nJob Title\n" not in rendered
+    assert "\nJD\n" not in rendered
     assert "\nNotes\n" not in rendered
     assert "最终结果" in rendered
     assert "Session complete. Re-run seektalent to start a new session." in rendered
@@ -120,7 +136,6 @@ def test_run_chat_session_prints_notes_once_when_present() -> None:
     from seektalent.api import MatchRunResult
     from seektalent.tui import run_chat_session
 
-    answers = iter(["AI Agent开发工程师", "JD", "source: benchmark"])
     console = _console()
 
     async def fake_run_search(**kwargs):
@@ -142,7 +157,7 @@ def test_run_chat_session_prints_notes_once_when_present() -> None:
         )
 
     run_chat_session(
-        ask=lambda prompt_text: next(answers),
+        ask=_echoing_ask(console, ["AI Agent开发工程师", "JD", "source: benchmark"]),
         console=console,
         run_search=fake_run_search,
         cwd=Path("/tmp/project"),
@@ -151,6 +166,49 @@ def test_run_chat_session_prints_notes_once_when_present() -> None:
     rendered = console.export_text()
     assert rendered.count("Paste Notes (optional). Press Enter to skip.") == 1
     assert rendered.count("source: benchmark") == 1
+    assert "\nNotes\n" not in rendered
+
+
+def test_prompt_submission_adds_newline_before_next_prompt() -> None:
+    from seektalent.api import MatchRunResult
+    from seektalent.tui import run_chat_session
+
+    stream = StringIO()
+    console = Console(file=stream, width=80, force_terminal=False, color_system=None)
+    answers = iter(["AI Agent开发工程师", "第一行\n最后一行", ""])
+
+    def ask(prompt_text: str) -> str:
+        answer = next(answers)
+        console.file.write(f"{prompt_text}{answer}")
+        return answer
+
+    async def fake_run_search(**kwargs):
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id="run-1",
+                run_dir="/tmp/run-1",
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="共推荐 0 位候选人。",
+                candidates=[],
+            ),
+            final_markdown="# result",
+            run_id="run-1",
+            run_dir=Path("/tmp/run-1"),
+            trace_log_path=Path("/tmp/run-1/trace.log"),
+            evaluation_result=None,
+        )
+
+    run_chat_session(
+        ask=ask,
+        console=console,
+        run_search=fake_run_search,
+        cwd=Path("/tmp/project"),
+    )
+
+    rendered = stream.getvalue()
+    assert "最后一行Paste Notes" not in rendered
+    assert "最后一行\nPaste Notes" in rendered
 
 
 def test_shimmer_status_uses_faster_20hz_live(monkeypatch) -> None:
@@ -207,18 +265,6 @@ def test_shimmer_line_uses_fast_speed_and_051_visual_shape(monkeypatch) -> None:
     assert "/" not in rendered.plain
 
 
-def test_submitted_message_keeps_full_pasted_text() -> None:
-    from seektalent.tui import _submitted_message
-
-    text = "\n".join([f"Line {index}" for index in range(1, 7)])
-
-    rendered = _submitted_message("JD", text)
-
-    assert rendered.count("Line 1") == 1
-    assert "Line 2\nLine 3\nLine 4\nLine 5\nLine 6" in rendered
-    assert "完整回显" not in rendered
-
-
 def test_round_completed_progress_is_business_summary_first() -> None:
     from seektalent.tui import _render_progress_lines
 
@@ -241,6 +287,7 @@ def test_round_completed_progress_is_business_summary_first() -> None:
                 "r2 · 84 分 · 算法工程师 | 杭州 | 4y · 有召回和排序经验",
             ],
             "reflection_summary": "本轮关键词有效，下一轮保留 python，增加搜索架构方向。",
+            "reflection_rationale": "新增候选人覆盖了核心 Python 能力，但推荐系统证据仍不足，下一轮需要补搜索架构方向。",
         },
     )
 
@@ -255,6 +302,7 @@ def test_round_completed_progress_is_business_summary_first() -> None:
     assert "代表候选人" in rendered
     assert "r1 · 92 分" in rendered
     assert "本轮反思：本轮关键词有效" in rendered
+    assert "反思理由：新增候选人覆盖了核心 Python 能力" in rendered
 
 
 def test_quality_comment_renders_after_candidates_before_reflection() -> None:
@@ -327,6 +375,23 @@ def test_progress_lines_match_051_bullet_style_with_quality_events() -> None:
         assert _render_progress_lines(ProgressEvent(type=event_type, message="message", payload={})) == [
             "[dim]· message[/]"
         ]
+
+
+def test_quality_comment_failure_progress_shows_error_reason() -> None:
+    from seektalent.tui import _render_progress_lines
+
+    lines = _render_progress_lines(
+        ProgressEvent(
+            type="resume_quality_comment_failed",
+            message="本轮简历质量短评生成失败，已继续 reflection。",
+            payload={"error": "ModelHTTPError: status_code: 404, model_name: deepseek-chat"},
+        )
+    )
+
+    rendered = "\n".join(lines)
+    assert "本轮简历质量短评生成失败，已继续 reflection。" in rendered
+    assert "原因：" in rendered
+    assert "deepseek-chat" in rendered
 
 
 def test_thinking_progress_uses_blinking_status_line() -> None:

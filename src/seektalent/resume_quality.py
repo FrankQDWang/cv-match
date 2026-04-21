@@ -53,7 +53,7 @@ class ResumeQualityCommenter:
 
     def _build_agent(self) -> Agent[None, str]:
         return Agent(
-            model=build_model(self.settings.tui_summary_model),
+            model=build_model(self.settings.effective_tui_summary_model),
             output_type=str,
             system_prompt=QUALITY_COMMENT_PROMPT,
             retries=0,

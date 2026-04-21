@@ -274,6 +274,10 @@ class ReflectionAdvice(BaseModel):
 
     keyword_advice: ReflectionKeywordAdvice = Field(default_factory=ReflectionKeywordAdvice, description="Field-safe query-term advice for the next round.")
     filter_advice: ReflectionFilterAdvice = Field(default_factory=ReflectionFilterAdvice, description="Field-level non-location filter advice for the next round.")
+    reflection_rationale: str = Field(
+        default="",
+        description="Human-readable explanation for the reflection advice. Used for TUI trace only.",
+    )
     suggest_stop: bool = Field(
         default=False,
         description="Advisory only: whether reflection recommends stopping after this round. Runtime/controller own the final stop decision.",
@@ -295,6 +299,10 @@ class ReflectionAdviceDraft(BaseModel):
 
     keyword_advice: ReflectionKeywordAdviceDraft = Field(description="Field-safe query-term advice for the next round.")
     filter_advice: ReflectionFilterAdviceDraft = Field(description="Field-level non-location filter advice for the next round.")
+    reflection_rationale: str = Field(
+        min_length=1,
+        description="Explain the round quality, coverage, and next action in 2-4 concise sentences.",
+    )
     suggest_stop: bool = Field(
         description="Advisory only: whether reflection recommends stopping after this round. Runtime/controller own the final stop decision."
     )
@@ -674,6 +682,7 @@ class ReflectionSummaryView(BaseModel):
     decision: DecisionType
     stop_reason: str | None = None
     reflection_summary: str
+    reflection_rationale: str = ""
 
 
 class ControllerContext(BaseModel):

@@ -651,6 +651,7 @@ class WorkflowRuntime:
                     "scoring": self.settings.scoring_model,
                     "reflection": self.settings.reflection_model,
                     "finalize": self.settings.finalize_model,
+                    "tui_summary": self.settings.effective_tui_summary_model,
                 },
                 "enable_eval": self.settings.enable_eval,
                 "configured_providers": self._configured_providers(),
@@ -1167,11 +1168,12 @@ class WorkflowRuntime:
             self._emit_progress(
                 progress_callback,
                 "reflection_completed",
-                reflection_advice.reflection_summary,
+                reflection_advice.reflection_rationale or reflection_advice.reflection_summary,
                 round_no=round_no,
                 payload={
                     "stage": "reflection",
                     "reflection_summary": reflection_advice.reflection_summary,
+                    "reflection_rationale": reflection_advice.reflection_rationale,
                     "suggest_stop": reflection_advice.suggest_stop,
                     "suggested_stop_reason": reflection_advice.suggested_stop_reason,
                 },
@@ -1251,6 +1253,7 @@ class WorkflowRuntime:
             "resume_quality_comment": resume_quality_comment,
             "resume_quality_comment_error": resume_quality_comment_error,
             "reflection_summary": reflection.reflection_summary if reflection is not None else "",
+            "reflection_rationale": reflection.reflection_rationale if reflection is not None else "",
         }
 
     def _representative_candidate_summaries(
@@ -1435,6 +1438,7 @@ class WorkflowRuntime:
         if not self.settings.enable_reflection:
             advice = ReflectionAdvice(
                 reflection_summary="Reflection disabled.",
+                reflection_rationale="Reflection is disabled for this run.",
             )
             return advice
         try:
@@ -1559,6 +1563,7 @@ class WorkflowRuntime:
                 "scoring_model": self.settings.scoring_model,
                 "finalize_model": self.settings.finalize_model,
                 "reflection_model": self.settings.reflection_model,
+                "tui_summary_model": self.settings.effective_tui_summary_model,
                 "judge_model": self.settings.effective_judge_model,
                 "reasoning_effort": self.settings.reasoning_effort,
                 "judge_reasoning_effort": self.settings.effective_judge_reasoning_effort,
@@ -1697,7 +1702,12 @@ class WorkflowRuntime:
             return f"action=stop; stop_reason={output.get('stop_reason')}"
         if stage == "reflection":
             summary = str(output.get("reflection_summary", ""))
-            return f"suggest_stop={output.get('suggest_stop')}; {self._preview_text(summary, limit=140)}"
+            rationale = str(output.get("reflection_rationale", ""))
+            return (
+                f"suggest_stop={output.get('suggest_stop')}; "
+                f"{self._preview_text(summary, limit=100)}; "
+                f"{self._preview_text(rationale, limit=140)}"
+            )
         if stage == "finalize":
             return f"candidates={len(output.get('candidates') or [])}; {self._preview_text(str(output.get('summary', '')), limit=140)}"
         return f"{stage} output payload"
@@ -2468,6 +2478,7 @@ class WorkflowRuntime:
             self.settings.scoring_model,
             self.settings.reflection_model,
             self.settings.finalize_model,
+            self.settings.effective_tui_summary_model,
         ):
             provider = model_provider(model_id)
             if provider in seen:
@@ -3261,6 +3272,7 @@ class WorkflowRuntime:
                     "## Reflection",
                     "",
                     f"- Reflection summary: {reflection.reflection_summary}",
+                    f"- Reflection rationale: {reflection.reflection_rationale or 'None'}",
                     f"- Reflection decision: `{'stop' if reflection.suggest_stop else 'continue'}`",
                 ]
             )

@@ -77,7 +77,7 @@ class AppSettings(BaseSettings):
     finalize_model: str = "openai-responses:gpt-5.4-mini"
     reflection_model: str = "openai-responses:gpt-5.4"
     judge_model: str | None = None
-    tui_summary_model: str = "openai-chat:deepseek-chat"
+    tui_summary_model: str | None = None
     judge_openai_base_url: str | None = None
     judge_openai_api_key: str | None = None
     reasoning_effort: ReasoningEffort = "medium"
@@ -104,9 +104,11 @@ class AppSettings(BaseSettings):
 
     @field_validator(*MODEL_FIELDS)
     @classmethod
-    def validate_model_id(cls, value: str, info: ValidationInfo) -> str:
-        if value is None and info.field_name == "judge_model":
-            return value
+    def validate_model_id(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            if info.field_name in {"judge_model", "tui_summary_model"}:
+                return value
+            raise ValueError(f"{info.field_name} must use the provider:model format, got {value!r}.")
         if _is_qualified_model_id(value):
             return value
         raise ValueError(
@@ -154,6 +156,10 @@ class AppSettings(BaseSettings):
     @property
     def effective_judge_model(self) -> str:
         return self.judge_model or self.scoring_model
+
+    @property
+    def effective_tui_summary_model(self) -> str:
+        return self.tui_summary_model or self.scoring_model
 
     @property
     def effective_judge_reasoning_effort(self) -> ReasoningEffort:

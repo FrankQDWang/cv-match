@@ -115,7 +115,27 @@ def test_reflection_advice_draft_requires_stop_reason_when_stopping() -> None:
             keyword_advice=ReflectionKeywordAdviceDraft(),
             filter_advice=ReflectionFilterAdviceDraft(),
             suggest_stop=True,
+            reflection_rationale="Top pool is good enough to stop.",
         )
+
+
+def test_materialized_reflection_preserves_rationale_for_trace() -> None:
+    context = _context(round_no=2, unique_new_count=10)
+    advice = materialize_reflection_advice(
+        context=cast(Any, context),
+        draft=ReflectionAdviceDraft(
+            keyword_advice=ReflectionKeywordAdviceDraft(suggested_activate_terms=["LangChain"]),
+            filter_advice=ReflectionFilterAdviceDraft(),
+            suggest_stop=False,
+            reflection_rationale=(
+                "Round 1 produced several plausible AI Agent candidates, but coverage is still narrow. "
+                "Trying LangChain next should test the highest-signal unused framework term."
+            ),
+        ),
+    )
+
+    assert advice.reflection_rationale.startswith("Round 1 produced several plausible")
+    assert "LangChain next" in advice.reflection_rationale
 
 
 def test_materialized_reflection_prose_mentions_only_structured_activate_terms() -> None:
@@ -129,6 +149,7 @@ def test_materialized_reflection_prose_mentions_only_structured_activate_terms()
             ),
             filter_advice=ReflectionFilterAdviceDraft(suggested_drop_filter_fields=["position"]),
             suggest_stop=False,
+            reflection_rationale="The search returned no new candidates, so adjust terms and remove stale filters.",
         ),
     )
 
@@ -145,6 +166,7 @@ def test_materialized_reflection_prose_does_not_invent_terms() -> None:
             keyword_advice=ReflectionKeywordAdviceDraft(),
             filter_advice=ReflectionFilterAdviceDraft(),
             suggest_stop=False,
+            reflection_rationale="One new candidate is not enough evidence to change the plan.",
         ),
     )
 
@@ -185,6 +207,7 @@ def test_materialized_reflection_forces_continue_when_untried_admitted_terms_rem
             filter_advice=ReflectionFilterAdviceDraft(),
             suggest_stop=True,
             suggested_stop_reason="Search is saturated.",
+            reflection_rationale="The pool is not yet strong enough and one admitted term remains untried.",
         ),
     )
 
@@ -230,6 +253,7 @@ def test_materialized_reflection_allows_stop_when_top_pool_is_strong() -> None:
             filter_advice=ReflectionFilterAdviceDraft(),
             suggest_stop=True,
             suggested_stop_reason="Search is saturated.",
+            reflection_rationale="The top pool is strong enough and the remaining term is unlikely to change the result.",
         ),
     )
 

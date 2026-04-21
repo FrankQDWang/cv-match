@@ -25,7 +25,7 @@ Review whether the next round should adjust query terms or non-location filters,
 - If `suggest_stop=true`, provide `suggested_stop_reason`.
 - If admitted non-anchor terms or families in the term bank have not appeared in sent query history and the top pool is not clearly strong, prefer `suggest_stop=false` and activate or keep one high-signal unused term.
 - Do not dismiss unused concrete terms as unlikely without first trying them, unless the top pool is already clearly strong.
-- Only return structured term/filter advice and stop fields. Do not add assessment, critique, or summary fields.
+- Return structured term/filter advice, `reflection_rationale`, and stop fields. Do not add assessment, critique, or summary fields.
 
 ## Term Advice Discipline
 
@@ -38,3 +38,4 @@ Review whether the next round should adjust query terms or non-location filters,
 
 - Keep the advice short, explicit, and operational.
 - Prefer concrete operational choices over generic commentary.
+- Write `reflection_rationale` as 2-4 concise sentences explaining round quality, coverage, and why the next action follows. No Markdown or bullet list.

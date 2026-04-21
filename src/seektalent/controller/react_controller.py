@@ -44,11 +44,15 @@ def render_controller_prompt(context: ControllerContext) -> str:
         if latest is not None
         else "(none yet)"
     )
-    previous_reflection = (
-        f"{context.previous_reflection.decision}: {context.previous_reflection.reflection_summary}"
-        if context.previous_reflection is not None
-        else "(none)"
-    )
+    if context.previous_reflection is None:
+        previous_reflection = "(none)"
+    elif context.previous_reflection.reflection_rationale:
+        previous_reflection = (
+            f"{context.previous_reflection.decision}: {context.previous_reflection.reflection_summary} "
+            f"Rationale: {context.previous_reflection.reflection_rationale}"
+        )
+    else:
+        previous_reflection = f"{context.previous_reflection.decision}: {context.previous_reflection.reflection_summary}"
     exact_data = {
         "round_no": context.round_no,
         "action_options": ["search_cts", "stop"],
