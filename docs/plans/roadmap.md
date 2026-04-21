@@ -45,7 +45,8 @@ Repo 当前 public shape 是 deterministic Python Agent。`docs/architecture.md`
 | Phase 2.3B.1: Finalizer Draft Slimming | Done | finalizer model-facing draft schema 已落地，runtime materialize 现有 public `FinalResult`；4 条真实 LLM/CTS eval replay 完成且 finalizer validator retries 为 0。 |
 | Phase 2.3B.2: Reflection Schema Slimming | Done | 0.4.9 已删除 reflection prose assessment 和 persisted critique 字段，4 条真实 LLM/CTS eval replay 完成且 reflection validator retries 为 0。 |
 | Phase 2.3C: Scoring Schema Experiment | Done | 0.4.10 已引入 scorer-facing `ScoredCandidateDraft`，runtime materialize public `ScoredCandidate` 的 evidence/confidence/strengths/weaknesses；4 条真实 LLM/CTS eval replay 完成且 scoring validator retries 为 0。 |
-| Phase 2.4+ | Pending | 下一步进入 reasoning model A/B；之后才做 bounded reflection、verifier、session/action layers。 |
+| Phase 2.4: Reasoning Model A/B | Done (direct 0.4.11 gate) | DeepSeek thinking + strict schema capability已确认；按用户指令直接将 controller/reflection 默认切到 thinking，并完成 0.4.11 fixed-judge 4-row eval + W&B 上传。 |
+| Phase 3+ | Pending | 如需质量归因，先补 fresh non-thinking baseline 或 12-row replay；否则可进入 bounded reflection，再做 verifier、session/action layers。 |
 | Final: Data-Driven Domain Adaptation Loop | Last | 只有 generic baseline 稳定后，才做数据驱动领域适应；不靠人工维护词表。 |
 
 Phase 1 已完成：`search_diagnostics.json` 已成为 run artifact。它把每轮 query、filter、CTS recall、dedup、scoring、reflection、controller response 和 LLM schema pressure 汇总到一个跨 round 诊断账本里。对应归档计划是 `docs/plans/completed/phase-1-search-diagnostics.md`，artifact 说明在 `docs/outputs.md`。
@@ -445,19 +446,32 @@ Scoring gate 状态：
 
 ### Phase 2.4: Reasoning Model A/B
 
-目标：验证 controller/reflection 是否从 reasoning model 中获益。
+状态：已完成 direct 0.4.11 gate；controller/reflection 默认切到 thinking，版本已 bump 到 `0.4.11`。
 
-顺序：
+目标：验证 controller/reflection 是否从 reasoning model 中获益，并先确认百炼 reasoning mode 是否还能使用当前严格结构化输出。
 
-- 先试 reflection，再试 controller。
-- 保持 structured output 小，不因为换 reasoning model 就扩 JSON schema。
-- 如果结构化输出不稳定，先记录失败，不立刻做多模型 fallback 链。
+结论：
 
-验收：
+- 公司 API 前提改为只使用阿里云百炼平台后，本阶段没有使用 OpenAI 官方 Responses 模型。
+- raw Bailian probe 确认 `deepseek-v3.2` 在 `enable_thinking=true` 时可以通过 strict `json_schema` 返回现有小 schema，并带 `reasoning_content`。因此不需要 two-pass。
+- `kimi/kimi-k2.5` probe 因账号未开通产品失败，不能作为能力否定。
+- 已添加 stage flags：`SEEKTALENT_CONTROLLER_ENABLE_THINKING` 和 `SEEKTALENT_REFLECTION_ENABLE_THINKING`。按用户指令，`.env`、`.env.example`、`src/seektalent/default.env` 已同步为 `true`。
+- 首次 4-row A0/B1 是 smoke，不是效果验收：执行时临时把 judge 覆盖成了 `openai-chat:deepseek-v3.2`，违反了 judge 固定原则。`.env`、`.env.example`、`src/seektalent/default.env` 里的 judge 默认仍是 `openai-responses:gpt-5.4`。
+- B1 smoke 未完成，且已观察到 reflection latency 从约 `19.7s` 到 `87.8s`。不要据此宣称效果变好或变差。
+- 之后按用户指令跳过 staged A0/B1/C1，直接执行 0.4.11 default-on gate：controller/reflection 使用百炼 `openai-chat:deepseek-v3.2` thinking；judge 不变，仍为 `openai-responses:gpt-5.4`。
+- 0.4.11 gate 证明 operational compatibility：4/4 fixed-judge eval rows 完成并上传 W&B，没有结构化输出/schema failure。它不是 clean A/B lift 结论，因为没有 fresh same-day non-thinking baseline。
 
-- 与 deepseek-chat v3.2 非推理模型对比。
-- 看困难 JD recall lift、precision、stop quality、token 成本、validator retry。
-- 只有 context 和 stop policy 已经清楚时，reasoning model 的结果才有解释价值。
+Capability probe 记录在 `/tmp/seektalent_phase_2_4_bailian_probe.XXXXXX.json`。错误 judge smoke A0 summary 在 `runs/phase_2_4_a0_bailian_deepseek_non_thinking_gate_local_20260421_154659/benchmark_summary_20260421_160129.json`。错误 judge smoke B1 partial run root 在 `runs/phase_2_4_b1_deepseek_reflection_thinking_gate_local_20260421_160145`，没有生成 benchmark summary。0.4.11 fixed-judge gate summary 在 `runs/phase_2_4_0_4_11_controller_reflection_thinking_gate_20260421_164528/benchmark_summary_20260421_173854.json`，W&B report 为 `https://wandb.ai/frankqdwang1-personal-creations/seektalent/reports/SeekTalent-Version-Metrics--VmlldzoxNjUzODMyOA==`。
+
+指标：
+
+| 阶段 | summary | 样本数 | 完成 eval rows | 平均 final candidates | zero-final | 平均 final total | 平均 precision@10 | 平均 ndcg@10 | 结论 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Phase 2.4 A0 non-thinking smoke, wrong judge | `runs/phase_2_4_a0_bailian_deepseek_non_thinking_gate_local_20260421_154659/benchmark_summary_20260421_160129.json` | 4 | 4 | 10.00 | 0 | 0.4787 | 0.4750 | 0.4874 | Not acceptance; judge changed. |
+| Phase 2.4 B1 reflection thinking smoke, wrong judge | no summary; partial root `runs/phase_2_4_b1_deepseek_reflection_thinking_gate_local_20260421_160145` | 4 | 0 benchmark summary | n/a | n/a | n/a | n/a | n/a | Not acceptance; judge changed and gate incomplete. |
+| Phase 2.4 0.4.11 controller+reflection thinking gate, fixed judge | `runs/phase_2_4_0_4_11_controller_reflection_thinking_gate_20260421_164528/benchmark_summary_20260421_173854.json` | 4 | 4 | 9.50 | 0 | 0.4648 | 0.4500 | 0.4993 | Operational pass; not clean A/B lift estimate. |
+
+下一步：如果要判断 thinking 是否真正提升质量，补 fresh non-thinking baseline 或 12-row replay；否则可以进入 Phase 3。不要为了 reasoning model 扩大模型矩阵或引入 fallback 链。
 
 ### Phase 3: Bounded Reflection Discovery
 
@@ -600,4 +614,4 @@ Scoring gate 状态：
 4. 降低 token/CTS 成本。
 5. 增加 agent 自主性。
 
-当前下一步建议：进入 Phase 2.4 Reasoning Model A/B。不要为了修复单个 Agent 样本而恢复领域词表、domain router、retrieval surface active rule、自动规则升级或 query policy 微服务。
+当前下一步建议：Phase 2.4 的 0.4.11 direct gate 已关闭；若需要质量归因，先补 fresh non-thinking baseline 或 12-row replay，否则进入 Phase 3 Bounded Reflection Discovery。不要为了修复单个 Agent 样本或 Phase 2.4 reasoning gate 的延迟问题而恢复领域词表、domain router、retrieval surface active rule、自动规则升级、query policy 微服务或多模型 fallback 链。

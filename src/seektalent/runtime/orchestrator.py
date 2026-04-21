@@ -1120,6 +1120,8 @@ class WorkflowRuntime:
                 "judge_model": self.settings.effective_judge_model,
                 "reasoning_effort": self.settings.reasoning_effort,
                 "judge_reasoning_effort": self.settings.effective_judge_reasoning_effort,
+                "controller_enable_thinking": self.settings.controller_enable_thinking,
+                "reflection_enable_thinking": self.settings.reflection_enable_thinking,
                 "judge_openai_base_url": self.settings.judge_openai_base_url,
                 "min_rounds": self.settings.min_rounds,
                 "max_rounds": self.settings.max_rounds,

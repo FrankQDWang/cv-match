@@ -741,6 +741,8 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert run_config["settings"]["enable_eval"] is True
     assert run_config["settings"]["requirements_model"] == "openai-responses:gpt-5.4-mini"
     assert run_config["settings"]["controller_model"] == "openai-responses:gpt-5.4-mini"
+    assert run_config["settings"]["controller_enable_thinking"] is True
+    assert run_config["settings"]["reflection_enable_thinking"] is True
     assert (artifacts.run_dir / "prompt_snapshots" / "requirements.md").exists()
     assert (artifacts.run_dir / "prompt_snapshots" / "controller.md").exists()
     assert (artifacts.run_dir / "prompt_snapshots" / "scoring.md").exists()

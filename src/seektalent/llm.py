@@ -13,6 +13,10 @@ from seektalent.config import AppSettings, ReasoningEffort, load_process_env
 
 
 NATIVE_OPENAI_CHAT_MODELS = {"openai-chat:deepseek-v3.2"}
+BAILIAN_THINKING_MODELS = {
+    "openai-chat:deepseek-v3.2",
+    "openai-chat:kimi/kimi-k2.5",
+}
 
 
 def model_provider(model_id: str) -> str:
@@ -80,6 +84,7 @@ def build_model_settings(
     model_id: str,
     *,
     reasoning_effort: ReasoningEffort | None = None,
+    enable_thinking: bool | None = None,
 ) -> ModelSettings:
     effective_effort = reasoning_effort or settings.reasoning_effort
     if effective_effort == "off":
@@ -87,6 +92,8 @@ def build_model_settings(
     else:
         thinking = effective_effort
     model_settings: ModelSettings = {"thinking": thinking}
+    if model_id in BAILIAN_THINKING_MODELS and enable_thinking is not None:
+        model_settings["extra_body"] = {"enable_thinking": enable_thinking}
     if not model_id.startswith("openai-responses:"):
         return model_settings
 

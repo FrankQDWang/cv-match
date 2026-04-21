@@ -80,6 +80,8 @@ class AppSettings(BaseSettings):
     judge_openai_api_key: str | None = None
     reasoning_effort: ReasoningEffort = "medium"
     judge_reasoning_effort: ReasoningEffort | None = None
+    controller_enable_thinking: bool = True
+    reflection_enable_thinking: bool = True
 
     min_rounds: int = 3
     max_rounds: int = 10

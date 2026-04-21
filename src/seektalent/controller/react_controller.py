@@ -25,7 +25,11 @@ class ReActController:
             output_type=build_output_spec(self.settings.controller_model, model, ControllerDecision),
             system_prompt=self.prompt.content,
             deps_type=ControllerContext,
-            model_settings=build_model_settings(self.settings, self.settings.controller_model),
+            model_settings=build_model_settings(
+                self.settings,
+                self.settings.controller_model,
+                enable_thinking=self.settings.controller_enable_thinking,
+            ),
             retries=0,
             output_retries=2,
         ))

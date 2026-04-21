@@ -131,7 +131,11 @@ class ReflectionCritic:
             model=model,
             output_type=build_output_spec(self.settings.reflection_model, model, ReflectionAdviceDraft),
             system_prompt=self.prompt.content,
-            model_settings=build_model_settings(self.settings, self.settings.reflection_model),
+            model_settings=build_model_settings(
+                self.settings,
+                self.settings.reflection_model,
+                enable_thinking=self.settings.reflection_enable_thinking,
+            ),
             retries=0,
             output_retries=2,
         ))

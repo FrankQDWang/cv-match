@@ -67,6 +67,23 @@ def test_app_settings_accepts_explicit_judge_reasoning_effort() -> None:
     assert settings.effective_judge_reasoning_effort == "high"
 
 
+def test_app_settings_accepts_stage_thinking_flags() -> None:
+    settings = make_settings(
+        controller_enable_thinking=True,
+        reflection_enable_thinking=True,
+    )
+
+    assert settings.controller_enable_thinking is True
+    assert settings.reflection_enable_thinking is True
+
+
+def test_app_settings_enables_controller_and_reflection_thinking_by_default() -> None:
+    settings = make_settings()
+
+    assert settings.controller_enable_thinking is True
+    assert settings.reflection_enable_thinking is True
+
+
 def test_app_settings_disable_eval_by_default() -> None:
     settings = make_settings()
 
@@ -228,6 +245,42 @@ def test_build_model_settings_supports_turning_thinking_off() -> None:
 
     openai_chat_settings = build_model_settings(settings, "openai-chat:gpt-4.1-mini")
     openai_responses_settings = build_model_settings(settings, "openai-responses:gpt-5.4-mini")
+
+    assert openai_chat_settings == {"thinking": False}
+    assert openai_responses_settings == {
+        "thinking": False,
+        "openai_text_verbosity": "low",
+    }
+
+
+def test_build_model_settings_adds_bailian_enable_thinking_for_deepseek_v32() -> None:
+    settings = make_settings(reasoning_effort="off")
+
+    model_settings = build_model_settings(
+        settings,
+        "openai-chat:deepseek-v3.2",
+        enable_thinking=True,
+    )
+
+    assert model_settings == {
+        "thinking": False,
+        "extra_body": {"enable_thinking": True},
+    }
+
+
+def test_build_model_settings_ignores_enable_thinking_for_other_openai_models() -> None:
+    settings = make_settings(reasoning_effort="off")
+
+    openai_chat_settings = build_model_settings(
+        settings,
+        "openai-chat:gpt-4.1-mini",
+        enable_thinking=True,
+    )
+    openai_responses_settings = build_model_settings(
+        settings,
+        "openai-responses:gpt-5.4-mini",
+        enable_thinking=True,
+    )
 
     assert openai_chat_settings == {"thinking": False}
     assert openai_responses_settings == {
@@ -424,3 +477,38 @@ def test_all_agents_use_two_output_retries_and_no_generic_retries(
     assert agent._max_result_retries == 2
     assert type(agent._output_type).__name__ == "NativeOutput"
     assert agent._output_type.strict is True
+
+
+def test_controller_and_reflection_pass_independent_thinking_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller_calls: list[dict[str, object]] = []
+    reflection_calls: list[dict[str, object]] = []
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    def fake_controller_settings(settings, model_id: str, **kwargs: object):  # noqa: ANN001
+        controller_calls.append(kwargs)
+        return {"thinking": False}
+
+    def fake_reflection_settings(settings, model_id: str, **kwargs: object):  # noqa: ANN001
+        reflection_calls.append(kwargs)
+        return {"thinking": False}
+
+    monkeypatch.setattr(
+        "seektalent.controller.react_controller.build_model_settings",
+        fake_controller_settings,
+    )
+    monkeypatch.setattr(
+        "seektalent.reflection.critic.build_model_settings",
+        fake_reflection_settings,
+    )
+    settings = make_settings(
+        controller_enable_thinking=True,
+        reflection_enable_thinking=False,
+    )
+
+    ReActController(settings, _prompt("controller"))._get_agent()
+    ReflectionCritic(settings, _prompt("reflection"))._get_agent()
+
+    assert controller_calls == [{"enable_thinking": True}]
+    assert reflection_calls == [{"enable_thinking": False}]
