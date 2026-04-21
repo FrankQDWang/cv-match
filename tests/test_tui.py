@@ -102,6 +102,167 @@ def test_tui_session_renders_input_errors_without_shimmer() -> None:
     assert session.status_fragments() == [("class:status", "Job Title cannot be empty.")]
 
 
+def test_tui_session_running_status_keeps_fast_one_char_slanted_shimmer(monkeypatch) -> None:
+    import seektalent.tui as tui
+    from seektalent.tui import TuiSession
+
+    monkeypatch.setattr(tui.time, "monotonic", lambda: 0.125)
+
+    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
+    session.state.input_step = "running"
+    session.state.status_text = "业务 trace 等待第一步输出"
+
+    fragments = session.status_fragments()
+
+    assert [fragment[1] for fragment in fragments if fragment[0] == "class:status.highlight"] == ["/"]
+
+
+def test_tui_session_started_progress_appears_as_live_trace_line() -> None:
+    from seektalent.tui import TuiSession
+
+    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
+    session.state.input_step = "running"
+
+    session.handle_progress(
+        ProgressEvent(
+            type="controller_started",
+            message="Planning round 3 action.",
+            round_no=3,
+            payload={"stage": "controller"},
+        ),
+        app=session.app,
+    )
+
+    rendered = _fragment_text(session.transcript_fragments())
+
+    assert session.status_line_index == len(session.state.transcript_lines) - 1
+    assert rendered
+    assert session.state.status_text == "controller 正在思考：第 3 轮策略判断"
+
+
+def test_tui_session_running_shimmer_follows_latest_trace_line() -> None:
+    from seektalent.tui import TuiSession
+
+    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
+    session.state.input_step = "running"
+
+    session.handle_progress(
+        ProgressEvent(
+            type="round_completed",
+            message="第 1 轮完成。",
+            round_no=1,
+            payload={
+                "query_terms": ["python"],
+                "raw_candidate_count": 3,
+                "unique_new_count": 2,
+                "newly_scored_count": 2,
+                "fit_count": 1,
+                "not_fit_count": 1,
+                "top_pool_selected_count": 1,
+                "top_pool_retained_count": 0,
+                "top_pool_dropped_count": 0,
+            },
+        ),
+        app=session.app,
+    )
+
+    rendered = _fragment_text(session.transcript_fragments())
+
+    assert session.status_line_index == len(session.state.transcript_lines) - 1
+    assert session.status_is_visible() is False
+    assert "第 1 轮摘要" in rendered
+    assert session.state.status_text == "业务 trace 已更新：第 1 轮摘要"
+
+
+def test_tui_session_displays_full_051_process_trace_with_quality_summary() -> None:
+    from seektalent.tui import TuiSession
+
+    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
+    session.state.input_step = "running"
+
+    events = [
+        ProgressEvent(type="requirements_started", message="正在分析岗位标题、JD 和 notes。", payload={"stage": "requirements"}),
+        ProgressEvent(type="requirements_completed", message="岗位需求解析完成：AI Engineer", payload={}),
+        ProgressEvent(
+            type="controller_started",
+            message="正在判断第 1 轮搜索策略。",
+            round_no=1,
+            payload={"stage": "controller"},
+        ),
+        ProgressEvent(type="controller_completed", message="Use Python search.", round_no=1, payload={}),
+        ProgressEvent(type="search_started", message="第 1 轮开始检索：python agent", round_no=1, payload={}),
+        ProgressEvent(type="search_completed", message="第 1 轮检索完成：搜到 10 人，新增 6 人。", round_no=1, payload={}),
+        ProgressEvent(type="scoring_started", message="第 1 轮开始评分：6 位新增候选人。", round_no=1, payload={}),
+        ProgressEvent(type="scoring_completed", message="第 1 轮评分完成：6 人进入评分，fit 4。", round_no=1, payload={}),
+        ProgressEvent(
+            type="resume_quality_comment_completed",
+            message="本轮简历质量：Agent 相关度较高。",
+            round_no=1,
+            payload={"stage": "resume_quality"},
+        ),
+        ProgressEvent(
+            type="reflection_started",
+            message="正在复盘第 1 轮关键词、候选人质量和下一步。",
+            round_no=1,
+            payload={"stage": "reflection"},
+        ),
+        ProgressEvent(type="reflection_completed", message="继续扩大搜索。", round_no=1, payload={}),
+        ProgressEvent(
+            type="round_completed",
+            message="第 1 轮完成。",
+            round_no=1,
+            payload={
+                "query_terms": ["python", "agent"],
+                "raw_candidate_count": 10,
+                "unique_new_count": 6,
+                "newly_scored_count": 6,
+                "fit_count": 4,
+                "not_fit_count": 2,
+                "top_pool_selected_count": 4,
+                "top_pool_retained_count": 0,
+                "top_pool_dropped_count": 1,
+                "representative_candidates": ["r1 · 92 分"],
+                "reflection_summary": "继续扩大搜索。",
+            },
+        ),
+        ProgressEvent(type="finalizer_started", message="整理最终名单。", payload={"stage": "finalizer"}),
+        ProgressEvent(type="finalizer_completed", message="最终名单整理完成。", payload={}),
+        ProgressEvent(type="run_completed", message="Run completed.", payload={}),
+    ]
+
+    for event in events:
+        session.handle_progress(event, app=session.app)
+        live_status = {
+            "requirements_started": "requirements 正在思考：岗位需求解析",
+            "controller_started": "controller 正在思考：第 1 轮策略判断",
+            "reflection_started": "reflection 正在思考：第 1 轮复盘判断",
+            "finalizer_started": "finalizer 正在思考：整理最终名单",
+        }.get(event.type)
+        if live_status is None:
+            expected = "第 1 轮摘要" if event.type == "round_completed" else event.message
+            assert expected in _fragment_text(session.transcript_fragments())
+        else:
+            assert session.state.status_text == live_status
+            assert session.status_line_index == len(session.state.transcript_lines) - 1
+
+    transcript = "\n".join(session.state.transcript_lines)
+    expected_snippets = [
+        "岗位需求解析完成：AI Engineer",
+        "Use Python search.",
+        "第 1 轮开始检索：python agent",
+        "第 1 轮检索完成：搜到 10 人，新增 6 人。",
+        "第 1 轮开始评分：6 位新增候选人。",
+        "第 1 轮评分完成：6 人进入评分，fit 4。",
+        "本轮简历质量：Agent 相关度较高。",
+        "继续扩大搜索。",
+        "第 1 轮摘要",
+        "最终名单整理完成。",
+        "业务 trace 完成：Run completed.",
+    ]
+    for snippet in expected_snippets:
+        assert snippet in transcript
+
+
 def test_tui_session_submission_clears_input_buffer() -> None:
     from seektalent.tui import TuiSession
 
@@ -213,11 +374,12 @@ def test_submitted_inputs_render_once_in_transcript_state() -> None:
     assert "\n".join(state.transcript_lines).count("AI agent开发") == 1
 
 
-def test_shimmer_config_is_faster() -> None:
-    from seektalent.tui import SHIMMER_CHARS_PER_SECOND, SHIMMER_REFRESH_PER_SECOND
+def test_shimmer_config_keeps_faster_refresh_with_one_char_slanted_highlight() -> None:
+    from seektalent.tui import SHIMMER_CHARS_PER_SECOND, SHIMMER_HIGHLIGHT_WIDTH, SHIMMER_REFRESH_PER_SECOND
 
     assert SHIMMER_REFRESH_PER_SECOND >= 20
     assert SHIMMER_CHARS_PER_SECOND >= 20
+    assert SHIMMER_HIGHLIGHT_WIDTH == 1
 
 
 def test_submitted_message_keeps_full_pasted_text() -> None:
@@ -331,6 +493,19 @@ def test_thinking_progress_uses_blinking_status_line() -> None:
     )
 
     assert _render_progress_lines(event) == ["[dim][blink]controller 正在思考：第 3 轮策略判断[/][/]"]
+
+
+def test_resume_quality_progress_uses_051_bullet_style() -> None:
+    from seektalent.tui import _render_progress_lines
+
+    event = ProgressEvent(
+        type="resume_quality_comment_completed",
+        message="本轮简历质量：整体相关度较高。",
+        round_no=2,
+        payload={"stage": "resume_quality"},
+    )
+
+    assert _render_progress_lines(event) == ["[dim]· 本轮简历质量：整体相关度较高。[/]"]
 
 
 def test_result_message_lists_final_shortlist_for_business_review(tmp_path: Path) -> None:

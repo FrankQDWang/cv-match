@@ -30,7 +30,7 @@ INTRO_BOX_MAX_WIDTH = 64
 FOLLOW_RESUME_THRESHOLD_LINES = 4
 SHIMMER_REFRESH_PER_SECOND = 20
 SHIMMER_CHARS_PER_SECOND = 24
-SHIMMER_HIGHLIGHT_WIDTH = 6
+SHIMMER_HIGHLIGHT_WIDTH = 1
 MARKUP_TAG_RE = re.compile(r"\[(/?)([a-zA-Z_][a-zA-Z0-9_ -]*|#[0-9a-fA-F]{3,6})?\]")
 MARKUP_STYLES = {
     "dim": "dim",
@@ -128,6 +128,7 @@ class TuiSession:
         self.notes = ""
         self.exit_code = 0
         self.search_started = False
+        self.status_line_index: int | None = None
         self.app = self._build_app()
 
     def run(self) -> int:
@@ -240,7 +241,7 @@ class TuiSession:
         return self.state.input_step in {"job_title", "jd", "notes"}
 
     def status_is_visible(self) -> bool:
-        return bool(self.state.status_text)
+        return bool(self.state.status_text) and self.state.input_step != "running"
 
     def transcript_does_not_extend_height(self) -> bool:
         return self.input_is_active()
@@ -301,8 +302,11 @@ class TuiSession:
 
     def transcript_fragments(self) -> StyleAndTextTuples:
         fragments: StyleAndTextTuples = []
-        for line in self.state.transcript_lines:
-            fragments.extend(_markup_fragments(line))
+        for index, line in enumerate(self.state.transcript_lines):
+            if index == self.status_line_index:
+                fragments.extend(self.status_fragments())
+            else:
+                fragments.extend(_markup_fragments(line))
             fragments.append(("", "\n"))
         return fragments
 
@@ -312,11 +316,13 @@ class TuiSession:
             return []
         if self.state.input_step != "running":
             return [("class:status", text)]
-        band_start = int(time.monotonic() * SHIMMER_CHARS_PER_SECOND) % (len(text) + SHIMMER_HIGHLIGHT_WIDTH + 2) - 3
+        band_start = int(time.monotonic() * SHIMMER_CHARS_PER_SECOND) % (len(text) + 6) - 3
         fragments: StyleAndTextTuples = []
         for index, char in enumerate(text):
-            style = "class:status.highlight" if band_start <= index < band_start + SHIMMER_HIGHLIGHT_WIDTH else "class:status"
-            fragments.append((style, char))
+            if band_start <= index < band_start + SHIMMER_HIGHLIGHT_WIDTH:
+                fragments.append(("class:status.highlight", "/"))
+            else:
+                fragments.append(("class:status", char))
         return fragments
 
     def view_height(self) -> int:
@@ -355,6 +361,7 @@ class TuiSession:
                 self.state.submit_input("Notes", self.notes, view_height=view_height)
             self.state.input_step = "running"
             self.state.status_text = "业务 trace 等待第一步输出"
+            self._show_running_status_line(view_height=self.view_height())
             if app is not None and not self.search_started:
                 self.search_started = True
                 app.create_background_task(self._refresh_status_until_done(app))
@@ -381,11 +388,13 @@ class TuiSession:
             )
         except Exception as exc:  # noqa: BLE001
             self.exit_code = 1
+            self._remove_running_status_line()
             self.state.append_lines(["[bold red]Failed[/]", escape(str(exc)), ""], view_height=self.view_height())
             self.state.status_text = "业务 trace 失败 · Enter/q 退出"
             self.state.input_step = "done"
             app.invalidate()
             return
+        self._remove_running_status_line()
         self.state.append_lines(["", *_result_message(result).splitlines(), ""], view_height=self.view_height())
         self.exit_code = 0
         self.state.status_text = "业务 trace 完成 · Enter/q 退出"
@@ -393,12 +402,15 @@ class TuiSession:
         app.invalidate()
 
     def handle_progress(self, event: ProgressEvent, *, app: Application[int]) -> None:
+        self._remove_running_status_line()
         if event.type in {"requirements_started", "controller_started", "reflection_started", "finalizer_started"}:
             self.state.status_text = _status_text(event)
+            self._show_running_status_line(view_height=self.view_height())
             app.invalidate()
             return
         self.state.append_lines(_render_progress_lines(event), view_height=self.view_height())
         self.state.status_text = _idle_status_text(event)
+        self._show_running_status_line(view_height=self.view_height())
         app.invalidate()
 
     def _input_label(self) -> str:
@@ -408,6 +420,20 @@ class TuiSession:
         if self.state.input_step == "notes":
             return "Paste Notes (optional). Enter to skip."
         return f"Paste {self._input_label()}."
+
+    def _remove_running_status_line(self) -> None:
+        if self.status_line_index is None:
+            return
+        self.state.transcript_lines.pop(self.status_line_index)
+        self.status_line_index = None
+
+    def _show_running_status_line(self, *, view_height: int) -> None:
+        if self.state.input_step != "running" or not self.state.status_text:
+            return
+        self.status_line_index = len(self.state.transcript_lines)
+        self.state.transcript_lines.append("")
+        if self.state.follow:
+            self.state.scroll_to_bottom(view_height=view_height)
 
 def _submitted_message(label: str, text: str) -> str:
     return "\n".join([f"[dim]{escape(label)}[/]", escape(text)])
@@ -499,6 +525,8 @@ def _render_progress_lines(event: ProgressEvent) -> list[str]:
         "search_completed",
         "scoring_started",
         "scoring_completed",
+        "resume_quality_comment_completed",
+        "resume_quality_comment_failed",
         "reflection_completed",
         "finalizer_completed",
     }:

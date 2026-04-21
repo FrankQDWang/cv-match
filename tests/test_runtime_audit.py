@@ -843,9 +843,14 @@ def test_runtime_round_payload_includes_resume_quality_comment(tmp_path: Path, m
     runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes", progress_callback=progress_events.append)
 
     round_event = next(event for event in progress_events if event.type == "round_completed")
+    quality_event = next(event for event in progress_events if event.type == "resume_quality_comment_completed")
+    event_types = [event.type for event in progress_events]
     assert round_event.payload["resume_quality_comment"] == "本轮简历整体质量较好，Python 和检索经验集中，少数候选人管理经验仍需复核。"
     assert round_event.payload["resume_quality_comment_error"] is None
     assert round_event.payload["reflection_summary"] == "No reflection changes."
+    assert quality_event.message == "本轮简历质量：本轮简历整体质量较好，Python 和检索经验集中，少数候选人管理经验仍需复核。"
+    assert event_types.index("scoring_completed") < event_types.index("resume_quality_comment_completed")
+    assert event_types.index("resume_quality_comment_completed") < event_types.index("reflection_started")
 
 
 def test_runtime_resume_quality_comment_failure_does_not_block_reflection(tmp_path: Path, monkeypatch) -> None:
@@ -868,10 +873,14 @@ def test_runtime_resume_quality_comment_failure_does_not_block_reflection(tmp_pa
 
     event_types = [event.type for event in progress_events]
     round_event = next(event for event in progress_events if event.type == "round_completed")
+    quality_event = next(event for event in progress_events if event.type == "resume_quality_comment_failed")
     assert "reflection_completed" in event_types
     assert round_event.payload["resume_quality_comment"] is None
     assert round_event.payload["resume_quality_comment_error"] == "quality comment failed"
     assert round_event.payload["reflection_summary"] == "No reflection changes."
+    assert quality_event.message == "本轮简历质量短评生成失败，已继续 reflection。"
+    assert event_types.index("scoring_completed") < event_types.index("resume_quality_comment_failed")
+    assert event_types.index("resume_quality_comment_failed") < event_types.index("reflection_started")
 
 
 def test_runtime_audit_records_terminal_controller_round(tmp_path: Path, monkeypatch) -> None:

@@ -1013,6 +1013,22 @@ class WorkflowRuntime:
                 ) or None
             except Exception as exc:  # noqa: BLE001
                 resume_quality_comment_error = str(exc)
+            if resume_quality_comment:
+                self._emit_progress(
+                    progress_callback,
+                    "resume_quality_comment_completed",
+                    f"本轮简历质量：{resume_quality_comment}",
+                    round_no=round_no,
+                    payload={"stage": "resume_quality", "resume_quality_comment": resume_quality_comment},
+                )
+            elif resume_quality_comment_error:
+                self._emit_progress(
+                    progress_callback,
+                    "resume_quality_comment_failed",
+                    "本轮简历质量短评生成失败，已继续 reflection。",
+                    round_no=round_no,
+                    payload={"stage": "resume_quality", "error": resume_quality_comment_error},
+                )
             round_state = RoundState(
                 round_no=round_no,
                 controller_decision=controller_decision,
