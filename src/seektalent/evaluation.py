@@ -108,6 +108,40 @@ def task_sha256(jd: str, notes: str = "") -> str:
     return sha256(canonical_json({"jd": jd, "notes": notes}).encode("utf-8")).hexdigest()
 
 
+def render_judge_prompt(
+    *,
+    jd: str,
+    notes: str,
+    candidate: ResumeCandidate,
+    snapshot_hash: str,
+) -> str:
+    exact_data = {
+        "resume_id": candidate.resume_id,
+        "source_resume_id": candidate.source_resume_id,
+        "snapshot_sha256": snapshot_hash,
+    }
+    return "\n\n".join(
+        [
+            "TASK\nJudge whether this resume matches the job. Return one ResumeJudgeResult.",
+            f"JOB DESCRIPTION\n{jd}",
+            f"NOTES\n{notes.strip() or '(none)'}",
+            (
+                "RESUME SNAPSHOT\n"
+                f"- Summary: {candidate.compact_summary()}\n"
+                f"- Current/expected role: {candidate.expected_job_category or '(unknown)'}\n"
+                f"- Location: {candidate.now_location or '(unknown)'}\n"
+                f"- Work years: {candidate.work_year if candidate.work_year is not None else '(unknown)'}\n"
+                f"- Education: {', '.join(candidate.education_summaries[:3]) or '(none)'}\n"
+                f"- Work experience: {'; '.join(candidate.work_experience_summaries[:5]) or '(none)'}\n"
+                f"- Projects: {', '.join(candidate.project_names[:5]) or '(none)'}\n"
+                f"- Work summaries: {'; '.join(candidate.work_summaries[:5]) or '(none)'}\n"
+                f"- Search text: {candidate.search_text}"
+            ),
+            json_block("EXACT DATA", exact_data),
+        ]
+    )
+
+
 def _cache_path(project_root: Path) -> Path:
     return project_root / ".seektalent" / "judge_cache.sqlite3"
 
@@ -433,21 +467,12 @@ class ResumeJudge:
         agent = self._build_agent()
 
         async def worker(candidate: ResumeCandidate, snapshot_hash: str, aliases: list[ResumeCandidate]) -> None:
-            prompt_blocks = [json_block("JOB_DESCRIPTION", {"jd": jd})]
-            if notes.strip():
-                prompt_blocks.append(json_block("NOTES", {"notes": notes}))
-            prompt_blocks.append(
-                json_block(
-                    "RESUME_SNAPSHOT",
-                    {
-                        "resume_id": candidate.resume_id,
-                        "source_resume_id": candidate.source_resume_id,
-                        "snapshot_sha256": snapshot_hash,
-                        "candidate": candidate.raw,
-                    },
-                )
+            prompt = render_judge_prompt(
+                jd=jd,
+                notes=notes,
+                candidate=candidate,
+                snapshot_hash=snapshot_hash,
             )
-            prompt = "\n\n".join(prompt_blocks)
             started = perf_counter()
             async with semaphore:
                 judged = await agent.run(prompt)

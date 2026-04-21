@@ -47,6 +47,14 @@ def json_char_count(value: Any) -> int:
     return len(stable_json_text(value))
 
 
+def text_sha256(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()
+
+
+def text_char_count(value: str) -> int:
+    return len(value)
+
+
 class TraceEvent(BaseModel):
     timestamp: str
     run_id: str

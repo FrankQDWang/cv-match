@@ -699,6 +699,7 @@ class ControllerContext(BaseModel):
     previous_reflection: ReflectionSummaryView | None = None
     latest_reflection_keyword_advice: ReflectionKeywordAdvice | None = None
     latest_reflection_filter_advice: ReflectionFilterAdvice | None = None
+    sent_query_history: list[SentQueryRecord] = Field(default_factory=list)
     shortage_history: list[int] = Field(default_factory=list)
     budget_reminder: str = ""
 

@@ -7,8 +7,20 @@ from pydantic_ai import Agent
 from seektalent.config import AppSettings
 from seektalent.llm import build_model, build_model_settings, build_output_spec
 from seektalent.models import InputTruth, RequirementExtractionDraft, RequirementSheet
-from seektalent.prompting import LoadedPrompt, json_block
+from seektalent.prompting import LoadedPrompt
 from seektalent.requirements.normalization import normalize_requirement_draft
+
+
+def render_requirements_prompt(input_truth: InputTruth) -> str:
+    notes = input_truth.notes.strip() or "(none)"
+    return "\n\n".join(
+        [
+            "TASK\nExtract one RequirementExtractionDraft from the job title, JD, and sourcing notes.",
+            f"JOB TITLE\n{input_truth.job_title}",
+            f"JOB DESCRIPTION\n{input_truth.jd}",
+            f"SOURCING NOTES\n{notes}",
+        ]
+    )
 
 
 class RequirementExtractor:
@@ -28,8 +40,6 @@ class RequirementExtractor:
         ))
 
     async def extract_with_draft(self, *, input_truth: InputTruth) -> tuple[RequirementExtractionDraft, RequirementSheet]:
-        result = await self._get_agent().run(
-            json_block("INPUT_TRUTH", input_truth.model_dump(mode="json")),
-        )
+        result = await self._get_agent().run(render_requirements_prompt(input_truth))
         draft = result.output
         return draft, normalize_requirement_draft(draft, job_title=input_truth.job_title)

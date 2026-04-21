@@ -70,6 +70,7 @@ def build_controller_context(
         previous_reflection=_reflection_summary(previous_reflection),
         latest_reflection_keyword_advice=previous_reflection.keyword_advice if previous_reflection else None,
         latest_reflection_filter_advice=previous_reflection.filter_advice if previous_reflection else None,
+        sent_query_history=run_state.retrieval_state.sent_query_history,
         shortage_history=[
             round_state.search_observation.shortage_count
             for round_state in run_state.round_history

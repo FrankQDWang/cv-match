@@ -19,7 +19,56 @@ from seektalent.models import (
 )
 from seektalent.prompting import LoadedPrompt, json_block
 from seektalent.tracing import LLMCallSnapshot, RunTracer
-from seektalent.tracing import json_char_count, json_sha256
+from seektalent.tracing import json_char_count, json_sha256, text_char_count, text_sha256
+
+
+def _lines(values: list[str], *, limit: int | None = None) -> str:
+    items = values[:limit] if limit is not None else values
+    return "\n".join(f"- {value}" for value in items) if items else "- (none)"
+
+
+def render_scoring_prompt(context: ScoringContext) -> str:
+    policy = context.scoring_policy
+    resume = context.normalized_resume
+    experiences = [
+        f"- {item.title or '(role)'} at {item.company or '(company)'} {item.duration or ''}: {item.summary}"
+        for item in resume.recent_experiences[:3]
+    ]
+    exact_data = {
+        "round_no": context.round_no,
+        "resume_id": resume.resume_id,
+        "source_round": resume.source_round,
+    }
+    return "\n\n".join(
+        [
+            "TASK\nScore this one resume against the role. Return one ScoredCandidateDraft.",
+            (
+                "SCORING POLICY\n"
+                f"- Role: {policy.role_title}\n"
+                f"- Summary: {policy.role_summary}\n"
+                f"- Must have:\n{_lines(policy.must_have_capabilities)}\n"
+                f"- Preferred:\n{_lines(policy.preferred_capabilities)}\n"
+                f"- Exclusions:\n{_lines(policy.exclusion_signals)}\n"
+                f"- Hard locations: {', '.join(policy.hard_constraints.locations) or '(none)'}\n"
+                f"- Rationale: {policy.scoring_rationale}"
+            ),
+            (
+                "RESUME CARD\n"
+                f"- Name: {resume.candidate_name or '(unknown)'}\n"
+                f"- Title: {resume.current_title or resume.headline or '(unknown)'}\n"
+                f"- Company: {resume.current_company or '(unknown)'}\n"
+                f"- Experience: {resume.years_of_experience if resume.years_of_experience is not None else '(unknown)'} years\n"
+                f"- Locations: {', '.join(resume.locations) or '(none)'}\n"
+                f"- Education: {resume.education_summary or '(none)'}\n"
+                f"- Skills:\n{_lines(resume.skills, limit=16)}\n"
+                f"- Achievements:\n{_lines(resume.key_achievements, limit=5)}\n"
+                f"- Completeness: {resume.completeness_score}"
+            ),
+            "RECENT EXPERIENCE\n" + ("\n".join(experiences) if experiences else "- (none)"),
+            f"RAW EXCERPT\n{resume.raw_text_excerpt or '(none)'}",
+            json_block("EXACT DATA", exact_data),
+        ]
+    )
 
 
 class ResumeScorer:
@@ -106,17 +155,14 @@ class ResumeScorer:
         candidate = context.normalized_resume
         call_id = f"scoring-r{context.round_no:02d}-{branch_id}"
         started_at_iso = datetime.now().astimezone().isoformat(timespec="seconds")
-        user_payload = {
-            "SCORING_CONTEXT": context.model_dump(mode="json"),
-            "CALL_METADATA": {"attempt": 1},
-        }
+        user_prompt = render_scoring_prompt(context)
         artifact_paths = [
             f"rounds/round_{context.round_no:02d}/scoring_calls.jsonl",
             f"resumes/{candidate.resume_id}.json",
         ]
         started_at_clock = perf_counter()
         try:
-            draft = await self._score_one_live(context=context, agent=agent)
+            draft = await self._score_one_live(prompt=user_prompt, agent=agent)
             result = _materialize_scored_candidate(
                 draft=draft,
                 resume_id=candidate.resume_id,
@@ -148,10 +194,10 @@ class ResumeScorer:
                     output_artifact_refs=[
                         f"rounds/round_{context.round_no:02d}/scorecards.jsonl#resume_id={candidate.resume_id}"
                     ],
-                    input_payload_sha256=json_sha256(user_payload),
+                    input_payload_sha256=text_sha256(user_prompt),
                     structured_output_sha256=json_sha256(result.model_dump(mode="json")),
                     prompt_chars=len(self.prompt.content),
-                    input_payload_chars=json_char_count(user_payload),
+                    input_payload_chars=text_char_count(user_prompt),
                     output_chars=json_char_count(result.model_dump(mode="json")),
                     input_summary=(
                         f"round={context.round_no}; resume_id={candidate.resume_id}; "
@@ -210,10 +256,10 @@ class ResumeScorer:
                         "scoring_policy.json",
                     ],
                     output_artifact_refs=[],
-                    input_payload_sha256=json_sha256(user_payload),
+                    input_payload_sha256=text_sha256(user_prompt),
                     structured_output_sha256=None,
                     prompt_chars=len(self.prompt.content),
-                    input_payload_chars=json_char_count(user_payload),
+                    input_payload_chars=text_char_count(user_prompt),
                     output_chars=0,
                     input_summary=(
                         f"round={context.round_no}; resume_id={candidate.resume_id}; "
@@ -242,15 +288,9 @@ class ResumeScorer:
     async def _score_one_live(
         self,
         *,
-        context: ScoringContext,
+        prompt: str,
         agent: Agent[None, ScoredCandidateDraft],
     ) -> ScoredCandidateDraft:
-        prompt = "\n\n".join(
-            [
-                json_block("SCORING_CONTEXT", context.model_dump(mode="json")),
-                json_block("CALL_METADATA", {"attempt": 1}),
-            ]
-        )
         result = await agent.run(prompt)
         return result.output
 

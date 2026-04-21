@@ -11,6 +11,44 @@ from seektalent.models import FinalCandidate, FinalResult, FinalResultDraft, Fin
 from seektalent.prompting import LoadedPrompt, json_block
 
 
+def render_finalize_prompt(
+    *,
+    run_id: str,
+    run_dir: str,
+    rounds_executed: int,
+    stop_reason: str,
+    ranked_candidates: list[ScoredCandidate],
+) -> str:
+    candidate_lines = [
+        (
+            f"{rank}. {candidate.resume_id}: score={candidate.overall_score}, "
+            f"fit={candidate.fit_bucket}, must={candidate.must_have_match_score}, "
+            f"risk={candidate.risk_score}; {candidate.reasoning_summary}"
+        )
+        for rank, candidate in enumerate(ranked_candidates, start=1)
+    ]
+    exact_data = {
+        "run_id": run_id,
+        "run_dir": run_dir,
+        "rounds_executed": rounds_executed,
+        "stop_reason": stop_reason,
+        "candidate_order": [candidate.resume_id for candidate in ranked_candidates],
+    }
+    return "\n\n".join(
+        [
+            "TASK\nWrite final shortlist presentation text. Return one FinalResultDraft.",
+            (
+                "FINALIZATION STATE\n"
+                f"- Run id: {run_id}\n"
+                f"- Rounds executed: {rounds_executed}\n"
+                f"- Stop reason: {stop_reason}"
+            ),
+            "RANKED CANDIDATES\n" + ("\n".join(candidate_lines) if candidate_lines else "- (none)"),
+            json_block("EXACT DATA", exact_data),
+        ]
+    )
+
+
 class Finalizer:
     def __init__(self, settings: AppSettings, prompt: LoadedPrompt) -> None:
         self.settings = settings
@@ -79,15 +117,14 @@ class Finalizer:
             stop_reason=stop_reason,
             top_candidates=ranked_candidates,
         )
-        payload = {
-            "run_id": run_id,
-            "run_dir": run_dir,
-            "rounds_executed": rounds_executed,
-            "stop_reason": stop_reason,
-            "ranked_candidates": [item.model_dump(mode="json") for item in ranked_candidates],
-        }
         result = await self._get_agent().run(
-            json_block("FINALIZATION_CONTEXT", payload),
+            render_finalize_prompt(
+                run_id=run_id,
+                run_dir=run_dir,
+                rounds_executed=rounds_executed,
+                stop_reason=stop_reason,
+                ranked_candidates=ranked_candidates,
+            ),
             deps=deps,
         )
         self.last_draft_output = result.output

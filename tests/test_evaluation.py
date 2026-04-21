@@ -586,11 +586,11 @@ def test_resume_judge_includes_notes_block_only_when_present(tmp_path: Path) -> 
     finally:
         cache.close()
 
-    assert "JOB_DESCRIPTION" in prompts[0]
+    assert "JOB DESCRIPTION" in prompts[0]
     assert "NOTES" in prompts[0]
     assert "Prefer agent experience" in prompts[0]
-    assert "RESUME_SNAPSHOT" in prompts[0]
-    assert "NOTES" not in prompts[1]
+    assert "RESUME SNAPSHOT" in prompts[0]
+    assert "NOTES\n(none)" in prompts[1]
 
 
 def test_resume_judge_cache_uses_task_and_resume_without_model(tmp_path: Path) -> None:
@@ -714,7 +714,7 @@ def test_resume_judge_uses_judge_concurrency_limit(tmp_path: Path) -> None:
 
     class FakeAgent:
         async def run(self, prompt_text: str):  # noqa: ANN001
-            assert "RESUME_SNAPSHOT" in prompt_text
+            assert "RESUME SNAPSHOT" in prompt_text
             counters["active"] += 1
             counters["max_active"] = max(counters["max_active"], counters["active"])
             await asyncio.sleep(0.01)
@@ -791,7 +791,7 @@ def test_evaluate_run_persists_jd_resume_and_label_assets(tmp_path: Path, monkey
 
     class FakeAgent:
         async def run(self, prompt_text: str):  # noqa: ANN001
-            assert "JOB_DESCRIPTION" in prompt_text
+            assert "JOB DESCRIPTION" in prompt_text
             return SimpleNamespace(output=ResumeJudgeResult(score=3, rationale="Strong fit."))
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge._build_agent", lambda self: FakeAgent())

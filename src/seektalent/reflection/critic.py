@@ -84,6 +84,73 @@ def _top_pool_is_strong(context: ReflectionContext) -> bool:
     return len(context.top_candidates) >= 10 and strong_fit_count >= 5
 
 
+def _candidate_line(candidate, rank: int) -> str:  # noqa: ANN001
+    return (
+        f"- {rank}. {candidate.resume_id}: {candidate.fit_bucket}, score={candidate.overall_score}, "
+        f"must={candidate.must_have_match_score}, risk={candidate.risk_score}; {candidate.reasoning_summary}"
+    )
+
+
+def render_reflection_prompt(context: ReflectionContext) -> str:
+    plan = context.current_retrieval_plan
+    observation = context.search_observation
+    attempts = [
+        f"- attempt {item.attempt_no}: raw={item.raw_candidate_count}, "
+        f"new={item.batch_unique_new_count}, duplicates={item.batch_duplicate_count}, "
+        f"exhausted={item.exhausted_reason or '(none)'}"
+        for item in context.search_attempts[:8]
+    ]
+    top_candidates = [_candidate_line(candidate, index) for index, candidate in enumerate(context.top_candidates[:8], start=1)]
+    dropped_candidates = [
+        _candidate_line(candidate, index) for index, candidate in enumerate(context.dropped_candidates[:5], start=1)
+    ]
+    failures = [
+        f"- {item.resume_id}: {item.error_message}"
+        for item in context.scoring_failures[:5]
+    ]
+    sent_queries = [
+        f"- round {record.round_no}: {', '.join(record.query_terms)}; {record.keyword_query}"
+        for record in context.sent_query_history[-8:]
+    ]
+    exact_data = {
+        "round_no": context.round_no,
+        "current_query_terms": plan.query_terms,
+        "projected_filter_fields": sorted(plan.projected_cts_filters),
+        "top_candidate_ids": [item.resume_id for item in context.top_candidates[:8]],
+        "dropped_candidate_ids": [item.resume_id for item in context.dropped_candidates[:5]],
+        "stop_advice_fields": ["suggest_stop", "suggested_stop_reason"],
+    }
+    return "\n\n".join(
+        [
+            "TASK\nReview this retrieval round and return structured keyword/filter advice plus stop advice.",
+            (
+                "ROUND RESULT\n"
+                f"- Round: {context.round_no}\n"
+                f"- Requested: {observation.requested_count}\n"
+                f"- Counts: raw={observation.raw_candidate_count}, new={observation.unique_new_count}, "
+                f"shortage={observation.shortage_count}\n"
+                f"- Fetch attempts: {observation.fetch_attempt_count}\n"
+                f"- Exhausted reason: {observation.exhausted_reason or '(none)'}\n"
+                f"- Adapter notes: {', '.join(observation.adapter_notes) or '(none)'}"
+            ),
+            (
+                "CURRENT QUERY\n"
+                f"- Terms: {', '.join(plan.query_terms) or '(none)'}\n"
+                f"- Keyword query: {plan.keyword_query}\n"
+                f"- Non-location filters: {plan.projected_cts_filters or {}}\n"
+                f"- Rationale: {plan.rationale}"
+            ),
+            "SEARCH ATTEMPTS\n" + ("\n".join(attempts) if attempts else "- (none)"),
+            "SENT QUERY HISTORY\n" + ("\n".join(sent_queries) if sent_queries else "- (none)"),
+            "TOP CANDIDATES\n" + ("\n".join(top_candidates) if top_candidates else "- (empty)"),
+            "DROPPED CANDIDATES\n" + ("\n".join(dropped_candidates) if dropped_candidates else "- (none)"),
+            "SCORING FAILURES\n" + ("\n".join(failures) if failures else "- (none)"),
+            "UNTRIED ADMITTED TERMS\n" + (_join_terms(_untried_admitted_terms(context)) or "(none)"),
+            json_block("EXACT DATA", exact_data),
+        ]
+    )
+
+
 def materialize_reflection_advice(*, context: ReflectionContext, draft: ReflectionAdviceDraft) -> ReflectionAdvice:
     keyword_advice = ReflectionKeywordAdvice(
         suggested_activate_terms=draft.keyword_advice.suggested_activate_terms,
@@ -141,7 +208,5 @@ class ReflectionCritic:
         ))
 
     async def reflect(self, *, context: ReflectionContext) -> ReflectionAdvice:
-        result = await self._get_agent().run(
-            json_block("REFLECTION_CONTEXT", context.model_dump(mode="json")),
-        )
+        result = await self._get_agent().run(render_reflection_prompt(context))
         return materialize_reflection_advice(context=context, draft=result.output)

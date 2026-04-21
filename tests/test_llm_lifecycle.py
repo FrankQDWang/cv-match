@@ -255,9 +255,12 @@ class _StubAgent:
     def __init__(self, output) -> None:
         self.output = output
         self.calls = 0
+        self.prompts: list[str] = []
 
     async def run(self, *args, **kwargs):  # noqa: ANN002, ANN003
         self.calls += 1
+        if args:
+            self.prompts.append(args[0])
         return SimpleNamespace(output=self.output)
 
 
@@ -292,6 +295,8 @@ def test_requirement_extractor_uses_run_sync(monkeypatch: pytest.MonkeyPatch) ->
 
     assert output.role_title == "Senior Python Engineer"
     assert stub_agent.calls == 1
+    assert "JOB TITLE" in stub_agent.prompts[0]
+    assert "INPUT_TRUTH" not in stub_agent.prompts[0]
 
 
 @pytest.mark.parametrize(
@@ -324,6 +329,8 @@ def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> 
     asyncio.run(controller.decide(context=_controller_context()))
     asyncio.run(controller.decide(context=_controller_context()))
     assert controller_agent.calls == 2
+    assert "DECISION STATE" in controller_agent.prompts[0]
+    assert "CONTROLLER_CONTEXT" not in controller_agent.prompts[0]
 
     critic = ReflectionCritic(_settings(monkeypatch), _prompt("reflection"))
     reflection_agent = _StubAgent(
@@ -338,6 +345,8 @@ def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> 
     asyncio.run(critic.reflect(context=_reflection_context()))
     asyncio.run(critic.reflect(context=_reflection_context()))
     assert reflection_agent.calls == 2
+    assert "ROUND RESULT" in reflection_agent.prompts[0]
+    assert "REFLECTION_CONTEXT" not in reflection_agent.prompts[0]
 
     finalizer = Finalizer(_settings(monkeypatch), _prompt("finalize"))
     finalizer_agent = _StubAgent(
@@ -372,6 +381,8 @@ def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> 
         )
     )
     assert finalizer_agent.calls == 2
+    assert "RANKED CANDIDATES" in finalizer_agent.prompts[0]
+    assert "FINALIZATION_CONTEXT" not in finalizer_agent.prompts[0]
 
 
 def test_scorer_builds_one_agent_per_parallel_call(monkeypatch: pytest.MonkeyPatch) -> None:

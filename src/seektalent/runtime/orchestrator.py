@@ -15,8 +15,9 @@ from typing import Any, Literal, TypedDict
 from seektalent.clients.cts_client import CTSClient, CTSClientProtocol, CTSFetchResult, MockCTSClient
 from seektalent.config import AppSettings
 from seektalent.controller import ReActController
+from seektalent.controller.react_controller import render_controller_prompt
 from seektalent.evaluation import TOP_K, EvaluationResult, evaluate_run
-from seektalent.finalize.finalizer import Finalizer
+from seektalent.finalize.finalizer import Finalizer, render_finalize_prompt
 from seektalent.llm import model_provider, preflight_models
 from seektalent.models import (
     CTSQuery,
@@ -49,13 +50,14 @@ from seektalent.models import (
 from seektalent.normalization import normalize_resume
 from seektalent.prompting import PromptRegistry
 from seektalent.progress import ProgressCallback, ProgressEvent
-from seektalent.reflection.critic import ReflectionCritic
+from seektalent.reflection.critic import ReflectionCritic, render_reflection_prompt
 from seektalent.requirements import (
     RequirementExtractor,
     build_input_truth,
     build_requirement_digest,
     build_scoring_policy,
 )
+from seektalent.requirements.extractor import render_requirements_prompt
 from seektalent.retrieval import (
     allocate_balanced_city_targets,
     build_default_filter_plan,
@@ -78,7 +80,7 @@ from seektalent.runtime.context_builder import (
 )
 from seektalent.scoring.scorer import ResumeScorer
 from seektalent.tracing import LLMCallSnapshot, RunTracer
-from seektalent.tracing import json_char_count, json_sha256
+from seektalent.tracing import json_char_count, json_sha256, text_char_count, text_sha256
 
 CANONICAL_STOP_REASONS = {
     "enough_high_fit_candidates",
@@ -222,6 +224,13 @@ class WorkflowRuntime:
                     "ranked_candidates": [item.model_dump(mode="json") for item in top_scored],
                 }
             }
+            finalizer_prompt = render_finalize_prompt(
+                run_id=tracer.run_id,
+                run_dir=str(tracer.run_dir),
+                rounds_executed=rounds_executed,
+                stop_reason=stop_reason,
+                ranked_candidates=top_scored,
+            )
             finalizer_artifacts = [
                 "finalizer_context.json",
                 "finalizer_call.json",
@@ -263,6 +272,7 @@ class WorkflowRuntime:
                         model_id=self.settings.finalize_model,
                         prompt_name="finalize",
                         user_payload=finalizer_payload,
+                        user_prompt_text=finalizer_prompt,
                         input_artifact_refs=["finalizer_context.json"],
                         output_artifact_refs=[],
                         started_at=finalizer_started_at,
@@ -302,6 +312,7 @@ class WorkflowRuntime:
                     model_id=self.settings.finalize_model,
                     prompt_name="finalize",
                     user_payload=finalizer_payload,
+                    user_prompt_text=finalizer_prompt,
                     input_artifact_refs=["finalizer_context.json"],
                     output_artifact_refs=["final_candidates.json"],
                     started_at=finalizer_started_at,
@@ -490,6 +501,7 @@ class WorkflowRuntime:
         input_truth = build_input_truth(job_title=job_title, jd=jd, notes=notes)
         call_id = "requirements"
         call_payload = {"INPUT_TRUTH": input_truth.model_dump(mode="json")}
+        user_prompt = render_requirements_prompt(input_truth)
         artifact_paths = [
             "requirement_extraction_draft.json",
             "requirements_call.json",
@@ -523,14 +535,15 @@ class WorkflowRuntime:
                 self._build_llm_call_snapshot(
                     stage="requirements",
                     call_id=call_id,
-                        model_id=self.settings.requirements_model,
-                        prompt_name="requirements",
-                        user_payload=call_payload,
-                        input_artifact_refs=["input_truth.json", "input_snapshot.json"],
-                        output_artifact_refs=[],
-                        started_at=started_at,
-                        latency_ms=latency_ms,
-                        status="failed",
+                    model_id=self.settings.requirements_model,
+                    prompt_name="requirements",
+                    user_payload=call_payload,
+                    user_prompt_text=user_prompt,
+                    input_artifact_refs=["input_truth.json", "input_snapshot.json"],
+                    output_artifact_refs=[],
+                    started_at=started_at,
+                    latency_ms=latency_ms,
+                    status="failed",
                     retries=0,
                     output_retries=2,
                     error_message=str(exc),
@@ -564,6 +577,7 @@ class WorkflowRuntime:
                 model_id=self.settings.requirements_model,
                 prompt_name="requirements",
                 user_payload=call_payload,
+                user_prompt_text=user_prompt,
                 input_artifact_refs=["input_truth.json", "input_snapshot.json"],
                 output_artifact_refs=["requirement_extraction_draft.json", "requirement_sheet.json"],
                 started_at=started_at,
@@ -670,6 +684,7 @@ class WorkflowRuntime:
             )
             controller_call_id = f"controller-r{round_no:02d}"
             controller_call_payload = {"CONTROLLER_CONTEXT": controller_context.model_dump(mode="json")}
+            controller_prompt = render_controller_prompt(controller_context)
             controller_artifacts = [
                 f"rounds/round_{round_no:02d}/controller_context.json",
                 f"rounds/round_{round_no:02d}/controller_call.json",
@@ -706,6 +721,7 @@ class WorkflowRuntime:
                         model_id=self.settings.controller_model,
                         prompt_name="controller",
                         user_payload=controller_call_payload,
+                        user_prompt_text=controller_prompt,
                         input_artifact_refs=[
                             f"rounds/round_{round_no:02d}/controller_context.json",
                             "requirement_sheet.json",
@@ -773,6 +789,7 @@ class WorkflowRuntime:
                     model_id=self.settings.controller_model,
                     prompt_name="controller",
                     user_payload=controller_call_payload,
+                    user_prompt_text=controller_prompt,
                     input_artifact_refs=[
                         f"rounds/round_{round_no:02d}/controller_context.json",
                         "requirement_sheet.json",
@@ -1017,6 +1034,7 @@ class WorkflowRuntime:
             )
             reflection_call_id = f"reflection-r{round_no:02d}"
             reflection_call_payload = {"REFLECTION_CONTEXT": reflection_context.model_dump(mode="json")}
+            reflection_prompt = render_reflection_prompt(reflection_context)
             reflection_artifacts = [
                 f"rounds/round_{round_no:02d}/reflection_context.json",
                 f"rounds/round_{round_no:02d}/reflection_call.json",
@@ -1053,6 +1071,7 @@ class WorkflowRuntime:
                         model_id=self.settings.reflection_model,
                         prompt_name="reflection",
                         user_payload=reflection_call_payload,
+                        user_prompt_text=reflection_prompt,
                         input_artifact_refs=[
                             f"rounds/round_{round_no:02d}/reflection_context.json",
                             "requirement_sheet.json",
@@ -1102,6 +1121,7 @@ class WorkflowRuntime:
                     model_id=self.settings.reflection_model,
                     prompt_name="reflection",
                     user_payload=reflection_call_payload,
+                    user_prompt_text=reflection_prompt,
                     input_artifact_refs=[
                         f"rounds/round_{round_no:02d}/reflection_context.json",
                         "requirement_sheet.json",
@@ -1564,6 +1584,7 @@ class WorkflowRuntime:
         model_id: str,
         prompt_name: str,
         user_payload: dict[str, Any],
+        user_prompt_text: str,
         input_artifact_refs: list[str],
         output_artifact_refs: list[str],
         started_at: str,
@@ -1597,10 +1618,10 @@ class WorkflowRuntime:
             status=status,
             input_artifact_refs=input_artifact_refs,
             output_artifact_refs=output_artifact_refs,
-            input_payload_sha256=json_sha256(user_payload),
+            input_payload_sha256=text_sha256(user_prompt_text),
             structured_output_sha256=output_hash,
             prompt_chars=len(prompt.content),
-            input_payload_chars=json_char_count(user_payload),
+            input_payload_chars=text_char_count(user_prompt_text),
             output_chars=json_char_count(structured_output) if structured_output is not None else 0,
             input_summary=self._llm_input_summary(stage=stage, payload=user_payload),
             output_summary=self._llm_output_summary(stage=stage, output=structured_output),
