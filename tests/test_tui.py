@@ -30,7 +30,11 @@ def test_tui_session_renders_visual_header_box() -> None:
 
     session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp/project"))
 
-    rendered = _fragment_text(session.header_fragments())
+    fragments = session.header_fragments()
+    assert any(fragment[0] == "dim" and "╭" in fragment[1] for fragment in fragments)
+    assert any(fragment[0] == "bold" and ">_ SeekTalent" in fragment[1] for fragment in fragments)
+
+    rendered = _fragment_text(fragments)
 
     assert "╭" in rendered
     assert "╰" in rendered
@@ -41,14 +45,29 @@ def test_tui_session_renders_visual_header_box() -> None:
     assert "/tmp/project" in rendered
 
 
+def test_tui_session_input_stage_does_not_leave_prompt_at_bottom() -> None:
+    from seektalent.tui import TuiSession
+
+    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp/project"))
+
+    assert session.transcript_does_not_extend_height() is True
+
+    session.state.input_step = "running"
+
+    assert session.transcript_does_not_extend_height() is False
+
+
 def test_tui_session_input_prompt_keeps_composer_shortcuts() -> None:
     from seektalent.tui import TuiSession
 
     session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
 
-    rendered = _fragment_text(session.input_label_fragments())
+    fragments = session.input_label_fragments()
+    rendered = _fragment_text(fragments)
 
     assert "Paste Job Title." in rendered
+    assert any(fragment[0] == "bold" and fragment[1] == "Job Title" for fragment in fragments)
+    assert any(fragment[0] == "dim" and "Enter submit" in fragment[1] for fragment in fragments)
     assert "Enter submit" in rendered
     assert "Ctrl+J newline" in rendered
     assert "Ctrl+C quit" in rendered
@@ -115,8 +134,8 @@ def test_transcript_fragments_render_supported_rich_markup() -> None:
     assert "[dim]" not in rendered
     assert "最终结果" in rendered
     assert "· done" in rendered
-    assert ("class:transcript.bold", "最终结果") in fragments
-    assert ("class:transcript.dim", "· done") in fragments
+    assert ("bold", "最终结果") in fragments
+    assert ("dim", "· done") in fragments
 
 
 def test_transcript_fragments_keep_escaped_user_brackets() -> None:

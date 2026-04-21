@@ -33,10 +33,10 @@ SHIMMER_CHARS_PER_SECOND = 24
 SHIMMER_HIGHLIGHT_WIDTH = 6
 MARKUP_TAG_RE = re.compile(r"\[(/?)([a-zA-Z_][a-zA-Z0-9_ -]*|#[0-9a-fA-F]{3,6})?\]")
 MARKUP_STYLES = {
-    "dim": "class:transcript.dim",
-    "bold": "class:transcript.bold",
-    "blink": "class:transcript.blink",
-    "bold red": "class:transcript.error",
+    "dim": "dim",
+    "bold": "bold",
+    "blink": "",
+    "bold red": "ansired bold",
 }
 RunSearchFn = Callable[..., Coroutine[Any, Any, MatchRunResult]]
 
@@ -143,6 +143,7 @@ class TuiSession:
         transcript_window = Window(
             content=TranscriptControl(self),
             wrap_lines=True,
+            dont_extend_height=Condition(self.transcript_does_not_extend_height),
             always_hide_cursor=True,
             get_vertical_scroll=lambda _window: self.state.scroll_offset,
         )
@@ -173,17 +174,8 @@ class TuiSession:
             key_bindings=self._key_bindings(),
             style=Style.from_dict(
                 {
-                    "header.box": "ansibrightblack",
-                    "header.dim": "ansibrightblack",
-                    "header.title": "bold",
-                    "input.help": "ansibrightblack",
-                    "input.prompt": "",
                     "status": "ansibrightblack",
                     "status.highlight": "ansiwhite bold",
-                    "transcript.bold": "bold",
-                    "transcript.blink": "",
-                    "transcript.dim": "ansibrightblack",
-                    "transcript.error": "ansired bold",
                 }
             ),
         )
@@ -246,6 +238,9 @@ class TuiSession:
     def status_is_visible(self) -> bool:
         return bool(self.state.status_text)
 
+    def transcript_does_not_extend_height(self) -> bool:
+        return self.input_is_active()
+
     def header_fragments(self) -> StyleAndTextTuples:
         box_width = self._header_width()
         content_width = box_width - 4
@@ -253,22 +248,22 @@ class TuiSession:
         mode_text = _fit_text("interactive candidate search", content_width - 6)
         title_text = _fit_text(">_ SeekTalent", content_width)
         lines: StyleAndTextTuples = [
-            ("class:header.box", f"╭{'─' * (box_width - 2)}╮\n"),
-            ("class:header.box", "│ "),
-            ("class:header.title", f"{title_text:<{content_width}}"),
-            ("class:header.box", " │\n"),
-            ("class:header.box", "│ "),
+            ("dim", f"╭{'─' * (box_width - 2)}╮\n"),
+            ("dim", "│ "),
+            ("bold", f"{title_text:<{content_width}}"),
+            ("dim", " │\n"),
+            ("dim", "│ "),
             ("", f"{'':<{content_width}}"),
-            ("class:header.box", " │\n"),
-            ("class:header.box", "│ "),
-            ("class:header.dim", "mode:"),
+            ("dim", " │\n"),
+            ("dim", "│ "),
+            ("dim", "mode:"),
             ("", f" {mode_text:<{content_width - 6}}"),
-            ("class:header.box", " │\n"),
-            ("class:header.box", "│ "),
-            ("class:header.dim", "cwd:"),
+            ("dim", " │\n"),
+            ("dim", "│ "),
+            ("dim", "cwd:"),
             ("", f"  {cwd_text:<{content_width - 6}}"),
-            ("class:header.box", " │\n"),
-            ("class:header.box", f"╰{'─' * (box_width - 2)}╯"),
+            ("dim", " │\n"),
+            ("dim", f"╰{'─' * (box_width - 2)}╯"),
         ]
         return lines
 
@@ -277,11 +272,28 @@ class TuiSession:
         return min(max(columns - 4, 36), INTRO_BOX_MAX_WIDTH)
 
     def input_label_fragments(self) -> StyleAndTextTuples:
-        return [
-            ("class:input.prompt", self._input_prompt()),
-            ("", "\n"),
-            ("class:input.help", "Enter submit · Ctrl+J newline · Ctrl+C quit"),
-        ]
+        fragments: StyleAndTextTuples = [("", "Paste ")]
+        if self.state.input_step == "notes":
+            fragments.extend(
+                [
+                    ("bold", "Notes"),
+                    ("", " (optional). Enter to skip."),
+                ]
+            )
+        else:
+            fragments.extend(
+                [
+                    ("bold", self._input_label()),
+                    ("", "."),
+                ]
+            )
+        fragments.extend(
+            [
+                ("", "\n"),
+                ("dim", "Enter submit · Ctrl+J newline · Ctrl+C quit"),
+            ]
+        )
+        return fragments
 
     def transcript_fragments(self) -> StyleAndTextTuples:
         fragments: StyleAndTextTuples = []
