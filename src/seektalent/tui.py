@@ -1,473 +1,154 @@
 from __future__ import annotations
 
 import asyncio
-import re
+import os
 import time
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.filters import Condition
-from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
-from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+from prompt_toolkit.layout import Layout, Window
+from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.layout.dimension import Dimension
-from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
-from prompt_toolkit.styles import Style
+from rich.console import Console
+from rich.live import Live
 from rich.markup import escape
+from rich.text import Text
 
 from seektalent.api import MatchRunResult, run_match_async
 from seektalent.progress import ProgressEvent
 
 COMPOSER_MIN_LINES = 3
-HEADER_HEIGHT = 6
-INPUT_LABEL_HEIGHT = 2
 INTRO_BOX_MAX_WIDTH = 64
-FOLLOW_RESUME_THRESHOLD_LINES = 4
 SHIMMER_REFRESH_PER_SECOND = 20
 SHIMMER_CHARS_PER_SECOND = 24
-SHIMMER_HIGHLIGHT_WIDTH = 1
-MARKUP_TAG_RE = re.compile(r"\[(/?)([a-zA-Z_][a-zA-Z0-9_ -]*|#[0-9a-fA-F]{3,6})?\]")
-MARKUP_STYLES = {
-    "dim": "dim",
-    "bold": "bold",
-    "blink": "",
-    "bold red": "ansired bold",
-}
+SHIMMER_HIGHLIGHT_WIDTH = 4
+PromptFn = Callable[[str], str]
 RunSearchFn = Callable[..., Coroutine[Any, Any, MatchRunResult]]
-
-
-@dataclass
-class TuiState:
-    transcript_lines: list[str] = field(default_factory=list)
-    scroll_offset: int = 0
-    follow: bool = True
-    status_text: str = ""
-    input_step: str = "job_title"
-
-    def submit_input(self, label: str, text: str, *, view_height: int) -> None:
-        lines = _submitted_message(label, text).splitlines()
-        lines.append("")
-        self.append_lines(lines, view_height=view_height)
-
-    def append_lines(self, lines: list[str], *, view_height: int) -> None:
-        self.transcript_lines.extend(lines)
-        if self.follow:
-            self.scroll_to_bottom(view_height=view_height)
-
-    def scroll_to_bottom(self, *, view_height: int) -> None:
-        self.scroll_offset = self._bottom_offset(view_height)
-        self.follow = True
-
-    def scroll_up(self, amount: int, *, view_height: int) -> None:
-        del view_height
-        self.scroll_offset = max(0, self.scroll_offset - amount)
-        self.follow = False
-
-    def scroll_down(self, amount: int, *, view_height: int) -> None:
-        self.scroll_offset = min(self._bottom_offset(view_height), self.scroll_offset + amount)
-        self.follow = self._distance_to_bottom(view_height) <= FOLLOW_RESUME_THRESHOLD_LINES
-        if self.follow:
-            self.scroll_to_bottom(view_height=view_height)
-
-    def visible_lines(self, *, view_height: int) -> list[str]:
-        start = max(0, min(self.scroll_offset, self._bottom_offset(view_height)))
-        end = start + max(1, view_height)
-        return self.transcript_lines[start:end]
-
-    def _bottom_offset(self, view_height: int) -> int:
-        return max(0, len(self.transcript_lines) - max(1, view_height))
-
-    def _distance_to_bottom(self, view_height: int) -> int:
-        return self._bottom_offset(view_height) - self.scroll_offset
 
 
 def run_chat_session(
     *,
-    ask: object | None = None,
-    console: object | None = None,
+    ask: PromptFn | None = None,
+    console: Console | None = None,
     run_search: RunSearchFn = run_match_async,
     cwd: Path | None = None,
 ) -> int:
-    del ask, console
-    return TuiSession(run_search=run_search, cwd=cwd or Path.cwd()).run()
+    console = console or Console()
+    prompt = ask or _build_prompt()
+    try:
+        _print_intro(console, cwd or Path.cwd())
+        job_title = _read_required_text(console, prompt, label="Job Title")
+        console.print(_submitted_message("Job Title", job_title))
+        console.print()
 
+        jd = _read_required_text(console, prompt, label="JD")
+        console.print(_submitted_message("JD", jd))
+        console.print()
 
-class TranscriptControl(FormattedTextControl):
-    def __init__(self, session: "TuiSession") -> None:
-        super().__init__(session.transcript_fragments, focusable=True, show_cursor=False)
-        self.session = session
+        console.print("Paste [bold]Notes[/] [dim](optional)[/]. Press [bold]Enter[/] to skip.")
+        notes = prompt("› ").rstrip().strip()
+        if notes:
+            console.print(_submitted_message("Notes", notes))
+            console.print()
 
-    def mouse_handler(self, mouse_event: MouseEvent):
-        if mouse_event.event_type == MouseEventType.SCROLL_UP:
-            self.session.scroll_up(3)
-            return None
-        if mouse_event.event_type == MouseEventType.SCROLL_DOWN:
-            self.session.scroll_down(3)
-            return None
-        return NotImplemented
-
-
-class TuiSession:
-    def __init__(
-        self,
-        *,
-        run_search: RunSearchFn = run_match_async,
-        cwd: Path | None = None,
-    ) -> None:
-        self.run_search = run_search
-        self.cwd = cwd or Path.cwd()
-        self.state = TuiState()
-        self.buffer = Buffer(multiline=True)
-        self.job_title = ""
-        self.jd = ""
-        self.notes = ""
-        self.exit_code = 0
-        self.search_started = False
-        self.status_line_index: int | None = None
-        self.app = self._build_app()
-
-    def run(self) -> int:
-        result = self.app.run()
-        return int(result if result is not None else self.exit_code)
-
-    def _build_app(self) -> Application[int]:
-        header_window = Window(
-            FormattedTextControl(self.header_fragments),
-            height=HEADER_HEIGHT,
-            always_hide_cursor=True,
-        )
-        transcript_window = Window(
-            content=TranscriptControl(self),
-            wrap_lines=True,
-            dont_extend_height=Condition(self.transcript_does_not_extend_height),
-            always_hide_cursor=True,
-            get_vertical_scroll=lambda _window: self.state.scroll_offset,
-        )
-        input_control = BufferControl(buffer=self.buffer)
-        input_container = ConditionalContainer(
-            HSplit(
-                [
-                    Window(FormattedTextControl(self.input_label_fragments), height=INPUT_LABEL_HEIGHT),
-                    Window(
-                        input_control,
-                        height=Dimension(min=COMPOSER_MIN_LINES, preferred=COMPOSER_MIN_LINES),
-                        wrap_lines=True,
-                        get_line_prefix=lambda line_number, wrap_count: (
-                            "› " if line_number == 0 and wrap_count == 0 else "  "
-                        ),
-                    ),
-                ]
-            ),
-            filter=Condition(self.input_is_active),
-        )
-        status_window = ConditionalContainer(
-            Window(FormattedTextControl(self.status_fragments), height=1),
-            filter=Condition(self.status_is_visible),
-        )
-        return Application(
-            full_screen=True,
-            mouse_support=True,
-            layout=Layout(
-                HSplit([header_window, transcript_window, input_container, status_window]),
-                focused_element=input_control,
-            ),
-            key_bindings=self._key_bindings(),
-            style=Style.from_dict(
-                {
-                    "status": "ansibrightblack",
-                    "status.highlight": "ansiwhite bold",
-                }
-            ),
-        )
-
-    def _key_bindings(self) -> KeyBindings:
-        bindings = KeyBindings()
-
-        @bindings.add("enter")
-        def _submit(event) -> None:
-            if self.input_is_active():
-                self.submit_current_input(view_height=self.view_height(), app=event.app)
-                return
-            if self.state.input_step == "done":
-                event.app.exit(result=self.exit_code)
-
-        @bindings.add("c-j")
-        def _newline(event) -> None:
-            if self.input_is_active():
-                event.app.current_buffer.insert_text("\n")
-
-        @bindings.add("c-c")
-        def _interrupt(event) -> None:
-            self.exit_code = 130
-            event.app.exit(result=130)
-
-        @bindings.add("q", filter=Condition(lambda: self.state.input_step == "done"))
-        def _quit(event) -> None:
-            event.app.exit(result=self.exit_code)
-
-        @bindings.add("pageup")
-        def _page_up(event) -> None:
-            del event
-            self.scroll_up(max(1, self.view_height() - 1))
-
-        @bindings.add("pagedown")
-        def _page_down(event) -> None:
-            del event
-            self.scroll_down(max(1, self.view_height() - 1))
-
-        @bindings.add("up", filter=Condition(lambda: not self.input_is_active()))
-        def _up(event) -> None:
-            del event
-            self.scroll_up(1)
-
-        @bindings.add("down", filter=Condition(lambda: not self.input_is_active()))
-        def _down(event) -> None:
-            del event
-            self.scroll_down(1)
-
-        @bindings.add("end")
-        def _end(event) -> None:
-            del event
-            self.state.scroll_to_bottom(view_height=self.view_height())
-
-        return bindings
-
-    def input_is_active(self) -> bool:
-        return self.state.input_step in {"job_title", "jd", "notes"}
-
-    def status_is_visible(self) -> bool:
-        return bool(self.state.status_text) and self.state.input_step != "running"
-
-    def transcript_does_not_extend_height(self) -> bool:
-        return self.input_is_active()
-
-    def header_fragments(self) -> StyleAndTextTuples:
-        box_width = self._header_width()
-        content_width = box_width - 4
-        cwd_text = _fit_text(str(self.cwd), content_width - 5)
-        mode_text = _fit_text("interactive candidate search", content_width - 6)
-        title_text = _fit_text(">_ SeekTalent", content_width)
-        lines: StyleAndTextTuples = [
-            ("dim", f"╭{'─' * (box_width - 2)}╮\n"),
-            ("dim", "│ "),
-            ("bold", f"{title_text:<{content_width}}"),
-            ("dim", " │\n"),
-            ("dim", "│ "),
-            ("", f"{'':<{content_width}}"),
-            ("dim", " │\n"),
-            ("dim", "│ "),
-            ("dim", "mode:"),
-            ("", f" {mode_text:<{content_width - 6}}"),
-            ("dim", " │\n"),
-            ("dim", "│ "),
-            ("dim", "cwd:"),
-            ("", f"  {cwd_text:<{content_width - 6}}"),
-            ("dim", " │\n"),
-            ("dim", f"╰{'─' * (box_width - 2)}╯"),
-        ]
-        return lines
-
-    def _header_width(self) -> int:
-        columns = self.app.output.get_size().columns if hasattr(self, "app") else 80
-        return min(max(columns - 4, 36), INTRO_BOX_MAX_WIDTH)
-
-    def input_label_fragments(self) -> StyleAndTextTuples:
-        fragments: StyleAndTextTuples = [("", "Paste ")]
-        if self.state.input_step == "notes":
-            fragments.extend(
-                [
-                    ("bold", "Notes"),
-                    ("", " (optional). Enter to skip."),
-                ]
+        status = _ShimmerStatus(console)
+        status.start("业务 trace 等待第一步输出")
+        try:
+            result = asyncio.run(
+                run_search(
+                    job_title=job_title,
+                    jd=jd,
+                    notes=notes,
+                    env_file=".env",
+                    progress_callback=lambda event: _print_progress(console, event, status=status),
+                )
             )
-        else:
-            fragments.extend(
-                [
-                    ("bold", self._input_label()),
-                    ("", "."),
-                ]
-            )
-        fragments.extend(
+        finally:
+            status.stop()
+    except KeyboardInterrupt:
+        console.print("\n[bold]Interrupted[/]")
+        console.print("[dim]Re-run seektalent to start a new session.[/]")
+        return 130
+    except Exception as exc:  # noqa: BLE001
+        console.print("[bold red]Failed[/]")
+        console.print(escape(str(exc)))
+        console.print("[dim]Session complete. Re-run seektalent to start a new session.[/]")
+        return 1
+    console.print()
+    console.print(_result_message(result))
+    console.print()
+    console.print("[dim]Session complete. Re-run seektalent to start a new session.[/]")
+    return 0
+
+
+def _build_prompt() -> PromptFn:
+    if os.environ.get("TERM") == "dumb":
+        os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+
+    def _prompt(prompt_text: str) -> str:
+        buffer = Buffer(multiline=True)
+        app = Application(
+            full_screen=False,
+            key_bindings=_composer_bindings(),
+            layout=Layout(_build_composer_window(buffer, prompt_text)),
+        )
+        return app.run()
+
+    return _prompt
+
+
+def _composer_bindings() -> KeyBindings:
+    bindings = KeyBindings()
+
+    @bindings.add("enter")
+    def _submit(event) -> None:
+        event.app.exit(result=event.app.current_buffer.text)
+
+    @bindings.add("c-j")
+    def _newline(event) -> None:
+        event.app.current_buffer.insert_text("\n")
+
+    @bindings.add("c-c")
+    def _interrupt(event) -> None:
+        raise KeyboardInterrupt
+
+    return bindings
+
+
+def _build_composer_window(buffer: Buffer, prompt_text: str) -> Window:
+    return Window(
+        BufferControl(buffer=buffer),
+        height=Dimension(min=COMPOSER_MIN_LINES, preferred=COMPOSER_MIN_LINES),
+        wrap_lines=True,
+        get_line_prefix=lambda line_number, wrap_count: prompt_text if line_number == 0 and wrap_count == 0 else "  ",
+    )
+
+
+def _print_intro(console: Console, cwd: Path) -> None:
+    box_width = min(max(console.size.width - 4, 36), INTRO_BOX_MAX_WIDTH)
+    content_width = box_width - 4
+    cwd_text = _fit_text(str(cwd), content_width - 5)
+    mode_text = _fit_text("interactive candidate search", content_width - 6)
+    title_text = _fit_text(">_ SeekTalent", content_width)
+    console.print(
+        "\n".join(
             [
-                ("", "\n"),
-                ("dim", "Enter submit · Ctrl+J newline · Ctrl+C quit"),
+                f"[dim]╭{'─' * (box_width - 2)}╮[/]",
+                f"[dim]│[/] [bold]{escape(title_text):<{content_width}}[/] [dim]│[/]",
+                f"[dim]│[/] {'':<{content_width}} [dim]│[/]",
+                f"[dim]│[/] [dim]mode:[/] {escape(mode_text):<{content_width - 6}} [dim]│[/]",
+                f"[dim]│[/] [dim]cwd:[/]  {escape(cwd_text):<{content_width - 6}} [dim]│[/]",
+                f"[dim]╰{'─' * (box_width - 2)}╯[/]",
+                "",
+                "Paste [bold]Job Title[/].",
+                "[dim]Enter submit · Ctrl+J newline · Ctrl+C quit[/]",
             ]
         )
-        return fragments
-
-    def transcript_fragments(self) -> StyleAndTextTuples:
-        fragments: StyleAndTextTuples = []
-        for index, line in enumerate(self.state.transcript_lines):
-            if index == self.status_line_index:
-                fragments.extend(self.status_fragments())
-            else:
-                fragments.extend(_markup_fragments(line))
-            fragments.append(("", "\n"))
-        return fragments
-
-    def status_fragments(self) -> StyleAndTextTuples:
-        text = self.state.status_text
-        if not text:
-            return []
-        if self.state.input_step != "running":
-            return [("class:status", text)]
-        band_start = int(time.monotonic() * SHIMMER_CHARS_PER_SECOND) % (len(text) + 6) - 3
-        fragments: StyleAndTextTuples = []
-        for index, char in enumerate(text):
-            if band_start <= index < band_start + SHIMMER_HIGHLIGHT_WIDTH:
-                fragments.append(("class:status.highlight", "/"))
-            else:
-                fragments.append(("class:status", char))
-        return fragments
-
-    def view_height(self) -> int:
-        rows = self.app.output.get_size().rows if hasattr(self, "app") else 24
-        input_height = COMPOSER_MIN_LINES + INPUT_LABEL_HEIGHT if self.input_is_active() else 0
-        status_height = 1 if self.status_is_visible() else 0
-        return max(1, rows - HEADER_HEIGHT - input_height - status_height)
-
-    def scroll_up(self, amount: int) -> None:
-        self.state.scroll_up(amount, view_height=self.view_height())
-        self.app.invalidate()
-
-    def scroll_down(self, amount: int) -> None:
-        self.state.scroll_down(amount, view_height=self.view_height())
-        self.app.invalidate()
-
-    def submit_current_input(self, *, view_height: int, app: Application[int] | None = None) -> None:
-        text = self.buffer.text.rstrip()
-        step = self.state.input_step
-        if step in {"job_title", "jd"} and not text.strip():
-            self.state.status_text = f"{self._input_label()} cannot be empty."
-            if app is not None:
-                app.invalidate()
-            return
-        if step == "job_title":
-            self.job_title = text.strip()
-            self.state.submit_input("Job Title", self.job_title, view_height=view_height)
-            self.state.input_step = "jd"
-        elif step == "jd":
-            self.jd = text.strip()
-            self.state.submit_input("JD", self.jd, view_height=view_height)
-            self.state.input_step = "notes"
-        elif step == "notes":
-            self.notes = text.strip()
-            if self.notes:
-                self.state.submit_input("Notes", self.notes, view_height=view_height)
-            self.state.input_step = "running"
-            self.state.status_text = "业务 trace 等待第一步输出"
-            self._show_running_status_line(view_height=self.view_height())
-            if app is not None and not self.search_started:
-                self.search_started = True
-                app.create_background_task(self._refresh_status_until_done(app))
-                app.create_background_task(self._run_search(app))
-        self.buffer.text = ""
-        if app is not None:
-            if self.input_is_active():
-                app.layout.focus(self.buffer)
-            app.invalidate()
-
-    async def _refresh_status_until_done(self, app: Application[int]) -> None:
-        while self.state.input_step == "running":
-            app.invalidate()
-            await asyncio.sleep(1 / SHIMMER_REFRESH_PER_SECOND)
-
-    async def _run_search(self, app: Application[int]) -> None:
-        try:
-            result = await self.run_search(
-                job_title=self.job_title,
-                jd=self.jd,
-                notes=self.notes,
-                env_file=".env",
-                progress_callback=lambda event: self.handle_progress(event, app=app),
-            )
-        except Exception as exc:  # noqa: BLE001
-            self.exit_code = 1
-            self._remove_running_status_line()
-            self.state.append_lines(["[bold red]Failed[/]", escape(str(exc)), ""], view_height=self.view_height())
-            self.state.status_text = "业务 trace 失败 · Enter/q 退出"
-            self.state.input_step = "done"
-            app.invalidate()
-            return
-        self._remove_running_status_line()
-        self.state.append_lines(["", *_result_message(result).splitlines(), ""], view_height=self.view_height())
-        self.exit_code = 0
-        self.state.status_text = "业务 trace 完成 · Enter/q 退出"
-        self.state.input_step = "done"
-        app.invalidate()
-
-    def handle_progress(self, event: ProgressEvent, *, app: Application[int]) -> None:
-        self._remove_running_status_line()
-        if event.type in {"requirements_started", "controller_started", "reflection_started", "finalizer_started"}:
-            self.state.status_text = _status_text(event)
-            self._show_running_status_line(view_height=self.view_height())
-            app.invalidate()
-            return
-        self.state.append_lines(_render_progress_lines(event), view_height=self.view_height())
-        self.state.status_text = _idle_status_text(event)
-        self._show_running_status_line(view_height=self.view_height())
-        app.invalidate()
-
-    def _input_label(self) -> str:
-        return {"job_title": "Job Title", "jd": "JD", "notes": "Notes"}.get(self.state.input_step, "")
-
-    def _input_prompt(self) -> str:
-        if self.state.input_step == "notes":
-            return "Paste Notes (optional). Enter to skip."
-        return f"Paste {self._input_label()}."
-
-    def _remove_running_status_line(self) -> None:
-        if self.status_line_index is None:
-            return
-        self.state.transcript_lines.pop(self.status_line_index)
-        self.status_line_index = None
-
-    def _show_running_status_line(self, *, view_height: int) -> None:
-        if self.state.input_step != "running" or not self.state.status_text:
-            return
-        self.status_line_index = len(self.state.transcript_lines)
-        self.state.transcript_lines.append("")
-        if self.state.follow:
-            self.state.scroll_to_bottom(view_height=view_height)
-
-def _submitted_message(label: str, text: str) -> str:
-    return "\n".join([f"[dim]{escape(label)}[/]", escape(text)])
-
-
-def _markup_fragments(text: str) -> StyleAndTextTuples:
-    fragments: StyleAndTextTuples = []
-    style_stack: list[str] = []
-    position = 0
-    for match in MARKUP_TAG_RE.finditer(text):
-        if match.start() > 0 and text[match.start() - 1] == "\\":
-            if match.start() - 1 > position:
-                fragments.append((_joined_style(style_stack), text[position : match.start() - 1]))
-            fragments.append((_joined_style(style_stack), match.group(0)))
-            position = match.end()
-            continue
-        if match.start() > position:
-            fragments.append((_joined_style(style_stack), text[position : match.start()]))
-        closing, tag = match.groups()
-        if closing:
-            if style_stack:
-                style_stack.pop()
-        elif tag in MARKUP_STYLES:
-            style_stack.append(MARKUP_STYLES[tag])
-        elif tag and tag.startswith("#"):
-            style_stack.append(f"fg:{tag}")
-        position = match.end()
-    if position < len(text):
-        fragments.append((_joined_style(style_stack), text[position:]))
-    return fragments
-
-
-def _joined_style(styles: list[str]) -> str:
-    return " ".join(styles)
+    )
 
 
 def _fit_text(text: str, width: int) -> str:
@@ -475,6 +156,28 @@ def _fit_text(text: str, width: int) -> str:
     if len(text) <= width:
         return text
     return f"...{text[-(width - 3):]}"
+
+
+def _read_required_text(console: Console, prompt: PromptFn, *, label: str) -> str:
+    while True:
+        text = prompt("› ").rstrip()
+        if text.strip():
+            return text.strip()
+        console.print(f"{escape(label)} cannot be empty. Paste it and press [bold]Enter[/].")
+
+
+def _print_progress(console: Console, event: ProgressEvent, *, status: "_ShimmerStatus | None" = None) -> None:
+    if status is not None and event.type in {"requirements_started", "controller_started", "reflection_started", "finalizer_started"}:
+        status.set(_status_text(event))
+        return
+    for line in _render_progress_lines(event):
+        console.print(line)
+    if status is not None:
+        status.set(_idle_status_text(event))
+
+
+def _submitted_message(label: str, text: str) -> str:
+    return "\n".join([f"[dim]{escape(label)}[/]", escape(text)])
 
 
 def _result_message(result: MatchRunResult) -> str:
@@ -610,6 +313,50 @@ def _list_text(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item).strip()]
+
+
+class _ShimmerLine:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def __rich__(self) -> Text:
+        text = self.text or "业务 trace 正在推进"
+        rendered = Text(text, style="dim")
+        if not text:
+            return rendered
+        band_start = int(time.monotonic() * SHIMMER_CHARS_PER_SECOND) % (len(text) + 6) - 3
+        for offset in range(SHIMMER_HIGHLIGHT_WIDTH):
+            index = band_start + offset
+            if 0 <= index < len(text):
+                rendered.stylize("bold white", index, index + 1)
+        return rendered
+
+
+class _ShimmerStatus:
+    def __init__(self, console: Console) -> None:
+        self.renderable = _ShimmerLine("")
+        self.live: Live | None = None
+        self.console = console
+
+    def start(self, text: str) -> None:
+        self.renderable.text = text
+        self.live = Live(
+            self.renderable,
+            console=self.console,
+            refresh_per_second=SHIMMER_REFRESH_PER_SECOND,
+            transient=False,
+        )
+        self.live.start()
+
+    def set(self, text: str) -> None:
+        self.renderable.text = text
+        if self.live is not None:
+            self.live.update(self.renderable)
+
+    def stop(self) -> None:
+        if self.live is not None:
+            self.live.stop()
+            self.live = None
 
 
 __all__ = ["run_chat_session"]

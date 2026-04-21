@@ -1,51 +1,29 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
-from prompt_toolkit.formatted_text import StyleAndTextTuples
+from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.layout.controls import BufferControl
+from prompt_toolkit.layout.dimension import Dimension
+from rich.console import Console
 
 from seektalent.models import FinalCandidate, FinalResult
 from seektalent.progress import ProgressEvent
 
 
-async def _fake_run_search(**kwargs):
-    del kwargs
-    raise AssertionError("run_search should not be called by construction tests")
+def _console(width: int = 80) -> Console:
+    return Console(record=True, width=width, force_terminal=False, color_system=None)
 
 
-def _fragment_text(fragments: StyleAndTextTuples) -> str:
-    return "".join(str(fragment[1]) for fragment in fragments)
+def test_print_intro_matches_051_header_and_job_title_prompt() -> None:
+    from seektalent.tui import _print_intro
 
+    console = _console()
 
-def test_tui_session_uses_fullscreen_application() -> None:
-    from seektalent.tui import TuiSession
+    _print_intro(console, Path("/tmp/project"))
 
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-
-    assert session.app.full_screen is True
-
-
-def test_tui_session_focuses_input_buffer_for_typing_and_paste() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-
-    assert isinstance(session.app.layout.current_control, BufferControl)
-    assert session.app.layout.current_control.buffer is session.buffer
-
-
-def test_tui_session_renders_visual_header_box() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp/project"))
-
-    fragments = session.header_fragments()
-    assert any(fragment[0] == "dim" and "╭" in fragment[1] for fragment in fragments)
-    assert any(fragment[0] == "bold" and ">_ SeekTalent" in fragment[1] for fragment in fragments)
-
-    rendered = _fragment_text(fragments)
-
+    rendered = console.export_text()
     assert "╭" in rendered
     assert "╰" in rendered
     assert ">_ SeekTalent" in rendered
@@ -53,333 +31,180 @@ def test_tui_session_renders_visual_header_box() -> None:
     assert "interactive candidate search" in rendered
     assert "cwd:" in rendered
     assert "/tmp/project" in rendered
+    assert rendered.count("Paste Job Title.") == 1
+    assert "Paste JD." not in rendered
 
 
-def test_tui_session_input_stage_does_not_leave_prompt_at_bottom() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp/project"))
-
-    assert session.transcript_does_not_extend_height() is True
-
-    session.state.input_step = "running"
-
-    assert session.transcript_does_not_extend_height() is False
-
-
-def test_tui_session_input_prompt_keeps_composer_shortcuts() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-
-    fragments = session.input_label_fragments()
-    rendered = _fragment_text(fragments)
-
-    assert "Paste Job Title." in rendered
-    assert any(fragment[0] == "bold" and fragment[1] == "Job Title" for fragment in fragments)
-    assert any(fragment[0] == "dim" and "Enter submit" in fragment[1] for fragment in fragments)
-    assert "Enter submit" in rendered
-    assert "Ctrl+J newline" in rendered
-    assert "Ctrl+C quit" in rendered
-
-
-def test_tui_session_keeps_status_hidden_before_search_starts() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-
-    assert session.state.status_text == ""
-    assert session.status_fragments() == []
-    assert session.app.refresh_interval is None
-
-
-def test_tui_session_renders_input_errors_without_shimmer() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.state.status_text = "Job Title cannot be empty."
-
-    assert session.status_fragments() == [("class:status", "Job Title cannot be empty.")]
-
-
-def test_tui_session_running_status_keeps_fast_one_char_slanted_shimmer(monkeypatch) -> None:
+def test_build_prompt_uses_non_fullscreen_composer(monkeypatch) -> None:
     import seektalent.tui as tui
-    from seektalent.tui import TuiSession
 
-    monkeypatch.setattr(tui.time, "monotonic", lambda: 0.125)
+    captured: dict[str, Any] = {}
 
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.state.input_step = "running"
-    session.state.status_text = "业务 trace 等待第一步输出"
+    class FakeApplication:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
 
-    fragments = session.status_fragments()
+        def run(self) -> str:
+            return "typed text"
 
-    assert [fragment[1] for fragment in fragments if fragment[0] == "class:status.highlight"] == ["/"]
+    monkeypatch.setattr(tui, "Application", FakeApplication)
+
+    prompt = tui._build_prompt()
+
+    assert prompt("› ") == "typed text"
+    assert captured["full_screen"] is False
 
 
-def test_tui_session_started_progress_appears_as_live_trace_line() -> None:
-    from seektalent.tui import TuiSession
+def test_build_composer_window_keeps_prefix_and_buffer() -> None:
+    from seektalent.tui import _build_composer_window
 
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.state.input_step = "running"
+    buffer = Buffer(multiline=True)
 
-    session.handle_progress(
-        ProgressEvent(
-            type="controller_started",
-            message="Planning round 3 action.",
-            round_no=3,
-            payload={"stage": "controller"},
-        ),
-        app=session.app,
+    window = _build_composer_window(buffer, "› ")
+
+    assert isinstance(window.content, BufferControl)
+    assert window.content.buffer is buffer
+    assert isinstance(window.height, Dimension)
+    assert window.get_line_prefix is not None
+    assert window.height.min == 3
+    assert window.height.preferred == 3
+    assert window.get_line_prefix(0, 0) == "› "
+    assert window.get_line_prefix(1, 0) == "  "
+
+
+def test_run_chat_session_prints_natural_transcript_without_duplicate_title_or_empty_notes() -> None:
+    from seektalent.api import MatchRunResult
+    from seektalent.tui import run_chat_session
+
+    answers = iter(["AI Agent开发工程师", "职位描述\nAI Agent JD", ""])
+    console = _console()
+
+    async def fake_run_search(**kwargs):
+        assert kwargs["job_title"] == "AI Agent开发工程师"
+        assert kwargs["jd"] == "职位描述\nAI Agent JD"
+        assert kwargs["notes"] == ""
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id="run-1",
+                run_dir="/tmp/run-1",
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="共推荐 0 位候选人。",
+                candidates=[],
+            ),
+            final_markdown="# result",
+            run_id="run-1",
+            run_dir=Path("/tmp/run-1"),
+            trace_log_path=Path("/tmp/run-1/trace.log"),
+            evaluation_result=None,
+        )
+
+    exit_code = run_chat_session(
+        ask=lambda prompt_text: next(answers),
+        console=console,
+        run_search=fake_run_search,
+        cwd=Path("/tmp/project"),
     )
 
-    rendered = _fragment_text(session.transcript_fragments())
-
-    assert session.status_line_index == len(session.state.transcript_lines) - 1
-    assert rendered
-    assert session.state.status_text == "controller 正在思考：第 3 轮策略判断"
-
-
-def test_tui_session_running_shimmer_follows_latest_trace_line() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.state.input_step = "running"
-
-    session.handle_progress(
-        ProgressEvent(
-            type="round_completed",
-            message="第 1 轮完成。",
-            round_no=1,
-            payload={
-                "query_terms": ["python"],
-                "raw_candidate_count": 3,
-                "unique_new_count": 2,
-                "newly_scored_count": 2,
-                "fit_count": 1,
-                "not_fit_count": 1,
-                "top_pool_selected_count": 1,
-                "top_pool_retained_count": 0,
-                "top_pool_dropped_count": 0,
-            },
-        ),
-        app=session.app,
-    )
-
-    rendered = _fragment_text(session.transcript_fragments())
-
-    assert session.status_line_index == len(session.state.transcript_lines) - 1
-    assert session.status_is_visible() is False
-    assert "第 1 轮摘要" in rendered
-    assert session.state.status_text == "业务 trace 已更新：第 1 轮摘要"
-
-
-def test_tui_session_displays_full_051_process_trace_with_quality_summary() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.state.input_step = "running"
-
-    events = [
-        ProgressEvent(type="requirements_started", message="正在分析岗位标题、JD 和 notes。", payload={"stage": "requirements"}),
-        ProgressEvent(type="requirements_completed", message="岗位需求解析完成：AI Engineer", payload={}),
-        ProgressEvent(
-            type="controller_started",
-            message="正在判断第 1 轮搜索策略。",
-            round_no=1,
-            payload={"stage": "controller"},
-        ),
-        ProgressEvent(type="controller_completed", message="Use Python search.", round_no=1, payload={}),
-        ProgressEvent(type="search_started", message="第 1 轮开始检索：python agent", round_no=1, payload={}),
-        ProgressEvent(type="search_completed", message="第 1 轮检索完成：搜到 10 人，新增 6 人。", round_no=1, payload={}),
-        ProgressEvent(type="scoring_started", message="第 1 轮开始评分：6 位新增候选人。", round_no=1, payload={}),
-        ProgressEvent(type="scoring_completed", message="第 1 轮评分完成：6 人进入评分，fit 4。", round_no=1, payload={}),
-        ProgressEvent(
-            type="resume_quality_comment_completed",
-            message="本轮简历质量：Agent 相关度较高。",
-            round_no=1,
-            payload={"stage": "resume_quality"},
-        ),
-        ProgressEvent(
-            type="reflection_started",
-            message="正在复盘第 1 轮关键词、候选人质量和下一步。",
-            round_no=1,
-            payload={"stage": "reflection"},
-        ),
-        ProgressEvent(type="reflection_completed", message="继续扩大搜索。", round_no=1, payload={}),
-        ProgressEvent(
-            type="round_completed",
-            message="第 1 轮完成。",
-            round_no=1,
-            payload={
-                "query_terms": ["python", "agent"],
-                "raw_candidate_count": 10,
-                "unique_new_count": 6,
-                "newly_scored_count": 6,
-                "fit_count": 4,
-                "not_fit_count": 2,
-                "top_pool_selected_count": 4,
-                "top_pool_retained_count": 0,
-                "top_pool_dropped_count": 1,
-                "representative_candidates": ["r1 · 92 分"],
-                "reflection_summary": "继续扩大搜索。",
-            },
-        ),
-        ProgressEvent(type="finalizer_started", message="整理最终名单。", payload={"stage": "finalizer"}),
-        ProgressEvent(type="finalizer_completed", message="最终名单整理完成。", payload={}),
-        ProgressEvent(type="run_completed", message="Run completed.", payload={}),
-    ]
-
-    for event in events:
-        session.handle_progress(event, app=session.app)
-        live_status = {
-            "requirements_started": "requirements 正在思考：岗位需求解析",
-            "controller_started": "controller 正在思考：第 1 轮策略判断",
-            "reflection_started": "reflection 正在思考：第 1 轮复盘判断",
-            "finalizer_started": "finalizer 正在思考：整理最终名单",
-        }.get(event.type)
-        if live_status is None:
-            expected = "第 1 轮摘要" if event.type == "round_completed" else event.message
-            assert expected in _fragment_text(session.transcript_fragments())
-        else:
-            assert session.state.status_text == live_status
-            assert session.status_line_index == len(session.state.transcript_lines) - 1
-
-    transcript = "\n".join(session.state.transcript_lines)
-    expected_snippets = [
-        "岗位需求解析完成：AI Engineer",
-        "Use Python search.",
-        "第 1 轮开始检索：python agent",
-        "第 1 轮检索完成：搜到 10 人，新增 6 人。",
-        "第 1 轮开始评分：6 位新增候选人。",
-        "第 1 轮评分完成：6 人进入评分，fit 4。",
-        "本轮简历质量：Agent 相关度较高。",
-        "继续扩大搜索。",
-        "第 1 轮摘要",
-        "最终名单整理完成。",
-        "业务 trace 完成：Run completed.",
-    ]
-    for snippet in expected_snippets:
-        assert snippet in transcript
-
-
-def test_tui_session_submission_clears_input_buffer() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.buffer.text = "AI agent开发"
-
-    session.submit_current_input(view_height=10)
-
-    assert session.state.input_step == "jd"
-    assert session.buffer.text == ""
-    assert "\n".join(session.state.transcript_lines).count("AI agent开发") == 1
-
-
-def test_tui_session_progress_preserves_markup_and_renders_plain_text() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    event = ProgressEvent(type="run_completed", message="done", payload={})
-
-    session.handle_progress(event, app=session.app)
-
-    assert any("[dim]" in line for line in session.state.transcript_lines)
-
-    rendered = _fragment_text(session.transcript_fragments())
-    assert "[dim]" not in rendered
-    assert "[blink]" not in rendered
-    assert "业务 trace 完成" in rendered
-
-
-def test_transcript_fragments_render_supported_rich_markup() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.state.transcript_lines = ["[bold]最终结果[/]", "[dim]· done[/]"]
-
-    fragments = session.transcript_fragments()
-    rendered = _fragment_text(fragments)
-
-    assert "[bold]" not in rendered
-    assert "[dim]" not in rendered
+    rendered = console.export_text()
+    assert exit_code == 0
+    assert rendered.count("Paste Job Title.") == 1
+    assert rendered.count("AI Agent开发工程师") == 1
+    assert rendered.count("Paste Notes (optional). Press Enter to skip.") == 1
+    assert "\nNotes\n" not in rendered
     assert "最终结果" in rendered
-    assert "· done" in rendered
-    assert ("bold", "最终结果") in fragments
-    assert ("dim", "· done") in fragments
+    assert "Session complete. Re-run seektalent to start a new session." in rendered
 
 
-def test_transcript_fragments_keep_escaped_user_brackets() -> None:
-    from seektalent.tui import TuiSession
+def test_run_chat_session_prints_notes_once_when_present() -> None:
+    from seektalent.api import MatchRunResult
+    from seektalent.tui import run_chat_session
 
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.state.submit_input("JD", "Use [literal] tags", view_height=10)
+    answers = iter(["AI Agent开发工程师", "JD", "source: benchmark"])
+    console = _console()
 
-    rendered = _fragment_text(session.transcript_fragments())
+    async def fake_run_search(**kwargs):
+        assert kwargs["notes"] == "source: benchmark"
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id="run-1",
+                run_dir="/tmp/run-1",
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="共推荐 0 位候选人。",
+                candidates=[],
+            ),
+            final_markdown="# result",
+            run_id="run-1",
+            run_dir=Path("/tmp/run-1"),
+            trace_log_path=Path("/tmp/run-1/trace.log"),
+            evaluation_result=None,
+        )
 
-    assert "Use [literal] tags" in rendered
+    run_chat_session(
+        ask=lambda prompt_text: next(answers),
+        console=console,
+        run_search=fake_run_search,
+        cwd=Path("/tmp/project"),
+    )
 
-
-def test_status_refresh_does_not_change_scroll_position() -> None:
-    from seektalent.tui import TuiSession
-
-    session = TuiSession(run_search=_fake_run_search, cwd=Path("/tmp"))
-    session.state.input_step = "running"
-    session.state.status_text = "业务 trace 等待第一步输出"
-    session.state.append_lines([f"line {index}" for index in range(20)], view_height=5)
-    session.state.scroll_to_bottom(view_height=5)
-    session.state.scroll_up(3, view_height=5)
-    before = session.state.scroll_offset
-
-    session.status_fragments()
-
-    assert session.state.follow is False
-    assert session.state.scroll_offset == before
-
-
-def test_transcript_state_stops_following_when_user_scrolls_up() -> None:
-    from seektalent.tui import TuiState
-
-    state = TuiState()
-    state.append_lines([f"line {index}" for index in range(20)], view_height=5)
-    state.scroll_to_bottom(view_height=5)
-    state.scroll_up(3, view_height=5)
-    before = state.scroll_offset
-
-    state.append_lines(["new line"], view_height=5)
-
-    assert state.follow is False
-    assert state.scroll_offset == before
+    rendered = console.export_text()
+    assert rendered.count("Paste Notes (optional). Press Enter to skip.") == 1
+    assert rendered.count("source: benchmark") == 1
 
 
-def test_transcript_state_resumes_following_near_bottom() -> None:
-    from seektalent.tui import TuiState
+def test_shimmer_status_uses_faster_20hz_live(monkeypatch) -> None:
+    import seektalent.tui as tui
+    from seektalent.tui import _ShimmerStatus
 
-    state = TuiState()
-    state.append_lines([f"line {index}" for index in range(20)], view_height=5)
-    state.scroll_to_bottom(view_height=5)
-    state.scroll_up(5, view_height=5)
+    captured: dict[str, Any] = {}
 
-    state.scroll_down(4, view_height=5)
+    class FakeLive:
+        def __init__(self, renderable, *, console, refresh_per_second, transient) -> None:
+            captured["renderable"] = renderable
+            captured["console"] = console
+            captured["refresh_per_second"] = refresh_per_second
+            captured["transient"] = transient
+            captured["started"] = False
+            captured["updates"] = []
+            captured["stopped"] = False
 
-    assert state.follow is True
+        def start(self) -> None:
+            captured["started"] = True
+
+        def update(self, renderable) -> None:
+            captured["updates"].append(renderable.text)
+
+        def stop(self) -> None:
+            captured["stopped"] = True
+
+    monkeypatch.setattr(tui, "Live", FakeLive)
+    status = _ShimmerStatus(_console())
+
+    status.start("业务 trace 等待第一步输出")
+    status.set("controller 正在思考：第 1 轮策略判断")
+    status.stop()
+
+    assert captured["refresh_per_second"] == 20
+    assert captured["transient"] is False
+    assert captured["started"] is True
+    assert captured["updates"] == ["controller 正在思考：第 1 轮策略判断"]
+    assert captured["stopped"] is True
 
 
-def test_submitted_inputs_render_once_in_transcript_state() -> None:
-    from seektalent.tui import TuiState
+def test_shimmer_line_uses_fast_speed_and_051_visual_shape(monkeypatch) -> None:
+    import seektalent.tui as tui
+    from seektalent.tui import SHIMMER_CHARS_PER_SECOND, SHIMMER_HIGHLIGHT_WIDTH, _ShimmerLine
 
-    state = TuiState()
-    state.submit_input("Job Title", "AI agent开发", view_height=10)
+    monkeypatch.setattr(tui.time, "monotonic", lambda: 0.25)
 
-    assert "\n".join(state.transcript_lines).count("AI agent开发") == 1
+    rendered = _ShimmerLine("业务 trace 等待第一步输出").__rich__()
 
-
-def test_shimmer_config_keeps_faster_refresh_with_one_char_slanted_highlight() -> None:
-    from seektalent.tui import SHIMMER_CHARS_PER_SECOND, SHIMMER_HIGHLIGHT_WIDTH, SHIMMER_REFRESH_PER_SECOND
-
-    assert SHIMMER_REFRESH_PER_SECOND >= 20
-    assert SHIMMER_CHARS_PER_SECOND >= 20
-    assert SHIMMER_HIGHLIGHT_WIDTH == 1
+    assert SHIMMER_CHARS_PER_SECOND == 24
+    assert SHIMMER_HIGHLIGHT_WIDTH == 4
+    assert rendered.plain == "业务 trace 等待第一步输出"
+    assert len([span for span in rendered.spans if "bold white" in str(span.style)]) == 4
+    assert "/" not in rendered.plain
 
 
 def test_submitted_message_keeps_full_pasted_text() -> None:
@@ -482,6 +307,28 @@ def test_quality_comment_failure_renders_before_reflection() -> None:
     assert rendered.index("本轮简历质量短评生成失败") < rendered.index("本轮反思")
 
 
+def test_progress_lines_match_051_bullet_style_with_quality_events() -> None:
+    from seektalent.tui import _render_progress_lines
+
+    event_types = [
+        "requirements_completed",
+        "controller_completed",
+        "search_started",
+        "search_completed",
+        "scoring_started",
+        "scoring_completed",
+        "resume_quality_comment_completed",
+        "resume_quality_comment_failed",
+        "reflection_completed",
+        "finalizer_completed",
+    ]
+
+    for event_type in event_types:
+        assert _render_progress_lines(ProgressEvent(type=event_type, message="message", payload={})) == [
+            "[dim]· message[/]"
+        ]
+
+
 def test_thinking_progress_uses_blinking_status_line() -> None:
     from seektalent.tui import _render_progress_lines
 
@@ -493,19 +340,6 @@ def test_thinking_progress_uses_blinking_status_line() -> None:
     )
 
     assert _render_progress_lines(event) == ["[dim][blink]controller 正在思考：第 3 轮策略判断[/][/]"]
-
-
-def test_resume_quality_progress_uses_051_bullet_style() -> None:
-    from seektalent.tui import _render_progress_lines
-
-    event = ProgressEvent(
-        type="resume_quality_comment_completed",
-        message="本轮简历质量：整体相关度较高。",
-        round_no=2,
-        payload={"stage": "resume_quality"},
-    )
-
-    assert _render_progress_lines(event) == ["[dim]· 本轮简历质量：整体相关度较高。[/]"]
 
 
 def test_result_message_lists_final_shortlist_for_business_review(tmp_path: Path) -> None:
