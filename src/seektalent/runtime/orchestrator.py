@@ -900,6 +900,7 @@ class WorkflowRuntime:
                     "stage": "search",
                     "query_terms": retrieval_plan.query_terms,
                     "keyword_query": retrieval_plan.keyword_query,
+                    "planned_queries": self._logical_query_summaries(query_states),
                     "target_new": target_new,
                 },
             )
@@ -940,6 +941,7 @@ class WorkflowRuntime:
                 payload={
                     "stage": "search",
                     "query_terms": retrieval_plan.query_terms,
+                    "executed_queries": self._executed_query_summaries(cts_queries),
                     "raw_candidate_count": search_observation.raw_candidate_count,
                     "unique_new_count": search_observation.unique_new_count,
                     "shortage_count": search_observation.shortage_count,
@@ -1258,6 +1260,16 @@ class WorkflowRuntime:
             "reflection_summary": reflection.reflection_summary if reflection is not None else "",
             "reflection_rationale": reflection.reflection_rationale if reflection is not None else "",
         }
+
+    def _logical_query_summaries(self, query_states: list[_LogicalQueryState]) -> list[dict[str, object]]:
+        return [
+            {
+                "query_role": query.query_role,
+                "query_terms": query.query_terms,
+                "keyword_query": query.keyword_query,
+            }
+            for query in query_states
+        ]
 
     def _executed_query_summaries(self, cts_queries: list[CTSQuery]) -> list[dict[str, object]]:
         summaries: list[dict[str, object]] = []

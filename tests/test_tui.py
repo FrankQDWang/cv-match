@@ -17,13 +17,12 @@ def _console(width: int = 80) -> Console:
     return Console(record=True, width=width, force_terminal=False, color_system=None)
 
 
-def _echoing_ask(console: Console, answers: list[str]):
+def _answering_ask(answers: list[str]):
     remaining = iter(answers)
 
     def ask(prompt_text: str) -> str:
-        answer = next(remaining)
-        console.print(f"{prompt_text}{answer}")
-        return answer
+        del prompt_text
+        return next(remaining)
 
     return ask
 
@@ -65,6 +64,7 @@ def test_build_prompt_uses_non_fullscreen_composer(monkeypatch) -> None:
 
     assert prompt("› ") == "typed text"
     assert captured["full_screen"] is False
+    assert captured["erase_when_done"] is True
 
 
 def test_build_composer_window_keeps_prefix_and_buffer() -> None:
@@ -111,7 +111,7 @@ def test_run_chat_session_prints_natural_transcript_without_duplicate_title_or_e
         )
 
     exit_code = run_chat_session(
-        ask=_echoing_ask(console, ["AI Agent开发工程师", "职位描述\nAI Agent JD", ""]),
+        ask=_answering_ask(["AI Agent开发工程师", "职位描述\nAI Agent JD", ""]),
         console=console,
         run_search=fake_run_search,
         cwd=Path("/tmp/project"),
@@ -124,6 +124,7 @@ def test_run_chat_session_prints_natural_transcript_without_duplicate_title_or_e
     assert rendered.count("AI Agent开发工程师") == 1
     assert rendered.count("职位描述") == 1
     assert rendered.count("AI Agent JD") == 1
+    assert "› 职位描述\n  AI Agent JD" in rendered
     assert rendered.count("Paste Notes (optional). Press Enter to skip.") == 1
     assert "\nJob Title\n" not in rendered
     assert "\nJD\n" not in rendered
@@ -157,7 +158,7 @@ def test_run_chat_session_prints_notes_once_when_present() -> None:
         )
 
     run_chat_session(
-        ask=_echoing_ask(console, ["AI Agent开发工程师", "JD", "source: benchmark"]),
+        ask=_answering_ask(["AI Agent开发工程师", "JD", "source: benchmark"]),
         console=console,
         run_search=fake_run_search,
         cwd=Path("/tmp/project"),
@@ -166,21 +167,21 @@ def test_run_chat_session_prints_notes_once_when_present() -> None:
     rendered = console.export_text()
     assert rendered.count("Paste Notes (optional). Press Enter to skip.") == 1
     assert rendered.count("source: benchmark") == 1
+    assert "› source: benchmark" in rendered
     assert "\nNotes\n" not in rendered
 
 
-def test_prompt_submission_adds_newline_before_next_prompt() -> None:
+def test_prompt_submission_prints_full_multiline_jd_before_next_prompt() -> None:
     from seektalent.api import MatchRunResult
     from seektalent.tui import run_chat_session
 
     stream = StringIO()
     console = Console(file=stream, width=80, force_terminal=False, color_system=None)
-    answers = iter(["AI Agent开发工程师", "第一行\n最后一行", ""])
+    answers = iter(["AI Agent开发工程师", "第一行\n第二行\n第三行\n第四行\n最后一行", ""])
 
     def ask(prompt_text: str) -> str:
-        answer = next(answers)
-        console.file.write(f"{prompt_text}{answer}")
-        return answer
+        del prompt_text
+        return next(answers)
 
     async def fake_run_search(**kwargs):
         return MatchRunResult(
@@ -207,8 +208,8 @@ def test_prompt_submission_adds_newline_before_next_prompt() -> None:
     )
 
     rendered = stream.getvalue()
+    assert "› 第一行\n  第二行\n  第三行\n  第四行\n  最后一行" in rendered
     assert "最后一行Paste Notes" not in rendered
-    assert "最后一行\nPaste Notes" in rendered
 
 
 def test_shimmer_status_uses_faster_20hz_live(monkeypatch) -> None:
@@ -309,6 +310,45 @@ def test_round_completed_progress_is_business_summary_first() -> None:
     assert "r1 · 92 分" in rendered
     assert "本轮反思：本轮关键词有效" in rendered
     assert "反思理由：新增候选人覆盖了核心 Python 能力" in rendered
+
+
+def test_search_progress_shows_dual_query_routes() -> None:
+    from seektalent.tui import _render_progress_lines
+
+    started = ProgressEvent(
+        type="search_started",
+        message='第 2 轮开始检索："AI Agent" LangGraph',
+        round_no=2,
+        payload={
+            "planned_queries": [
+                {"query_role": "exploit", "query_terms": ["AI Agent", "LangGraph"]},
+                {"query_role": "explore", "query_terms": ["AI Agent", "AutoGen"]},
+            ]
+        },
+    )
+    completed = ProgressEvent(
+        type="search_completed",
+        message="第 2 轮检索完成：搜到 17 人，新增 9 人。",
+        round_no=2,
+        payload={
+            "executed_queries": [
+                {"query_role": "exploit", "query_terms": ["AI Agent", "LangGraph"]},
+                {"query_role": "explore", "query_terms": ["AI Agent", "AutoGen"]},
+            ],
+            "raw_candidate_count": 17,
+            "unique_new_count": 9,
+        },
+    )
+
+    started_text = "\n".join(_render_progress_lines(started))
+    completed_text = "\n".join(_render_progress_lines(completed))
+
+    assert '· 第 2 轮开始检索：' in started_text
+    assert "- 主检索：AI Agent、LangGraph" in started_text
+    assert "- 探索检索：AI Agent、AutoGen" in started_text
+    assert "· 第 2 轮检索完成：搜到 17 人，新增 9 人。" in completed_text
+    assert "- 主检索：AI Agent、LangGraph" in completed_text
+    assert "- 探索检索：AI Agent、AutoGen" in completed_text
 
 
 def test_quality_comment_renders_after_candidates_before_reflection() -> None:

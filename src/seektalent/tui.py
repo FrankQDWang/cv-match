@@ -88,6 +88,7 @@ def _build_prompt() -> PromptFn:
         buffer = Buffer(multiline=True)
         app = Application(
             full_screen=False,
+            erase_when_done=True,
             key_bindings=_composer_bindings(),
             layout=Layout(_build_composer_window(buffer, prompt_text)),
         )
@@ -163,8 +164,17 @@ def _read_required_text(console: Console, prompt: PromptFn, *, label: str) -> st
 
 def _read_prompt_text(console: Console, prompt: PromptFn) -> str:
     text = prompt("› ").rstrip()
+    if text:
+        console.print(_submitted_prompt_text("› ", text))
     console.print()
     return text
+
+
+def _submitted_prompt_text(prompt_text: str, text: str) -> str:
+    lines = text.splitlines() or [""]
+    return "\n".join(
+        [f"{escape(prompt_text)}{escape(lines[0])}", *[f"  {escape(line)}" for line in lines[1:]]]
+    )
 
 
 def _print_progress(console: Console, event: ProgressEvent, *, status: "_ShimmerStatus | None" = None) -> None:
@@ -218,6 +228,10 @@ def _render_progress_lines(event: ProgressEvent) -> list[str]:
         return [f"[dim]业务 trace 完成：{escape(event.message)}[/]"]
     if event.type == "run_failed":
         return [f"[dim]·[/] 运行失败：{escape(event.message)}"]
+    if event.type == "search_started":
+        return _render_search_progress(event, payload, query_key="planned_queries", trim_message=True)
+    if event.type == "search_completed":
+        return _render_search_progress(event, payload, query_key="executed_queries", trim_message=False)
     if event.type == "resume_quality_comment_failed":
         lines = [f"[dim]· {escape(event.message)}[/]"]
         error = str(payload.get("error") or "").strip()
@@ -227,8 +241,6 @@ def _render_progress_lines(event: ProgressEvent) -> list[str]:
     if event.type in {
         "requirements_completed",
         "controller_completed",
-        "search_started",
-        "search_completed",
         "scoring_started",
         "scoring_completed",
         "resume_quality_comment_completed",
@@ -237,6 +249,19 @@ def _render_progress_lines(event: ProgressEvent) -> list[str]:
     }:
         return [f"[dim]· {escape(event.message)}[/]"]
     return [f"[dim]·[/] {escape(event.message)}"]
+
+
+def _render_search_progress(event: ProgressEvent, payload: dict[str, Any], *, query_key: str, trim_message: bool) -> list[str]:
+    query_lines = _query_route_lines(payload.get(query_key))
+    if not query_lines:
+        return [f"[dim]· {escape(event.message)}[/]"]
+    message = _trim_search_message(event.message) if trim_message else event.message
+    return [f"[dim]· {escape(message)}[/]", *[f"[dim]  {line}[/]" for line in query_lines]]
+
+
+def _trim_search_message(message: str) -> str:
+    head, separator, _ = message.partition("：")
+    return f"{head}{separator}" if separator else message
 
 
 def _thinking_line(event: ProgressEvent) -> str:
@@ -316,18 +341,19 @@ def _render_round_completed(event: ProgressEvent, payload: dict[str, Any]) -> li
 
 def _query_summary_lines(payload: dict[str, Any]) -> list[str]:
     executed_queries = payload.get("executed_queries")
-    if isinstance(executed_queries, list):
-        lines = _executed_query_lines(executed_queries)
-        if lines:
-            return ["检索词：", *lines]
+    lines = _query_route_lines(executed_queries)
+    if lines:
+        return ["检索词：", *lines]
     query_terms = _join_list(_list_text(payload.get("query_terms")))
     return [f"检索词：{escape(query_terms)}"] if query_terms else []
 
 
-def _executed_query_lines(executed_queries: list[object]) -> list[str]:
+def _query_route_lines(queries: object) -> list[str]:
+    if not isinstance(queries, list):
+        return []
     role_labels = {"exploit": "主检索", "explore": "探索检索"}
     lines: list[str] = []
-    for query in executed_queries:
+    for query in queries:
         if not isinstance(query, Mapping):
             continue
         query_data = cast(Mapping[str, Any], query)

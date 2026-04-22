@@ -422,11 +422,12 @@ def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
     _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
     tracer = RunTracer(tmp_path / "trace-runs")
     job_title, jd, notes = _sample_inputs()
+    progress_events = []
 
     try:
         run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
         top_candidates, stop_reason, rounds_executed, terminal_controller_round = asyncio.run(
-            runtime._run_rounds(run_state=run_state, tracer=tracer)
+            runtime._run_rounds(run_state=run_state, tracer=tracer, progress_callback=progress_events.append)
         )
     finally:
         tracer.close()
@@ -477,6 +478,28 @@ def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
     round_01_top_id = run_state.round_history[0].top_candidates[0].resume_id
     assert run_state.scorecards_by_resume_id[round_01_top_id].overall_score == 90
     assert run_state.round_history[1].cts_queries == round_02_queries
+    round_02_search_started = next(
+        event for event in progress_events if event.type == "search_started" and event.round_no == 2
+    )
+    round_02_search_completed = next(
+        event for event in progress_events if event.type == "search_completed" and event.round_no == 2
+    )
+    assert round_02_search_started.payload["planned_queries"] == [
+        {
+            "query_role": "exploit",
+            "query_terms": ["python", "resume matching", "trace"],
+            "keyword_query": 'python "resume matching" trace',
+        },
+        {"query_role": "explore", "query_terms": ["python", "trace"], "keyword_query": "python trace"},
+    ]
+    assert round_02_search_completed.payload["executed_queries"] == [
+        {
+            "query_role": "exploit",
+            "query_terms": ["python", "resume matching", "trace"],
+            "keyword_query": 'python "resume matching" trace',
+        },
+        {"query_role": "explore", "query_terms": ["python", "trace"], "keyword_query": "python trace"},
+    ]
 
 
 class RecordingScorer:
