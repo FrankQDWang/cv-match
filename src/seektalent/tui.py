@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
@@ -276,10 +276,8 @@ def _idle_status_text(event: ProgressEvent) -> str:
 
 def _render_round_completed(event: ProgressEvent, payload: dict[str, Any]) -> list[str]:
     round_no = event.round_no or int(payload.get("round_no") or 0)
-    query_terms = _join_list(_list_text(payload.get("query_terms")))
     lines = [f"[bold]第 {round_no} 轮摘要[/]"]
-    if query_terms:
-        lines.append(f"检索词：{escape(query_terms)}")
+    lines.extend(_query_summary_lines(payload))
     lines.append(
         "本轮搜到 "
         f"{int(payload.get('raw_candidate_count') or 0)} 人，"
@@ -313,6 +311,32 @@ def _render_round_completed(event: ProgressEvent, payload: dict[str, Any]) -> li
     reflection_rationale = str(payload.get("reflection_rationale") or "").strip()
     if reflection_rationale:
         lines.append(f"反思理由：{escape(reflection_rationale)}")
+    return lines
+
+
+def _query_summary_lines(payload: dict[str, Any]) -> list[str]:
+    executed_queries = payload.get("executed_queries")
+    if isinstance(executed_queries, list):
+        lines = _executed_query_lines(executed_queries)
+        if lines:
+            return ["检索词：", *lines]
+    query_terms = _join_list(_list_text(payload.get("query_terms")))
+    return [f"检索词：{escape(query_terms)}"] if query_terms else []
+
+
+def _executed_query_lines(executed_queries: list[object]) -> list[str]:
+    role_labels = {"exploit": "主检索", "explore": "探索检索"}
+    lines: list[str] = []
+    for query in executed_queries:
+        if not isinstance(query, Mapping):
+            continue
+        query_data = cast(Mapping[str, Any], query)
+        query_terms = _join_list(_list_text(query_data.get("query_terms")))
+        if not query_terms:
+            continue
+        role = str(query_data.get("query_role") or "检索")
+        label = role_labels.get(role, role)
+        lines.append(f"- {escape(label)}：{escape(query_terms)}")
     return lines
 
 

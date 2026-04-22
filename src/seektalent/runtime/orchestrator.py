@@ -1202,6 +1202,7 @@ class WorkflowRuntime:
                     run_state=run_state,
                     round_no=round_no,
                     retrieval_plan=retrieval_plan,
+                    cts_queries=cts_queries,
                     observation=search_observation,
                     newly_scored_count=newly_scored_count,
                     pool_decisions=pool_decisions,
@@ -1221,6 +1222,7 @@ class WorkflowRuntime:
         run_state: RunState,
         round_no: int,
         retrieval_plan,
+        cts_queries: list[CTSQuery],
         observation: SearchObservation,
         newly_scored_count: int,
         pool_decisions: list[PoolDecision],
@@ -1238,6 +1240,7 @@ class WorkflowRuntime:
             "round_no": round_no,
             "query_terms": retrieval_plan.query_terms,
             "keyword_query": retrieval_plan.keyword_query,
+            "executed_queries": self._executed_query_summaries(cts_queries),
             "raw_candidate_count": observation.raw_candidate_count,
             "unique_new_count": observation.unique_new_count,
             "newly_scored_count": newly_scored_count,
@@ -1255,6 +1258,23 @@ class WorkflowRuntime:
             "reflection_summary": reflection.reflection_summary if reflection is not None else "",
             "reflection_rationale": reflection.reflection_rationale if reflection is not None else "",
         }
+
+    def _executed_query_summaries(self, cts_queries: list[CTSQuery]) -> list[dict[str, object]]:
+        summaries: list[dict[str, object]] = []
+        seen: set[tuple[str, tuple[str, ...], str]] = set()
+        for query in cts_queries:
+            key = (query.query_role, tuple(query.query_terms), query.keyword_query)
+            if key in seen:
+                continue
+            seen.add(key)
+            summaries.append(
+                {
+                    "query_role": query.query_role,
+                    "query_terms": query.query_terms,
+                    "keyword_query": query.keyword_query,
+                }
+            )
+        return summaries
 
     def _representative_candidate_summaries(
         self,

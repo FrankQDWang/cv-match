@@ -815,6 +815,13 @@ def test_runtime_emits_tui_progress_events(tmp_path: Path, monkeypatch) -> None:
     round_event = next(event for event in progress_events if event.type == "round_completed")
     assert round_event.round_no == 1
     assert round_event.payload["query_terms"] == ["python", "resume matching"]
+    assert round_event.payload["executed_queries"] == [
+        {
+            "query_role": "exploit",
+            "query_terms": ["python", "resume matching"],
+            "keyword_query": "python \"resume matching\"",
+        }
+    ]
     assert round_event.payload["unique_new_count"] > 0
     assert round_event.payload["newly_scored_count"] > 0
     assert round_event.payload["fit_count"] == round_event.payload["newly_scored_count"]

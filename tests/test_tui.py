@@ -274,6 +274,10 @@ def test_round_completed_progress_is_business_summary_first() -> None:
         round_no=2,
         payload={
             "query_terms": ["python", "推荐系统"],
+            "executed_queries": [
+                {"query_role": "exploit", "query_terms": ["python", "推荐系统"]},
+                {"query_role": "explore", "query_terms": ["python", "搜索架构"]},
+            ],
             "raw_candidate_count": 12,
             "unique_new_count": 7,
             "newly_scored_count": 5,
@@ -295,7 +299,9 @@ def test_round_completed_progress_is_business_summary_first() -> None:
     rendered = "\n".join(lines)
 
     assert lines[0].startswith("[bold]第 2 轮")
-    assert "检索词：python、推荐系统" in rendered
+    assert "检索词：" in rendered
+    assert "- 主检索：python、推荐系统" in rendered
+    assert "- 探索检索：python、搜索架构" in rendered
     assert "本轮搜到 12 人，新增 7 人，5 人进入评分" in rendered
     assert "fit 3 / not_fit 2" in rendered
     assert "top pool：新增 2，保留 6，移出 1" in rendered

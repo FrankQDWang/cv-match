@@ -11,4 +11,4 @@ __all__ = [
     "run_match_async",
 ]
 
-__version__ = "0.5.9"
+__version__ = "0.5.10"
