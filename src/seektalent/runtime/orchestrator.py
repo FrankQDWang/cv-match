@@ -760,6 +760,14 @@ class WorkflowRuntime:
             controller_call_id = f"controller-r{round_no:02d}"
             controller_call_payload = {"CONTROLLER_CONTEXT": controller_context.model_dump(mode="json")}
             controller_prompt = render_controller_prompt(controller_context)
+            controller_prompt_cache_key = self._prompt_cache_key(
+                stage="controller",
+                model_id=self.settings.controller_model,
+                input_hash=json_sha256(controller_context.requirement_sheet.model_dump(mode="json")),
+            )
+            controller_prompt_cache_retention = (
+                self.settings.openai_prompt_cache_retention if controller_prompt_cache_key is not None else None
+            )
             controller_artifacts = [
                 f"rounds/round_{round_no:02d}/controller_context.json",
                 f"rounds/round_{round_no:02d}/controller_call.json",
@@ -785,7 +793,13 @@ class WorkflowRuntime:
                 payload={"stage": "controller"},
             )
             try:
-                controller_decision = await self.controller.decide(context=controller_context)
+                if isinstance(self.controller, ReActController):
+                    controller_decision = await self.controller.decide(
+                        context=controller_context,
+                        prompt_cache_key=controller_prompt_cache_key,
+                    )
+                else:
+                    controller_decision = await self.controller.decide(context=controller_context)
             except Exception as exc:  # noqa: BLE001
                 latency_ms = max(1, int((perf_counter() - controller_started_clock) * 1000))
                 controller_repair_attempt_count = int(getattr(self.controller, "last_repair_attempt_count", 0))
@@ -816,6 +830,8 @@ class WorkflowRuntime:
                         round_no=round_no,
                         validator_retry_count=self.controller.last_validator_retry_count,
                         validator_retry_reasons=self.controller.last_validator_retry_reasons,
+                        prompt_cache_key=controller_prompt_cache_key,
+                        prompt_cache_retention=controller_prompt_cache_retention,
                         repair_attempt_count=controller_repair_attempt_count,
                         repair_succeeded=bool(getattr(self.controller, "last_repair_succeeded", False)),
                         repair_model=controller_repair_model,
@@ -967,6 +983,8 @@ class WorkflowRuntime:
                     round_no=round_no,
                     validator_retry_count=self.controller.last_validator_retry_count,
                     validator_retry_reasons=self.controller.last_validator_retry_reasons,
+                    prompt_cache_key=controller_prompt_cache_key,
+                    prompt_cache_retention=controller_prompt_cache_retention,
                     repair_attempt_count=int(getattr(self.controller, "last_repair_attempt_count", 0)),
                     repair_succeeded=bool(getattr(self.controller, "last_repair_succeeded", False)),
                     repair_model=(

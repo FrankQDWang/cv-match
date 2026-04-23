@@ -25,7 +25,7 @@ from seektalent.models import (
 )
 from seektalent.progress import ProgressEvent
 from seektalent.runtime import WorkflowRuntime
-from seektalent.tracing import LLMCallSnapshot, RunTracer
+from seektalent.tracing import LLMCallSnapshot, RunTracer, json_sha256
 from tests.settings_factory import make_settings
 
 
@@ -667,6 +667,8 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
         min_rounds=1,
         max_rounds=1,
         enable_eval=True,
+        openai_prompt_cache_enabled=True,
+        openai_prompt_cache_retention="12h",
         cts_tenant_key="tenant-key",
         cts_tenant_secret="tenant-secret",
     )
@@ -686,6 +688,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     search_observation = _read_json(round_dir / "search_observation.json")
     search_attempts = _read_json(round_dir / "search_attempts.json")
     requirements_call = _read_json(artifacts.run_dir / "requirements_call.json")
+    requirement_sheet = _read_json(artifacts.run_dir / "requirement_sheet.json")
     requirement_draft = _read_json(artifacts.run_dir / "requirement_extraction_draft.json")
     controller_call = _read_json(round_dir / "controller_call.json")
     reflection_call = _read_json(round_dir / "reflection_call.json")
@@ -782,6 +785,10 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert controller_call["retries"] == 0
     assert controller_call["output_retries"] == 2
     assert controller_call["validator_retry_reasons"] == []
+    assert controller_call["prompt_cache_key"] == (
+        f"controller:{settings.controller_model}:{json_sha256(requirement_sheet)}"
+    )
+    assert controller_call["prompt_cache_retention"] == "12h"
     assert "user_payload" not in reflection_call
     assert "structured_output" not in reflection_call
     assert reflection_call["input_payload_sha256"]

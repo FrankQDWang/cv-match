@@ -173,9 +173,14 @@ class ReActController:
         result = await agent.run(render_controller_prompt(context), deps=context)
         return result.output
 
-    async def decide(self, *, context: ControllerContext) -> ControllerDecision:
+    async def decide(
+        self,
+        *,
+        context: ControllerContext,
+        prompt_cache_key: str | None = None,
+    ) -> ControllerDecision:
         self._reset_metadata()
-        decision = await self._decide_live(context=context)
+        decision = await self._decide_live(context=context, prompt_cache_key=prompt_cache_key)
         reason = validate_controller_decision(context=context, decision=decision)
         if reason is None:
             return decision
@@ -196,7 +201,7 @@ class ReActController:
             return repaired
 
         self.last_full_retry_count = 1
-        retried = await self._decide_live(context=context)
+        retried = await self._decide_live(context=context, prompt_cache_key=prompt_cache_key)
         retry_reason = validate_controller_decision(context=context, decision=retried)
         if retry_reason is None:
             return retried

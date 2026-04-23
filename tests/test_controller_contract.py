@@ -449,10 +449,12 @@ def test_controller_full_retry_after_failed_semantic_repair(monkeypatch: pytest.
         response_to_reflection="Addressed previous reflection.",
     )
     calls = {"count": 0}
+    prompt_cache_keys: list[str | None] = []
 
     async def fake_decide_live(*, context: ControllerContext, prompt_cache_key: str | None = None) -> ControllerDecision:
-        del context, prompt_cache_key
+        del context
         calls["count"] += 1
+        prompt_cache_keys.append(prompt_cache_key)
         return invalid if calls["count"] == 1 else valid
 
     async def fake_repair_controller_decision(
@@ -464,10 +466,11 @@ def test_controller_full_retry_after_failed_semantic_repair(monkeypatch: pytest.
     monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
     monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
 
-    result = asyncio.run(controller.decide(context=context))
+    result = asyncio.run(controller.decide(context=context, prompt_cache_key="controller-cache-key"))
 
     assert result == valid
     assert calls["count"] == 2
+    assert prompt_cache_keys == ["controller-cache-key", "controller-cache-key"]
     assert controller.last_full_retry_count == 1
 
 
