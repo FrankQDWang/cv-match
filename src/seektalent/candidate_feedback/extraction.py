@@ -85,6 +85,7 @@ _SURFACE_PATTERNS = (
 
 
 def select_feedback_seed_resumes(candidates: list[ScoredCandidate], *, limit: int = 5) -> list[ScoredCandidate]:
+    limit = min(limit, 5)
     selected = [
         candidate
         for candidate in candidates

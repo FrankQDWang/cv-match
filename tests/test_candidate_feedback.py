@@ -81,6 +81,15 @@ def test_select_feedback_seed_resumes_selects_only_strict_fit_seeds() -> None:
     assert [item.resume_id for item in selected] == ["best-fit", "mid-fit"]
 
 
+def test_select_feedback_seed_resumes_never_returns_more_than_five() -> None:
+    selected = select_feedback_seed_resumes(
+        [_scored_candidate(f"fit-{index}", overall_score=90 - index) for index in range(6)],
+        limit=10,
+    )
+
+    assert [item.resume_id for item in selected] == ["fit-0", "fit-1", "fit-2", "fit-3", "fit-4"]
+
+
 def test_extract_surface_terms_preserves_technical_and_mixed_shapes() -> None:
     terms = extract_surface_terms(
         [
