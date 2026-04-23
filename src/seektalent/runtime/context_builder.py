@@ -19,6 +19,7 @@ from seektalent.models import (
     unique_strings,
 )
 from seektalent.requirements import build_requirement_digest
+from seektalent.tracing import json_sha256
 
 BUDGET_STOP_RATIO = 0.8
 STRONG_FIT_STOP_MIN = 3
@@ -97,6 +98,7 @@ def build_scoring_context(
         round_no=round_no,
         scoring_policy=run_state.scoring_policy,
         normalized_resume=normalized_resume,
+        requirement_sheet_sha256=json_sha256(run_state.requirement_sheet.model_dump(mode="json")),
     )
 
 

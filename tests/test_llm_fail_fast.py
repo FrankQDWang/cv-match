@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 from pydantic_ai.models.test import TestModel
@@ -39,7 +40,7 @@ def _prompt(name: str) -> LoadedPrompt:
 
 def _settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    return make_settings()
+    return make_settings(llm_cache_dir=f".seektalent/cache-test-{uuid4().hex}")
 
 
 def _test_model(output_text: str) -> TestModel:
@@ -183,7 +184,7 @@ def test_requirement_extractor_raises_live_errors(monkeypatch: pytest.MonkeyPatc
         (),
         {"run": lambda self, *args, **kwargs: (_ for _ in ()).throw(RuntimeError("requirements boom"))},
     )()
-    monkeypatch.setattr(extractor, "_get_agent", lambda: stub_agent)
+    monkeypatch.setattr(extractor, "_get_agent", lambda prompt_cache_key=None: stub_agent)
 
     with pytest.raises(RuntimeError, match="requirements boom"):
         asyncio.run(

@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 
@@ -47,7 +48,7 @@ def _prompt(name: str) -> LoadedPrompt:
 
 def _settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    return make_settings()
+    return make_settings(llm_cache_dir=f".seektalent/cache-test-{uuid4().hex}")
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -278,7 +279,7 @@ def test_requirement_extractor_uses_run_sync(monkeypatch: pytest.MonkeyPatch) ->
             scoring_rationale="Score Python fit first.",
         )
     )
-    monkeypatch.setattr(extractor, "_get_agent", lambda: stub_agent)
+    monkeypatch.setattr(extractor, "_get_agent", lambda prompt_cache_key=None: stub_agent)
 
     _, output = asyncio.run(
         extractor.extract_with_draft(
@@ -390,12 +391,21 @@ def test_scorer_builds_one_agent_per_parallel_call(monkeypatch: pytest.MonkeyPat
     created_agents: list[object] = []
     used_agents: list[object] = []
 
-    def build_agent() -> object:
+    def build_agent(prompt_cache_key=None) -> object:
+        del prompt_cache_key
         agent = object()
         created_agents.append(agent)
         return agent
 
-    async def fake_score_candidates_parallel(*, contexts, tracer, agent):  # noqa: ANN001, ARG001
+    async def fake_score_candidates_parallel(  # noqa: ANN001, ARG001
+        *,
+        contexts,
+        tracer,
+        agent,
+        prompt_cache_key=None,
+        prompt_cache_retention=None,
+    ):
+        del contexts, tracer, prompt_cache_key, prompt_cache_retention
         used_agents.append(agent)
         return [], []
 
