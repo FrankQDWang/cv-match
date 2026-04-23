@@ -127,6 +127,17 @@ def test_reflection_rationale_has_generous_length_limit() -> None:
         )
 
 
+def test_reflection_advice_rationale_has_generous_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        ReflectionAdvice(
+            keyword_advice=ReflectionKeywordAdvice(),
+            filter_advice=ReflectionFilterAdvice(),
+            reflection_rationale="a" * 2001,
+            suggest_stop=False,
+            reflection_summary="Continue.",
+        )
+
+
 def test_reflection_advice_draft_stop_field_validation_is_deferred_for_repair() -> None:
     draft = ReflectionAdviceDraft(
         keyword_advice=ReflectionKeywordAdviceDraft(),

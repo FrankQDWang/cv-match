@@ -53,6 +53,19 @@ def test_controller_decision_rationale_has_generous_length_limit() -> None:
         )
 
 
+def test_controller_thought_summary_has_generous_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        SearchControllerDecision.model_validate(
+            {
+                "thought_summary": "a" * 501,
+                "action": "search_cts",
+                "decision_rationale": "Need recall.",
+                "proposed_query_terms": ["python", "resume matching"],
+                "proposed_filter_plan": {},
+            }
+        )
+
+
 def test_controller_response_to_reflection_has_generous_length_limit() -> None:
     with pytest.raises(ValidationError):
         SearchControllerDecision.model_validate(
@@ -65,6 +78,28 @@ def test_controller_response_to_reflection_has_generous_length_limit() -> None:
                 "response_to_reflection": "b" * 2001,
             }
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("thought_summary", "a" * 501),
+        ("decision_rationale", "a" * 2001),
+        ("response_to_reflection", "b" * 2001),
+    ],
+)
+def test_stop_controller_decision_uses_same_length_limits(field: str, value: str) -> None:
+    payload = {
+        "thought_summary": "Stop.",
+        "action": "stop",
+        "decision_rationale": "Enough signal.",
+        "response_to_reflection": "Addressed previous reflection.",
+        "stop_reason": "controller_stop",
+    }
+    payload[field] = value
+
+    with pytest.raises(ValidationError):
+        StopControllerDecision.model_validate(payload)
 
 
 def _requirement_sheet() -> RequirementSheet:
