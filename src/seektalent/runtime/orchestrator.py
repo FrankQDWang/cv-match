@@ -79,7 +79,7 @@ from seektalent.runtime.context_builder import (
     build_scoring_context,
     top_candidates,
 )
-from seektalent.runtime.rescue_router import RescueDecision, RescueInputs, choose_rescue_lane
+from seektalent.runtime.rescue_router import RescueDecision, RescueInputs, SkippedRescueLane, choose_rescue_lane
 from seektalent.scoring.scorer import ResumeScorer
 from seektalent.tracing import LLMCallSnapshot, RunTracer
 from seektalent.tracing import json_char_count, json_sha256, text_char_count, text_sha256
@@ -782,6 +782,16 @@ class WorkflowRuntime:
                         tracer=tracer,
                     )
                     if feedback_decision is None:
+                        rescue_decision = rescue_decision.model_copy(
+                            update={
+                                "selected_lane": "anchor_only",
+                                "skipped_lanes": [
+                                    *rescue_decision.skipped_lanes,
+                                    SkippedRescueLane(lane="candidate_feedback", reason="no_safe_feedback_term"),
+                                ],
+                            }
+                        )
+                        run_state.retrieval_state.rescue_lane_history[-1]["selected_lane"] = "anchor_only"
                         run_state.retrieval_state.anchor_only_broaden_attempted = True
                         controller_decision = self._force_anchor_only_decision(
                             run_state=run_state,
@@ -1463,9 +1473,9 @@ class WorkflowRuntime:
                 has_feedback_seed_resumes=len(seeds) >= 2,
                 candidate_feedback_enabled=self.settings.candidate_feedback_enabled,
                 candidate_feedback_attempted=run_state.retrieval_state.candidate_feedback_attempted,
-                company_discovery_enabled=self.settings.company_discovery_enabled,
+                company_discovery_enabled=False,
                 company_discovery_attempted=run_state.retrieval_state.company_discovery_attempted,
-                company_discovery_useful=self._company_discovery_useful(controller_context),
+                company_discovery_useful=False,
                 anchor_only_broaden_attempted=run_state.retrieval_state.anchor_only_broaden_attempted,
             )
         )
@@ -1543,16 +1553,19 @@ class WorkflowRuntime:
             feedback.model_dump(mode="json"),
         )
         run_state.retrieval_state.candidate_feedback_attempted = True
-        if feedback.accepted_term is None:
-            return None
-        run_state.retrieval_state.query_term_pool.append(feedback.accepted_term)
         tracer.write_json(
             f"rounds/round_{round_no:02d}/candidate_feedback_decision.json",
             {
-                "accepted_term": feedback.accepted_term.model_dump(mode="json"),
+                "accepted_term": (
+                    feedback.accepted_term.model_dump(mode="json") if feedback.accepted_term is not None else None
+                ),
                 "forced_query_terms": feedback.forced_query_terms,
+                "skipped_reason": feedback.skipped_reason,
             },
         )
+        if feedback.accepted_term is None:
+            return None
+        run_state.retrieval_state.query_term_pool.append(feedback.accepted_term)
         return SearchControllerDecision(
             thought_summary="Runtime rescue: candidate feedback expansion.",
             action="search_cts",
