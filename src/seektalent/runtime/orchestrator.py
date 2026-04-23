@@ -2227,6 +2227,7 @@ class WorkflowRuntime:
         cache_lookup_latency_ms: int | None = None,
         prompt_cache_key: str | None = None,
         prompt_cache_retention: str | None = None,
+        provider_usage: dict[str, Any] | None = None,
         cached_input_tokens: int | None = None,
         repair_attempt_count: int = 0,
         repair_succeeded: bool = False,
@@ -2236,6 +2237,8 @@ class WorkflowRuntime:
     ) -> LLMCallSnapshot:
         prompt = self.prompts.load(prompt_name)
         output_hash = json_sha256(structured_output) if structured_output is not None else None
+        if cached_input_tokens is None and provider_usage is not None:
+            cached_input_tokens = provider_usage.get("cache_read_tokens")
         return LLMCallSnapshot(
             stage=stage,
             call_id=call_id,
@@ -2268,6 +2271,7 @@ class WorkflowRuntime:
             cache_lookup_latency_ms=cache_lookup_latency_ms,
             prompt_cache_key=prompt_cache_key,
             prompt_cache_retention=prompt_cache_retention,
+            provider_usage=provider_usage,
             cached_input_tokens=cached_input_tokens,
             repair_attempt_count=repair_attempt_count,
             repair_succeeded=repair_succeeded,
@@ -3016,6 +3020,7 @@ class WorkflowRuntime:
             "cache_lookup_latency_ms": snapshot.get("cache_lookup_latency_ms", 0),
             "prompt_cache_key": snapshot.get("prompt_cache_key"),
             "prompt_cache_retention": snapshot.get("prompt_cache_retention"),
+            "provider_usage": snapshot.get("provider_usage"),
             "cached_input_tokens": snapshot.get("cached_input_tokens", 0),
             "prompt_chars": snapshot.get("prompt_chars", 0),
             "input_payload_chars": snapshot.get("input_payload_chars", 0),

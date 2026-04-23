@@ -25,7 +25,7 @@ from seektalent.models import (
 )
 from seektalent.progress import ProgressEvent
 from seektalent.runtime import WorkflowRuntime
-from seektalent.tracing import LLMCallSnapshot, RunTracer, json_sha256
+from seektalent.tracing import LLMCallSnapshot, RunTracer, json_sha256, provider_usage_from_result
 from tests.settings_factory import make_settings
 
 
@@ -138,6 +138,14 @@ def test_llm_call_snapshot_accepts_cache_repair_and_prompt_cache_metadata() -> N
         input_payload_chars=30,
         output_chars=40,
         input_summary="input",
+        provider_usage={
+            "input_tokens": 12,
+            "output_tokens": 4,
+            "total_tokens": 16,
+            "cache_read_tokens": 11,
+            "cache_write_tokens": 2,
+            "details": {"reasoning_tokens": 7},
+        },
         cache_hit=True,
         cache_key="cache-key",
         cache_lookup_latency_ms=3,
@@ -158,11 +166,45 @@ def test_llm_call_snapshot_accepts_cache_repair_and_prompt_cache_metadata() -> N
     assert dump["prompt_cache_key"] == "prompt-cache-key"
     assert dump["prompt_cache_retention"] == "24h"
     assert dump["cached_input_tokens"] == 11
+    assert dump["provider_usage"] == {
+        "input_tokens": 12,
+        "output_tokens": 4,
+        "total_tokens": 16,
+        "cache_read_tokens": 11,
+        "cache_write_tokens": 2,
+        "details": {"reasoning_tokens": 7},
+    }
     assert dump["repair_attempt_count"] == 2
     assert dump["repair_succeeded"] is True
     assert dump["repair_model"] == "openai-chat:qwen3.5-repair"
     assert dump["repair_reason"] == "tooling"
     assert dump["full_retry_count"] == 1
+
+
+def test_provider_usage_from_result_extracts_cache_tokens() -> None:
+    class FakeUsage:
+        def __init__(self) -> None:
+            self.input_tokens = "12"
+            self.output_tokens = 4.0
+            self.total_tokens = None
+            self.cache_read_tokens = "8"
+            self.cache_write_tokens = 3.0
+            self.details = {"reasoning_tokens": 7, "ignored": "nope"}
+
+    class FakeResult:
+        def usage(self) -> FakeUsage:
+            return FakeUsage()
+
+    usage = provider_usage_from_result(FakeResult())
+
+    assert usage.model_dump(mode="json") == {
+        "input_tokens": 12,
+        "output_tokens": 4,
+        "total_tokens": 16,
+        "cache_read_tokens": 8,
+        "cache_write_tokens": 3,
+        "details": {"reasoning_tokens": 7},
+    }
 
 
 def test_runtime_snapshot_builder_accepts_reflection_cache_and_repair_metadata(tmp_path: Path) -> None:
@@ -205,6 +247,7 @@ def test_runtime_snapshot_builder_accepts_reflection_cache_and_repair_metadata(t
         validator_retry_reasons=["validator retry"],
         prompt_cache_key="reflection-cache-key",
         prompt_cache_retention="24h",
+        provider_usage={"cache_read_tokens": 8},
         repair_attempt_count=1,
         repair_succeeded=True,
         repair_model="openai-chat:qwen3.5-repair",
@@ -215,6 +258,8 @@ def test_runtime_snapshot_builder_accepts_reflection_cache_and_repair_metadata(t
 
     assert dump["prompt_cache_key"] == "reflection-cache-key"
     assert dump["prompt_cache_retention"] == "24h"
+    assert dump["provider_usage"]["cache_read_tokens"] == 8
+    assert dump["cached_input_tokens"] == 8
     assert dump["repair_attempt_count"] == 1
     assert dump["repair_succeeded"] is True
     assert dump["repair_model"] == "openai-chat:qwen3.5-repair"
@@ -246,6 +291,7 @@ def test_llm_schema_pressure_includes_cache_repair_and_full_retry() -> None:
             "prompt_cache_key": "requirements:openai-chat:gpt:hash",
             "prompt_cache_retention": "24h",
             "cached_input_tokens": 17,
+            "provider_usage": {"cache_read_tokens": 8},
         }
     )
 
@@ -260,6 +306,7 @@ def test_llm_schema_pressure_includes_cache_repair_and_full_retry() -> None:
     assert pressure_item["prompt_cache_key"] == "requirements:openai-chat:gpt:hash"
     assert pressure_item["prompt_cache_retention"] == "24h"
     assert pressure_item["cached_input_tokens"] == 17
+    assert pressure_item["provider_usage"] == {"cache_read_tokens": 8}
 
 
 def test_runtime_preflight_passes_rescue_models_from_top_level_settings(monkeypatch) -> None:

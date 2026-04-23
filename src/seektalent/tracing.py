@@ -55,6 +55,43 @@ def text_char_count(value: str) -> int:
     return len(value)
 
 
+def _int_value(value: Any) -> int:
+    return int(value)
+
+
+class ProviderUsageSnapshot(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    details: dict[str, int] = Field(default_factory=dict)
+
+
+def provider_usage_from_result(result: Any) -> ProviderUsageSnapshot:
+    usage = result.usage()
+    details = getattr(usage, "details", {}) or {}
+    input_tokens = _int_value(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = _int_value(getattr(usage, "output_tokens", 0) or 0)
+    total_tokens = getattr(usage, "total_tokens", None)
+    detail_tokens: dict[str, int] = {}
+    for key, value in details.items():
+        if isinstance(value, bool):
+            continue
+        try:
+            detail_tokens[str(key)] = _int_value(value)
+        except (TypeError, ValueError):
+            continue
+    return ProviderUsageSnapshot(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=_int_value(total_tokens) if total_tokens is not None else input_tokens + output_tokens,
+        cache_read_tokens=_int_value(getattr(usage, "cache_read_tokens", 0) or 0),
+        cache_write_tokens=_int_value(getattr(usage, "cache_write_tokens", 0) or 0),
+        details=detail_tokens,
+    )
+
+
 class TraceEvent(BaseModel):
     timestamp: str
     run_id: str
@@ -102,6 +139,7 @@ class LLMCallSnapshot(BaseModel):
     error_message: str | None = None
     validator_retry_count: int = 0
     validator_retry_reasons: list[str] = Field(default_factory=list)
+    provider_usage: ProviderUsageSnapshot | None = None
     cache_hit: bool = False
     cache_key: str | None = None
     cache_lookup_latency_ms: int | None = None
