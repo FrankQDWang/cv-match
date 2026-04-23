@@ -464,6 +464,64 @@ def test_run_cleans_runtime_artifacts_before_run_match(
     assert "run_id: run-1" in capsys.readouterr().out
 
 
+def test_benchmark_cleans_runtime_artifacts_before_first_run_match(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _set_required_env(monkeypatch)
+    runs_dir = tmp_path / "runs"
+    old_run = runs_dir / "20000101_000000_deadbeef"
+    old_summary = runs_dir / "benchmark_summary_20000101_000000.json"
+    benchmark_file = tmp_path / "agent_jds.jsonl"
+    old_run.mkdir(parents=True)
+    (old_run / "trace.log").write_text("", encoding="utf-8")
+    old_summary.write_text("{}", encoding="utf-8")
+    benchmark_file.write_text(
+        json.dumps({"jd_id": "agent_jd_001", "job_title": "A", "job_description": "JD A"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    seed_settings = make_settings(
+        runtime_mode="prod",
+        runs_dir=str(runs_dir),
+        llm_cache_dir=str(tmp_path / "cache"),
+    )
+    put_cached_json(seed_settings, namespace="requirements", key="k", payload={"value": 1})
+    monkeypatch.setenv("SEEKTALENT_RUNTIME_MODE", "prod")
+    monkeypatch.setenv("SEEKTALENT_LLM_CACHE_DIR", str(tmp_path / "cache"))
+    calls = 0
+
+    def _fake_run_match(**kwargs):
+        nonlocal calls
+        if calls == 0:
+            settings = kwargs["settings"]
+            assert get_cached_json(settings, namespace="requirements", key="k") is None
+            assert not old_run.exists()
+            assert not old_summary.exists()
+        calls += 1
+        return _result(tmp_path)
+
+    monkeypatch.setattr("seektalent.cli.run_match", _fake_run_match)
+
+    assert main(
+        [
+            "benchmark",
+            "--jds-file",
+            str(benchmark_file),
+            "--env-file",
+            str(tmp_path / "missing.env"),
+            "--output-dir",
+            str(runs_dir),
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert calls == 1
+    assert payload["count"] == 1
+
+
 def test_benchmark_json_runs_rows_sequentially(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
