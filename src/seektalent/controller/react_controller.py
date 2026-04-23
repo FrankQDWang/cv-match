@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import cast, get_args
 
-from pydantic_ai import Agent, RunContext
-from pydantic_ai.exceptions import ModelRetry
+from pydantic_ai import Agent
 
 from seektalent.config import AppSettings
 from seektalent.llm import build_model, build_model_settings, build_output_spec
 from seektalent.models import ControllerContext, ControllerDecision, FilterField, SearchControllerDecision
 from seektalent.prompting import LoadedPrompt, json_block
+from seektalent.repair import repair_controller_decision
 from seektalent.retrieval.query_plan import canonicalize_controller_query_terms
 
 
@@ -105,21 +105,50 @@ def render_controller_prompt(context: ControllerContext) -> str:
     )
 
 
+def validate_controller_decision(*, context: ControllerContext, decision: ControllerDecision) -> str | None:
+    if isinstance(decision, SearchControllerDecision) and not decision.proposed_query_terms:
+        return "proposed_query_terms must contain at least one term."
+    if isinstance(decision, SearchControllerDecision):
+        try:
+            canonicalize_controller_query_terms(
+                decision.proposed_query_terms,
+                round_no=context.round_no,
+                title_anchor_term=context.requirement_sheet.title_anchor_term,
+                query_term_pool=context.query_term_pool,
+            )
+        except ValueError as exc:
+            return str(exc)
+    if context.previous_reflection is not None and not (decision.response_to_reflection or "").strip():
+        return "response_to_reflection is required when previous_reflection exists."
+    return None
+
+
 class ReActController:
     def __init__(self, settings: AppSettings, prompt: LoadedPrompt) -> None:
         self.settings = settings
         self.prompt = prompt
         self.last_validator_retry_count = 0
         self.last_validator_retry_reasons: list[str] = []
+        self.last_repair_attempt_count = 0
+        self.last_repair_succeeded = False
+        self.last_repair_reason: str | None = None
+        self.last_full_retry_count = 0
 
-    def _record_retry(self, reason: str) -> ModelRetry:
+    def _record_retry(self, reason: str) -> None:
         self.last_validator_retry_count += 1
         self.last_validator_retry_reasons.append(reason)
-        return ModelRetry(reason)
 
-    def _get_agent(self) -> Agent[ControllerContext, ControllerDecision]:
+    def _reset_metadata(self) -> None:
+        self.last_validator_retry_count = 0
+        self.last_validator_retry_reasons = []
+        self.last_repair_attempt_count = 0
+        self.last_repair_succeeded = False
+        self.last_repair_reason = None
+        self.last_full_retry_count = 0
+
+    def _get_agent(self, prompt_cache_key: str | None = None) -> Agent[ControllerContext, ControllerDecision]:
         model = build_model(self.settings.controller_model)
-        agent = cast(Agent[ControllerContext, ControllerDecision], Agent(
+        return cast(Agent[ControllerContext, ControllerDecision], Agent(
             model=model,
             output_type=build_output_spec(self.settings.controller_model, model, ControllerDecision),
             system_prompt=self.prompt.content,
@@ -128,36 +157,47 @@ class ReActController:
                 self.settings,
                 self.settings.controller_model,
                 enable_thinking=self.settings.controller_enable_thinking,
+                prompt_cache_key=prompt_cache_key,
             ),
             retries=0,
             output_retries=2,
         ))
 
-        @agent.output_validator
-        def validate_output(
-            ctx: RunContext[ControllerContext],
-            output: ControllerDecision,
-        ) -> ControllerDecision:
-            if isinstance(output, SearchControllerDecision) and not output.proposed_query_terms:
-                raise self._record_retry("proposed_query_terms must contain at least one term.")
-            if isinstance(output, SearchControllerDecision):
-                try:
-                    canonicalize_controller_query_terms(
-                        output.proposed_query_terms,
-                        round_no=ctx.deps.round_no,
-                        title_anchor_term=ctx.deps.requirement_sheet.title_anchor_term,
-                        query_term_pool=ctx.deps.query_term_pool,
-                    )
-                except ValueError as exc:
-                    raise self._record_retry(str(exc)) from exc
-            if ctx.deps.previous_reflection is not None and not (output.response_to_reflection or "").strip():
-                raise self._record_retry("response_to_reflection is required when previous_reflection exists.")
-            return output
-
-        return agent
+    async def _decide_live(
+        self,
+        *,
+        context: ControllerContext,
+        prompt_cache_key: str | None = None,
+    ) -> ControllerDecision:
+        agent = self._get_agent() if prompt_cache_key is None else self._get_agent(prompt_cache_key=prompt_cache_key)
+        result = await agent.run(render_controller_prompt(context), deps=context)
+        return result.output
 
     async def decide(self, *, context: ControllerContext) -> ControllerDecision:
-        self.last_validator_retry_count = 0
-        self.last_validator_retry_reasons = []
-        result = await self._get_agent().run(render_controller_prompt(context), deps=context)
-        return result.output
+        self._reset_metadata()
+        decision = await self._decide_live(context=context)
+        reason = validate_controller_decision(context=context, decision=decision)
+        if reason is None:
+            return decision
+
+        self._record_retry(reason)
+        self.last_repair_attempt_count = 1
+        self.last_repair_reason = reason
+        repaired = await repair_controller_decision(
+            self.settings,
+            self.prompt,
+            context,
+            decision,
+            reason,
+        )
+        repaired_reason = validate_controller_decision(context=context, decision=repaired)
+        if repaired_reason is None:
+            self.last_repair_succeeded = True
+            return repaired
+
+        self.last_full_retry_count = 1
+        retried = await self._decide_live(context=context)
+        retry_reason = validate_controller_decision(context=context, decision=retried)
+        if retry_reason is None:
+            return retried
+        raise ValueError(retry_reason)

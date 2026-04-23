@@ -1,11 +1,10 @@
+import asyncio
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
-from pydantic_ai.exceptions import ModelRetry
 
-from seektalent.controller.react_controller import ReActController
+from seektalent.controller.react_controller import ReActController, validate_controller_decision
 from seektalent.models import (
     CTSQuery,
     ControllerDecision,
@@ -290,15 +289,7 @@ def test_controller_decision_discriminated_union_accepts_stop_payload() -> None:
     assert decision.stop_reason == "controller_stop"
 
 
-def test_controller_output_validator_rejects_missing_response_to_reflection(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
-    )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+def test_validate_controller_decision_rejects_missing_response_to_reflection() -> None:
     context = _controller_context(
         round_no=2,
         previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
@@ -311,23 +302,12 @@ def test_controller_output_validator_rejects_missing_response_to_reflection(
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    with pytest.raises(ModelRetry, match="response_to_reflection"):
-        validator(type("Ctx", (), {"deps": context})(), decision)
-
-    assert controller.last_validator_retry_reasons == [
+    assert validate_controller_decision(context=context, decision=decision) == (
         "response_to_reflection is required when previous_reflection exists."
-    ]
-
-
-def test_controller_output_validator_rejects_empty_query_terms(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+
+
+def test_validate_controller_decision_rejects_empty_query_terms() -> None:
     context = _controller_context()
     decision = SearchControllerDecision(
         thought_summary="Search again.",
@@ -337,23 +317,12 @@ def test_controller_output_validator_rejects_empty_query_terms(
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    with pytest.raises(ModelRetry, match="proposed_query_terms"):
-        validator(type("Ctx", (), {"deps": context})(), decision)
-
-    assert controller.last_validator_retry_reasons == [
+    assert validate_controller_decision(context=context, decision=decision) == (
         "proposed_query_terms must contain at least one term."
-    ]
-
-
-def test_controller_output_validator_accepts_compiled_anchor_alias_without_literal_title_anchor(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+
+
+def test_validate_controller_decision_accepts_compiled_anchor_alias_without_literal_title_anchor() -> None:
     requirement_sheet = _agent_requirement_sheet()
     context = _controller_context(requirement_sheet=requirement_sheet)
     decision = SearchControllerDecision(
@@ -364,18 +333,10 @@ def test_controller_output_validator_accepts_compiled_anchor_alias_without_liter
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    assert validator(type("Ctx", (), {"deps": context})(), decision) is decision
+    assert validate_controller_decision(context=context, decision=decision) is None
 
 
-def test_controller_output_validator_rejects_blocked_compiler_terms(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
-    )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+def test_validate_controller_decision_rejects_blocked_compiler_terms() -> None:
     requirement_sheet = _agent_requirement_sheet()
     context = _controller_context(requirement_sheet=requirement_sheet)
     decision = SearchControllerDecision(
@@ -386,22 +347,12 @@ def test_controller_output_validator_rejects_blocked_compiler_terms(
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    with pytest.raises(ModelRetry, match="compiler-admitted"):
-        validator(type("Ctx", (), {"deps": context})(), decision)
-
-    assert controller.last_validator_retry_reasons
-    assert "compiler-admitted" in controller.last_validator_retry_reasons[0]
+    result = validate_controller_decision(context=context, decision=decision)
+    assert result is not None
+    assert "compiler-admitted" in result
 
 
-def test_controller_output_validator_rejects_query_terms_over_budget(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
-    )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+def test_validate_controller_decision_rejects_query_terms_over_budget() -> None:
     context = _controller_context()
     decision = SearchControllerDecision(
         thought_summary="Search again.",
@@ -411,8 +362,113 @@ def test_controller_output_validator_rejects_query_terms_over_budget(
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    with pytest.raises(ModelRetry, match="must not exceed 3 terms"):
-        validator(type("Ctx", (), {"deps": context})(), decision)
+    result = validate_controller_decision(context=context, decision=decision)
+    assert result is not None
+    assert "must not exceed 3 terms" in result
+
+
+def test_controller_repair_avoids_pydantic_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    context = _controller_context(
+        round_no=2,
+        previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
+    )
+    invalid = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Add one more term.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+    repaired = SearchControllerDecision(
+        thought_summary=invalid.thought_summary,
+        action=invalid.action,
+        decision_rationale=invalid.decision_rationale,
+        proposed_query_terms=invalid.proposed_query_terms,
+        proposed_filter_plan=invalid.proposed_filter_plan,
+        response_to_reflection="Addressed previous reflection.",
+    )
+
+    async def fake_decide_live(*, context: ControllerContext, prompt_cache_key: str | None = None) -> ControllerDecision:
+        del context, prompt_cache_key
+        return invalid
+
+    async def fake_repair_controller_decision(
+        settings, prompt, repair_context, decision, reason  # noqa: ANN001
+    ) -> ControllerDecision:
+        del settings, prompt, repair_context, decision, reason
+        return repaired
+
+    monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
+    monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
+
+    result = asyncio.run(controller.decide(context=context))
+
+    assert result == repaired
+    assert controller.last_validator_retry_count == 1
+    assert controller.last_repair_attempt_count == 1
+    assert controller.last_repair_succeeded is True
+    assert controller.last_full_retry_count == 0
+
+
+def test_controller_full_retry_after_failed_semantic_repair(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    context = _controller_context(
+        round_no=2,
+        previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
+    )
+    invalid = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Add one more term.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+    still_invalid = SearchControllerDecision(
+        thought_summary=invalid.thought_summary,
+        action=invalid.action,
+        decision_rationale=invalid.decision_rationale,
+        proposed_query_terms=invalid.proposed_query_terms,
+        proposed_filter_plan=invalid.proposed_filter_plan,
+        response_to_reflection=" ",
+    )
+    valid = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Retry with fixed response.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+        response_to_reflection="Addressed previous reflection.",
+    )
+    calls = {"count": 0}
+
+    async def fake_decide_live(*, context: ControllerContext, prompt_cache_key: str | None = None) -> ControllerDecision:
+        del context, prompt_cache_key
+        calls["count"] += 1
+        return invalid if calls["count"] == 1 else valid
+
+    async def fake_repair_controller_decision(
+        settings, prompt, repair_context, decision, reason  # noqa: ANN001
+    ) -> ControllerDecision:
+        del settings, prompt, repair_context, decision, reason
+        return still_invalid
+
+    monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
+    monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
+
+    result = asyncio.run(controller.decide(context=context))
+
+    assert result == valid
+    assert calls["count"] == 2
+    assert controller.last_full_retry_count == 1
 
 
 def test_runtime_sanitizes_premature_max_round_claims_in_stop_decision() -> None:

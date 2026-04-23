@@ -6,7 +6,7 @@ from pydantic_ai import Agent
 
 from seektalent.config import AppSettings
 from seektalent.llm import build_model, build_model_settings, build_output_spec
-from seektalent.models import InputTruth, RequirementExtractionDraft
+from seektalent.models import ControllerContext, ControllerDecision, InputTruth, RequirementExtractionDraft
 from seektalent.prompting import LoadedPrompt, json_block
 
 OutputT = TypeVar("OutputT")
@@ -69,6 +69,42 @@ async def repair_requirement_draft(
         system_prompt=(
             "Repair one RequirementExtractionDraft. "
             "Return complete JSON that preserves source intent and fixes the reported issue."
+        ),
+        user_prompt=user_prompt,
+    )
+
+
+async def repair_controller_decision(
+    settings: AppSettings,
+    prompt: LoadedPrompt,
+    context: ControllerContext,
+    decision: ControllerDecision,
+    reason: str,
+) -> ControllerDecision:
+    user_prompt = "\n\n".join(
+        [
+            json_block(
+                "REPAIR_REASON",
+                {"reason": reason},
+            ),
+            json_block(
+                "SOURCE_PROMPT",
+                {
+                    "name": prompt.name,
+                    "sha256": prompt.sha256,
+                    "content": prompt.content,
+                },
+            ),
+            json_block("CONTROLLER_CONTEXT", context.model_dump(mode="json")),
+            json_block("CURRENT_DECISION", decision.model_dump(mode="json")),
+        ]
+    )
+    return await _repair_with_model(
+        settings,
+        output_type=ControllerDecision,
+        system_prompt=(
+            "Repair one ControllerDecision. "
+            "Return complete JSON that preserves intent and fixes the reported issue."
         ),
         user_prompt=user_prompt,
     )
