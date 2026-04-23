@@ -254,7 +254,7 @@ def _active_anchor(existing_terms: list[QueryTermCandidate]) -> QueryTermCandida
 
 
 def _materialize_term(term: str, *, round_no: int, supporting_resume_ids: list[str]) -> QueryTermCandidate:
-    return QueryTermCandidate.model_construct(
+    return QueryTermCandidate(
         term=term,
         source="candidate_feedback",
         category="expansion",

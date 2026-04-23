@@ -62,7 +62,7 @@ def _query_term(
         "queryability": queryability,
         "family": family or f"feedback.{term.casefold().replace(' ', '').replace('.', '')}",
     }
-    return QueryTermCandidate.model_construct(**payload)
+    return QueryTermCandidate(**payload)
 
 
 def test_select_feedback_seed_resumes_selects_only_strict_fit_seeds() -> None:
@@ -125,7 +125,7 @@ def test_build_feedback_decision_picks_one_supported_novel_term() -> None:
         round_no=4,
     )
 
-    expected = QueryTermCandidate.model_construct(
+    expected = QueryTermCandidate(
         term="LangGraph",
         source="candidate_feedback",
         category="expansion",
