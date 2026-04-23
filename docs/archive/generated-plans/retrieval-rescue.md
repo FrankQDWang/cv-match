@@ -1,4 +1,4 @@
-# Retrieval Rescue Router Implementation Plan
+# Retrieval Rescue
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,29 +12,29 @@
 
 ## File Structure
 
-- Create `src/seektalent/candidate_feedback/__init__.py`  
+- Create `src/seektalent/candidate_feedback/__init__.py`
   Exports the small public API used by runtime.
-- Create `src/seektalent/candidate_feedback/models.py`  
+- Create `src/seektalent/candidate_feedback/models.py`
   Pydantic models for feedback seed snippets, extracted candidate terms, model ranking, and accepted feedback decisions.
-- Create `src/seektalent/candidate_feedback/extraction.py`  
+- Create `src/seektalent/candidate_feedback/extraction.py`
   Deterministic surface-form extraction, seed selection, runtime filtering, scoring, and query-term materialization.
-- Create `src/seektalent/candidate_feedback/model_steps.py`  
+- Create `src/seektalent/candidate_feedback/model_steps.py`
   Bounded LLM ranking from deterministic candidate terms only.
-- Create `src/seektalent/runtime/rescue_router.py`  
+- Create `src/seektalent/runtime/rescue_router.py`
   Pure routing decision function. It inspects already-computed runtime state and returns a selected lane plus skipped-lane reasons.
-- Modify `src/seektalent/config.py`  
+- Modify `src/seektalent/config.py`
   Adds candidate feedback and company discovery settings with approved defaults.
-- Modify `src/seektalent/default.env` and `.env.example`  
+- Modify `src/seektalent/default.env` and `.env.example`
   Adds feature flags and Bocha/company discovery settings.
-- Modify `src/seektalent/models.py`  
+- Modify `src/seektalent/models.py`
   Adds query term sources/categories/roles and minimal retrieval state needed by the router.
-- Modify `src/seektalent/llm.py`  
+- Modify `src/seektalent/llm.py`
   Includes candidate feedback and company discovery models in preflight when enabled.
-- Modify `src/seektalent/runtime/orchestrator.py`  
+- Modify `src/seektalent/runtime/orchestrator.py`
   Wires rescue router, candidate feedback, web company discovery, artifacts, forced decisions, and progress events.
-- Modify `src/seektalent/tui.py`  
+- Modify `src/seektalent/tui.py`
   Renders concise rescue lane progress events.
-- Modify `tach.toml`  
+- Modify `tach.toml`
   Adds module boundaries for `seektalent.candidate_feedback` and `seektalent.company_discovery`.
 - Add/modify tests:
   - `tests/test_rescue_router_config.py`

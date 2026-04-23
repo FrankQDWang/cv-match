@@ -7,6 +7,8 @@
 `tach.toml` 只覆盖 `src/`，暂不检查 `tests/` 和 `experiments/`。当前显式模块是 package-folder 级别的粗边界：
 
 - `seektalent.clients`
+- `seektalent.candidate_feedback`
+- `seektalent.company_discovery`
 - `seektalent.controller`
 - `seektalent.finalize`
 - `seektalent.reflection`
@@ -18,11 +20,19 @@
 
 `root_module = "ignore"` 仍然保留。`seektalent.models`、`seektalent.config`、`seektalent.api`、`seektalent.cli`、`seektalent.evaluation`、`seektalent.llm` 等顶层文件暂时作为共享观察区，不在本阶段强制治理。
 
+## Tach 状态
+
+`uv run tach check` 当前是 advisory，不是干净门禁。当前已知 drift：
+
+```text
+src/seektalent/requirements/normalization.py cannot depend on seektalent.retrieval.query_compiler.compile_query_term_pool
+```
+
+下一步有两种小修方式：如果这个方向是有意的，就把 `tach.toml` 的 `seektalent.requirements` 依赖同步到 `seektalent.retrieval`；如果不是有意的，就把 query term pool 编译调用移出 requirements 层。
+
 ## 依赖图事实
 
-`uv run tach check` 当前通过。
-
-`seektalent.runtime` 是编排中心。它依赖 `seektalent.clients`、`seektalent.controller`、`seektalent.finalize`、`seektalent.reflection`、`seektalent.requirements`、`seektalent.retrieval`、`seektalent.scoring`，并被 `seektalent_ui` 使用。
+`seektalent.runtime` 是编排中心。它依赖 `seektalent.clients`、`seektalent.candidate_feedback`、`seektalent.company_discovery`、`seektalent.controller`、`seektalent.finalize`、`seektalent.reflection`、`seektalent.requirements`、`seektalent.retrieval`、`seektalent.scoring`，并被 `seektalent_ui` 使用。
 
 `seektalent_ui` 依赖 `seektalent.runtime` 和共享 core 文件，主要依赖来自 UI server 与 mapper：
 

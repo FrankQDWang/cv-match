@@ -1,71 +1,188 @@
 # Architecture
 
-`SeekTalent` is built as a deterministic Python Agent with a small number of LLM-backed stages.
+`SeekTalent` is a local-first resume matching engine. Public entrypoints collect a job title, JD, and optional notes, then hand them to one deterministic runtime. The runtime owns orchestration, budgets, CTS retrieval, deduplication, artifact writing, and final ranking. LLM calls are bounded stages that return structured outputs; they do not execute tools directly.
 
-The design goal is controlled behavior and auditability rather than open-ended agent autonomy.
+## Public entrypoints
 
-## High-level flow
+| Entrypoint | Files | Role |
+| --- | --- | --- |
+| CLI | `src/seektalent/cli.py` | User-facing `seektalent` command, env loading, argument parsing, human and JSON output. |
+| Python API | `src/seektalent/api.py` | Stable wrapper functions: `run_match(...)` and `run_match_async(...)`. |
+| Local UI API | `src/seektalent_ui/server.py` | Thin local HTTP API that runs the same runtime in a background thread. |
+| Web UI | `apps/web-user-lite/` | Minimal browser shell over the local UI API. |
 
-1. Read `JD + notes`
-2. Extract structured requirement truth
-3. Ask the controller what to search next
-4. Build a retrieval plan and execute CTS search
-5. Normalize and score candidate resumes
-6. Run reflection on the round
-7. Repeat until stop
-8. Finalize the shortlist
+All product surfaces converge on `WorkflowRuntime` in `src/seektalent/runtime/orchestrator.py`.
 
-## Main Agent components
+## Architecture diagram
 
-### Requirement extractor
+```mermaid
+flowchart LR
+    user["Terminal user / wrapper"] --> cli["CLI\nsrc/seektalent/cli.py"]
+    wrapper["Python integrator"] --> api["Python API\nsrc/seektalent/api.py"]
+    browser["Browser UI"] --> webapp["apps/web-user-lite"]
+    webapp --> uiapi["UI API\nsrc/seektalent_ui/server.py"]
 
-- Converts the raw JD and notes into structured requirement data.
-- Produces the initial requirement sheet and scoring policy inputs.
+    cli --> api
+    api --> runtime["WorkflowRuntime\nruntime/orchestrator.py"]
+    uiapi --> runtime
 
-### Controller
+    config["AppSettings\nconfig.py"] --> runtime
+    prompts["PromptRegistry\nprompting.py + prompts/*.md"] --> runtime
 
-- Decides whether to continue or stop.
-- Proposes round-specific query terms and filter plans.
-- Does not directly execute tools.
+    runtime --> req["RequirementExtractor\nrequirements/"]
+    runtime --> controller["ReActController\ncontroller/"]
+    runtime --> retrieval["Retrieval planning\nretrieval/"]
+    runtime --> rescue["Rescue routing\nruntime/rescue_router.py"]
+    runtime --> cts["CTS client\nclients/cts_client.py"]
+    runtime --> scoring["ResumeScorer\nscoring/"]
+    runtime --> reflection["ReflectionCritic\nreflection/"]
+    runtime --> finalizer["Finalizer\nfinalize/"]
+    runtime --> eval["Optional evaluator\nevaluation.py"]
+    runtime --> tracer["RunTracer\ntracing.py"]
 
-### Agent runtime
+    req -. "structured output" .-> llm["LLM provider\npydantic-ai"]
+    controller -. "structured decision" .-> llm
+    scoring -. "per-resume scorecards" .-> llm
+    reflection -. "round advice" .-> llm
+    finalizer -. "presentation text" .-> llm
+    eval -. "judge calls when enabled" .-> llm
 
-- Owns orchestration, round budgets, pagination, dedup, normalization, scoring fan-out, and stopping rules.
-- Persists run artifacts and prompt snapshots.
-- Enforces deterministic control flow around LLM stages.
+    retrieval --> cts
+    cts --> livects["Live CTS service"]
+    cts --> mockcts["Mock CTS corpus\ndev/tests only"]
 
-### CTS client
+    rescue --> feedback["Candidate feedback\ncandidate_feedback/"]
+    rescue --> discovery["Company discovery\ncompany_discovery/"]
+    discovery --> bocha["Bocha search\nwhen enabled"]
+    discovery -. "planning / evidence reduction" .-> llm
 
-- Executes real CTS requests in authenticated mode.
-- Can use a local mock corpus during development and testing.
-- Keeps CTS-specific payload construction inside the adapter layer.
+    tracer --> runs["runs/<timestamp>_<run_id>/\ntrace, events, JSON, markdown"]
+```
 
-### Resume scorer
+## Runtime sequence
 
-- Scores normalized resumes in parallel.
-- Works on one resume at a time with a shared scoring context.
+```mermaid
+sequenceDiagram
+    actor User
+    participant Entry as CLI / Python API / UI API
+    participant Runtime as WorkflowRuntime
+    participant Tracer as RunTracer
+    participant Req as RequirementExtractor
+    participant Controller as ReActController
+    participant Retrieval as Retrieval planner
+    participant CTS as CTS client
+    participant Scorer as ResumeScorer
+    participant Reflection as ReflectionCritic
+    participant Finalizer as Finalizer
+    participant LLM as LLM provider
+    participant Runs as runs/ artifacts
 
-### Reflection critic
+    User->>Entry: job_title + jd + notes
+    Entry->>Runtime: run or run_async
+    Runtime->>Tracer: create run directory and snapshots
+    Tracer->>Runs: run_config, input_snapshot, prompt_snapshots
+    Runtime->>Req: extract requirements
+    Req->>LLM: RequirementExtractionDraft
+    LLM-->>Req: structured draft
+    Req-->>Runtime: RequirementSheet + scoring policy
+    Runtime->>Runs: input_truth, requirement_sheet, scoring_policy
 
-- Reviews the round outcome.
-- Provides advice for the next round when reflection is enabled.
+    loop round 1..max_rounds
+        Runtime->>Controller: decide with controller context
+        Controller->>LLM: ControllerDecision
+        LLM-->>Controller: search_cts or stop
+        Controller-->>Runtime: structured decision
 
-### Finalizer
+        alt stop is allowed
+            Runtime->>Runs: controller_decision
+            Runtime-->>Runtime: leave round loop
+        else search CTS
+            Runtime->>Retrieval: project filters and build retrieval plan
+            Retrieval-->>Runtime: CTS queries + runtime constraints
+            Runtime->>CTS: execute paginated search
+            CTS-->>Runtime: raw candidates
+            Runtime-->>Runtime: normalize, dedupe, update candidate store
+            Runtime->>Scorer: score new resumes in parallel
+            Scorer->>LLM: ScoredCandidateDraft per resume
+            LLM-->>Scorer: structured scorecards
+            Scorer-->>Runtime: scorecards + failures
+            Runtime->>Reflection: review round
+            Reflection->>LLM: ReflectionAdvice
+            LLM-->>Reflection: structured advice
+            Reflection-->>Runtime: next-round guidance
+            Runtime->>Runs: round artifacts and round_review.md
+        end
 
-- Produces the final shortlist output and summary artifacts.
+        opt low-quality rescue is required
+            Runtime-->>Runtime: choose reserve, feedback, company discovery, or anchor-only lane
+        end
+    end
 
-## Design boundaries
+    Runtime->>Finalizer: finalize ranked top pool
+    Finalizer->>LLM: FinalResultDraft
+    LLM-->>Finalizer: structured final draft
+    Finalizer-->>Runtime: FinalResult
+    Runtime->>Runs: final_candidates.json, final_answer.md, run_summary.md
+    Runtime-->>Entry: MatchRunResult
+    Entry-->>User: human text or JSON payload
+```
 
-- One Agent runtime controls the process.
-- Tool execution is explicit and limited.
-- Audit files are first-class outputs.
-- The repository includes a minimal web UI, but the CLI remains the primary interface.
+The local web UI follows the same runtime sequence after `RunRegistry.create_run(...)`; the only extra step is that `src/seektalent_ui/mapper.py` maps final runtime artifacts into UI response models.
 
-## Historical notes
+## Core modules
 
-Versioned design documents remain under `docs/v-*` and are kept as historical references:
+| Module | Responsibility |
+| --- | --- |
+| `src/seektalent/runtime/orchestrator.py` | Main control loop, round lifecycle, progress events, artifact writes, stop handling, rescue handoff, finalization. |
+| `src/seektalent/runtime/context_builder.py` | Builds slim context objects for controller, scoring, reflection, and finalization. |
+| `src/seektalent/models.py` | Shared Pydantic contracts for requirements, retrieval plans, controller decisions, scorecards, final results, and run state. |
+| `src/seektalent/requirements/` | Turns input truth into a normalized requirement sheet and scoring policy. |
+| `src/seektalent/controller/` | Chooses each round's action and proposed query/filter plan. The controller does not execute CTS or other tools. |
+| `src/seektalent/retrieval/` | Canonicalizes query terms, builds round retrieval plans, projects constraints to CTS-native filters, and manages location execution plans. |
+| `src/seektalent/clients/` | Adapts runtime retrieval plans to live CTS requests or the development mock corpus. |
+| `src/seektalent/scoring/` | Scores normalized resumes concurrently, one resume per LLM branch. |
+| `src/seektalent/reflection/` | Reviews a completed round and produces advice for subsequent retrieval. |
+| `src/seektalent/finalize/` | Preserves runtime ranking order while generating final shortlist presentation text. |
+| `src/seektalent/tracing.py` | Writes trace events, JSON artifacts, prompt snapshots, hashes, and compact LLM call metadata. |
 
-- `docs/v-0.1/`
-- `docs/v-0.2/`
+## Runtime state
 
-This document is intentionally shorter and only describes the current public-facing shape.
+The runtime keeps state explicit:
+
+- `RunState` carries input truth, requirement sheet, scoring policy, retrieval state, candidates, normalized resumes, scorecards, top-pool ids, and round history.
+- `RetrievalState` tracks the query-term pool, sent query history, plan version, projection result, and rescue attempts.
+- `RoundState` records the controller decision, retrieval plan, CTS queries, search observation, scored top candidates, dropped candidates, and reflection advice for one round.
+
+The state objects live in `src/seektalent/models.py` and are written out as artifacts instead of being hidden behind a long-lived service object.
+
+## Artifact model
+
+Each run writes a directory under `runs/` by default. The important artifact groups are:
+
+- run setup: `run_config.json`, `input_snapshot.json`, `input_truth.json`, `prompt_snapshots/`
+- requirement setup: `requirement_extraction_draft.json`, `requirements_call.json`, `requirement_sheet.json`, `scoring_policy.json`
+- round outputs: `controller_*`, `retrieval_plan.json`, `cts_queries.json`, `search_observation.json`, `scorecards.jsonl`, `reflection_*`, `round_review.md`
+- final outputs: `finalizer_context.json`, `finalizer_call.json`, `final_candidates.json`, `final_answer.md`, `run_summary.md`
+- diagnostics: `events.jsonl`, `trace.log`, `sent_query_history.json`, `search_diagnostics.json`, `term_surface_audit.json`
+
+See [Outputs](outputs.md) for the full file reference.
+
+## Boundaries
+
+- CLI, Python API, and UI API are shells around `WorkflowRuntime`.
+- UI depends on core runtime code; `src/seektalent` must not import `seektalent_ui` or `experiments`.
+- The controller returns structured decisions only. Python runtime code executes CTS, scoring fan-out, artifact writes, and stop rules.
+- CTS-specific request details stay inside `src/seektalent/clients/cts_client.py` and retrieval projection code.
+- Mock CTS is for source-checkout development and tests; the published CLI rejects it.
+- Optional rescue lanes are runtime decisions. They can broaden the term pool, inject candidate feedback, run company discovery, or try anchor-only retrieval when quality gates require more search.
+- LLM structured output retries are local to Pydantic AI calls. The runtime does not add fallback model chains.
+
+## Related docs
+
+- [CLI](cli.md)
+- [Configuration](configuration.md)
+- [Outputs](outputs.md)
+- [UI](ui.md)
+- [Development](development.md)
+- [Architecture dependency observations](architecture-dependencies.md)
+- Historical design notes: `docs/v-0.1/`, `docs/v-0.2/`

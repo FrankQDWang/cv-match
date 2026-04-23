@@ -1,4 +1,4 @@
-# SeekTalent TUI Design
+# Terminal UI
 
 Date: 2026-04-21
 

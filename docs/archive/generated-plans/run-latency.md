@@ -1,4 +1,4 @@
-# Run Latency Investigation Implementation Plan
+# Run Latency
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,23 +12,23 @@
 
 ## File Structure
 
-- Create `tools/audit_run_latency.py`  
+- Create `tools/audit_run_latency.py`
   Read one or more run directories and print a compact JSON latency report. The script depends only on artifact files and the Python standard library.
-- Create `tests/test_run_latency_audit_tool.py`  
+- Create `tests/test_run_latency_audit_tool.py`
   Unit tests for the audit script using synthetic run artifact directories.
-- Modify `src/seektalent/tracing.py`  
+- Modify `src/seektalent/tracing.py`
   Add `validator_retry_reasons` to `LLMCallSnapshot`.
-- Modify `src/seektalent/controller/react_controller.py`  
+- Modify `src/seektalent/controller/react_controller.py`
   Track local controller validator retry reasons before each `ModelRetry`.
-- Modify `src/seektalent/finalize/finalizer.py`  
+- Modify `src/seektalent/finalize/finalizer.py`
   Track local finalizer validator retry reasons before each `ModelRetry`.
-- Modify `src/seektalent/runtime/orchestrator.py`  
+- Modify `src/seektalent/runtime/orchestrator.py`
   Include retry reasons in controller and finalizer call snapshots.
-- Modify `tests/test_controller_contract.py`  
+- Modify `tests/test_controller_contract.py`
   Assert controller retry reasons are recorded.
-- Modify `tests/test_finalizer_contract.py`  
+- Modify `tests/test_finalizer_contract.py`
   Assert finalizer retry reasons are recorded.
-- Modify `tests/test_runtime_audit.py`  
+- Modify `tests/test_runtime_audit.py`
   Assert call snapshots include retry reason arrays.
 
 ---

@@ -37,13 +37,13 @@ From a local checkout:
 
 ```bash
 uv build
-pipx install dist/seektalent-0.4.2-py3-none-any.whl
+pipx install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
 If you prefer a plain Python environment:
 
 ```bash
-pip install dist/seektalent-0.4.2-py3-none-any.whl
+pip install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
 The default package install is OpenAI-only. It includes `pydantic-ai-slim[openai]`, so `openai:*`, `openai-chat:*`, and `openai-responses:*` model IDs work out of the box, including OpenAI-compatible `OPENAI_BASE_URL` endpoints.
@@ -132,7 +132,7 @@ seektalent inspect --json
 Recommended:
 
 ```bash
-pipx install dist/seektalent-0.4.2-py3-none-any.whl
+pipx install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
 This gives you the `seektalent` command directly.
@@ -140,7 +140,7 @@ This gives you the `seektalent` command directly.
 ### Python integrators
 
 ```bash
-pip install dist/seektalent-0.4.2-py3-none-any.whl
+pip install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
 Then:
@@ -306,12 +306,14 @@ Current boundaries are intentional:
 
 ## Docs
 
-- [Configuration](docs/configuration.md)
-- [CLI](docs/cli.md)
-- [UI](docs/ui.md)
-- [Outputs](docs/outputs.md)
-- [Architecture](docs/architecture.md)
-- [Development](docs/development.md)
+Start with:
+
+- [Architecture](docs/architecture.md) for the component map, architecture diagram, and runtime sequence.
+- [CLI](docs/cli.md) for the command contract.
+- [Configuration](docs/configuration.md) for environment variables and model settings.
+- [Outputs](docs/outputs.md) for run artifacts and diagnostics.
+- [UI](docs/ui.md) for the local web shell.
+- [Development](docs/development.md) for local checks and repository conventions.
 
 Historical versioned design notes remain under `docs/v-*`.
 

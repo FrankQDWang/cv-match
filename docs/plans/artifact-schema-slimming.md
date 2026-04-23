@@ -1,4 +1,4 @@
-# Task: Phase 2.3 Full-Chain Schema and Artifact Slimming
+# Artifact Schema Slimming
 
 ## Goal
 
@@ -24,7 +24,7 @@ The phase target is to reduce run artifact size, reduce duplicated JSON, and red
 ## Done Criteria
 
 - `docs/plans/roadmap.md` and this plan agree on the new Phase 2.3 scope.
-- The old active `phase-2-3-controller-reflection-schema-slimming.md` plan is removed or superseded.
+- The old active controller/reflection-only schema slimming plan is removed or superseded.
 - The plan clearly separates:
   - artifact persistence slimming;
   - model-facing context/schema slimming;
@@ -53,8 +53,8 @@ Read first:
 Allowed during this doc-only rewrite:
 
 - `docs/plans/roadmap.md`
-- `docs/plans/phase-2-3-artifact-schema-slimming.md`
-- deletion of `docs/plans/phase-2-3-controller-reflection-schema-slimming.md`
+- `docs/plans/artifact-schema-slimming.md`
+- deletion of the old controller/reflection-only schema slimming plan
 
 Do not edit during this doc-only rewrite:
 
@@ -182,7 +182,7 @@ Acceptance:
 Validation:
 
 ```bash
-git diff -- docs/plans/roadmap.md docs/plans/phase-2-3-artifact-schema-slimming.md
+git diff -- docs/plans/roadmap.md docs/plans/artifact-schema-slimming.md
 git status --short
 ```
 

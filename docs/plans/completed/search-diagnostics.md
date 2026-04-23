@@ -1,4 +1,4 @@
-# Task: Phase 1 Search Diagnostics Ledger
+# Search Diagnostics
 
 ## Goal
 

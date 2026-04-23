@@ -1,4 +1,4 @@
-# Task: Phase 2 Search Lexical Compiler
+# Search Lexical Compiler
 
 ## Goal
 

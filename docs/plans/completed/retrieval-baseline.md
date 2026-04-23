@@ -1,4 +1,4 @@
-# Task: Phase 2.2.1 Generic Retrieval Baseline and De-specialization
+# Retrieval Baseline
 
 ## Goal
 

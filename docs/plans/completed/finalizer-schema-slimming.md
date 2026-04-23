@@ -1,4 +1,4 @@
-# Task: Phase 2.3B.1 Finalizer Draft Slimming
+# Finalizer Schema Slimming
 
 ## Goal
 
@@ -21,7 +21,7 @@ Phase 2.3A Artifact Slimming 已发布为 `0.4.8`。下一步要做的是 Phase 
 - `src/seektalent/models.py` 中 `FinalCandidate` 包含大量 runtime/scoring-owned 字段：`rank`、`final_score`、`fit_bucket`、`strengths`、`weaknesses`、`matched_must_haves`、`matched_preferences`、`risk_flags`、`source_round`。
 - `src/seektalent/prompts/finalize.md` 仍要求模型 preserve runtime ranking 和 preserve strengths/weaknesses。
 - `tests/test_finalizer_contract.py` 当前 validator 针对完整 `FinalResult`。
-- `docs/plans/phase-2-3-artifact-schema-slimming.md` 明确 2.3B 要引入 `FinalResultDraft` / `FinalCandidateDraft`，public `FinalResult` 保持不变。
+- `docs/plans/artifact-schema-slimming.md` 明确 2.3B 要引入 `FinalResultDraft` / `FinalCandidateDraft`，public `FinalResult` 保持不变。
 
 ## Non-goals
 
@@ -53,7 +53,7 @@ Phase 2.3A Artifact Slimming 已发布为 `0.4.8`。下一步要做的是 Phase 
 Read first:
 
 1. `AGENTS.md`
-2. `docs/plans/phase-2-3-artifact-schema-slimming.md`
+2. `docs/plans/artifact-schema-slimming.md`
 3. `docs/outputs.md`
 4. `src/seektalent/models.py`
 5. `src/seektalent/finalize/finalizer.py`

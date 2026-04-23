@@ -1,4 +1,4 @@
-# Task: Phase 2.3C Scoring Schema Experiment
+# Scoring Schema Experiment
 
 ## Goal
 
@@ -21,7 +21,7 @@ Phase 2.3A 已完成 artifact slimming，Phase 2.3B.1/B.2 已完成 finalizer/re
 仓库证据：
 
 - `docs/plans/roadmap.md` 明确 Phase 2.3C 要单独评估 scoring schema 删除或派生 `evidence`、`confidence`、`strengths`、`weaknesses` 的影响。
-- `docs/plans/phase-2-3-artifact-schema-slimming.md` 要求 2.3C 先定义 public `strengths` / `weaknesses` 如何生成，并用 eval/cached judge gate 验收。
+- `docs/plans/artifact-schema-slimming.md` 要求 2.3C 先定义 public `strengths` / `weaknesses` 如何生成，并用 eval/cached judge gate 验收。
 - `src/seektalent/models.py` 当前 `ScoredCandidate` 同时是 scorer model-facing output 和 persisted/runtime/public scoring shape。
 - `src/seektalent/scoring/scorer.py` 当前用 `ScoredCandidate` 作为 Pydantic AI `output_type`，并把结果写入 `scorecards.jsonl`。
 - `src/seektalent/runtime/orchestrator.py` 当前 finalizer、top pool、pool decisions、round review 都读取 `ScoredCandidate`。
@@ -61,8 +61,8 @@ Read first:
 1. `AGENTS.md`
 2. `README.md`
 3. `docs/plans/roadmap.md`
-4. `docs/plans/phase-2-3-artifact-schema-slimming.md`
-5. `docs/plans/active/phase-2-3b-2-reflection-schema-slimming.md`
+4. `docs/plans/artifact-schema-slimming.md`
+5. `docs/plans/completed/reflection-schema-slimming.md`
 6. `src/seektalent/models.py`
 7. `src/seektalent/scoring/scorer.py`
 8. `src/seektalent/prompts/scoring.md`

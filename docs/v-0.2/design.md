@@ -812,7 +812,7 @@ class RuntimeConstraint(BaseModel):
 因此 `v0.2` 改为：
 
 1. `design.md` 只保留枚举字段的建模规则、投影规则和 ownership。
-2. 当前已观察到的客户端枚举值，统一维护在 [cts-enum-observations.md](/Users/frankqdwang/Agents/SeekTalent/docs/v-0.2/cts-enum-observations.md)。
+2. 当前已观察到的客户端枚举值，统一维护在 [cts-enum-observations.md](cts-enum-observations.md)。
 3. 后续若开始实现稳定的 `canonical label -> CTS payload value` 映射表，应再新增一份专门的 mapping source-of-truth 文档或代码表，而不是继续把列表堆回设计文档。
 
 说明：

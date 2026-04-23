@@ -18,11 +18,15 @@ flowchart TD
     C --> D["4. 本轮简历质量短评<br/>给进度条看的中文短评"]
     D --> E["5. 复盘<br/>看本轮搜索和候选人池是否需要调整"]
     E --> B
-    B --> F["6. 最终名单整理<br/>搜索结束后生成最终展示文案"]
+    B --> R["低质量修复<br/>候选反馈或公司发现<br/>只在 quality gate 触发时使用"]
+    R --> B
+    B --> F["7. 最终名单整理<br/>搜索结束后生成最终展示文案"]
     G["评估链路<br/>Judge<br/>只在评估时使用"] -.-> H["评估报告"]
 ```
 
 `Judge` 不参与正常找人流程，只在打开评估流程时给候选人打评估标签。
+
+低质量修复不是每轮都会发生。当前 candidate feedback 路径是 runtime 确定性提取；web company discovery 路径会额外调用 LLM 来生成 web 搜索任务、抽取公司证据、合并公司计划。
 
 ---
 
@@ -153,7 +157,34 @@ flowchart TD
 
 ---
 
-## 6. 最终名单整理
+## 6. 公司发现 Rescue
+
+```mermaid
+flowchart TD
+    A["触发条件<br/>quality gate 判断候选池弱，且 web_company_discovery lane 可用"] --> B["runtime 输入投影<br/>CompanyDiscoveryInput<br/>岗位、title anchor、must-have、偏好领域、背景、地点、排除项"]
+    B --> C["LLM 1: plan_search_queries<br/>系统提示词在代码内<br/>生成有界 web search tasks"]
+    C --> D["结构化输出<br/>CompanySearchPlan"]
+    D --> E["runtime<br/>Bocha web search、rerank、page read"]
+    E --> F["LLM 2: extract_company_evidence<br/>只从搜索结果和页面证据抽公司"]
+    F --> G["结构化输出<br/>CompanyEvidenceExtraction"]
+    G --> H["LLM 3: reduce_company_plan<br/>合并别名、去重、保留有证据公司"]
+    H --> I["结构化输出<br/>TargetCompanyPlan"]
+    I --> J["runtime 后处理<br/>注入 query term pool，写 company_* artifacts，强制下一轮 company seed terms"]
+```
+
+大白话：
+
+这一步像“候选池太弱时，先去外部网页找相似来源公司”。它不是正常 controller 的替代品，只在 rescue lane 选中 `web_company_discovery` 时运行。
+
+第一段 LLM 只负责把岗位需求投影成少量 web 搜索任务，不直接下公司结论。runtime 用这些 query 调 web search provider，必要时 rerank 并读页面。第二段 LLM 只从搜索结果和页面证据里抽公司候选。第三段 LLM 再把证据公司合并、去重，形成可注入搜索词池的 `TargetCompanyPlan`。
+
+业务上可以理解成：当 CTS 常规关键词搜不出足够好的人时，先找“可能产出这类人才的公司”，再把这些公司作为下一轮搜索线索。
+
+当前 candidate feedback rescue 不走 LLM；它从已评分候选人和负样本里确定性提取一个安全反馈词，写入 `candidate_feedback_*` artifacts。
+
+---
+
+## 7. 最终名单整理
 
 ```mermaid
 flowchart TD
@@ -177,7 +208,7 @@ flowchart TD
 
 ---
 
-## 7. 评估 Judge
+## 8. 评估 Judge
 
 ```mermaid
 flowchart TD
@@ -211,8 +242,9 @@ flowchart TD
     B --> E["简历评分<br/>只看评分标准和一份简历"]
     B --> F["质量短评<br/>只看本轮前几位已评分候选人"]
     B --> G["复盘<br/>看本轮检索表现、候选池、历史和未尝试词"]
-    B --> H["最终整理<br/>只看已排序候选人和运行结束信息"]
-    B --> I["Judge<br/>只看评估 JD 和单份简历快照"]
+    B --> H["公司发现<br/>只看需求投影、web 搜索结果和页面证据"]
+    B --> I["最终整理<br/>只看已排序候选人和运行结束信息"]
+    B --> J["Judge<br/>只看评估 JD 和单份简历快照"]
 ```
 
 大白话：

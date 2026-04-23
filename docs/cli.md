@@ -2,16 +2,16 @@
 
 [简体中文](cli.zh-CN.md)
 
-The canonical CLI entrypoint is:
+`SeekTalent` has two terminal surfaces:
 
-```bash
-seektalent --help
-```
+- `seektalent` with no arguments opens the interactive terminal UI when stdin/stdout are interactive.
+- Direct commands can be run as `seektalent <command>` or `seektalent exec <command>`.
+
+`seektalent --help` shows the top-level interactive shell. `seektalent exec --help` shows the full direct command list.
 
 Recommended black-box sequence:
 
 ```bash
-seektalent --help
 seektalent doctor
 seektalent run --job-title-file ./job_title.md --jd-file ./jd.md
 seektalent inspect --json
@@ -20,103 +20,34 @@ seektalent update
 
 ## Commands
 
-### `seektalent init`
+| Command | Purpose |
+| --- | --- |
+| `seektalent run` | Run one resume-matching workflow. |
+| `seektalent benchmark` | Run benchmark JD rows from a JSONL file. |
+| `seektalent migrate-judge-assets` | Rebuild the local judge asset database from existing run artifacts. |
+| `seektalent init` | Write a starter env file. |
+| `seektalent doctor` | Check local configuration without network calls. |
+| `seektalent version` | Print the installed version. |
+| `seektalent update` | Print upgrade instructions. |
+| `seektalent inspect` | Print the machine-readable CLI contract when used with `--json`. |
 
-Write a starter env file in the current directory:
-
-```bash
-seektalent init
-```
-
-Write to a custom path:
-
-```bash
-seektalent init --env-file ./local.env
-```
-
-Overwrite an existing file:
-
-```bash
-seektalent init --force
-```
-
-### `seektalent doctor`
-
-Run local checks without network calls:
-
-```bash
-seektalent doctor
-```
-
-Machine-readable output:
-
-```bash
-seektalent doctor --json
-```
-
-### `seektalent version`
-
-Print the installed package version:
-
-```bash
-seektalent version
-```
-
-### `seektalent update`
-
-Print upgrade instructions for pip and pipx installs:
-
-```bash
-seektalent update
-```
-
-### `seektalent inspect`
-
-Describe the published CLI for wrappers, agents, and automation:
-
-```bash
-seektalent inspect
-seektalent inspect --json
-```
+Every command above can also be invoked under `seektalent exec`, for example `seektalent exec run ...`.
 
 ## `seektalent run`
 
-Each run requires two required inputs and one optional supplement:
+Each run requires:
 
-- a job title
-- a job description
-- optional sourcing notes / sourcing preferences
+- exactly one job title source: `--job-title` or `--job-title-file`
+- exactly one JD source: `--jd` or `--jd-file`
+- optional notes from at most one source: `--notes` or `--notes-file`
 
-You must provide the job title with exactly one source:
-
-- `--job-title` or `--job-title-file`
-
-You must provide the job description with exactly one source:
-
-- `--jd` or `--jd-file`
-
-If you want to add sourcing preferences, provide them with exactly one source:
-
-- `--notes` or `--notes-file`
-
-### Run with a job title and JD
+Examples:
 
 ```bash
 seektalent run \
   --job-title "Python agent engineer" \
   --jd "Python agent engineer with retrieval and ranking experience"
 ```
-
-### Run from inline text
-
-```bash
-seektalent run \
-  --job-title "Python agent engineer" \
-  --jd "Python agent engineer with retrieval and ranking experience" \
-  --notes "Shanghai preferred, avoid pure frontend profiles"
-```
-
-### Run from files
 
 ```bash
 seektalent run \
@@ -125,63 +56,103 @@ seektalent run \
   --notes-file ./notes.md
 ```
 
-### Override output location
+Useful options:
+
+| Option | Purpose |
+| --- | --- |
+| `--env-file ./local.env` | Load a specific env file. |
+| `--output-dir ./outputs` | Write run artifacts under a custom root. |
+| `--json` | Emit one JSON object on stdout on success. |
+| `--max-rounds N` / `--min-rounds N` | Override retrieval round limits. |
+| `--scoring-max-concurrency N` | Override scoring fan-out. |
+| `--search-max-pages-per-round N` | Override per-round CTS page budget. |
+| `--search-max-attempts-per-round N` | Override per-round CTS attempt budget. |
+| `--search-no-progress-limit N` | Override repeated no-progress threshold. |
+| `--enable-eval` / `--disable-eval` | Override judge + eval for this run. |
+| `--enable-reflection` / `--disable-reflection` | Override reflection for this run. |
+
+Default success output is human-readable final markdown plus `run_id`, `run_directory`, and `trace_log`. With `--json`, stdout contains exactly one JSON object on success and stderr contains exactly one JSON object on failure.
+
+## `seektalent benchmark`
+
+Run benchmark rows from a JSONL file:
 
 ```bash
-seektalent run \
-  --job-title "Python agent engineer" \
-  --jd "Python agent engineer" \
-  --notes "Shanghai preferred" \
-  --output-dir ./outputs
-```
-
-### Use a custom env file
-
-```bash
-seektalent run \
-  --job-title "Python agent engineer" \
-  --jd "Python agent engineer" \
-  --notes "Shanghai preferred" \
-  --env-file ./local.env
-```
-
-### Machine-readable output
-
-```bash
-seektalent run \
-  --job-title "Python agent engineer" \
-  --jd "Python agent engineer" \
-  --notes "Shanghai preferred" \
+seektalent benchmark \
+  --jds-file ./artifacts/benchmarks/agent_jds.jsonl \
+  --output-dir ./runs/benchmark \
   --json
 ```
 
-In `--json` mode, stdout contains exactly one JSON object on success. On failure, stderr contains exactly one JSON object.
+Each row must include `job_title` and `job_description`. Extra fields are allowed.
 
-## Success output
+Useful options:
 
-Default success output is human-readable:
+| Option | Purpose |
+| --- | --- |
+| `--jds-file PATH` | Input JSONL file. Defaults to `artifacts/benchmarks/agent_jds.jsonl`. |
+| `--benchmark-max-concurrency N` | Run up to N benchmark rows in parallel. Defaults to `1`. |
+| `--env-file PATH` | Load a specific env file. |
+| `--output-dir PATH` | Write benchmark run artifacts under a custom root. |
+| `--json` | Emit one JSON object on stdout. |
+| `--enable-eval` / `--disable-eval` | Override judge + eval. |
+| `--enable-reflection` / `--disable-reflection` | Override reflection. |
 
-- final markdown answer
-- `run_id`
-- `run_directory`
-- `trace_log`
+The command writes `benchmark_summary_*.json` under the configured runs directory.
 
-When `--output-dir` is omitted, artifacts go under `./runs` relative to the current working directory.
+## `seektalent migrate-judge-assets`
 
-## Failure behavior
+Rebuild the local judge asset database from run artifacts:
+
+```bash
+seektalent migrate-judge-assets --runs-dir runs --project-root .
+```
+
+Use `--json` for a machine-readable migration summary.
+
+## Setup Commands
+
+Write a starter env file:
+
+```bash
+seektalent init
+seektalent init --env-file ./local.env
+seektalent init --force
+```
+
+Run local checks without network calls:
+
+```bash
+seektalent doctor
+seektalent doctor --json
+```
+
+Print version or upgrade instructions:
+
+```bash
+seektalent version
+seektalent update
+```
+
+Inspect the published CLI contract:
+
+```bash
+seektalent inspect --json
+```
+
+## Failure Behavior
 
 The CLI fails fast when:
 
-- the job description is missing
-- the job title is missing
-- both inline and file input are supplied for the same field
-- model configuration is invalid
-- provider credentials are missing
-- CTS credentials are missing
-- mock CTS is requested through configuration
+- required input text is missing
+- mutually exclusive input flags are used together
+- settings validation fails
+- required provider credentials are missing
+- CTS credentials are missing in real CTS mode
+- mock CTS is requested through the published CLI path
 - any runtime stage raises an exception
 
-## Related docs
+## Related Docs
 
 - [Configuration](configuration.md)
 - [Outputs](outputs.md)

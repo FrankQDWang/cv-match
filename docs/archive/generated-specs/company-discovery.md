@@ -1,4 +1,4 @@
-# SeekTalent Target Company Discovery Design
+# Company Discovery
 
 Date: 2026-04-22
 

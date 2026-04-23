@@ -55,7 +55,7 @@ uv run tach show --mermaid -o /tmp/seektalent-tach-stage2-graph.md
 uv run tach map -o /tmp/seektalent-tach-stage2-map.json
 ```
 
-Tach is a local advisory architecture radar in this phase, not a required CI gate. It tracks coarse `src/` module direction only; `tests/`, `experiments/`, and generated graph/map files stay out of the committed checks.
+Tach is a local advisory architecture radar in this phase, not a required CI gate. It tracks coarse `src/` module direction only; `tests/`, `experiments/`, and generated graph/map files stay out of the committed checks. If `uv run tach check` reports dependency drift, either update `tach.toml` to match the intended dependency direction or simplify the import that crossed a boundary.
 
 Run Python tests:
 
@@ -73,12 +73,14 @@ Run the CLI help:
 
 ```bash
 uv run seektalent --help
+uv run seektalent exec --help
 ```
 
 Run the canonical `run` help:
 
 ```bash
 uv run seektalent run --help
+uv run seektalent exec run --help
 ```
 
 Run the UI API help:
@@ -109,10 +111,12 @@ It is not available in the published PyPI CLI.
 Example:
 
 ```bash
-uv run seektalent run --jd "Python agent engineer" --mock-cts
+SEEKTALENT_MOCK_CTS=true uv run seektalent run \
+  --job-title "Python agent engineer" \
+  --jd "Python agent engineer"
 ```
 
-Or set:
+Or set it in a source-checkout env file:
 
 ```dotenv
 SEEKTALENT_MOCK_CTS=true
@@ -122,6 +126,7 @@ Notes:
 
 - mock CTS avoids live CTS traffic
 - mock CTS still requires a valid LLM provider key
+- the published CLI rejects `--mock-cts`; use the env setting in a source checkout instead
 - this mode is not the recommended path for end users
 
 ## Env template source

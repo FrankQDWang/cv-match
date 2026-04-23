@@ -8,8 +8,8 @@
 
 事实来源：
 
-- Prompt: [scoring.md](/Users/frankqdwang/Agents/SeekTalent/src/seektalent/prompts/scoring.md)
-- 输入/输出模型: [models.py](/Users/frankqdwang/Agents/SeekTalent/src/seektalent/models.py)
+- Prompt: [scoring.md](../../src/seektalent/prompts/scoring.md)
+- 输入/输出模型: [models.py](../../src/seektalent/models.py)
 
 ## 1. `ScoringPolicy` 是什么
 

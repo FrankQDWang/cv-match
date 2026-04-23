@@ -1,4 +1,4 @@
-# Task: Phase 2.3B.2 Reflection Schema Slimming
+# Reflection Schema Slimming
 
 ## Goal
 
@@ -14,7 +14,7 @@
 
 ## Why Now
 
-Phase 2.3 主计划要求 2.3B 同时覆盖 reflection 和 finalizer，但 reflection 会影响下一轮 controller/query/filter guidance，风险高于 finalizer。因此本计划排在 `docs/plans/active/phase-2-3b-1-finalizer-draft-slimming.md` 之后独立执行。
+Phase 2.3 主计划要求 2.3B 同时覆盖 reflection 和 finalizer，但 reflection 会影响下一轮 controller/query/filter guidance，风险高于 finalizer。因此本计划排在 `docs/plans/completed/finalizer-schema-slimming.md` 之后独立执行。
 
 仓库证据：
 
@@ -54,7 +54,7 @@ Phase 2.3 主计划要求 2.3B 同时覆盖 reflection 和 finalizer，但 refle
 Read first:
 
 1. `AGENTS.md`
-2. `docs/plans/phase-2-3-artifact-schema-slimming.md`
+2. `docs/plans/artifact-schema-slimming.md`
 3. `src/seektalent/models.py`
 4. `src/seektalent/reflection/critic.py`
 5. `src/seektalent/prompts/reflection.md`

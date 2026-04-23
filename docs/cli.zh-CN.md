@@ -2,16 +2,16 @@
 
 [English](cli.md)
 
-规范 CLI 入口是：
+`SeekTalent` 有两个终端入口：
 
-```bash
-seektalent --help
-```
+- 不带参数运行 `seektalent` 时，如果 stdin/stdout 是交互式终端，会进入交互式 TUI。
+- 直接命令可以写成 `seektalent <command>`，也可以写成 `seektalent exec <command>`。
+
+`seektalent --help` 显示顶层交互式 shell。`seektalent exec --help` 显示完整的直接命令列表。
 
 推荐的黑盒使用顺序：
 
 ```bash
-seektalent --help
 seektalent doctor
 seektalent run --job-title-file ./job_title.md --jd-file ./jd.md
 seektalent inspect --json
@@ -20,103 +20,34 @@ seektalent update
 
 ## 命令
 
-### `seektalent init`
+| 命令 | 用途 |
+| --- | --- |
+| `seektalent run` | 运行一次简历匹配流程。 |
+| `seektalent benchmark` | 从 JSONL 文件运行一组 benchmark JD。 |
+| `seektalent migrate-judge-assets` | 从已有 run artifacts 重建本地 judge asset 数据库。 |
+| `seektalent init` | 写入 starter env 文件。 |
+| `seektalent doctor` | 运行本地配置检查，不发网络请求。 |
+| `seektalent version` | 打印当前安装包版本。 |
+| `seektalent update` | 打印升级说明。 |
+| `seektalent inspect` | 配合 `--json` 输出机器可读 CLI contract。 |
 
-在当前目录写入一个启动用 env 文件：
-
-```bash
-seektalent init
-```
-
-写入自定义路径：
-
-```bash
-seektalent init --env-file ./local.env
-```
-
-覆盖已存在文件：
-
-```bash
-seektalent init --force
-```
-
-### `seektalent doctor`
-
-运行本地检查，不发网络请求：
-
-```bash
-seektalent doctor
-```
-
-机器可读输出：
-
-```bash
-seektalent doctor --json
-```
-
-### `seektalent version`
-
-打印当前安装包版本：
-
-```bash
-seektalent version
-```
-
-### `seektalent update`
-
-打印 pip 和 pipx 的升级说明：
-
-```bash
-seektalent update
-```
-
-### `seektalent inspect`
-
-输出面向 wrappers、agents 和 automation 的发布版 CLI 描述：
-
-```bash
-seektalent inspect
-seektalent inspect --json
-```
+上表里的每个命令也都可以放在 `seektalent exec` 后面运行，例如 `seektalent exec run ...`。
 
 ## `seektalent run`
 
-每次运行都需要两个必填输入和一个可选补充输入：
+每次运行都需要：
 
-- job title
-- job description
-- 可选的 sourcing notes / sourcing preferences
+- 岗位名称必须且只能提供一种来源：`--job-title` 或 `--job-title-file`
+- JD 必须且只能提供一种来源：`--jd` 或 `--jd-file`
+- notes 可选；如果提供，也最多只能提供一种来源：`--notes` 或 `--notes-file`
 
-岗位名称必须且只能提供一种来源：
-
-- `--job-title` 或 `--job-title-file`
-
-JD 必须且只能提供一种来源：
-
-- `--jd` 或 `--jd-file`
-
-如果你需要补充寻访偏好，也只能提供一种来源：
-
-- `--notes` 或 `--notes-file`
-
-### 传岗位名称和 JD 运行
+示例：
 
 ```bash
 seektalent run \
   --job-title "Python agent engineer" \
   --jd "Python agent engineer with retrieval and ranking experience"
 ```
-
-### 直接传文本运行
-
-```bash
-seektalent run \
-  --job-title "Python agent engineer" \
-  --jd "Python agent engineer with retrieval and ranking experience" \
-  --notes "Shanghai preferred, avoid pure frontend profiles"
-```
-
-### 从文件运行
 
 ```bash
 seektalent run \
@@ -125,60 +56,100 @@ seektalent run \
   --notes-file ./notes.md
 ```
 
-### 覆盖输出目录
+常用选项：
+
+| 选项 | 用途 |
+| --- | --- |
+| `--env-file ./local.env` | 加载指定 env 文件。 |
+| `--output-dir ./outputs` | 把 run artifacts 写到自定义根目录。 |
+| `--json` | 成功时 stdout 只输出一个 JSON 对象。 |
+| `--max-rounds N` / `--min-rounds N` | 覆盖检索轮数上下限。 |
+| `--scoring-max-concurrency N` | 覆盖评分并发数。 |
+| `--search-max-pages-per-round N` | 覆盖每轮 CTS 翻页预算。 |
+| `--search-max-attempts-per-round N` | 覆盖每轮 CTS 尝试次数预算。 |
+| `--search-no-progress-limit N` | 覆盖连续无进展阈值。 |
+| `--enable-eval` / `--disable-eval` | 为本次运行覆盖 judge + eval 开关。 |
+| `--enable-reflection` / `--disable-reflection` | 为本次运行覆盖 reflection 开关。 |
+
+默认成功输出是人类可读的最终 markdown，以及 `run_id`、`run_directory`、`trace_log`。使用 `--json` 时，成功时 stdout 只输出一个 JSON 对象，失败时 stderr 只输出一个 JSON 对象。
+
+## `seektalent benchmark`
+
+从 JSONL 文件运行 benchmark：
 
 ```bash
-seektalent run \
-  --job-title "Python agent engineer" \
-  --jd "Python agent engineer" \
-  --notes "Shanghai preferred" \
-  --output-dir ./outputs
-```
-
-### 使用自定义 env 文件
-
-```bash
-seektalent run \
-  --job-title "Python agent engineer" \
-  --jd "Python agent engineer" \
-  --notes "Shanghai preferred" \
-  --env-file ./local.env
-```
-
-### 机器可读输出
-
-```bash
-seektalent run \
-  --job-title "Python agent engineer" \
-  --jd "Python agent engineer" \
-  --notes "Shanghai preferred" \
+seektalent benchmark \
+  --jds-file ./artifacts/benchmarks/agent_jds.jsonl \
+  --output-dir ./runs/benchmark \
   --json
 ```
 
-在 `--json` 模式下，成功时 stdout 只会输出一个 JSON 对象；失败时 stderr 只会输出一个 JSON 对象。
+每一行必须包含 `job_title` 和 `job_description`。允许有额外字段。
 
-## 成功输出
+常用选项：
 
-默认成功输出是人类可读文本：
+| 选项 | 用途 |
+| --- | --- |
+| `--jds-file PATH` | 输入 JSONL 文件；默认是 `artifacts/benchmarks/agent_jds.jsonl`。 |
+| `--benchmark-max-concurrency N` | 最多并行运行 N 条 benchmark；默认是 `1`。 |
+| `--env-file PATH` | 加载指定 env 文件。 |
+| `--output-dir PATH` | 把 benchmark run artifacts 写到自定义根目录。 |
+| `--json` | stdout 输出一个 JSON 对象。 |
+| `--enable-eval` / `--disable-eval` | 覆盖 judge + eval 开关。 |
+| `--enable-reflection` / `--disable-reflection` | 覆盖 reflection 开关。 |
 
-- final markdown answer
-- `run_id`
-- `run_directory`
-- `trace_log`
+该命令会在配置的 runs 目录下写入 `benchmark_summary_*.json`。
 
-如果不传 `--output-dir`，产物会写到当前工作目录下的 `./runs`。
+## `seektalent migrate-judge-assets`
+
+从 run artifacts 重建本地 judge asset 数据库：
+
+```bash
+seektalent migrate-judge-assets --runs-dir runs --project-root .
+```
+
+加 `--json` 可输出机器可读的迁移摘要。
+
+## Setup 命令
+
+写入 starter env 文件：
+
+```bash
+seektalent init
+seektalent init --env-file ./local.env
+seektalent init --force
+```
+
+运行本地检查，不发网络请求：
+
+```bash
+seektalent doctor
+seektalent doctor --json
+```
+
+打印版本或升级说明：
+
+```bash
+seektalent version
+seektalent update
+```
+
+检查发布版 CLI contract：
+
+```bash
+seektalent inspect --json
+```
 
 ## 失败行为
 
 CLI 会在这些情况下 fail fast：
 
-- 缺少岗位名称
-- 缺少 JD
-- 同一个字段同时传了 inline 和 file 两种输入
-- 模型配置不合法
+- 缺少必填输入文本
+- 同一个字段同时使用互斥输入参数
+- settings 校验失败
 - 缺少 provider 凭证
-- 缺少 CTS 凭证
-- 通过配置请求了 mock CTS
+- 真实 CTS 模式下缺少 CTS 凭证
+- 通过发布版 CLI 路径请求 mock CTS
 - 任意 runtime stage 抛出异常
 
 ## 相关文档

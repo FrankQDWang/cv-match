@@ -37,13 +37,13 @@
 
 ```bash
 uv build
-pipx install dist/seektalent-0.4.2-py3-none-any.whl
+pipx install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
 如果你更希望装进现有 Python 环境：
 
 ```bash
-pip install dist/seektalent-0.4.2-py3-none-any.whl
+pip install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
 默认安装形态是 OpenAI-only。它只包含 `pydantic-ai-slim[openai]`，因此开箱即用的只有 `openai:*`、`openai-chat:*`、`openai-responses:*` 这几类模型，以及兼容 `OPENAI_BASE_URL` 的 OpenAI-compatible 端点。
@@ -132,7 +132,7 @@ seektalent inspect --json
 推荐：
 
 ```bash
-pipx install dist/seektalent-0.4.2-py3-none-any.whl
+pipx install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
 这样会直接得到 `seektalent` 命令。
@@ -140,7 +140,7 @@ pipx install dist/seektalent-0.4.2-py3-none-any.whl
 ### 给 Python 集成方
 
 ```bash
-pip install dist/seektalent-0.4.2-py3-none-any.whl
+pip install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
 然后：
@@ -306,12 +306,14 @@ http://127.0.0.1:5176
 
 ## 文档导航
 
-- [Configuration](docs/configuration.md)
-- [CLI](docs/cli.zh-CN.md)
-- [UI](docs/ui.md)
-- [Outputs](docs/outputs.md)
-- [Architecture](docs/architecture.md)
-- [Development](docs/development.md)
+建议按这个顺序看：
+
+- [Architecture](docs/architecture.md)：组件地图、架构图和运行时序图。
+- [CLI](docs/cli.zh-CN.md)：命令行契约。
+- [Configuration](docs/configuration.md)：环境变量和模型配置。
+- [Outputs](docs/outputs.md)：运行产物和诊断文件。
+- [UI](docs/ui.md)：本地 Web 薄壳。
+- [Development](docs/development.md)：本地检查命令和仓库约定。
 
 历史版本设计文档保留在 `docs/v-*` 下。
 

@@ -1,4 +1,4 @@
-# Target Company Discovery Implementation Plan
+# Company Discovery
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -22,54 +22,54 @@ This plan implements one feature across related surfaces:
 - TUI progress rendering,
 - docs and tests.
 
-These pieces are coupled by a single approved spec: `docs/superpowers/specs/2026-04-22-target-company-discovery-design.md`. Do not split this into unrelated feature branches. Do not implement a local company knowledge pack or a second web provider in this plan.
+These pieces are coupled by a single approved spec: `docs/archive/generated-specs/company-discovery.md`. Do not split this into unrelated feature branches. Do not implement a local company knowledge pack or a second web provider in this plan.
 
 ## File Structure
 
 Create:
 
-- `src/seektalent/company_discovery/__init__.py`  
+- `src/seektalent/company_discovery/__init__.py`
   Public exports for the small company discovery package.
-- `src/seektalent/company_discovery/models.py`  
+- `src/seektalent/company_discovery/models.py`
   Pydantic models for company evidence, target-company plans, web results, page reads, and model-step outputs.
-- `src/seektalent/company_discovery/explicit.py`  
+- `src/seektalent/company_discovery/explicit.py`
   Deterministic extraction from existing requirement fields plus simple JD/notes target/exclude labels.
-- `src/seektalent/company_discovery/query_injection.py`  
+- `src/seektalent/company_discovery/query_injection.py`
   Pure function that turns accepted target companies into admitted `QueryTermCandidate` entries.
-- `src/seektalent/company_discovery/scheduler.py`  
+- `src/seektalent/company_discovery/scheduler.py`
   Pure function that picks one untried target-company query for a runtime override.
-- `src/seektalent/company_discovery/bocha_provider.py`  
+- `src/seektalent/company_discovery/bocha_provider.py`
   Minimal Bocha Web Search API adapter using `httpx`.
-- `src/seektalent/company_discovery/page_reader.py`  
+- `src/seektalent/company_discovery/page_reader.py`
   Bounded HTML/text reader with simple cleanup and hard character limits.
-- `src/seektalent/company_discovery/model_steps.py`  
+- `src/seektalent/company_discovery/model_steps.py`
   Pydantic AI calls for search planning, triage, evidence extraction, and reduction.
-- `src/seektalent/company_discovery/service.py`  
+- `src/seektalent/company_discovery/service.py`
   Orchestrates explicit bootstrap and bounded web discovery using injected provider/page/model dependencies.
-- `tests/test_company_discovery.py`  
+- `tests/test_company_discovery.py`
   Unit tests for pure package behavior and provider normalization.
-- `tests/test_company_discovery_config.py`  
+- `tests/test_company_discovery_config.py`
   Defaults and key validation tests.
 
 Modify:
 
-- `src/seektalent/models.py`  
+- `src/seektalent/models.py`
   Extend query term literals and `RetrievalState` company-discovery state fields.
-- `src/seektalent/config.py`  
+- `src/seektalent/config.py`
   Add high-level feature flags, Bocha key, Qwen model config, and budget settings.
-- `src/seektalent/default.env`  
+- `src/seektalent/default.env`
   Add documented env defaults.
-- `src/seektalent/runtime/orchestrator.py`  
+- `src/seektalent/runtime/orchestrator.py`
   High-level routing only: bootstrap explicit companies, trigger web discovery, force company-seed decisions, write artifacts, emit progress events.
-- `src/seektalent/controller/react_controller.py` and `src/seektalent/prompts/controller.md`  
+- `src/seektalent/controller/react_controller.py` and `src/seektalent/prompts/controller.md`
   Show target-company term metadata and add one prompt rule.
-- `src/seektalent/tui.py`  
+- `src/seektalent/tui.py`
   Render company discovery progress events as business trace blocks and label target-company rounds.
-- `docs/configuration.md`  
+- `docs/configuration.md`
   Document target-company and company-discovery settings.
-- `docs/outputs.md`  
+- `docs/outputs.md`
   Document company discovery artifacts.
-- `tach.toml`  
+- `tach.toml`
   Add `seektalent.company_discovery` as a module and allow `seektalent.runtime` to depend on it.
 - Existing tests under `tests/test_query_compiler.py`, `tests/test_query_plan.py`, `tests/test_runtime_state_flow.py`, and `tests/test_tui.py`.
 
@@ -2919,7 +2919,7 @@ git commit -m "Render company discovery trace in TUI"
 **Files:**
 - Modify: `docs/configuration.md`
 - Modify: `docs/outputs.md`
-- Modify: `docs/superpowers/plans/2026-04-22-target-company-discovery-implementation.md` if implementation discoveries required plan correction.
+- Modify: `docs/archive/generated-plans/company-discovery.md` if implementation discoveries required plan correction.
 
 - [ ] **Step 1: Update configuration docs**
 

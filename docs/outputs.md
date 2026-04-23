@@ -78,6 +78,25 @@ Common per-round files include:
 | `reflection_advice.json` | Structured reflection output. |
 | `round_review.md` | Human-readable summary of the round. |
 
+Optional recall-rescue files may also appear under a round when the quality gate asks runtime to repair weak search coverage:
+
+| File | Purpose |
+| --- | --- |
+| `rescue_decision.json` | Runtime-selected rescue lane, skipped lanes, and any forced terms. |
+| `candidate_feedback_input.json` | Seed, negative, and already-sent resume/query facts used by deterministic candidate feedback extraction. |
+| `candidate_feedback_terms.json` | Candidate feedback term extraction result. |
+| `candidate_feedback_decision.json` | Accepted feedback term and forced query terms, or the skip reason. |
+| `company_discovery_result.json` | Full web company discovery result for the round. |
+| `company_discovery_input.json` | Requirement-derived input used to discover source companies. |
+| `company_discovery_plan.json` | Accepted, held, and rejected company plan. |
+| `company_search_queries.json` | Web search tasks generated for company discovery. |
+| `company_search_results.json` | Deduplicated web search results. |
+| `company_search_rerank.json` | Provider rerank results used before page reads. |
+| `company_page_reads.json` | Fetched page snippets for top reranked results. |
+| `company_evidence_cards.json` | Evidence-backed company candidates extracted from search/page evidence. |
+| `query_term_pool_after_company_discovery.json` | Query term pool after accepted company terms are injected. |
+| `company_discovery_decision.json` | Forced company seed terms, accepted company count, and discovery stop reason. |
+
 ## How to use them
 
 - Read `trace.log` first when debugging a failed or confusing run.
@@ -85,6 +104,7 @@ Common per-round files include:
 - Use `round_review.md` and `run_summary.md` for quick human inspection.
 - Use `search_diagnostics.json` when a JD has weak or missing candidates and you need to attribute the issue to query terms, filters, CTS recall, dedup, scoring retention, reflection, or controller response.
 - Use `term_surface_audit.json` when comparing compiled terms against actual query surfaces. Its CTS counts are query-containing aggregates; exact marginal term or surface lift requires a separate surface probe.
+- Use `rescue_decision.json` with the candidate feedback or company discovery files when a run switches away from the normal controller path to repair low recall.
 - Use `final_candidates.json` when you need structured downstream consumption.
 
 ## Notes

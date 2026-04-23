@@ -1,4 +1,4 @@
-# Task: Phase 2.1 Search Budget and Precision Tuning
+# Search Budget Precision Tuning
 
 ## Goal
 
@@ -46,7 +46,7 @@ Read first:
 1. `AGENTS.md`
 2. `README.md`
 3. `docs/plans/roadmap.md`
-4. `docs/plans/completed/phase-2-search-lexical-compiler.md`
+4. `docs/plans/completed/search-lexical-compiler.md`
 5. `src/seektalent/models.py`
 6. `src/seektalent/runtime/context_builder.py`
 7. `src/seektalent/runtime/orchestrator.py`

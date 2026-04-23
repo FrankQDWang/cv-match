@@ -1,4 +1,4 @@
-# Run Latency Investigation Design
+# Run Latency
 
 Date: 2026-04-23
 

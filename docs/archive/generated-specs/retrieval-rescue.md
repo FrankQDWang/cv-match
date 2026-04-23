@@ -1,4 +1,4 @@
-# Retrieval Rescue Router Design
+# Retrieval Rescue
 
 Date: 2026-04-23
 

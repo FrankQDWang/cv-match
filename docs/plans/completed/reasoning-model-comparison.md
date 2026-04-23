@@ -1,4 +1,4 @@
-# Task: Phase 2.4 Bailian Reasoning Model A/B
+# Reasoning Model Comparison
 
 ## Goal
 

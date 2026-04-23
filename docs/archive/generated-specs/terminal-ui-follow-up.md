@@ -1,4 +1,4 @@
-# SeekTalent Full-Screen TUI Follow Mode Design
+# Terminal UI Follow-Up
 
 Date: 2026-04-21
 

@@ -1,4 +1,4 @@
-# Task: Phase 2.2 Benchmark Expansion and Term/Surface Attribution
+# Benchmark Term Surface Attribution
 
 ## Goal
 
@@ -317,7 +317,7 @@ Acceptance:
 Validation:
 
 ```bash
-rg -n "term_surface_audit|surface" docs/outputs.md docs/plans/active/phase-2-2-benchmark-expansion-term-surface-attribution.md
+rg -n "term_surface_audit|surface" docs/outputs.md docs/plans/completed/benchmark-term-surface-attribution.md
 ```
 
 Expected: both docs mention the artifact.

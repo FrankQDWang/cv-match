@@ -1,4 +1,4 @@
-# Task: Phase 2.2.2 Generic Anchor Hygiene
+# Anchor Hygiene
 
 ## Goal
 
@@ -40,7 +40,7 @@ Read first:
 
 1. `AGENTS.md`
 2. `docs/plans/roadmap.md`
-3. `docs/plans/completed/phase-2-2-1-generic-retrieval-baseline-de-specialization.md`
+3. `docs/plans/completed/retrieval-baseline.md`
 4. `src/seektalent/retrieval/query_compiler.py`
 5. `tests/test_query_compiler.py`
 6. `src/seektalent/cli.py`
