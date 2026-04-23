@@ -595,7 +595,7 @@ class ScoringContext(BaseModel):
     round_no: int
     scoring_policy: ScoringPolicy
     normalized_resume: NormalizedResume
-    requirement_sheet_sha256: str = ""
+    requirement_sheet_sha256: str = Field(min_length=1)
 
 
 class ScoredCandidateDraft(BaseModel):

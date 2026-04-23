@@ -196,6 +196,19 @@ def test_scoring_cache_hit_skips_provider_and_writes_snapshot(
     assert snapshots[0]["cache_key"] == cache_key
 
 
+def test_scoring_cache_key_changes_when_reasoning_effort_changes(tmp_path: Path) -> None:
+    prompt = _prompt()
+    context = _context()
+    low_settings = _settings(tmp_path, reasoning_effort="low")
+    high_settings = _settings(tmp_path, reasoning_effort="high")
+    user_prompt = ResumeScorer(low_settings, prompt).rendered_prompt_for_cache(context)
+
+    low_key = scoring_cache_key(low_settings, prompt, context, user_prompt)
+    high_key = scoring_cache_key(high_settings, prompt, context, user_prompt)
+
+    assert low_key != high_key
+
+
 def test_scoring_prompt_cache_key_is_recorded_on_live_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

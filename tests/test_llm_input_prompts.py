@@ -312,6 +312,7 @@ def test_scoring_prompt_contains_policy_resume_card_and_exact_resume_id() -> Non
                 completeness_score=90,
                 source_round=2,
             ),
+            requirement_sheet_sha256="requirement-sheet-hash",
         )
     )
 

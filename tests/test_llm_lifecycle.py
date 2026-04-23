@@ -193,6 +193,7 @@ def _scoring_context() -> ScoringContext:
             completeness_score=90,
             source_round=1,
         ),
+        requirement_sheet_sha256="requirement-sheet-hash",
     )
 
 

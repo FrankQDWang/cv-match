@@ -84,6 +84,7 @@ def scoring_cache_key(
         [
             SCORING_CACHE_SCHEMA_VERSION,
             settings.scoring_model,
+            settings.reasoning_effort,
             prompt.sha256,
             json_sha256(context.scoring_policy.model_dump(mode="json")),
             context.requirement_sheet_sha256,
