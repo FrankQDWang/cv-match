@@ -1,4 +1,5 @@
 from seektalent.runtime.exact_llm_cache import (
+    clear_exact_llm_cache,
     get_cached_json,
     put_cached_json,
     stable_cache_key,
@@ -35,3 +36,14 @@ def test_exact_cache_keeps_namespaces_separate(tmp_path) -> None:
 
     assert get_cached_json(settings, namespace="requirements", key="shared") == {"who": "me"}
     assert get_cached_json(settings, namespace="scoring", key="shared") == {"who": "other"}
+
+
+def test_clear_exact_llm_cache_removes_sqlite_file(tmp_path) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+
+    put_cached_json(settings, namespace="scoring", key="k", payload={"value": 1})
+    assert get_cached_json(settings, namespace="scoring", key="k") == {"value": 1}
+
+    clear_exact_llm_cache(settings)
+
+    assert get_cached_json(settings, namespace="scoring", key="k") is None
