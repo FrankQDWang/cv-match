@@ -172,6 +172,27 @@ def test_with_overrides_preserves_existing_explicit_paths_when_mode_changes() ->
     assert settings.llm_cache_dir == "/tmp/custom-cache"
 
 
+def test_with_overrides_recomputes_mode_paths_after_non_mode_override() -> None:
+    settings = make_settings().with_overrides(scoring_max_concurrency=7).with_overrides(runtime_mode="prod")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.scoring_max_concurrency == 7
+    assert settings.runs_dir == "~/.seektalent/runs"
+    assert settings.llm_cache_dir == "~/.seektalent/cache"
+
+
+def test_with_overrides_preserves_explicit_paths_after_non_mode_override() -> None:
+    settings = make_settings(
+        runs_dir="/tmp/custom-runs",
+        llm_cache_dir="/tmp/custom-cache",
+    ).with_overrides(scoring_max_concurrency=7).with_overrides(runtime_mode="prod")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.scoring_max_concurrency == 7
+    assert settings.runs_dir == "/tmp/custom-runs"
+    assert settings.llm_cache_dir == "/tmp/custom-cache"
+
+
 def test_resolve_user_path_expands_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
 

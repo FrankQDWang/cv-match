@@ -244,9 +244,8 @@ class AppSettings(BaseSettings):
     def with_overrides(self, **overrides: object) -> "AppSettings":
         filtered = {key: value for key, value in overrides.items() if value is not None}
         data = self.model_dump()
-        if "runtime_mode" in filtered:
-            if "runs_dir" not in filtered and "runs_dir" not in self.model_fields_set:
-                data.pop("runs_dir", None)
-            if "llm_cache_dir" not in filtered and "llm_cache_dir" not in self.model_fields_set:
-                data.pop("llm_cache_dir", None)
+        if "runs_dir" not in filtered and "runs_dir" not in self.model_fields_set:
+            data.pop("runs_dir", None)
+        if "llm_cache_dir" not in filtered and "llm_cache_dir" not in self.model_fields_set:
+            data.pop("llm_cache_dir", None)
         return type(self).model_validate({**data, **filtered})
