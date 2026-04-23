@@ -25,7 +25,7 @@ from seektalent.models import (
 )
 from seektalent.progress import ProgressEvent
 from seektalent.runtime import WorkflowRuntime
-from seektalent.tracing import RunTracer
+from seektalent.tracing import LLMCallSnapshot, RunTracer
 from tests.settings_factory import make_settings
 
 
@@ -91,6 +91,76 @@ def test_run_config_records_sanitized_rescue_settings(tmp_path: Path) -> None:
     assert run_config["settings"]["company_discovery_timeout_seconds"] == 18
     assert run_config["settings"]["company_discovery_accepted_company_limit"] == 7
     assert run_config["settings"]["company_discovery_min_confidence"] == 0.7
+
+
+def test_run_config_records_latency_engineering_settings(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        requirements_enable_thinking=False,
+        controller_enable_thinking=False,
+        reflection_enable_thinking=False,
+        structured_repair_model="openai-chat:qwen3.5-repair",
+        structured_repair_reasoning_effort="low",
+        llm_cache_dir="tmp/latency-cache",
+        openai_prompt_cache_enabled=True,
+        openai_prompt_cache_retention="12h",
+    )
+    runtime = WorkflowRuntime(settings)
+
+    run_config = runtime._build_public_run_config()
+
+    assert run_config["settings"]["requirements_enable_thinking"] is False
+    assert run_config["settings"]["controller_enable_thinking"] is False
+    assert run_config["settings"]["reflection_enable_thinking"] is False
+    assert run_config["settings"]["structured_repair_model"] == "openai-chat:qwen3.5-repair"
+    assert run_config["settings"]["structured_repair_reasoning_effort"] == "low"
+    assert run_config["settings"]["llm_cache_dir"] == "tmp/latency-cache"
+    assert run_config["settings"]["openai_prompt_cache_enabled"] is True
+    assert run_config["settings"]["openai_prompt_cache_retention"] == "12h"
+
+
+def test_llm_call_snapshot_accepts_cache_repair_and_prompt_cache_metadata() -> None:
+    snapshot = LLMCallSnapshot(
+        stage="requirements",
+        call_id="call-1",
+        model_id="openai-chat:qwen3.5-flash",
+        provider="openai-chat",
+        prompt_hash="prompt-hash",
+        prompt_snapshot_path="prompt_snapshots/requirements.md",
+        retries=0,
+        output_retries=0,
+        started_at="2026-01-01T00:00:00+00:00",
+        status="succeeded",
+        input_payload_sha256="payload-hash",
+        prompt_chars=120,
+        input_payload_chars=30,
+        output_chars=40,
+        input_summary="input",
+        cache_hit=True,
+        cache_key="cache-key",
+        cache_lookup_latency_ms=3,
+        prompt_cache_key="prompt-cache-key",
+        prompt_cache_retention="24h",
+        cached_input_tokens=11,
+        repair_attempt_count=2,
+        repair_succeeded=True,
+        repair_model="openai-chat:qwen3.5-repair",
+        repair_reason="tooling",
+        full_retry_count=1,
+    )
+    dump = snapshot.model_dump(mode="json")
+
+    assert dump["cache_hit"] is True
+    assert dump["cache_key"] == "cache-key"
+    assert dump["cache_lookup_latency_ms"] == 3
+    assert dump["prompt_cache_key"] == "prompt-cache-key"
+    assert dump["prompt_cache_retention"] == "24h"
+    assert dump["cached_input_tokens"] == 11
+    assert dump["repair_attempt_count"] == 2
+    assert dump["repair_succeeded"] is True
+    assert dump["repair_model"] == "openai-chat:qwen3.5-repair"
+    assert dump["repair_reason"] == "tooling"
+    assert dump["full_retry_count"] == 1
 
 
 def test_runtime_preflight_passes_rescue_models_from_top_level_settings(monkeypatch) -> None:
