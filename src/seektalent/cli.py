@@ -1032,6 +1032,8 @@ def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     if not args_list:
         if _is_interactive_terminal():
+            load_process_env()
+            cleanup_runtime_artifacts(AppSettings())
             return _launch_tui()
         parser = build_parser()
         parser.print_help()
