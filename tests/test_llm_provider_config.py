@@ -336,6 +336,19 @@ def test_build_model_settings_omits_prompt_cache_fields_when_disabled() -> None:
     assert "openai_prompt_cache_retention" not in model_settings
 
 
+def test_build_model_settings_omits_prompt_cache_fields_for_non_openai_models() -> None:
+    settings = make_settings(openai_prompt_cache_enabled=True)
+
+    model_settings = build_model_settings(
+        settings,
+        "anthropic:claude-sonnet-4-5",
+        prompt_cache_key="requirements:abc",
+    )
+
+    assert "openai_prompt_cache_key" not in model_settings
+    assert "openai_prompt_cache_retention" not in model_settings
+
+
 def test_build_model_settings_keeps_bailian_enable_thinking_extra_body_with_prompt_cache() -> None:
     settings = make_settings(
         openai_prompt_cache_enabled=True,
