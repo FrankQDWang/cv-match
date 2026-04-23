@@ -17,6 +17,7 @@ MODEL_FIELDS = (
     "scoring_model",
     "finalize_model",
     "reflection_model",
+    "structured_repair_model",
     "judge_model",
     "tui_summary_model",
     "candidate_feedback_model",
@@ -78,6 +79,9 @@ class AppSettings(BaseSettings):
     scoring_model: str = "openai-responses:gpt-5.4-mini"
     finalize_model: str = "openai-responses:gpt-5.4-mini"
     reflection_model: str = "openai-responses:gpt-5.4"
+    requirements_enable_thinking: bool = True
+    structured_repair_model: str = "openai-chat:qwen3.5-flash"
+    structured_repair_reasoning_effort: ReasoningEffort = "off"
     judge_model: str | None = None
     tui_summary_model: str | None = None
     judge_openai_base_url: str | None = None
@@ -104,11 +108,14 @@ class AppSettings(BaseSettings):
 
     min_rounds: int = 3
     max_rounds: int = 10
-    scoring_max_concurrency: int = 5
+    scoring_max_concurrency: int = 10
     judge_max_concurrency: int = 5
     search_max_pages_per_round: int = 3
     search_max_attempts_per_round: int = 3
     search_no_progress_limit: int = 2
+    llm_cache_dir: str = ".seektalent/cache"
+    openai_prompt_cache_enabled: bool = False
+    openai_prompt_cache_retention: str | None = None
     mock_cts: bool = False
     enable_eval: bool = False
     enable_reflection: bool = True

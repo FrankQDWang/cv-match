@@ -77,11 +77,43 @@ def test_app_settings_accepts_stage_thinking_flags() -> None:
     assert settings.reflection_enable_thinking is True
 
 
+def test_app_settings_enables_requirements_controller_and_reflection_thinking_by_default() -> None:
+    settings = make_settings()
+
+    assert settings.requirements_enable_thinking is True
+    assert settings.controller_enable_thinking is True
+    assert settings.reflection_enable_thinking is True
+
+
 def test_app_settings_enables_controller_and_reflection_thinking_by_default() -> None:
     settings = make_settings()
 
     assert settings.controller_enable_thinking is True
     assert settings.reflection_enable_thinking is True
+
+
+def test_app_settings_defaults_scoring_concurrency_to_recall_target() -> None:
+    settings = make_settings()
+
+    assert settings.scoring_max_concurrency == 10
+
+
+def test_app_settings_accepts_repair_cache_and_prompt_cache_settings() -> None:
+    settings = make_settings(
+        requirements_enable_thinking=False,
+        structured_repair_model="openai-chat:qwen3.5-flash",
+        structured_repair_reasoning_effort="off",
+        llm_cache_dir="tmp/latency-cache",
+        openai_prompt_cache_enabled=True,
+        openai_prompt_cache_retention="48h",
+    )
+
+    assert settings.requirements_enable_thinking is False
+    assert settings.structured_repair_model == "openai-chat:qwen3.5-flash"
+    assert settings.structured_repair_reasoning_effort == "off"
+    assert settings.llm_cache_dir == "tmp/latency-cache"
+    assert settings.openai_prompt_cache_enabled is True
+    assert settings.openai_prompt_cache_retention == "48h"
 
 
 def test_app_settings_disable_eval_by_default() -> None:

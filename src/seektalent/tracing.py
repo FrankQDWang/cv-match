@@ -102,6 +102,17 @@ class LLMCallSnapshot(BaseModel):
     error_message: str | None = None
     validator_retry_count: int = 0
     validator_retry_reasons: list[str] = Field(default_factory=list)
+    cache_hit: bool = False
+    cache_key: str | None = None
+    cache_lookup_latency_ms: int | None = None
+    prompt_cache_key: str | None = None
+    prompt_cache_retention: str | None = None
+    cached_input_tokens: int | None = None
+    repair_attempt_count: int = 0
+    repair_succeeded: bool = False
+    repair_model: str | None = None
+    repair_reason: str | None = None
+    full_retry_count: int = 0
 
 
 class RunTracer:
