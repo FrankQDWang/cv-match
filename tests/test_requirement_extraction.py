@@ -1,5 +1,25 @@
+import asyncio
+from pathlib import Path
+
+import pytest
+
 from seektalent.models import RequirementExtractionDraft
-from seektalent.requirements import build_scoring_policy, normalize_requirement_draft
+from seektalent.prompting import LoadedPrompt
+from seektalent.requirements import build_input_truth, build_scoring_policy, normalize_requirement_draft
+from seektalent.requirements.extractor import RequirementExtractor, requirement_cache_key
+from seektalent.runtime.exact_llm_cache import put_cached_json
+from tests.settings_factory import make_settings
+
+
+def _valid_requirement_draft() -> RequirementExtractionDraft:
+    return RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build retrieval and ranking capabilities.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python and retrieval depth.",
+    )
 
 
 def test_normalize_requirement_draft_covers_standard_slots() -> None:
@@ -209,3 +229,88 @@ def test_normalize_requirement_draft_clears_preferred_locations_for_single_city(
 
     assert requirement_sheet.hard_constraints.locations == ["上海"]
     assert requirement_sheet.preferences.preferred_locations == []
+
+
+def test_requirement_cache_hit_skips_provider_and_normalizes_current_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p1")
+    extractor = RequirementExtractor(settings, prompt)
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    cached_draft = _valid_requirement_draft()
+    cache_key = requirement_cache_key(settings, prompt=prompt, input_truth=input_truth)
+    put_cached_json(
+        settings,
+        namespace="requirements",
+        key=cache_key,
+        payload=cached_draft.model_dump(mode="json"),
+    )
+
+    provider_calls = 0
+
+    async def fake_extract_live(*, input_truth, prompt_cache_key=None):  # noqa: ANN001
+        nonlocal provider_calls
+        provider_calls += 1
+        return cached_draft
+
+    monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
+
+    draft, sheet = asyncio.run(extractor.extract_with_draft(input_truth=input_truth))
+
+    assert provider_calls == 0
+    assert draft == cached_draft
+    assert sheet.role_title == "Senior Python Engineer"
+    assert extractor.last_cache_hit is True
+
+
+def test_requirement_repair_fixes_empty_non_anchor_jd_terms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p2")
+    extractor = RequirementExtractor(settings, prompt)
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    bad_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Python"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+    fixed_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+
+    async def fake_extract_live(*, input_truth, prompt_cache_key=None):  # noqa: ANN001
+        return bad_draft
+
+    async def fake_repair(settings, prompt, input_truth, draft, reason):  # noqa: ANN001
+        return fixed_draft
+
+    monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
+    monkeypatch.setattr("seektalent.requirements.extractor.repair_requirement_draft", fake_repair)
+
+    draft, sheet = asyncio.run(extractor.extract_with_draft(input_truth=input_truth))
+
+    assert draft == fixed_draft
+    assert len(sheet.initial_query_term_pool) >= 2
+    assert extractor.last_repair_attempt_count == 1
+    assert extractor.last_repair_succeeded is True
+    assert extractor.last_repair_reason == "jd_query_terms must contain at least one non-anchor term after normalization"

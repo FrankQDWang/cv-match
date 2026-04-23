@@ -539,6 +539,11 @@ class WorkflowRuntime:
                 input_truth=input_truth
             )
         except Exception as exc:  # noqa: BLE001
+            repair_model = (
+                self.settings.structured_repair_model
+                if self.requirement_extractor.last_repair_attempt_count > 0
+                else None
+            )
             latency_ms = max(1, int((perf_counter() - started_clock) * 1000))
             tracer.write_json(
                 "requirements_call.json",
@@ -557,6 +562,16 @@ class WorkflowRuntime:
                     retries=0,
                     output_retries=2,
                     error_message=str(exc),
+                    cache_hit=self.requirement_extractor.last_cache_hit,
+                    cache_key=self.requirement_extractor.last_cache_key,
+                    cache_lookup_latency_ms=self.requirement_extractor.last_cache_lookup_latency_ms,
+                    prompt_cache_key=self.requirement_extractor.last_prompt_cache_key,
+                    prompt_cache_retention=self.requirement_extractor.last_prompt_cache_retention,
+                    repair_attempt_count=self.requirement_extractor.last_repair_attempt_count,
+                    repair_succeeded=self.requirement_extractor.last_repair_succeeded,
+                    repair_model=repair_model,
+                    repair_reason=self.requirement_extractor.last_repair_reason,
+                    full_retry_count=self.requirement_extractor.last_full_retry_count,
                 ).model_dump(mode="json"),
             )
             self._emit_llm_event(
@@ -577,6 +592,11 @@ class WorkflowRuntime:
                 payload={"stage": "requirements", "error_type": type(exc).__name__},
             )
             raise RunStageError("requirement_extraction", str(exc)) from exc
+        repair_model = (
+            self.settings.structured_repair_model
+            if self.requirement_extractor.last_repair_attempt_count > 0
+            else None
+        )
         latency_ms = max(1, int((perf_counter() - started_clock) * 1000))
         tracer.write_json("requirement_extraction_draft.json", requirement_draft.model_dump(mode="json"))
         tracer.write_json(
@@ -596,6 +616,16 @@ class WorkflowRuntime:
                 retries=0,
                 output_retries=2,
                 structured_output=requirement_draft.model_dump(mode="json"),
+                cache_hit=self.requirement_extractor.last_cache_hit,
+                cache_key=self.requirement_extractor.last_cache_key,
+                cache_lookup_latency_ms=self.requirement_extractor.last_cache_lookup_latency_ms,
+                prompt_cache_key=self.requirement_extractor.last_prompt_cache_key,
+                prompt_cache_retention=self.requirement_extractor.last_prompt_cache_retention,
+                repair_attempt_count=self.requirement_extractor.last_repair_attempt_count,
+                repair_succeeded=self.requirement_extractor.last_repair_succeeded,
+                repair_model=repair_model,
+                repair_reason=self.requirement_extractor.last_repair_reason,
+                full_retry_count=self.requirement_extractor.last_full_retry_count,
             ).model_dump(mode="json"),
         )
         scoring_policy = build_scoring_policy(requirement_sheet)
@@ -2079,6 +2109,17 @@ class WorkflowRuntime:
         branch_id: str | None = None,
         validator_retry_count: int = 0,
         validator_retry_reasons: list[str] | None = None,
+        cache_hit: bool = False,
+        cache_key: str | None = None,
+        cache_lookup_latency_ms: int | None = None,
+        prompt_cache_key: str | None = None,
+        prompt_cache_retention: str | None = None,
+        cached_input_tokens: int | None = None,
+        repair_attempt_count: int = 0,
+        repair_succeeded: bool = False,
+        repair_model: str | None = None,
+        repair_reason: str | None = None,
+        full_retry_count: int = 0,
     ) -> LLMCallSnapshot:
         prompt = self.prompts.load(prompt_name)
         output_hash = json_sha256(structured_output) if structured_output is not None else None
@@ -2109,6 +2150,17 @@ class WorkflowRuntime:
             error_message=error_message,
             validator_retry_count=validator_retry_count,
             validator_retry_reasons=validator_retry_reasons or [],
+            cache_hit=cache_hit,
+            cache_key=cache_key,
+            cache_lookup_latency_ms=cache_lookup_latency_ms,
+            prompt_cache_key=prompt_cache_key,
+            prompt_cache_retention=prompt_cache_retention,
+            cached_input_tokens=cached_input_tokens,
+            repair_attempt_count=repair_attempt_count,
+            repair_succeeded=repair_succeeded,
+            repair_model=repair_model,
+            repair_reason=repair_reason,
+            full_retry_count=full_retry_count,
         )
 
     def _llm_input_summary(self, *, stage: str, payload: dict[str, Any]) -> str:

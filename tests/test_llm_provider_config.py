@@ -647,3 +647,27 @@ def test_controller_and_reflection_pass_independent_thinking_flags(
 
     assert controller_calls == [{"enable_thinking": True}]
     assert reflection_calls == [{"enable_thinking": False}]
+
+
+def test_requirement_extractor_passes_requirements_thinking_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    def fake_requirement_settings(settings, model_id: str, **kwargs: object):  # noqa: ANN001
+        calls.append(kwargs)
+        return {"thinking": False}
+
+    monkeypatch.setattr(
+        "seektalent.requirements.extractor.build_model_settings",
+        fake_requirement_settings,
+    )
+    settings = make_settings(
+        requirements_model="openai-chat:deepseek-v3.2",
+        requirements_enable_thinking=True,
+    )
+
+    RequirementExtractor(settings, _prompt("requirements"))._get_agent(prompt_cache_key="requirements:abc")
+
+    assert calls == [{"enable_thinking": True, "prompt_cache_key": "requirements:abc"}]
