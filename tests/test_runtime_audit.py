@@ -220,6 +220,46 @@ def test_runtime_snapshot_builder_accepts_reflection_cache_and_repair_metadata(t
     assert dump["full_retry_count"] == 1
 
 
+def test_llm_schema_pressure_includes_cache_repair_and_full_retry() -> None:
+    runtime = WorkflowRuntime(make_settings(runs_dir="/tmp/seek-runs"))
+
+    pressure_item = runtime._llm_schema_pressure_item(
+        {
+            "stage": "requirements",
+            "call_id": "requirements-r01",
+            "output_retries": 1,
+            "validator_retry_count": 2,
+            "validator_retry_reasons": ["score mismatch", "tooling timeout"],
+            "prompt_chars": 1200,
+            "input_payload_chars": 3400,
+            "output_chars": 560,
+            "input_payload_sha256": "input-hash",
+            "structured_output_sha256": "output-hash",
+            "repair_attempt_count": 1,
+            "repair_succeeded": True,
+            "repair_reason": "repair by fallback",
+            "full_retry_count": 3,
+            "cache_hit": True,
+            "cache_lookup_latency_ms": 8,
+            "prompt_cache_key": "requirements:openai-chat:gpt:hash",
+            "prompt_cache_retention": "24h",
+            "cached_input_tokens": 17,
+        }
+    )
+
+    assert pressure_item["stage"] == "requirements"
+    assert pressure_item["cache_hit"] is True
+    assert pressure_item["cache_lookup_latency_ms"] == 8
+    assert pressure_item["validator_retry_reasons"] == ["score mismatch", "tooling timeout"]
+    assert pressure_item["repair_attempt_count"] == 1
+    assert pressure_item["repair_succeeded"] is True
+    assert pressure_item["repair_reason"] == "repair by fallback"
+    assert pressure_item["full_retry_count"] == 3
+    assert pressure_item["prompt_cache_key"] == "requirements:openai-chat:gpt:hash"
+    assert pressure_item["prompt_cache_retention"] == "24h"
+    assert pressure_item["cached_input_tokens"] == 17
+
+
 def test_runtime_preflight_passes_rescue_models_from_top_level_settings(monkeypatch) -> None:
     captured_extra_specs: list[tuple[str, str | None, str | None]] | None = None
 

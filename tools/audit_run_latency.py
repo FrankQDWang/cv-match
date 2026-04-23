@@ -89,6 +89,11 @@ def _empty_llm_bucket() -> dict[str, Any]:
         "retry_reasons": [],
         "max_input_payload_chars": 0,
         "max_output_chars": 0,
+        "cache_hits": 0,
+        "cache_lookup_latency_ms": 0,
+        "repair_attempt_count": 0,
+        "repair_succeeded_count": 0,
+        "full_retry_count": 0,
     }
 
 
@@ -101,6 +106,11 @@ def _add_call(bucket: dict[str, Any], snapshot: dict[str, Any]) -> None:
     for reason in snapshot.get("validator_retry_reasons") or []:
         if reason not in bucket["retry_reasons"]:
             bucket["retry_reasons"].append(reason)
+    bucket["cache_hits"] += int(bool(snapshot.get("cache_hit", False)))
+    bucket["cache_lookup_latency_ms"] += int(snapshot.get("cache_lookup_latency_ms") or 0)
+    bucket["repair_attempt_count"] += int(snapshot.get("repair_attempt_count") or 0)
+    bucket["repair_succeeded_count"] += int(bool(snapshot.get("repair_succeeded", False)))
+    bucket["full_retry_count"] += int(snapshot.get("full_retry_count") or 0)
     bucket["max_input_payload_chars"] = max(
         bucket["max_input_payload_chars"],
         int(snapshot.get("input_payload_chars") or 0),
