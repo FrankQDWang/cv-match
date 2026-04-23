@@ -46,6 +46,23 @@ def _sample_inputs() -> tuple[str, str, str]:
     )
 
 
+def _provider_usage_snapshot() -> ProviderUsageSnapshot:
+    return ProviderUsageSnapshot(
+        input_tokens=10,
+        output_tokens=2,
+        total_tokens=12,
+        cache_read_tokens=7,
+        cache_write_tokens=1,
+        details={"reasoning_tokens": 3},
+    )
+
+
+def _single_run_dir(runs_root: Path) -> Path:
+    run_dirs = sorted(runs_root.iterdir())
+    assert len(run_dirs) == 1
+    return run_dirs[0]
+
+
 def test_run_config_records_sanitized_rescue_settings(tmp_path: Path) -> None:
     settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
@@ -1336,6 +1353,124 @@ def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monk
             "evidence_status": "needs_surface_probe",
         },
     ]
+
+
+def test_requirements_failure_snapshot_records_provider_usage(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider_usage = _provider_usage_snapshot()
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    runtime = WorkflowRuntime(settings)
+
+    class FailingRequirementExtractor:
+        last_provider_usage: ProviderUsageSnapshot | None = None
+
+        async def extract_with_draft(self, *, input_truth):  # noqa: ANN001
+            del input_truth
+            self.last_provider_usage = provider_usage
+            raise RuntimeError("requirements failed")
+
+    cast(Any, runtime).requirement_extractor = FailingRequirementExtractor()
+
+    try:
+        runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
+    except RuntimeError as exc:
+        assert str(exc) == "requirements failed"
+    else:  # pragma: no cover
+        raise AssertionError("Expected requirements failure")
+
+    requirements_call = _read_json(_single_run_dir(settings.runs_path) / "requirements_call.json")
+    assert requirements_call["status"] == "failed"
+    assert requirements_call["provider_usage"] == provider_usage.model_dump(mode="json")
+
+
+def test_controller_failure_snapshot_records_provider_usage(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider_usage = _provider_usage_snapshot()
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=1)
+    runtime = WorkflowRuntime(settings)
+
+    class FailingController:
+        last_validator_retry_count = 0
+        last_validator_retry_reasons: list[str] = []
+        last_provider_usage: ProviderUsageSnapshot | None = None
+
+        async def decide(self, *, context):  # noqa: ANN001
+            del context
+            self.last_provider_usage = provider_usage
+            raise RuntimeError("controller failed")
+
+    _install_runtime_stubs(runtime, controller=FailingController(), resume_scorer=StubScorer())
+
+    try:
+        runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
+    except RuntimeError as exc:
+        assert str(exc) == "controller failed"
+    else:  # pragma: no cover
+        raise AssertionError("Expected controller failure")
+
+    controller_call = _read_json(_single_run_dir(settings.runs_path) / "rounds" / "round_01" / "controller_call.json")
+    assert controller_call["status"] == "failed"
+    assert controller_call["provider_usage"] == provider_usage.model_dump(mode="json")
+
+
+def test_reflection_failure_snapshot_records_provider_usage(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider_usage = _provider_usage_snapshot()
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=1)
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+
+    class FailingReflection:
+        last_provider_usage: ProviderUsageSnapshot | None = None
+
+        async def reflect(self, *, context):  # noqa: ANN001
+            del context
+            self.last_provider_usage = provider_usage
+            raise RuntimeError("reflection failed")
+
+    cast(Any, runtime).reflection_critic = FailingReflection()
+
+    try:
+        runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
+    except RuntimeError as exc:
+        assert str(exc) == "reflection failed"
+    else:  # pragma: no cover
+        raise AssertionError("Expected reflection failure")
+
+    reflection_call = _read_json(_single_run_dir(settings.runs_path) / "rounds" / "round_01" / "reflection_call.json")
+    assert reflection_call["status"] == "failed"
+    assert reflection_call["provider_usage"] == provider_usage.model_dump(mode="json")
+
+
+def test_finalizer_failure_snapshot_records_provider_usage(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider_usage = _provider_usage_snapshot()
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=1)
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+
+    class FailingFinalizer:
+        last_validator_retry_count = 0
+        last_validator_retry_reasons: list[str] = []
+        last_provider_usage: ProviderUsageSnapshot | None = None
+
+        async def finalize(self, *, run_id, run_dir, rounds_executed, stop_reason, ranked_candidates):  # noqa: ANN001
+            del run_id, run_dir, rounds_executed, stop_reason, ranked_candidates
+            self.last_provider_usage = provider_usage
+            raise RuntimeError("finalizer failed")
+
+    cast(Any, runtime).finalizer = FailingFinalizer()
+
+    try:
+        runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
+    except RuntimeError as exc:
+        assert str(exc) == "finalizer failed"
+    else:  # pragma: no cover
+        raise AssertionError("Expected finalizer failure")
+
+    finalizer_call = _read_json(_single_run_dir(settings.runs_path) / "finalizer_call.json")
+    assert finalizer_call["status"] == "failed"
+    assert finalizer_call["provider_usage"] == provider_usage.model_dump(mode="json")
 
 
 def test_runtime_fails_fast_when_provider_credentials_are_missing(tmp_path: Path, monkeypatch) -> None:
