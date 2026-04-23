@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+import json
+from typing import cast
+
+from pydantic_ai import Agent
+
+from seektalent.candidate_feedback.models import CandidateFeedbackModelRanking, FeedbackCandidateTerm
+from seektalent.config import AppSettings
+from seektalent.llm import build_model, build_model_settings, build_output_spec
+
+
+class CandidateFeedbackModelSteps:
+    def __init__(self, settings: AppSettings) -> None:
+        self.settings = settings
+
+    async def rank_terms(
+        self,
+        *,
+        role_title: str,
+        must_have_capabilities: list[str],
+        existing_terms: list[str],
+        candidates: list[FeedbackCandidateTerm],
+    ) -> CandidateFeedbackModelRanking:
+        result = await self._agent().run(
+            _rank_prompt(
+                role_title=role_title,
+                must_have_capabilities=must_have_capabilities,
+                existing_terms=existing_terms,
+                candidates=candidates,
+            )
+        )
+        ranking = cast(CandidateFeedbackModelRanking, result.output)
+        accepted = ranking.accepted_from(candidates)
+        return ranking.model_copy(update={"accepted_terms": accepted})
+
+    def _agent(self) -> Agent[None, CandidateFeedbackModelRanking]:
+        model = build_model(self.settings.candidate_feedback_model)
+        return cast(
+            Agent[None, CandidateFeedbackModelRanking],
+            Agent(
+                model=model,
+                output_type=build_output_spec(
+                    self.settings.candidate_feedback_model,
+                    model,
+                    CandidateFeedbackModelRanking,
+                ),
+                system_prompt=(
+                    "Rank candidate-derived retrieval expansion terms. "
+                    "Only select terms from the provided candidate list. "
+                    "Do not invent terms. Reject generic, company, school, location, degree, age, salary, and title-only terms."
+                ),
+                model_settings=build_model_settings(
+                    self.settings,
+                    self.settings.candidate_feedback_model,
+                    reasoning_effort=self.settings.candidate_feedback_reasoning_effort,
+                ),
+                retries=0,
+                output_retries=2,
+            ),
+        )
+
+
+def _rank_prompt(
+    *,
+    role_title: str,
+    must_have_capabilities: list[str],
+    existing_terms: list[str],
+    candidates: list[FeedbackCandidateTerm],
+) -> str:
+    payload = {
+        "role_title": role_title,
+        "must_have_capabilities": must_have_capabilities,
+        "existing_terms": existing_terms,
+        "candidate_terms": [item.model_dump(mode="json") for item in candidates],
+    }
+    return (
+        "Rank only the candidate terms that already exist in candidate_terms. "
+        "accepted_terms must be copied exactly from candidate_terms[*].term. "
+        "Do not generate new terms or query rewrites. "
+        f"{json.dumps(payload, ensure_ascii=False)}"
+    )

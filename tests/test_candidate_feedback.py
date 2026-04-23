@@ -5,6 +5,7 @@ from seektalent.candidate_feedback import (
     extract_surface_terms,
     select_feedback_seed_resumes,
 )
+from seektalent.candidate_feedback.models import CandidateFeedbackModelRanking, FeedbackCandidateTerm
 from seektalent.models import QueryTermCandidate, ScoredCandidate
 
 
@@ -144,3 +145,17 @@ def test_build_feedback_decision_picks_one_supported_novel_term() -> None:
     assert [item.term for item in decision.accepted_candidates] == ["LangGraph"]
     assert [item.term for item in decision.rejected_terms] == ["RAG"]
     assert decision.forced_query_terms == ["AI Agent", "LangGraph"]
+
+
+def test_candidate_feedback_model_ranking_forbids_unknown_terms() -> None:
+    ranking = CandidateFeedbackModelRanking(
+        accepted_terms=["LangGraph", "InventedTerm"],
+        rejected_terms={"平台": "generic"},
+        rationale="LangGraph is supported by seed resumes.",
+    )
+    terms = [
+        FeedbackCandidateTerm(term="LangGraph", supporting_resume_ids=["r1", "r2"]),
+        FeedbackCandidateTerm(term="平台", supporting_resume_ids=["r1", "r2"]),
+    ]
+
+    assert ranking.accepted_from(terms) == ["LangGraph"]

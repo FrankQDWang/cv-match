@@ -29,3 +29,20 @@ class CandidateFeedbackDecision(BaseModel):
     accepted_term: QueryTermCandidate | None = None
     forced_query_terms: list[str] = Field(default_factory=list)
     skipped_reason: str | None = None
+
+
+class CandidateFeedbackModelRanking(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted_terms: list[str] = Field(default_factory=list)
+    rejected_terms: dict[str, str] = Field(default_factory=dict)
+    rationale: str
+
+    def accepted_from(self, candidates: list[FeedbackCandidateTerm]) -> list[str]:
+        allowed = {item.term.casefold(): item.term for item in candidates}
+        output: list[str] = []
+        for term in self.accepted_terms:
+            original = allowed.get(term.casefold())
+            if original is not None and original not in output:
+                output.append(original)
+        return output
