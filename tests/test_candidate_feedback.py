@@ -5,6 +5,7 @@ from seektalent.candidate_feedback import (
     extract_surface_terms,
     select_feedback_seed_resumes,
 )
+from seektalent.candidate_feedback.models import CandidateFeedbackModelRanking, FeedbackCandidateTerm
 from seektalent.models import QueryTermCandidate, ScoredCandidate
 
 
@@ -232,3 +233,17 @@ def test_build_feedback_decision_prefers_shaped_term_over_plain_english_phrase()
 
     assert decision.accepted_term is not None
     assert decision.accepted_term.term == "Node.js"
+
+
+def test_candidate_feedback_model_ranking_forbids_unknown_terms() -> None:
+    ranking = CandidateFeedbackModelRanking(
+        accepted_terms=["LangGraph", "InventedTerm"],
+        rejected_terms={"平台": "generic"},
+        rationale="LangGraph is supported by seed resumes.",
+    )
+    terms = [
+        FeedbackCandidateTerm(term="LangGraph", supporting_resume_ids=["r1", "r2"]),
+        FeedbackCandidateTerm(term="平台", supporting_resume_ids=["r1", "r2"]),
+    ]
+
+    assert ranking.accepted_from(terms) == ["LangGraph"]
