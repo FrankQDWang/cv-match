@@ -117,6 +117,16 @@ def test_reflection_prompt_requires_untried_term_stop_discipline() -> None:
     assert "Do not dismiss unused concrete terms as unlikely without first trying them" in prompt
 
 
+def test_reflection_rationale_has_generous_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        ReflectionAdviceDraft(
+            keyword_advice=ReflectionKeywordAdviceDraft(),
+            filter_advice=ReflectionFilterAdviceDraft(),
+            suggest_stop=False,
+            reflection_rationale="a" * 2001,
+        )
+
+
 def test_reflection_advice_draft_stop_field_validation_is_deferred_for_repair() -> None:
     draft = ReflectionAdviceDraft(
         keyword_advice=ReflectionKeywordAdviceDraft(),

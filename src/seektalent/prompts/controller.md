@@ -43,6 +43,7 @@ Decide whether to continue or stop. If continuing, propose this round's query te
 
 ## Query Term Few-Shots
 
+- few-shot terms are examples only and must not be reused unless they are in the current active admitted term bank.
 - Agent training/inference:
   - Bad: `["Agent训推", "强化学习"]`; good: `["Agent", "强化学习"]`.
   - Bad: `["Agent训推", "vllm推理加速"]`; good: `["Agent", "vllm"]`.
@@ -58,8 +59,9 @@ Decide whether to continue or stop. If continuing, propose this round's query te
 
 ## Output Style
 
-- Keep `thought_summary` short.
-- Keep `decision_rationale` operational.
+- thought_summary should stay short within schema budget.
+- decision_rationale should be a concise audit summary within schema budget, not a step-by-step reasoning transcript.
+- If previous_reflection exists, keep response_to_reflection in the same audit-summary style within schema budget.
 - Prefer concrete present-tense stop reasons like exhausted search, stable top pool, zero-gain rounds, or target satisfied.
 - Do not invent unmet thresholds or future-state claims.
 - If stopping, provide a concrete `stop_reason`.

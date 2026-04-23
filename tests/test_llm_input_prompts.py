@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from seektalent.controller.react_controller import render_controller_prompt
 from seektalent.evaluation import render_judge_prompt
 from seektalent.finalize.finalizer import render_finalize_prompt
@@ -198,6 +200,15 @@ def test_controller_prompt_contains_decision_brief_and_exact_data() -> None:
     assert "CONTROLLER_CONTEXT" not in prompt
 
 
+def test_controller_prompt_says_few_shot_terms_are_not_reusable() -> None:
+    prompt = Path("src/seektalent/prompts/controller.md").read_text(encoding="utf-8")
+
+    assert "few-shot terms are examples only" in prompt
+    assert "must not be reused unless they are in the current active admitted term bank" in prompt
+    assert "thought_summary should stay short within schema budget" in prompt
+    assert "decision_rationale should be a concise audit summary within schema budget" in prompt
+
+
 def test_reflection_prompt_contains_round_review_and_candidate_ids() -> None:
     sheet = _requirement_sheet()
     prompt = render_reflection_prompt(
@@ -275,6 +286,13 @@ def test_reflection_prompt_contains_round_review_and_candidate_ids() -> None:
     assert "resume-2" in prompt
     assert "schema parse failed" in prompt
     assert "REFLECTION_CONTEXT" not in prompt
+
+
+def test_reflection_prompt_mentions_rationale_schema_budget() -> None:
+    prompt = Path("src/seektalent/prompts/reflection.md").read_text(encoding="utf-8")
+
+    assert "reflection_rationale should be a concise audit summary within schema budget" in prompt
+    assert "not a step-by-step reasoning transcript" in prompt
 
 
 def test_scoring_prompt_contains_policy_resume_card_and_exact_resume_id() -> None:

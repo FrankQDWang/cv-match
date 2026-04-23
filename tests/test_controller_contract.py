@@ -40,6 +40,33 @@ def test_controller_prompt_requires_atomic_search_terms() -> None:
     assert 'Bad: `["Python后端开发", "高并发系统建设"]`; good: `["Python", "高并发"]`' in prompt
 
 
+def test_controller_decision_rationale_has_generous_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        SearchControllerDecision.model_validate(
+            {
+                "thought_summary": "Search.",
+                "action": "search_cts",
+                "decision_rationale": "a" * 2001,
+                "proposed_query_terms": ["python", "resume matching"],
+                "proposed_filter_plan": {},
+            }
+        )
+
+
+def test_controller_response_to_reflection_has_generous_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        SearchControllerDecision.model_validate(
+            {
+                "thought_summary": "Search.",
+                "action": "search_cts",
+                "decision_rationale": "Need recall.",
+                "proposed_query_terms": ["python", "resume matching"],
+                "proposed_filter_plan": {},
+                "response_to_reflection": "b" * 2001,
+            }
+        )
+
+
 def _requirement_sheet() -> RequirementSheet:
     return RequirementSheet(
         role_title="Senior Python Engineer",
@@ -258,6 +285,16 @@ def test_controller_decision_requires_proposals_for_search() -> None:
                 "decision_rationale": "Need recall.",
             }
         )
+
+
+def test_controller_prompt_mentions_schema_budget_and_few_shot_term_rules() -> None:
+    prompt = Path("src/seektalent/prompts/controller.md").read_text(encoding="utf-8")
+
+    assert "few-shot terms are examples only" in prompt
+    assert "current active admitted term bank" in prompt
+    assert "thought_summary should stay short within schema budget" in prompt
+    assert "decision_rationale should be a concise audit summary within schema budget" in prompt
+    assert "not a step-by-step reasoning transcript" in prompt
 
 
 def test_controller_decision_rejects_stop_with_search_fields() -> None:
