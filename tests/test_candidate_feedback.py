@@ -214,3 +214,21 @@ def test_build_feedback_decision_prefers_clean_term_over_narrative_phrase() -> N
     assert decision.accepted_term is not None
     assert decision.accepted_term.term == "LangGraph"
     assert not decision.accepted_term.term.startswith("Built ")
+
+
+def test_build_feedback_decision_prefers_shaped_term_over_plain_english_phrase() -> None:
+    decision = build_feedback_decision(
+        seed_resumes=[
+            _scored_candidate("seed-1", reasoning_summary="Delivered backend orchestration with Node.js.", evidence=["Node.js"]),
+            _scored_candidate("seed-2", reasoning_summary="Delivered backend orchestration with Node.js.", evidence=["Node.js"]),
+        ],
+        negative_resumes=[],
+        existing_terms=[
+            _query_term("AI Agent", source="job_title", category="role_anchor", retrieval_role="role_anchor", family="role.aiagent"),
+        ],
+        sent_query_terms=[],
+        round_no=4,
+    )
+
+    assert decision.accepted_term is not None
+    assert decision.accepted_term.term == "Node.js"

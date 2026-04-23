@@ -204,7 +204,7 @@ def _score_terms(
         not_fit_rate = _negative_rate(negative_ids, negative_resumes)
         use_negative_support = len(negative_resumes) >= 3
         negative_penalty = len(negative_ids) if use_negative_support else 0
-        score = float(len(seed_ids) * 4 - negative_penalty * 4)
+        score = float(len(seed_ids) * 4 - negative_penalty * 4) + _surface_shape_bonus(term)
         rejection_reason = None
         risk_flags: list[str] = []
 
@@ -306,6 +306,17 @@ def _is_allowed_surface_term(term: str) -> bool:
         words = [piece.casefold() for piece in term.split()]
         return len(words) == 2 and all(word not in _COMMON_WORDS for word in words)
     return any(pattern.fullmatch(term) for pattern in (_ACRONYM_RE, _CAMEL_CASE_RE, _SYMBOL_TOKEN_RE, _SHORT_CHINESE_PHRASE_RE))
+
+
+def _surface_shape_bonus(term: str) -> float:
+    if any(pattern.fullmatch(term) for pattern in (_ACRONYM_RE, _CAMEL_CASE_RE, _SYMBOL_TOKEN_RE)):
+        return 2.0
+    pieces = term.split()
+    if len(pieces) == 2 and any(
+        any(pattern.fullmatch(piece) for pattern in (_ACRONYM_RE, _CAMEL_CASE_RE, _SYMBOL_TOKEN_RE)) for piece in pieces
+    ):
+        return 1.0
+    return 0.0
 
 
 def _term_key(value: str) -> str:
