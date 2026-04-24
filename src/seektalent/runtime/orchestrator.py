@@ -76,6 +76,7 @@ from seektalent.retrieval import (
     serialize_keyword_query,
     select_query_terms,
 )
+from seektalent.retrieval.query_plan import normalize_term
 from seektalent.resume_quality import ResumeQualityCommenter
 from seektalent.runtime.context_builder import (
     build_controller_context,
@@ -1571,6 +1572,7 @@ class WorkflowRuntime:
         round_no: int,
     ) -> ControllerDecision:
         previous_reflection = run_state.round_history[-1].reflection_advice if run_state.round_history else None
+        allowed_inactive_terms = self._reflection_backed_inactive_terms(previous_reflection)
         if previous_reflection is not None and not (decision.response_to_reflection or "").strip():
             raise ValueError("response_to_reflection is required after a reflection round")
         if isinstance(decision, StopControllerDecision):
@@ -1592,6 +1594,7 @@ class WorkflowRuntime:
             round_no=round_no,
             title_anchor_term=run_state.requirement_sheet.title_anchor_term,
             query_term_pool=run_state.retrieval_state.query_term_pool,
+            allowed_inactive_non_anchor_terms=allowed_inactive_terms,
         )
         filter_plan = canonicalize_filter_plan(
             requirement_sheet=run_state.requirement_sheet,
@@ -1604,6 +1607,18 @@ class WorkflowRuntime:
                 "stop_reason": None,
             }
         )
+
+    def _reflection_backed_inactive_terms(self, reflection_advice: ReflectionAdvice | None) -> set[str]:
+        if reflection_advice is None:
+            return set()
+        advice = reflection_advice.keyword_advice
+        return {
+            normalize_term(term).casefold()
+            for term in [
+                *advice.suggested_activate_terms,
+                *advice.suggested_keep_terms,
+            ]
+        }
 
     def _sanitize_premature_max_round_claim(self, text: str, *, round_no: int) -> str:
         if round_no >= self.settings.max_rounds:

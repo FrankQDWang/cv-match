@@ -393,6 +393,34 @@ def test_runtime_requires_response_to_reflection_after_previous_round() -> None:
         runtime._sanitize_controller_decision(decision=decision, run_state=run_state, round_no=2)
 
 
+def test_runtime_accepts_reflection_backed_inactive_term_in_controller_sanitizer() -> None:
+    settings = make_settings(runs_dir=str(Path.cwd() / ".tmp-runs"), mock_cts=True)
+    runtime = WorkflowRuntime(settings)
+    run_state = _run_state_with_previous_reflection()
+    run_state.retrieval_state.query_term_pool = [
+        item.model_copy(update={"active": False}) if item.term == "retrieval" else item
+        for item in run_state.retrieval_state.query_term_pool
+    ]
+    assert run_state.round_history[0].reflection_advice is not None
+    run_state.round_history[0].reflection_advice.keyword_advice = ReflectionKeywordAdvice(
+        suggested_activate_terms=["  retrieval  "],
+        suggested_keep_terms=["retrieval"],
+    )
+    decision = SearchControllerDecision(
+        thought_summary="Use reflected term.",
+        action="search_cts",
+        decision_rationale="Use retrieval because previous reflection advised it.",
+        proposed_query_terms=["python", "retrieval"],
+        proposed_filter_plan=ProposedFilterPlan(),
+        response_to_reflection="Accepted the reflected retrieval advice.",
+    )
+
+    sanitized = runtime._sanitize_controller_decision(decision=decision, run_state=run_state, round_no=2)
+
+    assert isinstance(sanitized, SearchControllerDecision)
+    assert sanitized.proposed_query_terms == ["python", "retrieval"]
+
+
 def test_controller_decision_discriminated_union_accepts_stop_payload() -> None:
     decision = TypeAdapter(ControllerDecision).validate_python(
         {

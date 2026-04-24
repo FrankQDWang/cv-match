@@ -65,7 +65,7 @@ def canonicalize_controller_query_terms(
         if (
             not allow_inactive_non_anchor_terms
             and not item.active
-            and item.term.casefold() not in allowed_inactive
+            and normalize_term(item.term).casefold() not in allowed_inactive
         )
     ]
     if inactive_terms:
