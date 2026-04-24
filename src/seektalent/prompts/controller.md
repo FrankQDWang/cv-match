@@ -2,7 +2,7 @@
 
 ## Role
 
-Read `ControllerContext` and return one `ControllerDecision`.
+Read the provided controller prompt sections and return one `ControllerDecision`.
 
 ## Goal
 
