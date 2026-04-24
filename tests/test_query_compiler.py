@@ -288,3 +288,31 @@ def test_query_compiler_keeps_abstract_notes_visible_under_positive_gate() -> No
 
     assert terms["沟通能力"].queryability == "score_only"
     assert terms["沟通能力"].active is False
+
+
+def test_query_compiler_admits_broader_concrete_chinese_domain_notes() -> None:
+    pool = compile_query_term_pool(
+        job_title="行业研究员",
+        title_anchor_terms=["研究"],
+        jd_query_terms=[],
+        notes_query_terms=["量化交易", "口腔种植", "半导体", "汽车电子", "生物医药", "风控策略", "消费信贷", "脑机接口"],
+    )
+    terms = _by_term(pool)
+
+    for term in ["量化交易", "口腔种植", "半导体", "汽车电子", "生物医药", "风控策略", "消费信贷", "脑机接口"]:
+        assert terms[term].queryability == "admitted"
+        assert terms[term].retrieval_role == "domain_context"
+
+
+def test_query_compiler_admits_additional_concrete_chinese_domain_note() -> None:
+    pool = compile_query_term_pool(
+        job_title="医疗研究员",
+        title_anchor_terms=["研究"],
+        jd_query_terms=[],
+        notes_query_terms=["辅助生殖", "项目管理", "沟通能力"],
+    )
+    terms = _by_term(pool)
+
+    assert terms["辅助生殖"].queryability == "admitted"
+    assert "项目管理" not in terms
+    assert terms["沟通能力"].queryability == "score_only"

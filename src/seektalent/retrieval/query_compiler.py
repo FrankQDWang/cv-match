@@ -65,6 +65,24 @@ CHINESE_DOMAIN_NOTE_TOKENS = (
     "医疗",
     "器械",
     "耳蜗",
+    "半导体",
+    "风控",
+    "脑机",
+    "口腔",
+    "汽车",
+    "生物",
+    "消费",
+    "辅助",
+)
+CHINESE_DOMAIN_NOTE_SUFFIXES = (
+    "交易",
+    "种植",
+    "电子",
+    "医药",
+    "策略",
+    "信贷",
+    "接口",
+    "生殖",
 )
 GENERIC_NOTES_PATTERNS = (
     "结果导向",
@@ -257,7 +275,9 @@ def _looks_like_domain_notes_term(term: str) -> bool:
         if has_cjk:
             return True
         return False
-    return any(token in term for token in CHINESE_DOMAIN_NOTE_TOKENS)
+    return any(token in term for token in CHINESE_DOMAIN_NOTE_TOKENS) or any(
+        term.endswith(suffix) for suffix in CHINESE_DOMAIN_NOTE_SUFFIXES
+    )
 
 
 def _is_filter_only(term: str, compact: str) -> bool:
