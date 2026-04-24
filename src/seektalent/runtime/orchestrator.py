@@ -1082,6 +1082,9 @@ class WorkflowRuntime:
                 location_execution_plan=location_execution_plan,
                 target_new=target_new,
                 rationale=controller_decision.decision_rationale,
+                allowed_inactive_non_anchor_terms=self._reflection_backed_inactive_terms(
+                    run_state.round_history[-1].reflection_advice if run_state.round_history else None
+                ),
                 allow_anchor_only_query=(
                     controller_context.stop_guidance.quality_gate_status == "broaden_required"
                     or run_state.retrieval_state.anchor_only_broaden_attempted
@@ -2430,6 +2433,7 @@ class WorkflowRuntime:
                 "sent_query_history": "sent_query_history.json",
             },
             "requirement_digest": build_requirement_digest(context.requirement_sheet).model_dump(mode="json"),
+            "query_term_pool": [item.model_dump(mode="json") for item in context.query_term_pool],
             "current_retrieval_plan": context.current_retrieval_plan.model_dump(mode="json"),
             "search_observation": context.search_observation.model_dump(mode="json"),
             "search_attempts": [self._slim_search_attempt(item) for item in context.search_attempts],

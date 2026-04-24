@@ -688,6 +688,33 @@ def test_runtime_reflection_does_not_mutate_query_term_pool(tmp_path: Path) -> N
     assert advice.suggested_deprioritize_terms == ["resume matching"]
 
 
+def test_runtime_builds_plan_for_reflection_backed_inactive_term(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=2,
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
+    runtime_any = cast(Any, runtime)
+    runtime_any.requirement_extractor = SingleFamilyRequirementExtractor(include_reserve=True)
+    tracer = RunTracer(tmp_path / "trace-runs")
+    job_title, jd, notes = _sample_inputs()
+
+    try:
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        asyncio.run(runtime._run_rounds(run_state=run_state, tracer=tracer))
+    finally:
+        tracer.close()
+
+    round_02_plan = json.loads(
+        (tracer.run_dir / "rounds" / "round_02" / "retrieval_plan.json").read_text(encoding="utf-8")
+    )
+    assert round_02_plan["query_terms"] == ["python", "resume matching", "trace"]
+    assert {item.term: item for item in run_state.retrieval_state.query_term_pool}["trace"].active is False
+
+
 class RecordingScorer:
     def __init__(self) -> None:
         self.resume_ids: list[str] = []

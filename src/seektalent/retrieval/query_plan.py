@@ -351,6 +351,7 @@ def build_round_retrieval_plan(
     location_execution_plan: LocationExecutionPlan,
     target_new: int,
     rationale: str,
+    allowed_inactive_non_anchor_terms: set[str] | None = None,
     allow_anchor_only_query: bool = False,
 ) -> RoundRetrievalPlan:
     canonical_terms = canonicalize_controller_query_terms(
@@ -358,6 +359,7 @@ def build_round_retrieval_plan(
         round_no=round_no,
         title_anchor_term=title_anchor_term,
         query_term_pool=query_term_pool,
+        allowed_inactive_non_anchor_terms=allowed_inactive_non_anchor_terms,
         allow_anchor_only=allow_anchor_only_query,
     )
     return RoundRetrievalPlan(

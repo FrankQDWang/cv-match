@@ -969,6 +969,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert controller_context["input"]["jd_sha256"]
     assert controller_context["budget"]["is_final_allowed_round"] is True
     assert "top_candidates" in reflection_context
+    assert reflection_context["query_term_pool"][0]["term"] == "python"
     assert "full_jd" not in reflection_context
     assert "full_notes" not in reflection_context
     assert all("evidence" not in item for item in reflection_context["top_candidates"])
