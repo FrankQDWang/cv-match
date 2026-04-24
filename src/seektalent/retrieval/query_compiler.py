@@ -57,6 +57,15 @@ FILTER_ONLY_PATTERNS = (
     "公司范围",
 )
 GENERIC_NOTES_PREFIXES = ("base",)
+CHINESE_DOMAIN_NOTE_TOKENS = (
+    "投研",
+    "基金",
+    "证券",
+    "金融",
+    "医疗",
+    "器械",
+    "耳蜗",
+)
 GENERIC_NOTES_PATTERNS = (
     "结果导向",
     "逻辑能力",
@@ -71,6 +80,12 @@ GENERIC_NOTES_PATTERNS = (
     "商业敏感度",
     "资源协调",
     "战略思考",
+    "owner意识",
+    "跨部门协同",
+    "推动力",
+    "组织协调",
+    "业务sense",
+    "创新意识",
 )
 GENERIC_NOTES_SUFFIXES = ("能力", "导向", "流利", "公司")
 
@@ -242,7 +257,7 @@ def _looks_like_domain_notes_term(term: str) -> bool:
         if has_cjk:
             return True
         return False
-    return len(term) >= 3
+    return any(token in term for token in CHINESE_DOMAIN_NOTE_TOKENS)
 
 
 def _is_filter_only(term: str, compact: str) -> bool:

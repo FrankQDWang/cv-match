@@ -242,3 +242,49 @@ def test_query_compiler_rejects_generic_competency_notes_but_keeps_domain_terms(
     assert "商业敏感度" not in terms
     assert "资源协调" not in terms
     assert "战略思考" not in terms
+
+
+def test_query_compiler_uses_positive_domain_gate_for_notes_terms() -> None:
+    pool = compile_query_term_pool(
+        job_title="研究工程师",
+        title_anchor_terms=["研究"],
+        jd_query_terms=[],
+        notes_query_terms=[
+            "人工耳蜗",
+            "AI投研",
+            "金融AI",
+            "python",
+            "sql",
+            "mysql",
+            "redis",
+            "owner意识",
+            "跨部门协同",
+            "推动力",
+            "组织协调",
+            "业务sense",
+            "创新意识",
+        ],
+    )
+    terms = _by_term(pool)
+
+    for term in ["人工耳蜗", "AI投研", "金融AI", "python", "sql", "mysql", "redis"]:
+        assert terms[term].queryability == "admitted"
+    assert "owner意识" not in terms
+    assert "跨部门协同" not in terms
+    assert "推动力" not in terms
+    assert "组织协调" not in terms
+    assert "业务sense" not in terms
+    assert "创新意识" not in terms
+
+
+def test_query_compiler_keeps_abstract_notes_visible_under_positive_gate() -> None:
+    pool = compile_query_term_pool(
+        job_title="研究工程师",
+        title_anchor_terms=["研究"],
+        jd_query_terms=[],
+        notes_query_terms=["沟通能力", "人工耳蜗"],
+    )
+    terms = _by_term(pool)
+
+    assert terms["沟通能力"].queryability == "score_only"
+    assert terms["沟通能力"].active is False
