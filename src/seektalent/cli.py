@@ -23,6 +23,7 @@ from seektalent.resources import (
     read_env_example_template,
     resolve_user_path,
 )
+from seektalent.runtime.lifecycle import cleanup_runtime_artifacts
 
 PROVIDER_ENV_VAR_BY_PREFIX = {
     "openai": "OPENAI_API_KEY",
@@ -563,6 +564,7 @@ def _run_command(args: argparse.Namespace) -> int:
                 missing_cts=missing_cts,
             )
         )
+    cleanup_runtime_artifacts(settings)
     result = run_match(
         job_title=job_title,
         jd=jd,
@@ -590,6 +592,7 @@ def _benchmark_command(args: argparse.Namespace) -> int:
                 missing_cts=missing_cts,
             )
         )
+    cleanup_runtime_artifacts(settings)
     benchmark_file = resolve_user_path(args.jds_file)
     rows = _load_benchmark_rows(benchmark_file)
     if args.benchmark_max_concurrency < 1:
@@ -1029,6 +1032,8 @@ def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     if not args_list:
         if _is_interactive_terminal():
+            load_process_env()
+            cleanup_runtime_artifacts(AppSettings())
             return _launch_tui()
         parser = build_parser()
         parser.print_help()

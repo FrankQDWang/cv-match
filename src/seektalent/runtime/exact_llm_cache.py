@@ -85,3 +85,9 @@ def put_cached_json(
         conn.commit()
     finally:
         conn.close()
+
+
+def clear_exact_llm_cache(settings: AppSettings) -> None:
+    path = _cache_path(settings)
+    if path.exists():
+        path.unlink()

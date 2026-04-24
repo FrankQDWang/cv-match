@@ -57,6 +57,12 @@ FilterField = Literal[
     "work_content",
 ]
 
+THOUGHT_SUMMARY_MAX_CHARS = 500
+DECISION_RATIONALE_MAX_CHARS = 2000
+RESPONSE_TO_REFLECTION_MAX_CHARS = 2000
+REFLECTION_RATIONALE_MAX_CHARS = 2000
+
+
 def unique_strings(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     output: list[str] = []
@@ -292,6 +298,7 @@ class ReflectionAdvice(BaseModel):
     filter_advice: ReflectionFilterAdvice = Field(default_factory=ReflectionFilterAdvice, description="Field-level non-location filter advice for the next round.")
     reflection_rationale: str = Field(
         default="",
+        max_length=REFLECTION_RATIONALE_MAX_CHARS,
         description="Human-readable explanation for the reflection advice. Used for TUI trace only.",
     )
     suggest_stop: bool = Field(
@@ -317,20 +324,13 @@ class ReflectionAdviceDraft(BaseModel):
     filter_advice: ReflectionFilterAdviceDraft = Field(description="Field-level non-location filter advice for the next round.")
     reflection_rationale: str = Field(
         min_length=1,
-        description="Explain the round quality, coverage, and next action in 2-4 concise sentences.",
+        max_length=REFLECTION_RATIONALE_MAX_CHARS,
+        description="Explain the round quality, coverage, and next action within schema budget.",
     )
     suggest_stop: bool = Field(
         description="Advisory only: whether reflection recommends stopping after this round. Runtime/controller own the final stop decision."
     )
     suggested_stop_reason: str | None = Field(default=None, description="Concrete stop reason when suggest_stop is true.")
-
-    @model_validator(mode="after")
-    def validate_stop_fields(self) -> ReflectionAdviceDraft:
-        if self.suggest_stop and not self.suggested_stop_reason:
-            raise ValueError("suggested_stop_reason is required when suggest_stop is true")
-        if not self.suggest_stop and self.suggested_stop_reason is not None:
-            raise ValueError("suggested_stop_reason must be null when suggest_stop is false")
-        return self
 
 
 class RuntimeConstraint(BaseModel):
@@ -603,6 +603,7 @@ class ScoringContext(BaseModel):
     round_no: int
     scoring_policy: ScoringPolicy
     normalized_resume: NormalizedResume
+    requirement_sheet_sha256: str = Field(min_length=1)
 
 
 class ScoredCandidateDraft(BaseModel):
@@ -737,21 +738,45 @@ class ControllerContext(BaseModel):
 class SearchControllerDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    thought_summary: str = Field(min_length=1, description="Short summary of the controller's current decision.")
+    thought_summary: str = Field(
+        min_length=1,
+        max_length=THOUGHT_SUMMARY_MAX_CHARS,
+        description="Short summary of the controller's current decision.",
+    )
     action: Literal["search_cts"] = Field(description="Continue to the next CTS search round.")
-    decision_rationale: str = Field(min_length=1, description="Short operational rationale for the search decision.")
+    decision_rationale: str = Field(
+        min_length=1,
+        max_length=DECISION_RATIONALE_MAX_CHARS,
+        description="Short operational rationale for the search decision.",
+    )
     proposed_query_terms: list[str] = Field(description="Proposed round query terms before runtime canonicalization.")
     proposed_filter_plan: ProposedFilterPlan = Field(description="Proposed non-location filter plan before runtime canonicalization.")
-    response_to_reflection: str | None = Field(default=None, description="Explicit response to the previous round's reflection when one exists.")
+    response_to_reflection: str | None = Field(
+        default=None,
+        max_length=RESPONSE_TO_REFLECTION_MAX_CHARS,
+        description="Explicit response to the previous round's reflection when one exists.",
+    )
 
 
 class StopControllerDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    thought_summary: str = Field(min_length=1, description="Short summary of the controller's current decision.")
+    thought_summary: str = Field(
+        min_length=1,
+        max_length=THOUGHT_SUMMARY_MAX_CHARS,
+        description="Short summary of the controller's current decision.",
+    )
     action: Literal["stop"] = Field(description="Stop retrieval and finish the run.")
-    decision_rationale: str = Field(min_length=1, description="Short operational rationale for the stop decision.")
-    response_to_reflection: str | None = Field(default=None, description="Explicit response to the previous round's reflection when one exists.")
+    decision_rationale: str = Field(
+        min_length=1,
+        max_length=DECISION_RATIONALE_MAX_CHARS,
+        description="Short operational rationale for the stop decision.",
+    )
+    response_to_reflection: str | None = Field(
+        default=None,
+        max_length=RESPONSE_TO_REFLECTION_MAX_CHARS,
+        description="Explicit response to the previous round's reflection when one exists.",
+    )
     stop_reason: str = Field(min_length=1, description="Concrete stop reason for ending retrieval.")
 
 

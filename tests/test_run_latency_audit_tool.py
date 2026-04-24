@@ -127,6 +127,80 @@ def test_audit_run_dir_reads_retry_counts_from_call_snapshots(tmp_path: Path) ->
     assert summary["llm_calls"]["finalize"]["retry_count"] == 0
 
 
+def test_audit_run_dir_reads_cache_and_repair_metadata(tmp_path: Path) -> None:
+    run_dir = tmp_path / "20260423_120000_cache"
+    _write_jsonl(
+        run_dir / "events.jsonl",
+        [
+            {"timestamp": "2026-04-23T12:00:00+08:00", "event_type": "run_started"},
+            {"timestamp": "2026-04-23T12:01:00+08:00", "event_type": "run_finished"},
+        ],
+    )
+    _write_json(
+        run_dir / "requirements_call.json",
+        {
+            "stage": "requirements",
+            "call_id": "requirements-r01",
+            "latency_ms": 10_000,
+            "validator_retry_count": 0,
+            "validator_retry_reasons": [],
+            "prompt_chars": 1_001,
+            "input_payload_chars": 500,
+            "output_chars": 800,
+            "cache_hit": True,
+            "cache_lookup_latency_ms": 11,
+        },
+    )
+    _write_json(
+        run_dir / "rounds" / "round_01" / "controller_call.json",
+        {
+            "stage": "controller",
+            "call_id": "controller-r01",
+            "latency_ms": 12_000,
+            "validator_retry_count": 0,
+            "validator_retry_reasons": [],
+            "prompt_chars": 1_200,
+            "input_payload_chars": 600,
+            "output_chars": 900,
+            "repair_attempt_count": 1,
+            "repair_succeeded": True,
+            "full_retry_count": 0,
+        },
+    )
+    _write_jsonl(
+        run_dir / "rounds" / "round_01" / "scoring_calls.jsonl",
+        [
+            {
+                "stage": "scoring",
+                "call_id": "scoring-r01-a",
+                "latency_ms": 5_000,
+                "validator_retry_count": 0,
+                "prompt_chars": 900,
+                "input_payload_chars": 700,
+                "output_chars": 100,
+                "cache_hit": True,
+                "cache_lookup_latency_ms": 17,
+            },
+        ],
+    )
+
+    summary = audit_run_dir(run_dir)
+
+    assert summary["llm_calls"]["requirements"]["cache_hits"] == 1
+    assert summary["llm_calls"]["requirements"]["cache_lookup_latency_ms"] == 11
+    assert summary["llm_calls"]["requirements"]["repair_attempt_count"] == 0
+    assert summary["llm_calls"]["requirements"]["repair_succeeded_count"] == 0
+    assert summary["llm_calls"]["requirements"]["full_retry_count"] == 0
+
+    assert summary["llm_calls"]["controller"]["repair_attempt_count"] == 1
+    assert summary["llm_calls"]["controller"]["repair_succeeded_count"] == 1
+    assert summary["llm_calls"]["controller"]["full_retry_count"] == 0
+    assert summary["llm_calls"]["controller"]["cache_hits"] == 0
+
+    assert summary["llm_calls"]["scoring"]["cache_hits"] == 1
+    assert summary["llm_calls"]["scoring"]["cache_lookup_latency_ms"] == 17
+
+
 def test_audit_run_dir_reads_scoring_jsonl_snapshots(tmp_path: Path) -> None:
     run_dir = tmp_path / "20260423_120000_feedbeef"
     _write_jsonl(

@@ -25,7 +25,7 @@ from seektalent.models import (
 )
 from seektalent.progress import ProgressEvent
 from seektalent.runtime import WorkflowRuntime
-from seektalent.tracing import LLMCallSnapshot, RunTracer
+from seektalent.tracing import LLMCallSnapshot, ProviderUsageSnapshot, RunTracer, json_sha256, provider_usage_from_result
 from tests.settings_factory import make_settings
 
 
@@ -44,6 +44,23 @@ def _sample_inputs() -> tuple[str, str, str]:
         "Senior Python Engineer responsible for resume matching workflows.",
         "Prefer retrieval experience and shipping production AI features.",
     )
+
+
+def _provider_usage_snapshot() -> ProviderUsageSnapshot:
+    return ProviderUsageSnapshot(
+        input_tokens=10,
+        output_tokens=2,
+        total_tokens=12,
+        cache_read_tokens=7,
+        cache_write_tokens=1,
+        details={"reasoning_tokens": 3},
+    )
+
+
+def _single_run_dir(runs_root: Path) -> Path:
+    run_dirs = sorted(runs_root.iterdir())
+    assert len(run_dirs) == 1
+    return run_dirs[0]
 
 
 def test_run_config_records_sanitized_rescue_settings(tmp_path: Path) -> None:
@@ -114,6 +131,8 @@ def test_run_config_records_latency_engineering_settings(tmp_path: Path) -> None
     assert run_config["settings"]["reflection_enable_thinking"] is False
     assert run_config["settings"]["structured_repair_model"] == "openai-chat:qwen3.5-repair"
     assert run_config["settings"]["structured_repair_reasoning_effort"] == "low"
+    assert run_config["settings"]["runtime_mode"] == "dev"
+    assert run_config["settings"]["runs_dir"] == str(tmp_path / "runs")
     assert run_config["settings"]["llm_cache_dir"] == "tmp/latency-cache"
     assert run_config["settings"]["openai_prompt_cache_enabled"] is True
     assert run_config["settings"]["openai_prompt_cache_retention"] == "12h"
@@ -136,6 +155,14 @@ def test_llm_call_snapshot_accepts_cache_repair_and_prompt_cache_metadata() -> N
         input_payload_chars=30,
         output_chars=40,
         input_summary="input",
+        provider_usage={
+            "input_tokens": 12,
+            "output_tokens": 4,
+            "total_tokens": 16,
+            "cache_read_tokens": 11,
+            "cache_write_tokens": 2,
+            "details": {"reasoning_tokens": 7},
+        },
         cache_hit=True,
         cache_key="cache-key",
         cache_lookup_latency_ms=3,
@@ -156,6 +183,14 @@ def test_llm_call_snapshot_accepts_cache_repair_and_prompt_cache_metadata() -> N
     assert dump["prompt_cache_key"] == "prompt-cache-key"
     assert dump["prompt_cache_retention"] == "24h"
     assert dump["cached_input_tokens"] == 11
+    assert dump["provider_usage"] == {
+        "input_tokens": 12,
+        "output_tokens": 4,
+        "total_tokens": 16,
+        "cache_read_tokens": 11,
+        "cache_write_tokens": 2,
+        "details": {"reasoning_tokens": 7},
+    }
     assert dump["repair_attempt_count"] == 2
     assert dump["repair_succeeded"] is True
     assert dump["repair_model"] == "openai-chat:qwen3.5-repair"
@@ -163,6 +198,139 @@ def test_llm_call_snapshot_accepts_cache_repair_and_prompt_cache_metadata() -> N
     assert dump["full_retry_count"] == 1
 
 
+def test_provider_usage_from_result_extracts_cache_tokens() -> None:
+    class FakeUsage:
+        def __init__(self) -> None:
+            self.input_tokens = "12"
+            self.output_tokens = 4.0
+            self.total_tokens = 999
+            self.cache_read_tokens = "8"
+            self.cache_write_tokens = 3.0
+            self.details = {"reasoning_tokens": 7, "ignored": "nope"}
+
+    class FakeResult:
+        def usage(self) -> FakeUsage:
+            return FakeUsage()
+
+    usage = provider_usage_from_result(FakeResult())
+
+    assert usage.model_dump(mode="json") == {
+        "input_tokens": 12,
+        "output_tokens": 4,
+        "total_tokens": 16,
+        "cache_read_tokens": 8,
+        "cache_write_tokens": 3,
+        "details": {"reasoning_tokens": 7},
+    }
+
+
+def test_provider_usage_from_result_returns_none_without_usage_method() -> None:
+    class FakeResult:
+        output = object()
+
+    assert provider_usage_from_result(FakeResult()) is None
+
+
+def test_runtime_snapshot_builder_accepts_reflection_cache_and_repair_metadata(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+    )
+    runtime = WorkflowRuntime(settings)
+
+    snapshot = runtime._build_llm_call_snapshot(
+        stage="reflection",
+        call_id="reflection-r01",
+        model_id=settings.reflection_model,
+        prompt_name="reflection",
+        user_payload={
+            "REFLECTION_CONTEXT": {
+                "round_no": 1,
+                "search_observation": {"unique_new_count": 2},
+                "top_candidates": [],
+            }
+        },
+        user_prompt_text="reflection prompt payload",
+        input_artifact_refs=["rounds/round_01/reflection_context.json"],
+        output_artifact_refs=["rounds/round_01/reflection_advice.json"],
+        started_at="2026-01-01T00:00:00+00:00",
+        latency_ms=10,
+        status="succeeded",
+        retries=0,
+        output_retries=2,
+        structured_output=ReflectionAdvice(
+            keyword_advice=ReflectionKeywordAdvice(),
+            filter_advice=ReflectionFilterAdvice(),
+            reflection_rationale="Continue search.",
+            suggest_stop=False,
+            suggested_stop_reason=None,
+            reflection_summary="Continue.",
+        ).model_dump(mode="json"),
+        round_no=1,
+        validator_retry_count=1,
+        validator_retry_reasons=["validator retry"],
+        prompt_cache_key="reflection-cache-key",
+        prompt_cache_retention="24h",
+        provider_usage={"cache_read_tokens": 8},
+        repair_attempt_count=1,
+        repair_succeeded=True,
+        repair_model="openai-chat:qwen3.5-repair",
+        repair_reason="missing stop reason",
+        full_retry_count=1,
+    )
+    dump = snapshot.model_dump(mode="json")
+
+    assert dump["prompt_cache_key"] == "reflection-cache-key"
+    assert dump["prompt_cache_retention"] == "24h"
+    assert dump["provider_usage"]["cache_read_tokens"] == 8
+    assert dump["cached_input_tokens"] == 8
+    assert dump["repair_attempt_count"] == 1
+    assert dump["repair_succeeded"] is True
+    assert dump["repair_model"] == "openai-chat:qwen3.5-repair"
+    assert dump["repair_reason"] == "missing stop reason"
+    assert dump["full_retry_count"] == 1
+
+
+def test_llm_schema_pressure_includes_cache_repair_and_full_retry() -> None:
+    runtime = WorkflowRuntime(make_settings(runs_dir="/tmp/seek-runs"))
+
+    pressure_item = runtime._llm_schema_pressure_item(
+        {
+            "stage": "requirements",
+            "call_id": "requirements-r01",
+            "output_retries": 1,
+            "validator_retry_count": 2,
+            "validator_retry_reasons": ["score mismatch", "tooling timeout"],
+            "prompt_chars": 1200,
+            "input_payload_chars": 3400,
+            "output_chars": 560,
+            "input_payload_sha256": "input-hash",
+            "structured_output_sha256": "output-hash",
+            "repair_attempt_count": 1,
+            "repair_succeeded": True,
+            "repair_reason": "repair by fallback",
+            "full_retry_count": 3,
+            "cache_hit": True,
+            "cache_lookup_latency_ms": 8,
+            "prompt_cache_key": "requirements:openai-chat:gpt:hash",
+            "prompt_cache_retention": "24h",
+            "cached_input_tokens": 17,
+            "provider_usage": {"cache_read_tokens": 8},
+        }
+    )
+
+    assert pressure_item["stage"] == "requirements"
+    assert pressure_item["cache_hit"] is True
+    assert pressure_item["cache_lookup_latency_ms"] == 8
+    assert pressure_item["validator_retry_reasons"] == ["score mismatch", "tooling timeout"]
+    assert pressure_item["repair_attempt_count"] == 1
+    assert pressure_item["repair_succeeded"] is True
+    assert pressure_item["repair_reason"] == "repair by fallback"
+    assert pressure_item["full_retry_count"] == 3
+    assert pressure_item["prompt_cache_key"] == "requirements:openai-chat:gpt:hash"
+    assert pressure_item["prompt_cache_retention"] == "24h"
+    assert pressure_item["cached_input_tokens"] == 17
+    assert pressure_item["provider_usage"] == {"cache_read_tokens": 8}
 def test_runtime_preflight_passes_rescue_models_from_top_level_settings(monkeypatch) -> None:
     captured_extra_specs: list[tuple[str, str | None, str | None]] | None = None
 
@@ -667,11 +835,26 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
         min_rounds=1,
         max_rounds=1,
         enable_eval=True,
+        openai_prompt_cache_enabled=True,
+        openai_prompt_cache_retention="12h",
         cts_tenant_key="tenant-key",
         cts_tenant_secret="tenant-secret",
     )
     runtime = WorkflowRuntime(settings)
     _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+    provider_usage = ProviderUsageSnapshot(
+        input_tokens=10,
+        output_tokens=2,
+        total_tokens=12,
+        cache_read_tokens=7,
+        cache_write_tokens=1,
+        details={"reasoning_tokens": 3},
+    )
+    runtime_any = cast(Any, runtime)
+    runtime_any.requirement_extractor.last_provider_usage = provider_usage
+    runtime_any.controller.last_provider_usage = provider_usage
+    runtime_any.reflection_critic.last_provider_usage = provider_usage
+    runtime_any.finalizer.last_provider_usage = provider_usage
     cast(Any, runtime).evaluation_runner = _stub_evaluation_runner
     job_title, jd, notes = _sample_inputs()
 
@@ -686,6 +869,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     search_observation = _read_json(round_dir / "search_observation.json")
     search_attempts = _read_json(round_dir / "search_attempts.json")
     requirements_call = _read_json(artifacts.run_dir / "requirements_call.json")
+    requirement_sheet = _read_json(artifacts.run_dir / "requirement_sheet.json")
     requirement_draft = _read_json(artifacts.run_dir / "requirement_extraction_draft.json")
     controller_call = _read_json(round_dir / "controller_call.json")
     reflection_call = _read_json(round_dir / "reflection_call.json")
@@ -758,6 +942,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert all(candidate["match_summary"] for candidate in final_candidates["candidates"])
     assert "user_payload" not in requirements_call
     assert "structured_output" not in requirements_call
+    assert requirements_call["provider_usage"] == provider_usage.model_dump(mode="json")
     assert requirements_call["input_payload_sha256"]
     assert requirements_call["structured_output_sha256"]
     assert requirements_call["prompt_chars"] > 0
@@ -782,6 +967,11 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert controller_call["retries"] == 0
     assert controller_call["output_retries"] == 2
     assert controller_call["validator_retry_reasons"] == []
+    assert controller_call["prompt_cache_key"] == (
+        f"controller:{settings.controller_model}:{json_sha256(requirement_sheet)}"
+    )
+    assert controller_call["prompt_cache_retention"] == "12h"
+    assert controller_call["provider_usage"] == provider_usage.model_dump(mode="json")
     assert "user_payload" not in reflection_call
     assert "structured_output" not in reflection_call
     assert reflection_call["input_payload_sha256"]
@@ -795,6 +985,20 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert "rounds/round_01/reflection_advice.json" in reflection_call["output_artifact_refs"]
     assert reflection_call["retries"] == 0
     assert reflection_call["output_retries"] == 2
+    assert reflection_call["validator_retry_count"] == 0
+    assert reflection_call["validator_retry_reasons"] == []
+    assert reflection_call["prompt_cache_key"] is not None
+    assert reflection_call["prompt_cache_key"].startswith(f"reflection:{settings.reflection_model}:")
+    assert reflection_call["prompt_cache_key"] != (
+        f"reflection:{settings.reflection_model}:{json_sha256(requirement_sheet)}"
+    )
+    assert reflection_call["prompt_cache_retention"] == "12h"
+    assert reflection_call["provider_usage"] == provider_usage.model_dump(mode="json")
+    assert reflection_call["repair_attempt_count"] == 0
+    assert reflection_call["repair_succeeded"] is False
+    assert reflection_call["repair_model"] is None
+    assert reflection_call["repair_reason"] is None
+    assert reflection_call["full_retry_count"] == 0
     assert len(scoring_calls) == len(scorecards)
     assert scoring_calls[0]["resume_id"] == "mock-r001"
     assert scoring_calls[0]["status"] == "succeeded"
@@ -819,6 +1023,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert finalizer_call["retries"] == 0
     assert finalizer_call["output_retries"] == 2
     assert finalizer_call["validator_retry_reasons"] == []
+    assert finalizer_call["provider_usage"] == provider_usage.model_dump(mode="json")
     assert judge_packet["requirements"]["requirement_sheet"]["role_title"] == "Senior Python Engineer"
     assert judge_packet["rounds"][0]["controller_decision"]["action"] == "search_cts"
     assert judge_packet["final"]["final_result"]["summary"] == final_candidates["summary"]
@@ -1153,6 +1358,124 @@ def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monk
             "evidence_status": "needs_surface_probe",
         },
     ]
+
+
+def test_requirements_failure_snapshot_records_provider_usage(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider_usage = _provider_usage_snapshot()
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    runtime = WorkflowRuntime(settings)
+
+    class FailingRequirementExtractor:
+        last_provider_usage: ProviderUsageSnapshot | None = None
+
+        async def extract_with_draft(self, *, input_truth):  # noqa: ANN001
+            del input_truth
+            self.last_provider_usage = provider_usage
+            raise RuntimeError("requirements failed")
+
+    cast(Any, runtime).requirement_extractor = FailingRequirementExtractor()
+
+    try:
+        runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
+    except RuntimeError as exc:
+        assert str(exc) == "requirements failed"
+    else:  # pragma: no cover
+        raise AssertionError("Expected requirements failure")
+
+    requirements_call = _read_json(_single_run_dir(settings.runs_path) / "requirements_call.json")
+    assert requirements_call["status"] == "failed"
+    assert requirements_call["provider_usage"] == provider_usage.model_dump(mode="json")
+
+
+def test_controller_failure_snapshot_records_provider_usage(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider_usage = _provider_usage_snapshot()
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=1)
+    runtime = WorkflowRuntime(settings)
+
+    class FailingController:
+        last_validator_retry_count = 0
+        last_validator_retry_reasons: list[str] = []
+        last_provider_usage: ProviderUsageSnapshot | None = None
+
+        async def decide(self, *, context):  # noqa: ANN001
+            del context
+            self.last_provider_usage = provider_usage
+            raise RuntimeError("controller failed")
+
+    _install_runtime_stubs(runtime, controller=FailingController(), resume_scorer=StubScorer())
+
+    try:
+        runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
+    except RuntimeError as exc:
+        assert str(exc) == "controller failed"
+    else:  # pragma: no cover
+        raise AssertionError("Expected controller failure")
+
+    controller_call = _read_json(_single_run_dir(settings.runs_path) / "rounds" / "round_01" / "controller_call.json")
+    assert controller_call["status"] == "failed"
+    assert controller_call["provider_usage"] == provider_usage.model_dump(mode="json")
+
+
+def test_reflection_failure_snapshot_records_provider_usage(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider_usage = _provider_usage_snapshot()
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=1)
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+
+    class FailingReflection:
+        last_provider_usage: ProviderUsageSnapshot | None = None
+
+        async def reflect(self, *, context):  # noqa: ANN001
+            del context
+            self.last_provider_usage = provider_usage
+            raise RuntimeError("reflection failed")
+
+    cast(Any, runtime).reflection_critic = FailingReflection()
+
+    try:
+        runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
+    except RuntimeError as exc:
+        assert str(exc) == "reflection failed"
+    else:  # pragma: no cover
+        raise AssertionError("Expected reflection failure")
+
+    reflection_call = _read_json(_single_run_dir(settings.runs_path) / "rounds" / "round_01" / "reflection_call.json")
+    assert reflection_call["status"] == "failed"
+    assert reflection_call["provider_usage"] == provider_usage.model_dump(mode="json")
+
+
+def test_finalizer_failure_snapshot_records_provider_usage(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    provider_usage = _provider_usage_snapshot()
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=1)
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+
+    class FailingFinalizer:
+        last_validator_retry_count = 0
+        last_validator_retry_reasons: list[str] = []
+        last_provider_usage: ProviderUsageSnapshot | None = None
+
+        async def finalize(self, *, run_id, run_dir, rounds_executed, stop_reason, ranked_candidates):  # noqa: ANN001
+            del run_id, run_dir, rounds_executed, stop_reason, ranked_candidates
+            self.last_provider_usage = provider_usage
+            raise RuntimeError("finalizer failed")
+
+    cast(Any, runtime).finalizer = FailingFinalizer()
+
+    try:
+        runtime.run(job_title="Senior Python Engineer", jd="JD", notes="Notes")
+    except RuntimeError as exc:
+        assert str(exc) == "finalizer failed"
+    else:  # pragma: no cover
+        raise AssertionError("Expected finalizer failure")
+
+    finalizer_call = _read_json(_single_run_dir(settings.runs_path) / "finalizer_call.json")
+    assert finalizer_call["status"] == "failed"
+    assert finalizer_call["provider_usage"] == provider_usage.model_dump(mode="json")
 
 
 def test_runtime_fails_fast_when_provider_credentials_are_missing(tmp_path: Path, monkeypatch) -> None:

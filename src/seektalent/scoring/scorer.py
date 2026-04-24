@@ -18,8 +18,12 @@ from seektalent.models import (
     unique_strings,
 )
 from seektalent.prompting import LoadedPrompt, json_block
+from seektalent.runtime.exact_llm_cache import get_cached_json, put_cached_json, stable_cache_key
 from seektalent.tracing import LLMCallSnapshot, RunTracer
+from seektalent.tracing import ProviderUsageSnapshot, provider_usage_from_result
 from seektalent.tracing import json_char_count, json_sha256, text_char_count, text_sha256
+
+SCORING_CACHE_SCHEMA_VERSION = "scored_candidate.v1"
 
 
 def _lines(values: list[str], *, limit: int | None = None) -> str:
@@ -71,21 +75,62 @@ def render_scoring_prompt(context: ScoringContext) -> str:
     )
 
 
+def scoring_cache_key(
+    settings: AppSettings,
+    prompt: LoadedPrompt,
+    context: ScoringContext,
+    user_prompt: str,
+) -> str:
+    return stable_cache_key(
+        [
+            SCORING_CACHE_SCHEMA_VERSION,
+            settings.scoring_model,
+            settings.reasoning_effort,
+            prompt.sha256,
+            json_sha256(context.scoring_policy.model_dump(mode="json")),
+            context.requirement_sheet_sha256,
+            json_sha256(context.normalized_resume.model_dump(mode="json")),
+            text_sha256(user_prompt),
+        ]
+    )
+
+
 class ResumeScorer:
     def __init__(self, settings: AppSettings, prompt: LoadedPrompt) -> None:
         self.settings = settings
         self.prompt = prompt
 
-    def _build_agent(self) -> Agent[None, ScoredCandidateDraft]:
+    def _build_agent(self, prompt_cache_key: str | None = None) -> Agent[None, ScoredCandidateDraft]:
         model = build_model(self.settings.scoring_model)
         return cast(Agent[None, ScoredCandidateDraft], Agent(
             model=model,
             output_type=build_output_spec(self.settings.scoring_model, model, ScoredCandidateDraft),
             system_prompt=self.prompt.content,
-            model_settings=build_model_settings(self.settings, self.settings.scoring_model),
+            model_settings=build_model_settings(
+                self.settings,
+                self.settings.scoring_model,
+                prompt_cache_key=prompt_cache_key,
+            ),
             retries=0,
             output_retries=2,
         ))
+
+    def rendered_prompt_for_cache(self, context: ScoringContext) -> str:
+        return render_scoring_prompt(context)
+
+    def _batch_prompt_cache_key(self, *, contexts: list[ScoringContext]) -> str | None:
+        if not self.settings.openai_prompt_cache_enabled:
+            return None
+        policy_hashes = sorted(
+            {
+                json_sha256(context.scoring_policy.model_dump(mode="json"))
+                for context in contexts
+            }
+        )
+        requirement_hashes = sorted(
+            {context.requirement_sheet_sha256 for context in contexts}
+        )
+        return f"scoring:{self.settings.scoring_model}:{stable_cache_key([self.settings.scoring_model, self.prompt.sha256, policy_hashes, requirement_hashes])}"
 
     async def score_candidates_parallel(
         self,
@@ -93,11 +138,17 @@ class ResumeScorer:
         contexts: list[ScoringContext],
         tracer: RunTracer,
     ) -> tuple[list[ScoredCandidate], list[ScoringFailure]]:
-        agent = self._build_agent()
+        prompt_cache_key = self._batch_prompt_cache_key(contexts=contexts)
+        prompt_cache_retention = (
+            self.settings.openai_prompt_cache_retention if prompt_cache_key is not None else None
+        )
+        agent = self._build_agent(prompt_cache_key=prompt_cache_key)
         return await self._score_candidates_parallel(
             contexts=contexts,
             tracer=tracer,
             agent=agent,
+            prompt_cache_key=prompt_cache_key,
+            prompt_cache_retention=prompt_cache_retention,
         )
 
     async def _score_candidates_parallel(
@@ -106,6 +157,8 @@ class ResumeScorer:
         contexts: list[ScoringContext],
         tracer: RunTracer,
         agent: Agent[None, ScoredCandidateDraft],
+        prompt_cache_key: str | None = None,
+        prompt_cache_retention: str | None = None,
     ) -> tuple[list[ScoredCandidate], list[ScoringFailure]]:
         semaphore = asyncio.Semaphore(self.settings.scoring_max_concurrency)
         scored: list[ScoredCandidate] = []
@@ -135,6 +188,8 @@ class ResumeScorer:
                     branch_id=branch_id,
                     tracer=tracer,
                     agent=agent,
+                    prompt_cache_key=prompt_cache_key,
+                    prompt_cache_retention=prompt_cache_retention,
                 )
             if result is not None:
                 scored.append(result)
@@ -151,24 +206,104 @@ class ResumeScorer:
         branch_id: str,
         tracer: RunTracer,
         agent: Agent[None, ScoredCandidateDraft],
+        prompt_cache_key: str | None = None,
+        prompt_cache_retention: str | None = None,
     ) -> tuple[ScoredCandidate | None, ScoringFailure | None]:
         candidate = context.normalized_resume
         call_id = f"scoring-r{context.round_no:02d}-{branch_id}"
         started_at_iso = datetime.now().astimezone().isoformat(timespec="seconds")
-        user_prompt = render_scoring_prompt(context)
+        user_prompt = self.rendered_prompt_for_cache(context)
+        cache_key = scoring_cache_key(self.settings, self.prompt, context, user_prompt)
+        lookup_started = perf_counter()
+        cached_payload = get_cached_json(self.settings, namespace="scoring", key=cache_key)
+        cache_lookup_latency_ms = max(1, int((perf_counter() - lookup_started) * 1000))
         artifact_paths = [
             f"rounds/round_{context.round_no:02d}/scoring_calls.jsonl",
             f"resumes/{candidate.resume_id}.json",
         ]
         started_at_clock = perf_counter()
         try:
-            draft = await self._score_one_live(prompt=user_prompt, agent=agent)
+            if cached_payload is not None:
+                result = ScoredCandidate.model_validate(cached_payload)
+                latency_ms = max(1, int((perf_counter() - started_at_clock) * 1000))
+                snapshot = LLMCallSnapshot(
+                    stage="scoring",
+                    call_id=call_id,
+                    round_no=context.round_no,
+                    resume_id=candidate.resume_id,
+                    branch_id=branch_id,
+                    model_id=self.settings.scoring_model,
+                    provider=model_provider(self.settings.scoring_model),
+                    prompt_hash=self.prompt.sha256,
+                    prompt_snapshot_path="prompt_snapshots/scoring.md",
+                    retries=0,
+                    output_retries=2,
+                    started_at=started_at_iso,
+                    latency_ms=latency_ms,
+                    status="succeeded",
+                    input_artifact_refs=[
+                        f"rounds/round_{context.round_no:02d}/scoring_input_refs.jsonl",
+                        f"resumes/{candidate.resume_id}.json",
+                        "scoring_policy.json",
+                    ],
+                    output_artifact_refs=[
+                        f"rounds/round_{context.round_no:02d}/scorecards.jsonl#resume_id={candidate.resume_id}"
+                    ],
+                    input_payload_sha256=text_sha256(user_prompt),
+                    structured_output_sha256=json_sha256(result.model_dump(mode="json")),
+                    prompt_chars=len(self.prompt.content),
+                    input_payload_chars=text_char_count(user_prompt),
+                    output_chars=json_char_count(result.model_dump(mode="json")),
+                    input_summary=(
+                        f"round={context.round_no}; resume_id={candidate.resume_id}; "
+                        f"summary={candidate.compact_summary()}"
+                    ),
+                    output_summary=(
+                        f"fit_bucket={result.fit_bucket}; score={result.overall_score}; "
+                        f"risk={result.risk_score}"
+                    ),
+                    cache_hit=True,
+                    cache_key=cache_key,
+                    cache_lookup_latency_ms=cache_lookup_latency_ms,
+                    prompt_cache_key=prompt_cache_key,
+                    prompt_cache_retention=prompt_cache_retention,
+                ).model_dump(mode="json")
+                snapshot.pop("provider_usage", None)
+                tracer.append_jsonl(
+                    f"rounds/round_{context.round_no:02d}/scoring_calls.jsonl",
+                    snapshot,
+                )
+                tracer.emit(
+                    "score_branch_completed",
+                    round_no=context.round_no,
+                    resume_id=candidate.resume_id,
+                    branch_id=branch_id,
+                    model=self.settings.scoring_model,
+                    call_id=call_id,
+                    status="succeeded",
+                    latency_ms=latency_ms,
+                    summary=result.reasoning_summary,
+                    artifact_paths=artifact_paths,
+                    payload={},
+                )
+                return result, None
+
+            draft, provider_usage = await self._score_one_live(prompt=user_prompt, agent=agent)
             result = _materialize_scored_candidate(
                 draft=draft,
                 resume_id=candidate.resume_id,
                 source_round=candidate.source_round or context.round_no,
             )
+            put_cached_json(
+                self.settings,
+                namespace="scoring",
+                key=cache_key,
+                payload=result.model_dump(mode="json"),
+            )
             latency_ms = max(1, int((perf_counter() - started_at_clock) * 1000))
+            cached_input_tokens = (
+                provider_usage.cache_read_tokens if provider_usage is not None else None
+            )
             tracer.append_jsonl(
                 f"rounds/round_{context.round_no:02d}/scoring_calls.jsonl",
                 LLMCallSnapshot(
@@ -207,6 +342,13 @@ class ResumeScorer:
                         f"fit_bucket={result.fit_bucket}; score={result.overall_score}; "
                         f"risk={result.risk_score}"
                     ),
+                    cache_hit=False,
+                    cache_key=cache_key,
+                    cache_lookup_latency_ms=cache_lookup_latency_ms,
+                    prompt_cache_key=prompt_cache_key,
+                    prompt_cache_retention=prompt_cache_retention,
+                    provider_usage=provider_usage,
+                    cached_input_tokens=cached_input_tokens,
                 ),
             )
             tracer.emit(
@@ -267,6 +409,11 @@ class ResumeScorer:
                     ),
                     output_summary=None,
                     error_message=str(exc),
+                    cache_hit=False,
+                    cache_key=cache_key,
+                    cache_lookup_latency_ms=cache_lookup_latency_ms,
+                    prompt_cache_key=prompt_cache_key,
+                    prompt_cache_retention=prompt_cache_retention,
                 ),
             )
             tracer.emit(
@@ -290,9 +437,9 @@ class ResumeScorer:
         *,
         prompt: str,
         agent: Agent[None, ScoredCandidateDraft],
-    ) -> ScoredCandidateDraft:
+    ) -> tuple[ScoredCandidateDraft, ProviderUsageSnapshot | None]:
         result = await agent.run(prompt)
-        return result.output
+        return result.output, provider_usage_from_result(result)
 
 
 def _materialize_scored_candidate(

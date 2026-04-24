@@ -1,5 +1,63 @@
+import asyncio
+from pathlib import Path
+
+import pytest
+
 from seektalent.models import RequirementExtractionDraft
-from seektalent.requirements import build_scoring_policy, normalize_requirement_draft
+from seektalent.prompting import LoadedPrompt
+from seektalent.requirements import build_input_truth, build_scoring_policy, normalize_requirement_draft
+from seektalent.requirements.extractor import RequirementExtractor, requirement_cache_key
+from seektalent.runtime.exact_llm_cache import put_cached_json
+from seektalent.tracing import ProviderUsageSnapshot
+from tests.settings_factory import make_settings
+
+
+def _valid_requirement_draft() -> RequirementExtractionDraft:
+    return RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build retrieval and ranking capabilities.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python and retrieval depth.",
+    )
+
+
+def _fake_usage_result(output: RequirementExtractionDraft):
+    class FakeUsage:
+        input_tokens = 12
+        output_tokens = 4
+        total_tokens = 16
+        cache_read_tokens = 8
+        cache_write_tokens = 2
+        details = {"reasoning_tokens": 6}
+
+    class FakeResult:
+        def __init__(self, output: RequirementExtractionDraft) -> None:
+            self.output = output
+
+        def usage(self) -> FakeUsage:
+            return FakeUsage()
+
+    return FakeResult(output)
+
+
+def _provider_usage(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> ProviderUsageSnapshot:
+    return ProviderUsageSnapshot(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        details={"reasoning_tokens": reasoning_tokens} if reasoning_tokens else {},
+    )
 
 
 def test_normalize_requirement_draft_covers_standard_slots() -> None:
@@ -209,3 +267,288 @@ def test_normalize_requirement_draft_clears_preferred_locations_for_single_city(
 
     assert requirement_sheet.hard_constraints.locations == ["上海"]
     assert requirement_sheet.preferences.preferred_locations == []
+
+
+def test_requirement_cache_hit_skips_provider_and_normalizes_current_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p1")
+    extractor = RequirementExtractor(settings, prompt)
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    cached_draft = _valid_requirement_draft()
+    cache_key = requirement_cache_key(settings, prompt=prompt, input_truth=input_truth)
+    put_cached_json(
+        settings,
+        namespace="requirements",
+        key=cache_key,
+        payload=cached_draft.model_dump(mode="json"),
+    )
+
+    provider_calls = 0
+
+    async def fake_extract_live(*, input_truth, prompt_cache_key=None):  # noqa: ANN001
+        nonlocal provider_calls
+        provider_calls += 1
+        return cached_draft
+
+    monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
+
+    draft, sheet = asyncio.run(extractor.extract_with_draft(input_truth=input_truth))
+
+    assert provider_calls == 0
+    assert draft == cached_draft
+    assert sheet.role_title == "Senior Python Engineer"
+    assert extractor.last_cache_hit is True
+
+
+def test_requirements_extractor_records_provider_usage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p6")
+    extractor = RequirementExtractor(settings, prompt)
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    draft = _valid_requirement_draft()
+
+    class FakeAgent:
+        async def run(self, prompt: str):  # noqa: ANN001
+            del prompt
+            return _fake_usage_result(draft)
+
+    monkeypatch.setattr(extractor, "_get_agent", lambda prompt_cache_key=None: FakeAgent())  # noqa: ARG005
+
+    result = asyncio.run(extractor._extract_live(input_truth=input_truth))
+
+    assert result == draft
+    assert extractor.last_provider_usage is not None
+    assert extractor.last_provider_usage.model_dump(mode="json") == {
+        "input_tokens": 12,
+        "output_tokens": 4,
+        "total_tokens": 16,
+        "cache_read_tokens": 8,
+        "cache_write_tokens": 2,
+        "details": {"reasoning_tokens": 6},
+    }
+
+
+def test_requirement_cache_key_changes_when_requirements_thinking_changes() -> None:
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p3")
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    thinking_on_settings = make_settings(requirements_enable_thinking=True)
+    thinking_off_settings = make_settings(requirements_enable_thinking=False)
+
+    thinking_on_key = requirement_cache_key(thinking_on_settings, prompt=prompt, input_truth=input_truth)
+    thinking_off_key = requirement_cache_key(thinking_off_settings, prompt=prompt, input_truth=input_truth)
+
+    assert thinking_on_key != thinking_off_key
+
+
+def test_requirement_cache_key_changes_when_reasoning_effort_changes() -> None:
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p5")
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    low_settings = make_settings(reasoning_effort="low")
+    high_settings = make_settings(reasoning_effort="high")
+
+    low_key = requirement_cache_key(low_settings, prompt=prompt, input_truth=input_truth)
+    high_key = requirement_cache_key(high_settings, prompt=prompt, input_truth=input_truth)
+
+    assert low_key != high_key
+
+
+def test_requirement_repair_fixes_empty_non_anchor_jd_terms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p2")
+    extractor = RequirementExtractor(settings, prompt)
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    bad_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Python"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+    fixed_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+
+    async def fake_extract_live(*, input_truth, prompt_cache_key=None):  # noqa: ANN001
+        return bad_draft
+
+    async def fake_repair(settings, prompt, input_truth, draft, reason):  # noqa: ANN001
+        return fixed_draft, None
+
+    monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
+    monkeypatch.setattr("seektalent.requirements.extractor.repair_requirement_draft", fake_repair)
+
+    draft, sheet = asyncio.run(extractor.extract_with_draft(input_truth=input_truth))
+
+    assert draft == fixed_draft
+    assert len(sheet.initial_query_term_pool) >= 2
+    assert extractor.last_repair_attempt_count == 1
+    assert extractor.last_repair_succeeded is True
+    assert extractor.last_repair_reason is not None
+    assert "jd_query_terms" in extractor.last_repair_reason
+    assert "non-anchor" in extractor.last_repair_reason
+
+
+def test_requirement_full_retry_when_repaired_draft_still_fails_normalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p4")
+    extractor = RequirementExtractor(settings, prompt)
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    first_live_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Python"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+    repaired_but_still_invalid = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Python"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+    second_live_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+
+    provider_calls = 0
+
+    async def fake_extract_live(*, input_truth, prompt_cache_key=None):  # noqa: ANN001
+        nonlocal provider_calls
+        provider_calls += 1
+        if provider_calls == 1:
+            return first_live_draft
+        return second_live_draft
+
+    async def fake_repair(settings, prompt, input_truth, draft, reason):  # noqa: ANN001
+        return repaired_but_still_invalid, None
+
+    monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
+    monkeypatch.setattr("seektalent.requirements.extractor.repair_requirement_draft", fake_repair)
+
+    draft, sheet = asyncio.run(extractor.extract_with_draft(input_truth=input_truth))
+
+    assert provider_calls == 2
+    assert draft == second_live_draft
+    assert len(sheet.initial_query_term_pool) >= 2
+    assert extractor.last_repair_attempt_count == 1
+    assert extractor.last_repair_succeeded is False
+    assert extractor.last_full_retry_count == 1
+
+
+def test_requirement_repair_usage_contributes_to_stage_total(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p7")
+    extractor = RequirementExtractor(settings, prompt)
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    bad_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Python"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+    fixed_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+    live_usage = _provider_usage(
+        input_tokens=12,
+        output_tokens=4,
+        cache_read_tokens=8,
+        cache_write_tokens=2,
+        reasoning_tokens=6,
+    )
+    repair_usage = _provider_usage(
+        input_tokens=5,
+        output_tokens=3,
+        cache_read_tokens=1,
+        cache_write_tokens=4,
+        reasoning_tokens=2,
+    )
+
+    async def fake_extract_live(*, input_truth, prompt_cache_key=None):  # noqa: ANN001
+        del input_truth, prompt_cache_key
+        extractor.last_provider_usage = live_usage
+        return bad_draft
+
+    async def fake_repair(settings, prompt, input_truth, draft, reason):  # noqa: ANN001
+        del settings, prompt, input_truth, draft, reason
+        return fixed_draft, repair_usage
+
+    monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
+    monkeypatch.setattr("seektalent.requirements.extractor.repair_requirement_draft", fake_repair)
+
+    draft, _sheet = asyncio.run(extractor.extract_with_draft(input_truth=input_truth))
+
+    assert draft == fixed_draft
+    assert extractor.last_provider_usage is not None
+    assert extractor.last_provider_usage.model_dump(mode="json") == {
+        "input_tokens": 17,
+        "output_tokens": 7,
+        "total_tokens": 24,
+        "cache_read_tokens": 9,
+        "cache_write_tokens": 6,
+        "details": {"reasoning_tokens": 8},
+    }

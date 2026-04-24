@@ -55,6 +55,68 @@ def text_char_count(value: str) -> int:
     return len(value)
 
 
+def _int_value(value: Any) -> int:
+    return int(value)
+
+
+class ProviderUsageSnapshot(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    details: dict[str, int] = Field(default_factory=dict)
+
+
+def combine_provider_usage(
+    left: ProviderUsageSnapshot | None,
+    right: ProviderUsageSnapshot | None,
+) -> ProviderUsageSnapshot | None:
+    if left is None:
+        return right
+    if right is None:
+        return left
+    details = dict(left.details)
+    for key, value in right.details.items():
+        details[key] = details.get(key, 0) + value
+    return ProviderUsageSnapshot(
+        input_tokens=left.input_tokens + right.input_tokens,
+        output_tokens=left.output_tokens + right.output_tokens,
+        total_tokens=left.total_tokens + right.total_tokens,
+        cache_read_tokens=left.cache_read_tokens + right.cache_read_tokens,
+        cache_write_tokens=left.cache_write_tokens + right.cache_write_tokens,
+        details=details,
+    )
+
+
+def provider_usage_from_result(result: Any) -> ProviderUsageSnapshot | None:
+    usage_fn = getattr(result, "usage", None)
+    if not callable(usage_fn):
+        return None
+    usage = usage_fn()
+    if usage is None:
+        return None
+    details = getattr(usage, "details", {}) or {}
+    input_tokens = _int_value(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = _int_value(getattr(usage, "output_tokens", 0) or 0)
+    detail_tokens: dict[str, int] = {}
+    for key, value in details.items():
+        if isinstance(value, bool):
+            continue
+        try:
+            detail_tokens[str(key)] = _int_value(value)
+        except (TypeError, ValueError):
+            continue
+    return ProviderUsageSnapshot(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        cache_read_tokens=_int_value(getattr(usage, "cache_read_tokens", 0) or 0),
+        cache_write_tokens=_int_value(getattr(usage, "cache_write_tokens", 0) or 0),
+        details=detail_tokens,
+    )
+
+
 class TraceEvent(BaseModel):
     timestamp: str
     run_id: str
@@ -102,6 +164,7 @@ class LLMCallSnapshot(BaseModel):
     error_message: str | None = None
     validator_retry_count: int = 0
     validator_retry_reasons: list[str] = Field(default_factory=list)
+    provider_usage: ProviderUsageSnapshot | None = None
     cache_hit: bool = False
     cache_key: str | None = None
     cache_lookup_latency_ms: int | None = None
@@ -240,6 +303,10 @@ class RunTracer:
     def append_jsonl(self, filename: str, row: Any) -> Path:
         path = self.run_dir / filename
         path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(row, LLMCallSnapshot):
+            row = row.model_dump(mode="json")
+        if isinstance(row, dict) and row.get("provider_usage") is None:
+            row = {key: value for key, value in row.items() if key != "provider_usage"}
         line = json.dumps(self._jsonable(row), ensure_ascii=False)
         with self._lock:
             with path.open("a", encoding="utf-8") as handle:

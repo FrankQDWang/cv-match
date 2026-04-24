@@ -1,11 +1,10 @@
+import asyncio
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
-from pydantic_ai.exceptions import ModelRetry
 
-from seektalent.controller.react_controller import ReActController
+from seektalent.controller.react_controller import ReActController, validate_controller_decision
 from seektalent.models import (
     CTSQuery,
     ControllerDecision,
@@ -31,6 +30,7 @@ from seektalent.models import (
 )
 from seektalent.prompting import LoadedPrompt
 from seektalent.runtime import WorkflowRuntime
+from seektalent.tracing import ProviderUsageSnapshot
 from tests.settings_factory import make_settings
 
 
@@ -39,6 +39,68 @@ def test_controller_prompt_requires_atomic_search_terms() -> None:
     assert "Prefer atomic resume-side terms" in prompt
     assert 'Bad: `["Agent训推", "强化学习"]`; good: `["Agent", "强化学习"]`' in prompt
     assert 'Bad: `["Python后端开发", "高并发系统建设"]`; good: `["Python", "高并发"]`' in prompt
+
+
+def test_controller_decision_rationale_has_generous_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        SearchControllerDecision.model_validate(
+            {
+                "thought_summary": "Search.",
+                "action": "search_cts",
+                "decision_rationale": "a" * 2001,
+                "proposed_query_terms": ["python", "resume matching"],
+                "proposed_filter_plan": {},
+            }
+        )
+
+
+def test_controller_thought_summary_has_generous_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        SearchControllerDecision.model_validate(
+            {
+                "thought_summary": "a" * 501,
+                "action": "search_cts",
+                "decision_rationale": "Need recall.",
+                "proposed_query_terms": ["python", "resume matching"],
+                "proposed_filter_plan": {},
+            }
+        )
+
+
+def test_controller_response_to_reflection_has_generous_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        SearchControllerDecision.model_validate(
+            {
+                "thought_summary": "Search.",
+                "action": "search_cts",
+                "decision_rationale": "Need recall.",
+                "proposed_query_terms": ["python", "resume matching"],
+                "proposed_filter_plan": {},
+                "response_to_reflection": "b" * 2001,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("thought_summary", "a" * 501),
+        ("decision_rationale", "a" * 2001),
+        ("response_to_reflection", "b" * 2001),
+    ],
+)
+def test_stop_controller_decision_uses_same_length_limits(field: str, value: str) -> None:
+    payload = {
+        "thought_summary": "Stop.",
+        "action": "stop",
+        "decision_rationale": "Enough signal.",
+        "response_to_reflection": "Addressed previous reflection.",
+        "stop_reason": "controller_stop",
+    }
+    payload[field] = value
+
+    with pytest.raises(ValidationError):
+        StopControllerDecision.model_validate(payload)
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -122,6 +184,43 @@ def _agent_requirement_sheet() -> RequirementSheet:
             ),
         ],
         scoring_rationale="Score Agent fit first.",
+    )
+
+
+def _fake_usage_result(output: ControllerDecision):
+    class FakeUsage:
+        input_tokens = 14
+        output_tokens = 5
+        total_tokens = 19
+        cache_read_tokens = 9
+        cache_write_tokens = 1
+        details = {"reasoning_tokens": 7}
+
+    class FakeResult:
+        def __init__(self, output: ControllerDecision) -> None:
+            self.output = output
+
+        def usage(self) -> FakeUsage:
+            return FakeUsage()
+
+    return FakeResult(output)
+
+
+def _provider_usage(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> ProviderUsageSnapshot:
+    return ProviderUsageSnapshot(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        details={"reasoning_tokens": reasoning_tokens} if reasoning_tokens else {},
     )
 
 
@@ -242,6 +341,16 @@ def test_controller_decision_requires_proposals_for_search() -> None:
         )
 
 
+def test_controller_prompt_mentions_schema_budget_and_few_shot_term_rules() -> None:
+    prompt = Path("src/seektalent/prompts/controller.md").read_text(encoding="utf-8")
+
+    assert "few-shot terms are examples only" in prompt
+    assert "current active admitted term bank" in prompt
+    assert "thought_summary should stay short within schema budget" in prompt
+    assert "decision_rationale should be a concise audit summary within schema budget" in prompt
+    assert "not a step-by-step reasoning transcript" in prompt
+
+
 def test_controller_decision_rejects_stop_with_search_fields() -> None:
     with pytest.raises(ValidationError):
         TypeAdapter(ControllerDecision).validate_python(
@@ -290,15 +399,7 @@ def test_controller_decision_discriminated_union_accepts_stop_payload() -> None:
     assert decision.stop_reason == "controller_stop"
 
 
-def test_controller_output_validator_rejects_missing_response_to_reflection(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
-    )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+def test_validate_controller_decision_rejects_missing_response_to_reflection() -> None:
     context = _controller_context(
         round_no=2,
         previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
@@ -311,23 +412,12 @@ def test_controller_output_validator_rejects_missing_response_to_reflection(
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    with pytest.raises(ModelRetry, match="response_to_reflection"):
-        validator(type("Ctx", (), {"deps": context})(), decision)
-
-    assert controller.last_validator_retry_reasons == [
+    assert validate_controller_decision(context=context, decision=decision) == (
         "response_to_reflection is required when previous_reflection exists."
-    ]
-
-
-def test_controller_output_validator_rejects_empty_query_terms(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+
+
+def test_validate_controller_decision_rejects_empty_query_terms() -> None:
     context = _controller_context()
     decision = SearchControllerDecision(
         thought_summary="Search again.",
@@ -337,23 +427,12 @@ def test_controller_output_validator_rejects_empty_query_terms(
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    with pytest.raises(ModelRetry, match="proposed_query_terms"):
-        validator(type("Ctx", (), {"deps": context})(), decision)
-
-    assert controller.last_validator_retry_reasons == [
+    assert validate_controller_decision(context=context, decision=decision) == (
         "proposed_query_terms must contain at least one term."
-    ]
-
-
-def test_controller_output_validator_accepts_compiled_anchor_alias_without_literal_title_anchor(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
     )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+
+
+def test_validate_controller_decision_accepts_compiled_anchor_alias_without_literal_title_anchor() -> None:
     requirement_sheet = _agent_requirement_sheet()
     context = _controller_context(requirement_sheet=requirement_sheet)
     decision = SearchControllerDecision(
@@ -364,18 +443,10 @@ def test_controller_output_validator_accepts_compiled_anchor_alias_without_liter
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    assert validator(type("Ctx", (), {"deps": context})(), decision) is decision
+    assert validate_controller_decision(context=context, decision=decision) is None
 
 
-def test_controller_output_validator_rejects_blocked_compiler_terms(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
-    )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+def test_validate_controller_decision_rejects_blocked_compiler_terms() -> None:
     requirement_sheet = _agent_requirement_sheet()
     context = _controller_context(requirement_sheet=requirement_sheet)
     decision = SearchControllerDecision(
@@ -386,22 +457,12 @@ def test_controller_output_validator_rejects_blocked_compiler_terms(
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    with pytest.raises(ModelRetry, match="compiler-admitted"):
-        validator(type("Ctx", (), {"deps": context})(), decision)
-
-    assert controller.last_validator_retry_reasons
-    assert "compiler-admitted" in controller.last_validator_retry_reasons[0]
+    result = validate_controller_decision(context=context, decision=decision)
+    assert result is not None
+    assert "compiler-admitted" in result
 
 
-def test_controller_output_validator_rejects_query_terms_over_budget(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    controller = ReActController(
-        make_settings(),
-        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
-    )
-    validator = cast(Any, controller._get_agent()._output_validators[0].function)
+def test_validate_controller_decision_rejects_query_terms_over_budget() -> None:
     context = _controller_context()
     decision = SearchControllerDecision(
         thought_summary="Search again.",
@@ -411,8 +472,223 @@ def test_controller_output_validator_rejects_query_terms_over_budget(
         proposed_filter_plan=ProposedFilterPlan(),
     )
 
-    with pytest.raises(ModelRetry, match="must not exceed 3 terms"):
-        validator(type("Ctx", (), {"deps": context})(), decision)
+    result = validate_controller_decision(context=context, decision=decision)
+    assert result is not None
+    assert "must not exceed 3 terms" in result
+
+
+def test_controller_repair_avoids_pydantic_output_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    context = _controller_context(
+        round_no=2,
+        previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
+    )
+    invalid = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Add one more term.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+    repaired = SearchControllerDecision(
+        thought_summary=invalid.thought_summary,
+        action=invalid.action,
+        decision_rationale=invalid.decision_rationale,
+        proposed_query_terms=invalid.proposed_query_terms,
+        proposed_filter_plan=invalid.proposed_filter_plan,
+        response_to_reflection="Addressed previous reflection.",
+    )
+
+    async def fake_decide_live(*, context: ControllerContext, prompt_cache_key: str | None = None) -> ControllerDecision:
+        del context, prompt_cache_key
+        return invalid
+
+    async def fake_repair_controller_decision(
+        settings, prompt, repair_context, decision, reason  # noqa: ANN001
+    ) -> ControllerDecision:
+        del settings, prompt, repair_context, decision, reason
+        return repaired, None
+
+    monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
+    monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
+
+    result = asyncio.run(controller.decide(context=context))
+
+    assert result == repaired
+    assert controller.last_validator_retry_count == 1
+    assert controller.last_repair_attempt_count == 1
+    assert controller.last_repair_succeeded is True
+    assert controller.last_full_retry_count == 0
+
+
+def test_controller_records_provider_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    context = _controller_context()
+    decision = SearchControllerDecision(
+        thought_summary="Search.",
+        action="search_cts",
+        decision_rationale="Need recall.",
+        proposed_query_terms=["python", "resume matching"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+
+    class FakeAgent:
+        async def run(self, prompt: str, deps: ControllerContext):  # noqa: ANN001
+            del prompt, deps
+            return _fake_usage_result(decision)
+
+    monkeypatch.setattr(controller, "_get_agent", lambda prompt_cache_key=None: FakeAgent())  # noqa: ARG005
+
+    result = asyncio.run(controller._decide_live(context=context))
+
+    assert result == decision
+    assert controller.last_provider_usage is not None
+    assert controller.last_provider_usage.model_dump(mode="json") == {
+        "input_tokens": 14,
+        "output_tokens": 5,
+        "total_tokens": 19,
+        "cache_read_tokens": 9,
+        "cache_write_tokens": 1,
+        "details": {"reasoning_tokens": 7},
+    }
+
+
+def test_controller_full_retry_after_failed_semantic_repair(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    context = _controller_context(
+        round_no=2,
+        previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
+    )
+    invalid = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Add one more term.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+    still_invalid = SearchControllerDecision(
+        thought_summary=invalid.thought_summary,
+        action=invalid.action,
+        decision_rationale=invalid.decision_rationale,
+        proposed_query_terms=invalid.proposed_query_terms,
+        proposed_filter_plan=invalid.proposed_filter_plan,
+        response_to_reflection=" ",
+    )
+    valid = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Retry with fixed response.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+        response_to_reflection="Addressed previous reflection.",
+    )
+    calls = {"count": 0}
+    prompt_cache_keys: list[str | None] = []
+
+    async def fake_decide_live(*, context: ControllerContext, prompt_cache_key: str | None = None) -> ControllerDecision:
+        del context
+        calls["count"] += 1
+        prompt_cache_keys.append(prompt_cache_key)
+        return invalid if calls["count"] == 1 else valid
+
+    async def fake_repair_controller_decision(
+        settings, prompt, repair_context, decision, reason  # noqa: ANN001
+    ) -> ControllerDecision:
+        del settings, prompt, repair_context, decision, reason
+        return still_invalid, None
+
+    monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
+    monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
+
+    result = asyncio.run(controller.decide(context=context, prompt_cache_key="controller-cache-key"))
+
+    assert result == valid
+    assert calls["count"] == 2
+    assert prompt_cache_keys == ["controller-cache-key", "controller-cache-key"]
+    assert controller.last_full_retry_count == 1
+
+
+def test_controller_aggregates_provider_usage_across_repair_and_full_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    context = _controller_context(
+        round_no=2,
+        previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
+    )
+    invalid = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Add one more term.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+    still_invalid = invalid.model_copy(update={"response_to_reflection": " "})
+    valid = invalid.model_copy(update={"response_to_reflection": "Addressed previous reflection."})
+    first_usage = _provider_usage(
+        input_tokens=14,
+        output_tokens=5,
+        cache_read_tokens=9,
+        cache_write_tokens=1,
+        reasoning_tokens=7,
+    )
+    repair_usage = _provider_usage(
+        input_tokens=3,
+        output_tokens=2,
+        cache_read_tokens=1,
+        cache_write_tokens=0,
+        reasoning_tokens=1,
+    )
+    retry_usage = _provider_usage(
+        input_tokens=11,
+        output_tokens=4,
+        cache_read_tokens=6,
+        cache_write_tokens=2,
+        reasoning_tokens=5,
+    )
+    calls = {"count": 0}
+
+    async def fake_decide_live(*, context: ControllerContext, prompt_cache_key: str | None = None) -> ControllerDecision:
+        del context, prompt_cache_key
+        calls["count"] += 1
+        controller.last_provider_usage = first_usage if calls["count"] == 1 else retry_usage
+        return invalid if calls["count"] == 1 else valid
+
+    async def fake_repair_controller_decision(
+        settings, prompt, repair_context, decision, reason  # noqa: ANN001
+    ) -> ControllerDecision:
+        del settings, prompt, repair_context, decision, reason
+        return still_invalid, repair_usage
+
+    monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
+    monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
+
+    result = asyncio.run(controller.decide(context=context))
+
+    assert result == valid
+    assert controller.last_provider_usage is not None
+    assert controller.last_provider_usage.model_dump(mode="json") == {
+        "input_tokens": 28,
+        "output_tokens": 11,
+        "total_tokens": 39,
+        "cache_read_tokens": 16,
+        "cache_write_tokens": 3,
+        "details": {"reasoning_tokens": 13},
+    }
 
 
 def test_runtime_sanitizes_premature_max_round_claims_in_stop_decision() -> None:

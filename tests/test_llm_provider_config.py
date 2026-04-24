@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import cast
@@ -7,7 +8,7 @@ from typing import cast
 import pytest
 from pydantic import ValidationError
 
-from seektalent.config import load_process_env
+from seektalent.config import AppSettings, load_process_env
 from seektalent.controller.react_controller import ReActController
 from seektalent.finalize.finalizer import Finalizer
 from seektalent.llm import (
@@ -18,6 +19,8 @@ from seektalent.llm import (
     preflight_models,
 )
 from seektalent.prompting import LoadedPrompt
+from seektalent.repair import _repair_with_model
+from seektalent.resources import resolve_user_path
 from seektalent.reflection.critic import ReflectionCritic
 from seektalent.requirements.extractor import RequirementExtractor
 from seektalent.scoring.scorer import ResumeScorer
@@ -98,6 +101,107 @@ def test_app_settings_defaults_scoring_concurrency_to_recall_target() -> None:
     assert settings.scoring_max_concurrency == 10
 
 
+def test_app_settings_runtime_mode_defaults_to_dev_paths() -> None:
+    settings = make_settings()
+
+    assert settings.runtime_mode == "dev"
+    assert settings.runs_dir == "runs"
+    assert settings.llm_cache_dir == ".seektalent/cache"
+
+
+def test_app_settings_prod_mode_defaults_to_global_user_paths() -> None:
+    settings = make_settings(runtime_mode="prod")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.runs_dir == "~/.seektalent/runs"
+    assert settings.llm_cache_dir == "~/.seektalent/cache"
+
+
+def test_app_settings_rejects_invalid_runtime_mode() -> None:
+    with pytest.raises(ValidationError, match="runtime_mode"):
+        make_settings(runtime_mode="production")
+
+
+def test_packaged_runtime_forces_prod_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEEKTALENT_PACKAGED", "1")
+
+    settings = make_settings(runtime_mode="dev")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.runs_dir == "~/.seektalent/runs"
+    assert settings.llm_cache_dir == "~/.seektalent/cache"
+
+
+def test_sys_frozen_runtime_forces_prod_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("seektalent.config.sys.frozen", True, raising=False)
+
+    settings = make_settings(runtime_mode="dev")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.runs_dir == "~/.seektalent/runs"
+    assert settings.llm_cache_dir == "~/.seektalent/cache"
+
+
+def test_explicit_paths_override_runtime_mode_defaults() -> None:
+    settings = make_settings(
+        runtime_mode="prod",
+        runs_dir="/tmp/seektalent-runs",
+        llm_cache_dir="/tmp/seektalent-cache",
+    )
+
+    assert settings.runs_dir == "/tmp/seektalent-runs"
+    assert settings.llm_cache_dir == "/tmp/seektalent-cache"
+
+
+def test_with_overrides_recomputes_mode_default_paths() -> None:
+    settings = make_settings().with_overrides(runtime_mode="prod")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.runs_dir == "~/.seektalent/runs"
+    assert settings.llm_cache_dir == "~/.seektalent/cache"
+
+
+def test_with_overrides_preserves_existing_explicit_paths_when_mode_changes() -> None:
+    settings = make_settings(
+        runs_dir="/tmp/custom-runs",
+        llm_cache_dir="/tmp/custom-cache",
+    ).with_overrides(runtime_mode="prod")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.runs_dir == "/tmp/custom-runs"
+    assert settings.llm_cache_dir == "/tmp/custom-cache"
+
+
+def test_with_overrides_recomputes_mode_paths_after_non_mode_override() -> None:
+    settings = make_settings().with_overrides(scoring_max_concurrency=7).with_overrides(runtime_mode="prod")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.scoring_max_concurrency == 7
+    assert settings.runs_dir == "~/.seektalent/runs"
+    assert settings.llm_cache_dir == "~/.seektalent/cache"
+
+
+def test_with_overrides_preserves_explicit_paths_after_non_mode_override() -> None:
+    settings = make_settings(
+        runs_dir="/tmp/custom-runs",
+        llm_cache_dir="/tmp/custom-cache",
+    ).with_overrides(scoring_max_concurrency=7).with_overrides(runtime_mode="prod")
+
+    assert settings.runtime_mode == "prod"
+    assert settings.scoring_max_concurrency == 7
+    assert settings.runs_dir == "/tmp/custom-runs"
+    assert settings.llm_cache_dir == "/tmp/custom-cache"
+
+
+def test_resolve_user_path_expands_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    assert resolve_user_path("~/.seektalent/runs") == tmp_path / ".seektalent" / "runs"
+
+
+def test_resolve_user_path_preserves_relative_and_absolute_paths(tmp_path: Path) -> None:
+    assert resolve_user_path("runs") == Path.cwd() / "runs"
+    assert resolve_user_path(tmp_path / "absolute-runs") == tmp_path / "absolute-runs"
 def test_app_settings_accepts_repair_cache_and_prompt_cache_settings() -> None:
     settings = make_settings(
         requirements_enable_thinking=False,
@@ -230,6 +334,13 @@ def test_load_process_env_does_not_override_existing_variables(
     assert os.environ["OPENAI_API_KEY"] == "existing-key"
 
 
+def test_default_env_does_not_force_empty_prompt_cache_retention() -> None:
+    default_env = Path(__file__).resolve().parents[1] / "src" / "seektalent" / "default.env"
+    settings = AppSettings(_env_file=default_env)
+
+    assert settings.openai_prompt_cache_retention is None
+
+
 def test_build_output_spec_uses_native_output_for_openai(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     model = build_model("openai-responses:gpt-5.4-mini")
@@ -329,6 +440,17 @@ def test_build_model_settings_omits_prompt_cache_fields_when_disabled() -> None:
     assert "openai_prompt_cache_retention" not in model_settings
 
 
+def test_build_model_settings_omits_prompt_cache_fields_for_non_openai_models() -> None:
+    settings = make_settings(openai_prompt_cache_enabled=True)
+
+    model_settings = build_model_settings(
+        settings,
+        "anthropic:claude-sonnet-4-5",
+        prompt_cache_key="requirements:abc",
+    )
+
+    assert "openai_prompt_cache_key" not in model_settings
+    assert "openai_prompt_cache_retention" not in model_settings
 def test_build_model_settings_keeps_bailian_enable_thinking_extra_body_with_prompt_cache() -> None:
     settings = make_settings(
         openai_prompt_cache_enabled=True,
@@ -625,5 +747,98 @@ def test_controller_and_reflection_pass_independent_thinking_flags(
     ReActController(settings, _prompt("controller"))._get_agent()
     ReflectionCritic(settings, _prompt("reflection"))._get_agent()
 
-    assert controller_calls == [{"enable_thinking": True}]
-    assert reflection_calls == [{"enable_thinking": False}]
+    assert controller_calls[0]["enable_thinking"] is True
+    assert reflection_calls[0]["enable_thinking"] is False
+
+
+def test_requirement_extractor_passes_requirements_thinking_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    def fake_requirement_settings(settings, model_id: str, **kwargs: object):  # noqa: ANN001
+        calls.append(kwargs)
+        return {"thinking": False}
+
+    monkeypatch.setattr(
+        "seektalent.requirements.extractor.build_model_settings",
+        fake_requirement_settings,
+    )
+    settings = make_settings(
+        requirements_model="openai-chat:deepseek-v3.2",
+        requirements_enable_thinking=True,
+    )
+
+    RequirementExtractor(settings, _prompt("requirements"))._get_agent(prompt_cache_key="requirements:abc")
+
+    assert calls == [{"enable_thinking": True, "prompt_cache_key": "requirements:abc"}]
+
+
+def test_repair_model_settings_force_non_thinking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_repair_settings(settings, model_id: str, **kwargs: object):  # noqa: ANN001
+        calls.append(kwargs)
+        return {"thinking": False}
+
+    class FakeAgent:
+        @classmethod
+        def __class_getitem__(cls, _item):  # noqa: ANN001
+            return cls
+
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+        async def run(self, user_prompt: str):  # noqa: ANN001
+            class Result:
+                output = "ok"
+
+                @staticmethod
+                def usage():
+                    return type(
+                        "Usage",
+                        (),
+                        {
+                            "input_tokens": 7,
+                            "output_tokens": 2,
+                            "cache_read_tokens": 1,
+                            "cache_write_tokens": 3,
+                            "details": {"reasoning_tokens": 4},
+                        },
+                    )()
+
+            del user_prompt
+            return Result()
+
+    monkeypatch.setattr("seektalent.repair.build_model_settings", fake_repair_settings)
+    monkeypatch.setattr("seektalent.repair.build_model", lambda model_id: object())
+    monkeypatch.setattr("seektalent.repair.build_output_spec", lambda model_id, model, output_type: output_type)
+    monkeypatch.setattr("seektalent.repair.Agent", FakeAgent)
+    settings = make_settings(
+        structured_repair_model="openai-chat:deepseek-v3.2",
+        structured_repair_reasoning_effort="off",
+    )
+
+    result, usage = asyncio.run(
+        _repair_with_model(
+            settings,
+            output_type=str,
+            system_prompt="repair prompt",
+            user_prompt="repair payload",
+        )
+    )
+
+    assert result == "ok"
+    assert usage is not None
+    assert usage.model_dump(mode="json") == {
+        "input_tokens": 7,
+        "output_tokens": 2,
+        "total_tokens": 9,
+        "cache_read_tokens": 1,
+        "cache_write_tokens": 3,
+        "details": {"reasoning_tokens": 4},
+    }
+    assert calls == [{"reasoning_effort": "off", "enable_thinking": False}]

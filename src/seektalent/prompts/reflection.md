@@ -38,4 +38,4 @@ Review whether the next round should adjust query terms or non-location filters,
 
 - Keep the advice short, explicit, and operational.
 - Prefer concrete operational choices over generic commentary.
-- Write `reflection_rationale` as 2-4 concise sentences explaining round quality, coverage, and why the next action follows. No Markdown or bullet list.
+- reflection_rationale should be a concise audit summary within schema budget, explaining round quality, coverage, and why the next action follows. It is not a step-by-step reasoning transcript. Do not use Markdown or bullet list.
