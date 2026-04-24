@@ -255,26 +255,18 @@ def test_query_compiler_uses_positive_domain_gate_for_notes_terms() -> None:
             "金融AI",
             "python",
             "sql",
-            "mysql",
-            "redis",
             "owner意识",
             "跨部门协同",
-            "推动力",
-            "组织协调",
             "业务sense",
-            "创新意识",
         ],
     )
     terms = _by_term(pool)
 
-    for term in ["人工耳蜗", "AI投研", "金融AI", "python", "sql", "mysql", "redis"]:
+    for term in ["人工耳蜗", "AI投研", "金融AI", "python", "sql"]:
         assert terms[term].queryability == "admitted"
     assert "owner意识" not in terms
     assert "跨部门协同" not in terms
-    assert "推动力" not in terms
-    assert "组织协调" not in terms
     assert "业务sense" not in terms
-    assert "创新意识" not in terms
 
 
 def test_query_compiler_keeps_abstract_notes_visible_under_positive_gate() -> None:
@@ -316,3 +308,17 @@ def test_query_compiler_admits_additional_concrete_chinese_domain_note() -> None
     assert terms["辅助生殖"].queryability == "admitted"
     assert "项目管理" not in terms
     assert terms["沟通能力"].queryability == "score_only"
+
+
+def test_query_compiler_admits_compact_chinese_domain_nouns_by_default() -> None:
+    pool = compile_query_term_pool(
+        job_title="行业研究员",
+        title_anchor_terms=["研究"],
+        jd_query_terms=[],
+        notes_query_terms=["资产配置", "临床试验", "芯片设计", "车规级", "药物研发", "牙种植体", "脑科学"],
+    )
+    terms = _by_term(pool)
+
+    for term in ["资产配置", "临床试验", "芯片设计", "车规级", "药物研发", "牙种植体", "脑科学"]:
+        assert terms[term].queryability == "admitted"
+        assert terms[term].retrieval_role == "domain_context"

@@ -57,33 +57,6 @@ FILTER_ONLY_PATTERNS = (
     "公司范围",
 )
 GENERIC_NOTES_PREFIXES = ("base",)
-CHINESE_DOMAIN_NOTE_TOKENS = (
-    "投研",
-    "基金",
-    "证券",
-    "金融",
-    "医疗",
-    "器械",
-    "耳蜗",
-    "半导体",
-    "风控",
-    "脑机",
-    "口腔",
-    "汽车",
-    "生物",
-    "消费",
-    "辅助",
-)
-CHINESE_DOMAIN_NOTE_SUFFIXES = (
-    "交易",
-    "种植",
-    "电子",
-    "医药",
-    "策略",
-    "信贷",
-    "接口",
-    "生殖",
-)
 GENERIC_NOTES_PATTERNS = (
     "结果导向",
     "逻辑能力",
@@ -106,6 +79,22 @@ GENERIC_NOTES_PATTERNS = (
     "创新意识",
 )
 GENERIC_NOTES_SUFFIXES = ("能力", "导向", "流利", "公司")
+GENERIC_NOTES_EXACT_TERMS = {
+    "项目管理",
+    "团队管理",
+    "行业理解",
+    "产品思维",
+    "责任心",
+    "商业敏感度",
+    "资源协调",
+    "战略思考",
+    "执行力",
+    "推动力",
+    "组织协调",
+    "创新意识",
+}
+GENERIC_NOTES_PARTIALS = ("协同", "协调", "sense")
+GENERIC_NOTES_TAILS = ("意识", "思维", "理解", "管理", "敏感度")
 
 
 def compile_query_term_pool(
@@ -249,7 +238,7 @@ def _should_admit_notes_term(term: str) -> bool:
         return False
     if _is_abstract_notes_term(term):
         return False
-    if any(pattern in key or pattern in term for pattern in GENERIC_NOTES_PATTERNS):
+    if _matches_generic_notes_pattern(term, key):
         return False
     if any(key.startswith(prefix) for prefix in GENERIC_NOTES_PREFIXES):
         return False
@@ -261,6 +250,16 @@ def _should_admit_notes_term(term: str) -> bool:
 def _is_abstract_notes_term(term: str) -> bool:
     key = term.casefold()
     return any(pattern in key or pattern in term for pattern in ABSTRACT_PATTERNS)
+
+
+def _matches_generic_notes_pattern(term: str, key: str) -> bool:
+    if term in GENERIC_NOTES_EXACT_TERMS:
+        return True
+    if any(pattern in key or pattern in term for pattern in GENERIC_NOTES_PATTERNS):
+        return True
+    if any(partial in term for partial in GENERIC_NOTES_PARTIALS):
+        return True
+    return any(term.endswith(tail) for tail in GENERIC_NOTES_TAILS)
 
 
 def _looks_like_domain_notes_term(term: str) -> bool:
@@ -275,9 +274,7 @@ def _looks_like_domain_notes_term(term: str) -> bool:
         if has_cjk:
             return True
         return False
-    return any(token in term for token in CHINESE_DOMAIN_NOTE_TOKENS) or any(
-        term.endswith(suffix) for suffix in CHINESE_DOMAIN_NOTE_SUFFIXES
-    )
+    return 2 <= len(term) <= 8
 
 
 def _is_filter_only(term: str, compact: str) -> bool:
