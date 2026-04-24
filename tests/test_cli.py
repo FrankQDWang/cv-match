@@ -600,7 +600,7 @@ def test_benchmark_json_runs_rows_sequentially(
     )
     calls: list[tuple[str, str, str]] = []
 
-    def fake_run_match(*, job_title: str, jd: str, notes: str = "", settings=None, env_file=".env") -> MatchRunResult:
+    def fake_run_match(*, job_title: str, jd: str, notes: str = "", settings=None, env_file=".env", **kwargs) -> MatchRunResult:
         index = len(calls) + 1
         calls.append((job_title, jd, notes))
         run_dir = tmp_path / f"run-{index}"
@@ -670,7 +670,7 @@ def test_benchmark_json_directory_reports_included_files(
         encoding="utf-8",
     )
 
-    def fake_run_match(*, job_title: str, jd: str, notes: str = "", settings=None, env_file=".env") -> MatchRunResult:
+    def fake_run_match(*, job_title: str, jd: str, notes: str = "", settings=None, env_file=".env", **kwargs) -> MatchRunResult:
         del job_title, jd, notes, settings, env_file
         run_dir = tmp_path / "run-1"
         run_dir.mkdir()
@@ -738,7 +738,7 @@ def test_benchmark_json_can_run_rows_in_parallel(
     active = 0
     max_active = 0
 
-    def fake_run_match(*, job_title: str, jd: str, notes: str = "", settings=None, env_file=".env") -> MatchRunResult:
+    def fake_run_match(*, job_title: str, jd: str, notes: str = "", settings=None, env_file=".env", **kwargs) -> MatchRunResult:
         nonlocal active, max_active
         del jd, notes, settings, env_file
         with lock:
@@ -787,6 +787,199 @@ def test_benchmark_json_can_run_rows_in_parallel(
     payload = json.loads(capsys.readouterr().out)
     assert max_active == 2
     assert [row["jd_id"] for row in payload["runs"]] == ["agent_jd_001", "agent_jd_002", "agent_jd_003"]
+
+
+def test_benchmark_retries_failed_row_once_and_keeps_summary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    benchmark_file = tmp_path / "agent_jds.jsonl"
+    benchmark_file.write_text(
+        json.dumps({"jd_id": "agent_jd_001", "job_title": "A", "job_description": "JD A"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    calls = 0
+
+    def fake_run_match(**kwargs) -> MatchRunResult:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("temporary failure")
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        trace_log = run_dir / "trace.log"
+        trace_log.write_text("", encoding="utf-8")
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id="run-1",
+                run_dir=str(run_dir),
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="done",
+                candidates=[],
+            ),
+            final_markdown="# Final",
+            run_id="run-1",
+            run_dir=run_dir,
+            trace_log_path=trace_log,
+            evaluation_result=None,
+            terminal_stop_guidance=None,
+        )
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+
+    assert main(
+        [
+            "benchmark",
+            "--jds-file",
+            str(benchmark_file),
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert calls == 2
+    assert payload["runs"][0]["status"] == "succeeded"
+    assert payload["runs"][0]["attempts"] == 2
+    assert Path(payload["summary_path"]).exists()
+
+
+def test_benchmark_returns_one_when_row_exhausts_retries(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    benchmark_file = tmp_path / "agent_jds.jsonl"
+    benchmark_file.write_text(
+        json.dumps({"jd_id": "agent_jd_001", "job_title": "A", "job_description": "JD A"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_match(**kwargs) -> MatchRunResult:
+        raise RuntimeError("permanent failure")
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+
+    assert (
+        main(
+            [
+                "benchmark",
+                "--jds-file",
+                str(benchmark_file),
+                "--output-dir",
+                str(tmp_path / "runs"),
+                "--json",
+            ]
+        )
+        == 1
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert Path(payload["summary_path"]).exists()
+    assert payload["runs"][0]["status"] == "failed"
+    assert payload["runs"][0]["attempts"] == 2
+    assert "permanent failure" in payload["runs"][0]["error"]
+
+
+def test_benchmark_uploads_eval_results_serially_in_completion_order(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("SEEKTALENT_ENABLE_EVAL", "true")
+    monkeypatch.setenv("SEEKTALENT_WANDB_PROJECT", "seektalent-test")
+    benchmark_file = tmp_path / "agent_jds.jsonl"
+    benchmark_file.write_text(
+        "\n".join(
+            [
+                json.dumps({"jd_id": "slow", "job_title": "Slow", "job_description": "JD Slow"}, ensure_ascii=False),
+                json.dumps({"jd_id": "fast", "job_title": "Fast", "job_description": "JD Fast"}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    upload_order: list[str] = []
+    active_uploads = 0
+    max_active_uploads = 0
+    lock = threading.Lock()
+
+    def fake_run_match(**kwargs) -> MatchRunResult:
+        if kwargs["job_title"] == "Slow":
+            time.sleep(0.05)
+        run_id = f"{kwargs['job_title'].lower()}-run"
+        run_dir = tmp_path / run_id
+        (run_dir / "evaluation").mkdir(parents=True)
+        (run_dir / "raw_resumes").mkdir()
+        (run_dir / "evaluation" / "evaluation.json").write_text("{}", encoding="utf-8")
+        trace_log = run_dir / "trace.log"
+        trace_log.write_text("", encoding="utf-8")
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id=run_id,
+                run_dir=str(run_dir),
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="done",
+                candidates=[],
+            ),
+            final_markdown="# Final",
+            run_id=run_id,
+            run_dir=run_dir,
+            trace_log_path=trace_log,
+            evaluation_result=_evaluation_result(),
+            terminal_stop_guidance=None,
+        )
+
+    def fake_log_evaluation_remotely(**kwargs) -> dict[str, object]:
+        nonlocal active_uploads, max_active_uploads
+        run_id = kwargs["evaluation"].run_id
+        artifact_root = kwargs["artifact_root"]
+        if artifact_root.name == "fast-run":
+            run_id = "fast-run"
+        if artifact_root.name == "slow-run":
+            run_id = "slow-run"
+        with lock:
+            active_uploads += 1
+            max_active_uploads = max(max_active_uploads, active_uploads)
+        time.sleep(0.03)
+        upload_order.append(run_id)
+        with lock:
+            active_uploads -= 1
+        return {"run_id": run_id}
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+    monkeypatch.setattr("seektalent.cli.log_evaluation_remotely", fake_log_evaluation_remotely)
+    monkeypatch.setattr("seektalent.cli._upsert_wandb_report", lambda *args, **kwargs: None)
+
+    assert main(
+        [
+            "benchmark",
+            "--jds-file",
+            str(benchmark_file),
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--benchmark-max-concurrency",
+            "2",
+            "--enable-eval",
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert upload_order == ["fast-run", "slow-run"]
+    assert max_active_uploads == 1
+    assert payload["runs"][0]["completion_index"] == 1
+    assert payload["runs"][1]["completion_index"] == 0
+    assert [row["upload_status"] for row in payload["runs"]] == ["succeeded", "succeeded"]
 
 
 def test_run_hides_human_eval_summary_when_evaluation_is_disabled(

@@ -4,18 +4,21 @@ import argparse
 import json
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from collections import deque
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import cast
+from queue import Queue
+from typing import Any, cast
 
 from pydantic import ValidationError
 
 from seektalent import __version__
 from seektalent.api import MatchRunResult, run_match
 from seektalent.config import AppSettings, load_process_env
-from seektalent.evaluation import migrate_judge_assets
+from seektalent.evaluation import AsyncJudgeLimiter, _upsert_wandb_report, log_evaluation_remotely, migrate_judge_assets
 from seektalent.resources import (
     REQUIRED_PROMPTS,
     package_prompt_dir,
@@ -137,6 +140,86 @@ class DoctorCheck:
     name: str
     ok: bool
     message: str
+
+
+@dataclass
+class BenchmarkAttempt:
+    row: dict[str, object]
+    attempt: int
+    started_at: str
+
+
+@dataclass
+class BenchmarkUploadTask:
+    result_row: dict[str, object]
+    result: MatchRunResult
+
+
+def _now_iso() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _error_text(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+class BenchmarkUploader:
+    def __init__(self, *, settings: AppSettings, retries: int) -> None:
+        self.settings = settings
+        self.retries = retries
+        self.report_rows: list[dict[str, Any]] = []
+        self.queue: Queue[BenchmarkUploadTask | None] = Queue()
+        self.thread = threading.Thread(target=self._work, name="seektalent-benchmark-uploader")
+        self.thread.start()
+
+    def submit(self, task: BenchmarkUploadTask) -> None:
+        self.queue.put(task)
+
+    def close(self) -> None:
+        self.queue.put(None)
+        self.thread.join()
+        if self.report_rows:
+            _upsert_wandb_report(self.settings, extra_rows=self.report_rows)
+
+    def _work(self) -> None:
+        while True:
+            task = self.queue.get()
+            try:
+                if task is None:
+                    return
+                self._upload(task)
+            finally:
+                self.queue.task_done()
+
+    def _upload(self, task: BenchmarkUploadTask) -> None:
+        attempts = 0
+        last_error = ""
+        for attempt in range(1, self.retries + 2):
+            attempts = attempt
+            try:
+                if task.result.evaluation_result is None:
+                    task.result_row["upload_status"] = "skipped"
+                    task.result_row["upload_attempts"] = 0
+                    return
+                report_row = log_evaluation_remotely(
+                    settings=self.settings,
+                    artifact_root=task.result.run_dir,
+                    evaluation=task.result.evaluation_result,
+                    rounds_executed=task.result.final_result.rounds_executed,
+                    terminal_stop_guidance=task.result.terminal_stop_guidance,
+                    update_report=False,
+                )
+                if report_row is not None:
+                    self.report_rows.append(report_row)
+                task.result_row["upload_status"] = "succeeded"
+                task.result_row["upload_attempts"] = attempts
+                task.result_row.pop("upload_error", None)
+                return
+            except Exception as exc:  # noqa: BLE001
+                last_error = _error_text(exc)
+        task.result_row["upload_status"] = "failed"
+        task.result_row["upload_attempts"] = attempts
+        task.result_row["upload_error"] = last_error
 
 
 def _arg_spec(
@@ -336,6 +419,65 @@ def _load_benchmark_directory(path: Path) -> tuple[list[dict[str, object]], list
     for file_path in files:
         rows.extend(_load_benchmark_rows(file_path, input_index_start=len(rows)))
     return rows, [str(file_path) for file_path in files]
+
+
+def _benchmark_result_row(
+    row: dict[str, object],
+    result: MatchRunResult,
+    *,
+    attempt: BenchmarkAttempt,
+    completed_at: str,
+    completion_index: int,
+) -> dict[str, object]:
+    result_row = {
+        "jd_id": row.get("jd_id"),
+        "job_title": row.get("job_title"),
+        "benchmark_file": row["benchmark_file"],
+        "benchmark_group": row["benchmark_group"],
+        "input_index": row["input_index"],
+        "status": "succeeded",
+        "attempts": attempt.attempt,
+        "started_at": attempt.started_at,
+        "completed_at": completed_at,
+        "completion_index": completion_index,
+        "upload_status": "skipped",
+        "upload_attempts": 0,
+        "run_id": result.run_id,
+        "run_dir": str(result.run_dir),
+        "trace_log_path": str(result.trace_log_path),
+        "evaluation_result": (
+            result.evaluation_result.model_dump(mode="json") if result.evaluation_result is not None else None
+        ),
+    }
+    term_surface_audit_path = result.run_dir / "term_surface_audit.json"
+    if term_surface_audit_path.exists():
+        result_row["term_surface_audit_path"] = str(term_surface_audit_path)
+    return result_row
+
+
+def _failed_benchmark_result_row(
+    row: dict[str, object],
+    *,
+    attempt: BenchmarkAttempt,
+    completed_at: str,
+    completion_index: int,
+    error: str,
+) -> dict[str, object]:
+    return {
+        "jd_id": row.get("jd_id"),
+        "job_title": row.get("job_title"),
+        "benchmark_file": row["benchmark_file"],
+        "benchmark_group": row["benchmark_group"],
+        "input_index": row["input_index"],
+        "status": "failed",
+        "attempts": attempt.attempt,
+        "started_at": attempt.started_at,
+        "completed_at": completed_at,
+        "completion_index": completion_index,
+        "upload_status": "skipped",
+        "upload_attempts": 0,
+        "error": error,
+    }
 
 
 def _inspect_payload() -> dict[str, object]:
@@ -633,38 +775,85 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         benchmark_metadata = {"benchmark_file": str(benchmark_path)}
     if args.benchmark_max_concurrency < 1:
         raise ValueError("benchmark_max_concurrency must be >= 1")
+    benchmark_run_retries = getattr(args, "benchmark_run_retries", 1)
+    benchmark_upload_retries = getattr(args, "benchmark_upload_retries", 1)
+    if benchmark_run_retries < 0:
+        raise ValueError("benchmark_run_retries must be >= 0")
+    if benchmark_upload_retries < 0:
+        raise ValueError("benchmark_upload_retries must be >= 0")
 
-    def run_row(row: dict[str, object]) -> dict[str, object]:
-        result = run_match(
+    judge_limiter = AsyncJudgeLimiter(settings.judge_max_concurrency) if settings.enable_eval else None
+    uploader = (
+        BenchmarkUploader(settings=settings, retries=benchmark_upload_retries)
+        if settings.enable_eval and (settings.wandb_project or settings.weave_project)
+        else None
+    )
+
+    def run_row(attempt: BenchmarkAttempt) -> MatchRunResult:
+        row = attempt.row
+        return run_match(
             job_title=cast(str, row["job_title"]),
             jd=cast(str, row["job_description"]),
             notes=cast(str, row.get("hiring_notes", "") or ""),
             settings=settings,
             env_file=args.env_file,
+            judge_limiter=judge_limiter,
+            eval_remote_logging=False if settings.enable_eval else True,
         )
-        result_row = {
-            "jd_id": row.get("jd_id"),
-            "job_title": row.get("job_title"),
-            "benchmark_file": row["benchmark_file"],
-            "benchmark_group": row["benchmark_group"],
-            "input_index": row["input_index"],
-            "run_id": result.run_id,
-            "run_dir": str(result.run_dir),
-            "trace_log_path": str(result.trace_log_path),
-            "evaluation_result": (
-                result.evaluation_result.model_dump(mode="json") if result.evaluation_result is not None else None
-            ),
-        }
-        term_surface_audit_path = result.run_dir / "term_surface_audit.json"
-        if term_surface_audit_path.exists():
-            result_row["term_surface_audit_path"] = str(term_surface_audit_path)
-        return result_row
 
-    if args.benchmark_max_concurrency == 1:
-        results = [run_row(row) for row in rows]
-    else:
+    result_rows_by_index: dict[int, dict[str, object]] = {}
+    pending = deque(BenchmarkAttempt(row=row, attempt=1, started_at=_now_iso()) for row in rows)
+    running: dict[Future[MatchRunResult], BenchmarkAttempt] = {}
+    completion_index = 0
+    try:
         with ThreadPoolExecutor(max_workers=args.benchmark_max_concurrency) as executor:
-            results = list(executor.map(run_row, rows))
+            while pending or running:
+                while pending and len(running) < args.benchmark_max_concurrency:
+                    attempt = pending.popleft()
+                    running[executor.submit(run_row, attempt)] = attempt
+                done, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in done:
+                    attempt = running.pop(future)
+                    completed_at = _now_iso()
+                    row = attempt.row
+                    input_index = cast(int, row["input_index"])
+                    try:
+                        result = future.result()
+                    except Exception as exc:  # noqa: BLE001
+                        if attempt.attempt <= benchmark_run_retries:
+                            pending.append(
+                                BenchmarkAttempt(
+                                    row=row,
+                                    attempt=attempt.attempt + 1,
+                                    started_at=_now_iso(),
+                                )
+                            )
+                            continue
+                        result_rows_by_index[input_index] = _failed_benchmark_result_row(
+                            row,
+                            attempt=attempt,
+                            completed_at=completed_at,
+                            completion_index=completion_index,
+                            error=_error_text(exc),
+                        )
+                        completion_index += 1
+                        continue
+                    result_row = _benchmark_result_row(
+                        row,
+                        result,
+                        attempt=attempt,
+                        completed_at=completed_at,
+                        completion_index=completion_index,
+                    )
+                    result_rows_by_index[input_index] = result_row
+                    completion_index += 1
+                    if uploader is not None and result.evaluation_result is not None:
+                        uploader.submit(BenchmarkUploadTask(result_row=result_row, result=result))
+    finally:
+        if uploader is not None:
+            uploader.close()
+
+    results = [result_rows_by_index[index] for index in sorted(result_rows_by_index)]
     settings.runs_path.mkdir(parents=True, exist_ok=True)
     summary_path = settings.runs_path / f"benchmark_summary_{datetime.now().astimezone().strftime('%Y%m%d_%H%M%S')}.json"
     summary_path.write_text(
@@ -685,9 +874,10 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         "runs": results,
         "summary_path": str(summary_path),
     }
+    has_failed_rows = any(row.get("status") == "failed" for row in results)
     if args.json_output:
         _emit_json(sys.stdout, payload)
-        return 0
+        return 1 if has_failed_rows else 0
     if benchmark_path.is_dir():
         print(f"benchmark_dir: {benchmark_path}")
         for file_path in benchmark_files:
@@ -697,8 +887,11 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     print(f"count: {len(results)}")
     print(f"summary_path: {summary_path}")
     for item in results:
-        print(f"{item['jd_id']}: run_id={item['run_id']} run_dir={item['run_dir']}")
-    return 0
+        if item.get("status") == "failed":
+            print(f"{item['jd_id']}: failed attempts={item['attempts']} error={item['error']}")
+        else:
+            print(f"{item['jd_id']}: run_id={item['run_id']} run_dir={item['run_dir']}")
+    return 1 if has_failed_rows else 0
 
 
 def _migrate_judge_assets_command(args: argparse.Namespace) -> int:
