@@ -51,6 +51,7 @@ def _artifacts(tmp_path: Path, *, include_evaluation: bool = True) -> RunArtifac
         candidate_store={},
         normalized_store={},
         evaluation_result=_evaluation_result() if include_evaluation else None,
+        terminal_stop_guidance=None,
     )
 
 
@@ -58,7 +59,14 @@ def test_run_match_returns_stable_result(monkeypatch, tmp_path: Path) -> None:
     captured = {}
 
     class FakeRuntime:
-        def __init__(self, settings: AppSettings) -> None:
+        def __init__(
+            self,
+            settings: AppSettings,
+            *,
+            judge_limiter=None,  # noqa: ANN001
+            eval_remote_logging=True,  # noqa: ANN001
+        ) -> None:
+            del judge_limiter, eval_remote_logging
             captured["settings"] = settings
 
         def run(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
@@ -97,8 +105,14 @@ def test_run_match_passes_progress_callback(monkeypatch, tmp_path: Path) -> None
     callback = events.append
 
     class FakeRuntime:
-        def __init__(self, settings: AppSettings) -> None:
-            del settings
+        def __init__(
+            self,
+            settings: AppSettings,
+            *,
+            judge_limiter=None,  # noqa: ANN001
+            eval_remote_logging=True,  # noqa: ANN001
+        ) -> None:
+            del settings, judge_limiter, eval_remote_logging
 
         def run(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
             del job_title, jd, notes
@@ -122,12 +136,70 @@ def test_run_match_passes_progress_callback(monkeypatch, tmp_path: Path) -> None
     assert events == [progress_event]
 
 
+def test_run_match_passes_eval_options_to_runtime(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+    limiter = object()
+
+    class FakeRuntime:
+        def __init__(self, settings, *, judge_limiter=None, eval_remote_logging=True):  # noqa: ANN001
+            captured["settings"] = settings
+            captured["judge_limiter"] = judge_limiter
+            captured["eval_remote_logging"] = eval_remote_logging
+
+        def run(self, *, job_title, jd, notes, progress_callback=None):  # noqa: ANN001
+            del job_title, jd, notes, progress_callback
+            return _artifacts(tmp_path)
+
+    monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
+
+    run_match(
+        job_title="Role",
+        jd="JD",
+        settings=make_settings(mock_cts=True),
+        env_file=None,
+        judge_limiter=limiter,
+        eval_remote_logging=False,
+    )
+
+    assert captured["judge_limiter"] is limiter
+    assert captured["eval_remote_logging"] is False
+
+
+def test_match_run_result_constructor_keeps_terminal_guidance_optional(tmp_path: Path) -> None:
+    trace_log = tmp_path / "trace.log"
+    trace_log.write_text("", encoding="utf-8")
+
+    result = MatchRunResult(
+        final_result=FinalResult(
+            run_id="run-1",
+            run_dir=str(tmp_path),
+            rounds_executed=1,
+            stop_reason="controller_stop",
+            summary="done",
+            candidates=[],
+        ),
+        final_markdown="# Final",
+        run_id="run-1",
+        run_dir=tmp_path,
+        trace_log_path=trace_log,
+        evaluation_result=None,
+    )
+
+    assert result.terminal_stop_guidance is None
+
+
 def test_run_match_defaults_notes_to_empty_string(monkeypatch, tmp_path: Path) -> None:
     captured = {}
 
     class FakeRuntime:
-        def __init__(self, settings: AppSettings) -> None:
-            del settings
+        def __init__(
+            self,
+            settings: AppSettings,
+            *,
+            judge_limiter=None,  # noqa: ANN001
+            eval_remote_logging=True,  # noqa: ANN001
+        ) -> None:
+            del settings, judge_limiter, eval_remote_logging
 
         def run(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
             del progress_callback
@@ -147,8 +219,14 @@ def test_run_match_defaults_notes_to_empty_string(monkeypatch, tmp_path: Path) -
 
 def test_run_match_async_returns_stable_result(monkeypatch, tmp_path: Path) -> None:
     class FakeRuntime:
-        def __init__(self, settings: AppSettings) -> None:
-            del settings
+        def __init__(
+            self,
+            settings: AppSettings,
+            *,
+            judge_limiter=None,  # noqa: ANN001
+            eval_remote_logging=True,  # noqa: ANN001
+        ) -> None:
+            del settings, judge_limiter, eval_remote_logging
 
         async def run_async(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
             del progress_callback
@@ -179,8 +257,14 @@ def test_run_match_async_passes_progress_callback(monkeypatch, tmp_path: Path) -
     events = []
 
     class FakeRuntime:
-        def __init__(self, settings: AppSettings) -> None:
-            del settings
+        def __init__(
+            self,
+            settings: AppSettings,
+            *,
+            judge_limiter=None,  # noqa: ANN001
+            eval_remote_logging=True,  # noqa: ANN001
+        ) -> None:
+            del settings, judge_limiter, eval_remote_logging
 
         async def run_async(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
             del job_title, jd, notes
@@ -207,8 +291,14 @@ def test_run_match_async_passes_progress_callback(monkeypatch, tmp_path: Path) -
 
 def test_run_match_async_defaults_notes_to_empty_string(monkeypatch, tmp_path: Path) -> None:
     class FakeRuntime:
-        def __init__(self, settings: AppSettings) -> None:
-            del settings
+        def __init__(
+            self,
+            settings: AppSettings,
+            *,
+            judge_limiter=None,  # noqa: ANN001
+            eval_remote_logging=True,  # noqa: ANN001
+        ) -> None:
+            del settings, judge_limiter, eval_remote_logging
 
         async def run_async(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
             del progress_callback
@@ -235,8 +325,14 @@ def test_run_match_async_defaults_notes_to_empty_string(monkeypatch, tmp_path: P
 
 def test_run_match_allows_missing_evaluation_result(monkeypatch, tmp_path: Path) -> None:
     class FakeRuntime:
-        def __init__(self, settings: AppSettings) -> None:
-            del settings
+        def __init__(
+            self,
+            settings: AppSettings,
+            *,
+            judge_limiter=None,  # noqa: ANN001
+            eval_remote_logging=True,  # noqa: ANN001
+        ) -> None:
+            del settings, judge_limiter, eval_remote_logging
 
         def run(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
             del progress_callback

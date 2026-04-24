@@ -12,6 +12,7 @@ from typing import Any, cast
 import pytest
 
 from seektalent.evaluation import (
+    AsyncJudgeLimiter,
     WANDB_REPORT_TITLE,
     _judge_cache_summary,
     _latest_runs_by_version_rows,
@@ -28,6 +29,7 @@ from seektalent.evaluation import (
     EvaluationResult,
     EvaluationStageResult,
     evaluate_run,
+    log_evaluation_remotely,
     migrate_judge_assets,
     ndcg_at_10,
     precision_at_10,
@@ -465,8 +467,8 @@ def test_judge_cache_summary_counts_unique_snapshots_once() -> None:
 def test_evaluate_run_keeps_no_judge_artifacts_on_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
-        del self, jd, notes, candidates, cache
+    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
+        del self, jd, notes, candidates, cache, judge_limiter
         raise RuntimeError("judge failed")
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
@@ -508,8 +510,8 @@ def test_evaluate_run_keeps_no_judge_artifacts_on_failure(tmp_path: Path, monkey
 def test_evaluate_run_does_not_log_wandb_when_weave_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
-        del self, jd, notes, cache
+    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
+        del self, jd, notes, cache, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
@@ -734,12 +736,94 @@ def test_resume_judge_uses_judge_concurrency_limit(tmp_path: Path) -> None:
     assert len(writes) == len(candidates)
 
 
+def test_resume_judge_uses_supplied_judge_limiter(tmp_path: Path) -> None:
+    settings = make_settings(judge_max_concurrency=5)
+    prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
+    candidates = [
+        ResumeCandidate(
+            resume_id=f"resume-{index}",
+            source_resume_id=f"resume-{index}",
+            snapshot_sha256=f"snapshot-{index}",
+            dedup_key=f"resume-{index}",
+            expected_job_category="Engineer",
+            now_location="上海",
+            work_year=5,
+            search_text="engineer",
+            raw={"resume_id": f"resume-{index}"},
+        )
+        for index in range(5)
+    ]
+    counters = {"active": 0, "max_active": 0}
+
+    class FakeAgent:
+        async def run(self, prompt_text: str):  # noqa: ANN001
+            assert "RESUME SNAPSHOT" in prompt_text
+            counters["active"] += 1
+            counters["max_active"] = max(counters["max_active"], counters["active"])
+            await asyncio.sleep(0.01)
+            counters["active"] -= 1
+            return SimpleNamespace(output=ResumeJudgeResult(score=2, rationale="ok"))
+
+    cache = JudgeCache(tmp_path)
+    judge = ResumeJudge(settings, prompt)
+    cast(Any, judge)._build_agent = lambda: FakeAgent()
+    limiter = AsyncJudgeLimiter(1)
+    try:
+        results, writes = asyncio.run(
+            judge.judge_many(jd="JD text", candidates=candidates, cache=cache, judge_limiter=limiter)
+        )
+    finally:
+        cache.close()
+
+    assert counters["max_active"] == 1
+    assert set(results) == {candidate.resume_id for candidate in candidates}
+    assert len(writes) == len(candidates)
+
+
+def test_async_judge_limiter_cancelled_waiter_does_not_leak_permit() -> None:
+    async def scenario() -> None:
+        limiter = AsyncJudgeLimiter(1)
+        entered = asyncio.Event()
+        release_first = asyncio.Event()
+
+        async def first() -> None:
+            async with limiter:
+                entered.set()
+                await release_first.wait()
+
+        first_task = asyncio.create_task(first())
+        await entered.wait()
+
+        waiter_started = asyncio.Event()
+
+        async def waiter() -> None:
+            waiter_started.set()
+            async with limiter:
+                raise AssertionError("cancelled waiter should not enter limiter")
+
+        waiter_task = asyncio.create_task(waiter())
+        await waiter_started.wait()
+        await asyncio.sleep(0.01)
+        waiter_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter_task
+
+        release_first.set()
+        await first_task
+
+        async with asyncio.timeout(0.1):
+            async with limiter:
+                pass
+
+    asyncio.run(scenario())
+
+
 def test_evaluate_run_passes_notes_to_judge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     seen: dict[str, object] = {}
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
-        del self, cache
+    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
+        del self, cache, judge_limiter
         seen["jd"] = jd
         seen["notes"] = notes
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
@@ -782,6 +866,55 @@ def test_evaluate_run_passes_notes_to_judge(tmp_path: Path, monkeypatch: pytest.
     )
 
     assert seen == {"jd": "JD text", "notes": "Notes text"}
+
+
+def test_evaluate_run_passes_judge_limiter_to_judge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    seen: dict[str, object] = {}
+
+    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
+        del self, jd, notes, cache
+        seen["judge_limiter"] = judge_limiter
+        result = ResumeJudgeResult(score=3, rationale="Strong fit")
+        return (
+            {candidate.resume_id: (result, False, 1) for candidate in candidates},
+            [("jd", candidate.snapshot_sha256, "openai-responses:gpt-5.4", result) for candidate in candidates],
+        )
+
+    monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
+    settings = make_settings(runs_dir=str(tmp_path / "runs"))
+    prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
+    candidate = ResumeCandidate(
+        resume_id="resume-1",
+        source_resume_id="resume-1",
+        snapshot_sha256="snapshot-1",
+        dedup_key="resume-1",
+        expected_job_category="Engineer",
+        now_location="上海",
+        work_year=5,
+        search_text="engineer",
+        raw={"resume_id": "resume-1"},
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    limiter = AsyncJudgeLimiter(1)
+
+    asyncio.run(
+        evaluate_run(
+            settings=settings,
+            prompt=prompt,
+            run_id="run-1",
+            run_dir=run_dir,
+            jd="JD text",
+            round_01_candidates=[candidate],
+            final_candidates=[candidate],
+            rounds_executed=2,
+            judge_limiter=limiter,
+            log_remote=False,
+        )
+    )
+
+    assert seen["judge_limiter"] is limiter
 
 
 def test_evaluate_run_persists_jd_resume_and_label_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1233,8 +1366,8 @@ def test_evaluate_run_logs_weave_and_wandb(
             ),
         )
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
-        del self, jd, notes, cache
+    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
+        del self, jd, notes, cache, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
@@ -1324,8 +1457,8 @@ def test_evaluate_run_logs_weave_and_wandb(
 def test_evaluate_run_logs_weave_before_wandb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
-        del self, jd, notes, cache
+    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
+        del self, jd, notes, cache, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
@@ -1368,6 +1501,88 @@ def test_evaluate_run_logs_weave_before_wandb(tmp_path: Path, monkeypatch: pytes
     assert calls == ["weave", "wandb"]
 
 
+def test_evaluate_run_can_skip_remote_logging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
+        del self, jd, notes, cache, judge_limiter
+        result = ResumeJudgeResult(score=3, rationale="Strong.")
+        return (
+            {candidate.resume_id: (result, False, 1) for candidate in candidates},
+            [("jd", candidate.snapshot_sha256, "openai-responses:gpt-5.4", result) for candidate in candidates],
+        )
+
+    monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
+    monkeypatch.setattr("seektalent.evaluation._log_to_weave", lambda **kwargs: calls.append("weave"))
+    monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: calls.append("wandb"))
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), enable_eval=True)
+    prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="hash")
+    candidate = ResumeCandidate(
+        resume_id="resume-1",
+        source_resume_id="resume-1",
+        snapshot_sha256="snapshot-1",
+        dedup_key="resume-1",
+        search_text="engineer",
+        raw={"resume_id": "resume-1"},
+    )
+
+    artifacts = asyncio.run(
+        evaluate_run(
+            settings=settings,
+            prompt=prompt,
+            run_id="run-1",
+            run_dir=tmp_path / "run-1",
+            jd="JD text",
+            round_01_candidates=[candidate],
+            final_candidates=[candidate],
+            rounds_executed=3,
+            log_remote=False,
+        )
+    )
+
+    assert calls == []
+    assert artifacts.path.exists()
+
+
+def test_log_evaluation_remotely_can_defer_wandb_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    evaluation = EvaluationResult(
+        run_id="run-1",
+        judge_model="openai-responses:gpt-5.4",
+        jd_sha256="jd",
+        round_01=EvaluationStageResult(stage="round_01", ndcg_at_10=1.0, precision_at_10=1.0, total_score=1.0, candidates=[]),
+        final=EvaluationStageResult(stage="final", ndcg_at_10=1.0, precision_at_10=1.0, total_score=1.0, candidates=[]),
+    )
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        enable_eval=True,
+        wandb_project="seektalent",
+        weave_project="seektalent",
+    )
+    artifact_root = tmp_path / "run-1"
+    (artifact_root / "evaluation").mkdir(parents=True)
+    (artifact_root / "evaluation" / "evaluation.json").write_text("{}", encoding="utf-8")
+    (artifact_root / "raw_resumes").mkdir()
+
+    monkeypatch.setattr("seektalent.evaluation._log_to_weave", lambda **kwargs: calls.append("weave"))
+    monkeypatch.setattr(
+        "seektalent.evaluation._log_to_wandb",
+        lambda **kwargs: calls.append(f"wandb:{kwargs['update_report']}") or {"run_name": "run-1"},
+    )
+
+    report_row = log_evaluation_remotely(
+        settings=settings,
+        artifact_root=artifact_root,
+        evaluation=evaluation,
+        rounds_executed=3,
+        terminal_stop_guidance=None,
+        update_report=False,
+    )
+
+    assert calls == ["weave", "wandb:False"]
+    assert report_row == {"run_name": "run-1"}
+
+
 def test_evaluate_run_skips_empty_weave_stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
@@ -1398,8 +1613,8 @@ def test_evaluate_run_skips_empty_weave_stage(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setitem(sys.modules, "weave", SimpleNamespace(init=lambda project_name: project_name, EvaluationLogger=FakeEvaluationLogger))
     monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: None)
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
-        del self, jd, notes, cache
+    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
+        del self, jd, notes, cache, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
