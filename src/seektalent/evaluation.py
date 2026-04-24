@@ -417,7 +417,8 @@ class AsyncJudgeLimiter:
         self._semaphore = threading.BoundedSemaphore(max_concurrency)
 
     async def __aenter__(self) -> "AsyncJudgeLimiter":
-        await asyncio.to_thread(self._semaphore.acquire)
+        while not self._semaphore.acquire(blocking=False):
+            await asyncio.sleep(0.001)
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:

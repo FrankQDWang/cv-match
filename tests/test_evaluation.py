@@ -780,6 +780,44 @@ def test_resume_judge_uses_supplied_judge_limiter(tmp_path: Path) -> None:
     assert len(writes) == len(candidates)
 
 
+def test_async_judge_limiter_cancelled_waiter_does_not_leak_permit() -> None:
+    async def scenario() -> None:
+        limiter = AsyncJudgeLimiter(1)
+        entered = asyncio.Event()
+        release_first = asyncio.Event()
+
+        async def first() -> None:
+            async with limiter:
+                entered.set()
+                await release_first.wait()
+
+        first_task = asyncio.create_task(first())
+        await entered.wait()
+
+        waiter_started = asyncio.Event()
+
+        async def waiter() -> None:
+            waiter_started.set()
+            async with limiter:
+                raise AssertionError("cancelled waiter should not enter limiter")
+
+        waiter_task = asyncio.create_task(waiter())
+        await waiter_started.wait()
+        await asyncio.sleep(0.01)
+        waiter_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter_task
+
+        release_first.set()
+        await first_task
+
+        async with asyncio.timeout(0.1):
+            async with limiter:
+                pass
+
+    asyncio.run(scenario())
+
+
 def test_evaluate_run_passes_notes_to_judge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     seen: dict[str, object] = {}
