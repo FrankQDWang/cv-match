@@ -639,6 +639,33 @@ def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
     ]
 
 
+def test_runtime_reflection_does_not_mutate_query_term_pool(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=1,
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
+    runtime_any = cast(Any, runtime)
+    runtime_any.requirement_extractor = SingleFamilyRequirementExtractor(include_reserve=True)
+    tracer = RunTracer(tmp_path / "trace-runs")
+    job_title, jd, notes = _sample_inputs()
+
+    try:
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        asyncio.run(runtime._run_rounds(run_state=run_state, tracer=tracer))
+    finally:
+        tracer.close()
+
+    terms = {item.term: item for item in run_state.retrieval_state.query_term_pool}
+    assert terms["trace"].active is False
+    assert terms["trace"].priority == 3
+    assert len(run_state.retrieval_state.reflection_keyword_advice_history) == 1
+    assert run_state.retrieval_state.reflection_keyword_advice_history[0].suggested_keep_terms == ["trace"]
+
+
 class RecordingScorer:
     def __init__(self) -> None:
         self.resume_ids: list[str] = []
@@ -1155,88 +1182,6 @@ def test_runtime_min_rounds_count_completed_retrieval_rounds(tmp_path: Path) -> 
     assert terminal_controller_round is not None
     assert terminal_controller_round.round_no == 4
     assert terminal_controller_round.stop_guidance.can_stop is True
-
-
-def test_runtime_query_pool_can_activate_reserve_term_without_losing_all_active_terms(tmp_path: Path) -> None:
-    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
-    pool = [
-        QueryTermCandidate(
-            term="python",
-            source="job_title",
-            category="role_anchor",
-            priority=1,
-            evidence="Job title",
-            first_added_round=0,
-        ),
-        QueryTermCandidate(
-            term="rag",
-            source="jd",
-            category="domain",
-            priority=2,
-            evidence="JD body",
-            first_added_round=0,
-            active=True,
-        ),
-        QueryTermCandidate(
-            term="langchain",
-            source="notes",
-            category="tooling",
-            priority=3,
-            evidence="Notes body",
-            first_added_round=0,
-            active=False,
-        ),
-    ]
-
-    updated = runtime._update_query_term_pool(
-        pool,
-        ReflectionAdvice(
-            keyword_advice=ReflectionKeywordAdvice(
-                suggested_activate_terms=["langchain"],
-                suggested_drop_terms=["rag"],
-            ),
-            filter_advice=ReflectionFilterAdvice(),
-            reflection_summary="Swap to the reserve framework term.",
-        ),
-        round_no=2,
-    )
-
-    assert [item.term for item in updated if item.active and item.source != "job_title"] == ["langchain"]
-
-
-def test_runtime_query_pool_keeps_one_active_non_anchor_term(tmp_path: Path) -> None:
-    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
-    pool = [
-        QueryTermCandidate(
-            term="python",
-            source="job_title",
-            category="role_anchor",
-            priority=1,
-            evidence="Job title",
-            first_added_round=0,
-        ),
-        QueryTermCandidate(
-            term="rag",
-            source="jd",
-            category="domain",
-            priority=2,
-            evidence="JD body",
-            first_added_round=0,
-            active=True,
-        ),
-    ]
-
-    updated = runtime._update_query_term_pool(
-        pool,
-        ReflectionAdvice(
-            keyword_advice=ReflectionKeywordAdvice(suggested_drop_terms=["rag"]),
-            filter_advice=ReflectionFilterAdvice(),
-            reflection_summary="Attempted to drop the only active non-anchor term.",
-        ),
-        round_no=2,
-    )
-
-    assert [item.term for item in updated if item.active and item.source != "job_title"] == ["rag"]
 
 
 def test_runtime_degrades_to_single_query_when_no_distinct_explore_query_exists(tmp_path: Path) -> None:
