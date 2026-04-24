@@ -215,6 +215,21 @@ class SequenceReflection:
         )
 
 
+class MutationAttemptReflection:
+    async def reflect(self, *, context) -> ReflectionAdvice:
+        del context
+        return ReflectionAdvice(
+            keyword_advice=ReflectionKeywordAdvice(
+                suggested_activate_terms=["trace"],
+                suggested_drop_terms=["resume matching"],
+                suggested_deprioritize_terms=["resume matching"],
+            ),
+            filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
+            suggest_stop=False,
+            reflection_summary="Attempt to mutate the query term pool.",
+        )
+
+
 class StubScorer:
     async def score_candidates_parallel(self, *, contexts, tracer):
         scored: list[ScoredCandidate] = []
@@ -650,6 +665,7 @@ def test_runtime_reflection_does_not_mutate_query_term_pool(tmp_path: Path) -> N
     _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
     runtime_any = cast(Any, runtime)
     runtime_any.requirement_extractor = SingleFamilyRequirementExtractor(include_reserve=True)
+    runtime_any.reflection_critic = MutationAttemptReflection()
     tracer = RunTracer(tmp_path / "trace-runs")
     job_title, jd, notes = _sample_inputs()
 
@@ -662,8 +678,13 @@ def test_runtime_reflection_does_not_mutate_query_term_pool(tmp_path: Path) -> N
     terms = {item.term: item for item in run_state.retrieval_state.query_term_pool}
     assert terms["trace"].active is False
     assert terms["trace"].priority == 3
+    assert terms["resume matching"].active is True
+    assert terms["resume matching"].priority == 2
     assert len(run_state.retrieval_state.reflection_keyword_advice_history) == 1
-    assert run_state.retrieval_state.reflection_keyword_advice_history[0].suggested_keep_terms == ["trace"]
+    advice = run_state.retrieval_state.reflection_keyword_advice_history[0]
+    assert advice.suggested_activate_terms == ["trace"]
+    assert advice.suggested_drop_terms == ["resume matching"]
+    assert advice.suggested_deprioritize_terms == ["resume matching"]
 
 
 class RecordingScorer:
