@@ -17,14 +17,6 @@ def _items(values: list[str]) -> str:
     return "\n".join(f"- {value}" for value in values) if values else "- (none)"
 
 
-def _compact_json(value: object) -> str:
-    if value is None:
-        return "(none)"
-    if hasattr(value, "model_dump"):
-        return json_block("DATA", value.model_dump(mode="json"))
-    return json_block("DATA", value)
-
-
 def _reflection_backed_inactive_terms(context: ControllerContext) -> set[str]:
     if context.previous_reflection is None:
         return set()
@@ -63,6 +55,9 @@ def render_controller_prompt(context: ControllerContext) -> str:
         for record in context.sent_query_history[-6:]
     ]
     latest = context.latest_search_observation
+    city_search_summaries = (
+        [item.model_dump(mode="json") for item in latest.city_search_summaries] if latest is not None else []
+    )
     latest_search = (
         "\n".join(
             [
@@ -70,7 +65,7 @@ def render_controller_prompt(context: ControllerContext) -> str:
                 f"- exhausted_reason={latest.exhausted_reason or '(none)'}",
                 f"- adapter_notes={', '.join(latest.adapter_notes) or '(none)'}",
                 f"- new_candidate_summaries={'; '.join(latest.new_candidate_summaries[:5]) or '(none)'}",
-                f"- city_search_summaries={latest.city_search_summaries}",
+                f"- city_search_summaries={city_search_summaries}",
             ]
         )
         if latest is not None

@@ -7,6 +7,7 @@ from seektalent.evaluation import render_judge_prompt
 from seektalent.finalize.finalizer import render_finalize_prompt
 from seektalent.models import (
     ControllerContext,
+    CitySearchSummary,
     HardConstraintSlots,
     InputTruth,
     LocationExecutionPlan,
@@ -179,6 +180,19 @@ def test_controller_prompt_contains_decision_brief_and_exact_data() -> None:
                 unique_new_count=2,
                 shortage_count=8,
                 fetch_attempt_count=1,
+                city_search_summaries=[
+                    CitySearchSummary(
+                        city="上海市",
+                        phase="priority",
+                        batch_no=1,
+                        requested_count=10,
+                        unique_new_count=2,
+                        shortage_count=8,
+                        start_page=1,
+                        next_page=2,
+                        fetch_attempt_count=1,
+                    )
+                ],
             ),
             previous_reflection=ReflectionSummaryView(
                 decision="continue",
@@ -208,6 +222,8 @@ def test_controller_prompt_contains_decision_brief_and_exact_data() -> None:
     assert "STRUCTURED CONSTRAINTS" in prompt
     assert "locations" in prompt
     assert "quality_gate_status" in prompt
+    assert "上海市" in prompt
+    assert "CitySearchSummary(" not in prompt
     assert "EXACT DATA" in prompt
     assert "Need more candidates." in prompt
     assert "retrieval" in prompt
