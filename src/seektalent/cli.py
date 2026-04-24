@@ -773,19 +773,6 @@ def _benchmark_command(args: argparse.Namespace) -> int:
                 missing_cts=missing_cts,
             )
         )
-    cleanup_runtime_artifacts(settings)
-    benchmark_file: Path | None = resolve_user_path(args.jds_file) if args.jds_file else None
-    if benchmark_file is not None:
-        rows = _load_benchmark_rows(benchmark_file)
-        benchmark_files = [str(benchmark_file)]
-        benchmark_metadata = {"benchmark_file": str(benchmark_file)}
-    else:
-        benchmark_dir_path = resolve_user_path(args.benchmarks_dir)
-        rows, benchmark_files = _load_benchmark_directory(benchmark_dir_path)
-        benchmark_metadata = {
-            "benchmark_dir": str(benchmark_dir_path),
-            "benchmark_files": benchmark_files,
-        }
     if args.benchmark_max_concurrency < 1:
         raise ValueError("benchmark_max_concurrency must be >= 1")
     benchmark_run_retries = getattr(args, "benchmark_run_retries", 1)
@@ -794,6 +781,19 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         raise ValueError("benchmark_run_retries must be >= 0")
     if benchmark_upload_retries < 0:
         raise ValueError("benchmark_upload_retries must be >= 0")
+    cleanup_runtime_artifacts(settings)
+    benchmark_file: Path | None = resolve_user_path(args.jds_file) if args.jds_file else None
+    if benchmark_file is not None and benchmark_file.is_dir():
+        rows, benchmark_files = _load_benchmark_directory(benchmark_file)
+        benchmark_metadata = {"benchmark_dir": str(benchmark_file), "benchmark_files": benchmark_files}
+    elif benchmark_file is not None:
+        rows = _load_benchmark_rows(benchmark_file)
+        benchmark_files = [str(benchmark_file)]
+        benchmark_metadata = {"benchmark_file": str(benchmark_file)}
+    else:
+        benchmark_dir_path = resolve_user_path(args.benchmarks_dir)
+        rows, benchmark_files = _load_benchmark_directory(benchmark_dir_path)
+        benchmark_metadata = {"benchmark_dir": str(benchmark_dir_path), "benchmark_files": benchmark_files}
 
     judge_limiter = AsyncJudgeLimiter(settings.judge_max_concurrency) if settings.enable_eval else None
     uploader = (
@@ -891,12 +891,12 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     if args.json_output:
         _emit_json(sys.stdout, payload)
         return 1 if has_failed_rows else 0
-    if benchmark_file is None:
-        print(f"benchmark_dir: {benchmark_dir_path}")
+    if "benchmark_dir" in benchmark_metadata:
+        print(f"benchmark_dir: {benchmark_metadata['benchmark_dir']}")
         for file_path in benchmark_files:
             print(f"benchmark_file: {file_path}")
     else:
-        print(f"benchmark_file: {benchmark_file}")
+        print(f"benchmark_file: {benchmark_metadata['benchmark_file']}")
     print(f"count: {len(results)}")
     print(f"summary_path: {summary_path}")
     for item in results:

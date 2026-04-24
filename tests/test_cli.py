@@ -661,8 +661,9 @@ def test_benchmark_defaults_to_benchmarks_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _set_required_env(monkeypatch)
-    benchmarks_dir = tmp_path / "benchmarks"
-    benchmarks_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+    benchmarks_dir = tmp_path / "artifacts" / "benchmarks"
+    benchmarks_dir.mkdir(parents=True)
     benchmark_file = benchmarks_dir / "agent_jds.jsonl"
     benchmark_file.write_text(
         json.dumps({"jd_id": "agent_jd_001", "job_title": "A", "job_description": "JD A"}, ensure_ascii=False)
@@ -700,8 +701,6 @@ def test_benchmark_defaults_to_benchmarks_directory(
     assert main(
         [
             "benchmark",
-            "--benchmarks-dir",
-            str(benchmarks_dir),
             "--output-dir",
             str(tmp_path / "runs"),
             "--json",
@@ -713,6 +712,28 @@ def test_benchmark_defaults_to_benchmarks_directory(
     assert payload["benchmark_dir"] == str(benchmarks_dir)
     assert payload["benchmark_files"] == [str(benchmark_file)]
     assert "benchmark_file" not in payload
+
+
+def test_benchmark_validates_retry_flags_before_loading_default_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(
+        [
+            "benchmark",
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--benchmark-run-retries",
+            "-1",
+            "--json",
+        ]
+    ) == 1
+
+    assert "benchmark_run_retries must be >= 0" in capsys.readouterr().err
 
 
 def test_benchmark_json_directory_reports_included_files(
@@ -763,7 +784,7 @@ def test_benchmark_json_directory_reports_included_files(
     assert main(
         [
             "benchmark",
-            "--benchmarks-dir",
+            "--jds-file",
             str(benchmarks_dir),
             "--output-dir",
             str(tmp_path / "runs"),
