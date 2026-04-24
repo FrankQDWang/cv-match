@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
+from contextlib import suppress
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
@@ -103,10 +104,8 @@ def provider_usage_from_result(result: Any) -> ProviderUsageSnapshot | None:
     for key, value in details.items():
         if isinstance(value, bool):
             continue
-        try:
+        with suppress(TypeError, ValueError):
             detail_tokens[str(key)] = _int_value(value)
-        except (TypeError, ValueError):
-            continue
     return ProviderUsageSnapshot(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
