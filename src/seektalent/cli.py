@@ -168,6 +168,7 @@ class BenchmarkUploader:
         self.settings = settings
         self.retries = retries
         self.report_rows: list[dict[str, Any]] = []
+        self.uploaded_result_rows: list[dict[str, object]] = []
         self.queue: Queue[BenchmarkUploadTask | None] = Queue()
         self.thread = threading.Thread(target=self._work, name="seektalent-benchmark-uploader")
         self.thread.start()
@@ -179,7 +180,13 @@ class BenchmarkUploader:
         self.queue.put(None)
         self.thread.join()
         if self.report_rows:
-            _upsert_wandb_report(self.settings, extra_rows=self.report_rows)
+            try:
+                _upsert_wandb_report(self.settings, extra_rows=self.report_rows)
+            except Exception as exc:  # noqa: BLE001
+                error = _error_text(exc)
+                for row in self.uploaded_result_rows:
+                    row["upload_status"] = "failed"
+                    row["upload_error"] = error
 
     def _work(self) -> None:
         while True:
@@ -214,6 +221,7 @@ class BenchmarkUploader:
                 task.result_row["upload_status"] = "succeeded"
                 task.result_row["upload_attempts"] = attempts
                 task.result_row.pop("upload_error", None)
+                self.uploaded_result_rows.append(task.result_row)
                 return
             except Exception as exc:  # noqa: BLE001
                 last_error = _error_text(exc)

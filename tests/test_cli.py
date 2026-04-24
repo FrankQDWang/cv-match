@@ -982,6 +982,79 @@ def test_benchmark_uploads_eval_results_serially_in_completion_order(
     assert [row["upload_status"] for row in payload["runs"]] == ["succeeded", "succeeded"]
 
 
+def test_benchmark_report_refresh_failure_does_not_fail_successful_runs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("SEEKTALENT_ENABLE_EVAL", "true")
+    monkeypatch.setenv("SEEKTALENT_WANDB_PROJECT", "seektalent-test")
+    benchmark_file = tmp_path / "agent_jds.jsonl"
+    benchmark_file.write_text(
+        json.dumps({"jd_id": "agent_jd_001", "job_title": "A", "job_description": "JD A"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    per_run_upload_called = False
+
+    def fake_run_match(**kwargs) -> MatchRunResult:
+        run_dir = tmp_path / "run-1"
+        (run_dir / "evaluation").mkdir(parents=True)
+        (run_dir / "raw_resumes").mkdir()
+        (run_dir / "evaluation" / "evaluation.json").write_text("{}", encoding="utf-8")
+        trace_log = run_dir / "trace.log"
+        trace_log.write_text("", encoding="utf-8")
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id="run-1",
+                run_dir=str(run_dir),
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="done",
+                candidates=[],
+            ),
+            final_markdown="# Final",
+            run_id="run-1",
+            run_dir=run_dir,
+            trace_log_path=trace_log,
+            evaluation_result=_evaluation_result(),
+            terminal_stop_guidance=None,
+        )
+
+    def fake_log_evaluation_remotely(**kwargs) -> dict[str, object]:
+        nonlocal per_run_upload_called
+        per_run_upload_called = True
+        return {"run_id": "run-1"}
+
+    def fail_report_refresh(*args, **kwargs) -> None:
+        raise RuntimeError("report failed")
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+    monkeypatch.setattr("seektalent.cli.log_evaluation_remotely", fake_log_evaluation_remotely)
+    monkeypatch.setattr("seektalent.cli._upsert_wandb_report", fail_report_refresh)
+
+    exit_code = main(
+        [
+            "benchmark",
+            "--jds-file",
+            str(benchmark_file),
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--enable-eval",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert per_run_upload_called is True
+    assert Path(payload["summary_path"]).exists()
+    assert payload["runs"][0]["status"] == "succeeded"
+    assert payload["runs"][0]["upload_status"] == "failed"
+    assert "report failed" in payload["runs"][0]["upload_error"]
+
+
 def test_run_hides_human_eval_summary_when_evaluation_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
