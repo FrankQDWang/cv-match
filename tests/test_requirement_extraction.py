@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from seektalent.models import RequirementExtractionDraft
+from seektalent.models import RequirementExtractionDraft, RequirementSheet
 from seektalent.prompting import LoadedPrompt
 from seektalent.requirements import build_input_truth, build_scoring_policy, normalize_requirement_draft
 from seektalent.requirements.extractor import RequirementExtractor, requirement_cache_key
@@ -395,6 +395,36 @@ def test_requirement_models_accept_legacy_title_anchor_term_during_transition() 
     assert sheet.title_anchor_terms == ["Python"]
     assert sheet.title_anchor_term == "Python"
     assert sheet.title_anchor_rationale
+
+
+def test_requirement_sheet_enforces_title_anchor_invariants_and_hides_legacy_accessor() -> None:
+    with pytest.raises(Exception, match="title_anchor_terms"):
+        RequirementSheet(
+            role_title="Senior Python Engineer",
+            title_anchor_terms=[],
+            title_anchor_rationale="Python is the primary anchor.",
+            role_summary="Build retrieval and ranking capabilities.",
+            scoring_rationale="Prioritize Python and retrieval depth.",
+        )
+    with pytest.raises(Exception, match="title_anchor_rationale"):
+        RequirementSheet(
+            role_title="Senior Python Engineer",
+            title_anchor_terms=["Python"],
+            title_anchor_rationale="",
+            role_summary="Build retrieval and ranking capabilities.",
+            scoring_rationale="Prioritize Python and retrieval depth.",
+        )
+
+    sheet = RequirementSheet(
+        role_title="Senior Python Engineer",
+        title_anchor_terms=["Python"],
+        title_anchor_rationale="Python is the primary anchor.",
+        role_summary="Build retrieval and ranking capabilities.",
+        scoring_rationale="Prioritize Python and retrieval depth.",
+    )
+
+    assert sheet.title_anchor_term == "Python"
+    assert "title_anchor_term" not in sheet.model_dump(mode="json")
 
 
 def test_requirements_extractor_records_provider_usage(

@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from hashlib import sha1
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 FitBucket = Literal["fit", "not_fit"]
 DecisionType = Literal["continue", "stop"]
@@ -143,7 +143,6 @@ class RequirementExtractionDraft(BaseModel):
             data["title_anchor_rationale"] = "Primary title anchor carried forward from the legacy title_anchor_term field."
         return data
 
-    @computed_field
     @property
     def title_anchor_term(self) -> str:
         return self.title_anchor_terms[0]
@@ -271,8 +270,8 @@ class RequirementSheet(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     role_title: str
-    title_anchor_terms: list[str]
-    title_anchor_rationale: str
+    title_anchor_terms: list[str] = Field(min_length=1, max_length=2)
+    title_anchor_rationale: str = Field(min_length=1)
     role_summary: str
     must_have_capabilities: list[str] = Field(default_factory=list)
     preferred_capabilities: list[str] = Field(default_factory=list)
@@ -294,7 +293,6 @@ class RequirementSheet(BaseModel):
             data["title_anchor_rationale"] = "Primary title anchor carried forward from the legacy title_anchor_term field."
         return data
 
-    @computed_field
     @property
     def title_anchor_term(self) -> str:
         return self.title_anchor_terms[0]

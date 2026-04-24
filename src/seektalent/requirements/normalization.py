@@ -133,7 +133,7 @@ def normalize_requirement_draft(draft: RequirementExtractionDraft, *, job_title:
         exclusion_signals=_clean_list(draft.exclusion_signals, limit=8),
         hard_constraints=hard_constraints,
         preferences=preferences,
-        initial_query_term_pool=_compile_initial_query_term_pool(
+        initial_query_term_pool=compile_query_term_pool(
             job_title=role_title,
             title_anchor_terms=title_anchor_terms,
             jd_query_terms=jd_query_terms,
@@ -196,25 +196,6 @@ def _normalize_title_anchor_terms(values: list[str]) -> list[str]:
     if not 1 <= len(clean_terms) <= 2:
         raise ValueError("title_anchor_terms must contain one or two items after normalization")
     return clean_terms
-
-
-def _compile_initial_query_term_pool(
-    *,
-    job_title: str,
-    title_anchor_terms: list[str],
-    jd_query_terms: list[str],
-    notes_query_terms: list[str],
-    hard_constraints: HardConstraintSlots,
-    preferences: PreferenceSlots,
-):
-    return compile_query_term_pool(
-        job_title=job_title,
-        title_anchor_terms=title_anchor_terms,
-        jd_query_terms=jd_query_terms,
-        notes_query_terms=notes_query_terms,
-        hard_constraints=hard_constraints,
-        preferences=preferences,
-    )
 
 
 def _normalize_degree_requirement(value: str | None) -> DegreeRequirement | None:
