@@ -789,6 +789,164 @@ def test_benchmark_json_can_run_rows_in_parallel(
     assert [row["jd_id"] for row in payload["runs"]] == ["agent_jd_001", "agent_jd_002", "agent_jd_003"]
 
 
+def test_benchmark_eval_passes_shared_limiter_and_disables_in_run_upload(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("SEEKTALENT_ENABLE_EVAL", "true")
+    benchmark_file = tmp_path / "agent_jds.jsonl"
+    benchmark_file.write_text(
+        "\n".join(
+            json.dumps(
+                {"jd_id": f"agent_jd_{index:03d}", "job_title": f"Role {index}", "job_description": f"JD {index}"},
+                ensure_ascii=False,
+            )
+            for index in range(1, 4)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    limiters: list[object] = []
+    eval_remote_logging_values: list[bool] = []
+
+    def fake_run_match(**kwargs) -> MatchRunResult:
+        limiters.append(kwargs["judge_limiter"])
+        eval_remote_logging_values.append(kwargs["eval_remote_logging"])
+        run_id = kwargs["job_title"].replace(" ", "-").lower()
+        run_dir = tmp_path / run_id
+        run_dir.mkdir()
+        trace_log = run_dir / "trace.log"
+        trace_log.write_text("", encoding="utf-8")
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id=run_id,
+                run_dir=str(run_dir),
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="done",
+                candidates=[],
+            ),
+            final_markdown="# Final",
+            run_id=run_id,
+            run_dir=run_dir,
+            trace_log_path=trace_log,
+            evaluation_result=None,
+            terminal_stop_guidance=None,
+        )
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+
+    assert main(
+        [
+            "benchmark",
+            "--jds-file",
+            str(benchmark_file),
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--benchmark-max-concurrency",
+            "3",
+            "--enable-eval",
+            "--json",
+        ]
+    ) == 0
+
+    json.loads(capsys.readouterr().out)
+    assert len(limiters) == 3
+    assert limiters[0] is not None
+    assert all(limiter is limiters[0] for limiter in limiters)
+    assert eval_remote_logging_values == [False, False, False]
+
+
+def test_benchmark_starts_next_row_when_any_active_row_finishes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    benchmark_file = tmp_path / "agent_jds.jsonl"
+    benchmark_file.write_text(
+        "\n".join(
+            [
+                json.dumps({"jd_id": "row-1", "job_title": "Row 1", "job_description": "JD 1"}, ensure_ascii=False),
+                json.dumps({"jd_id": "row-2", "job_title": "Row 2", "job_description": "JD 2"}, ensure_ascii=False),
+                json.dumps({"jd_id": "row-3", "job_title": "Row 3", "job_description": "JD 3"}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    row1_started = threading.Event()
+    row1_release = threading.Event()
+    row2_started = threading.Event()
+    row3_started = threading.Event()
+    outcome: dict[str, object] = {}
+
+    def fake_run_match(**kwargs) -> MatchRunResult:
+        run_id = kwargs["job_title"].lower().replace(" ", "-")
+        if run_id == "row-1":
+            row1_started.set()
+            assert row1_release.wait(timeout=2)
+        elif run_id == "row-2":
+            row2_started.set()
+        elif run_id == "row-3":
+            row3_started.set()
+        run_dir = tmp_path / run_id
+        run_dir.mkdir()
+        trace_log = run_dir / "trace.log"
+        trace_log.write_text("", encoding="utf-8")
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id=run_id,
+                run_dir=str(run_dir),
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="done",
+                candidates=[],
+            ),
+            final_markdown="# Final",
+            run_id=run_id,
+            run_dir=run_dir,
+            trace_log_path=trace_log,
+            evaluation_result=None,
+            terminal_stop_guidance=None,
+        )
+
+    def run_benchmark() -> None:
+        outcome["exit_code"] = main(
+            [
+                "benchmark",
+                "--jds-file",
+                str(benchmark_file),
+                "--output-dir",
+                str(tmp_path / "runs"),
+                "--benchmark-max-concurrency",
+                "2",
+                "--json",
+            ]
+        )
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+    thread = threading.Thread(target=run_benchmark)
+    thread.start()
+
+    assert row1_started.wait(timeout=2)
+    assert row2_started.wait(timeout=2)
+    assert row3_started.wait(timeout=2)
+    assert row3_started.is_set()
+    row1_release.set()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert outcome["exit_code"] == 0
+    assert [row["jd_id"] for row in payload["runs"]] == ["row-1", "row-2", "row-3"]
+    completion_by_jd = {row["jd_id"]: row["completion_index"] for row in payload["runs"]}
+    assert completion_by_jd["row-1"] > completion_by_jd["row-2"]
+    assert completion_by_jd["row-1"] > completion_by_jd["row-3"]
+
+
 def test_benchmark_retries_failed_row_once_and_keeps_summary(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -908,6 +1066,8 @@ def test_benchmark_uploads_eval_results_serially_in_completion_order(
         encoding="utf-8",
     )
     upload_order: list[str] = []
+    update_report_values: list[bool] = []
+    report_refresh_rows: list[list[dict[str, object]]] = []
     active_uploads = 0
     max_active_uploads = 0
     lock = threading.Lock()
@@ -941,6 +1101,7 @@ def test_benchmark_uploads_eval_results_serially_in_completion_order(
 
     def fake_log_evaluation_remotely(**kwargs) -> dict[str, object]:
         nonlocal active_uploads, max_active_uploads
+        update_report_values.append(kwargs["update_report"])
         run_id = kwargs["evaluation"].run_id
         artifact_root = kwargs["artifact_root"]
         if artifact_root.name == "fast-run":
@@ -956,9 +1117,12 @@ def test_benchmark_uploads_eval_results_serially_in_completion_order(
             active_uploads -= 1
         return {"run_id": run_id}
 
+    def fake_upsert_wandb_report(*args, **kwargs) -> None:
+        report_refresh_rows.append(list(kwargs["extra_rows"]))
+
     monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
     monkeypatch.setattr("seektalent.cli.log_evaluation_remotely", fake_log_evaluation_remotely)
-    monkeypatch.setattr("seektalent.cli._upsert_wandb_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr("seektalent.cli._upsert_wandb_report", fake_upsert_wandb_report)
 
     assert main(
         [
@@ -976,6 +1140,8 @@ def test_benchmark_uploads_eval_results_serially_in_completion_order(
 
     payload = json.loads(capsys.readouterr().out)
     assert upload_order == ["fast-run", "slow-run"]
+    assert update_report_values == [False, False]
+    assert report_refresh_rows == [[{"run_id": "fast-run"}, {"run_id": "slow-run"}]]
     assert max_active_uploads == 1
     assert payload["runs"][0]["completion_index"] == 1
     assert payload["runs"][1]["completion_index"] == 0
