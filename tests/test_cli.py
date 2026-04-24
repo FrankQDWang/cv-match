@@ -875,7 +875,7 @@ def test_benchmark_json_can_run_rows_in_parallel(
     assert [row["jd_id"] for row in payload["runs"]] == ["agent_jd_001", "agent_jd_002", "agent_jd_003"]
 
 
-def test_benchmark_eval_passes_shared_limiter_and_disables_in_run_upload(
+def _assert_benchmark_eval_uses_shared_limiter(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -943,6 +943,22 @@ def test_benchmark_eval_passes_shared_limiter_and_disables_in_run_upload(
     assert limiters[0] is not None
     assert all(limiter is limiters[0] for limiter in limiters)
     assert eval_remote_logging_values == [False, False, False]
+
+
+def test_benchmark_shares_one_judge_limiter_across_parallel_runs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_benchmark_eval_uses_shared_limiter(tmp_path, capsys, monkeypatch)
+
+
+def test_benchmark_eval_passes_shared_limiter_and_disables_in_run_upload(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_benchmark_eval_uses_shared_limiter(tmp_path, capsys, monkeypatch)
 
 
 def test_benchmark_starts_next_row_when_any_active_row_finishes(
