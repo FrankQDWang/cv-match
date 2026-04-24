@@ -15,6 +15,7 @@ from seektalent.models import (
     RequirementExtractionDraft,
 )
 from seektalent.prompting import LoadedPrompt, json_block
+from seektalent.tracing import ProviderUsageSnapshot, provider_usage_from_result
 
 OutputT = TypeVar("OutputT")
 
@@ -25,7 +26,7 @@ async def _repair_with_model(
     output_type: type[OutputT],
     system_prompt: str,
     user_prompt: str,
-) -> OutputT:
+) -> tuple[OutputT, ProviderUsageSnapshot | None]:
     model_id = settings.structured_repair_model
     model = build_model(model_id)
     agent = cast(Agent[None, OutputT], Agent(
@@ -42,7 +43,7 @@ async def _repair_with_model(
         output_retries=2,
     ))
     result = await agent.run(user_prompt)
-    return result.output
+    return result.output, provider_usage_from_result(result)
 
 
 async def repair_requirement_draft(
@@ -51,7 +52,7 @@ async def repair_requirement_draft(
     input_truth: InputTruth,
     draft: RequirementExtractionDraft,
     reason: str,
-) -> RequirementExtractionDraft:
+) -> tuple[RequirementExtractionDraft, ProviderUsageSnapshot | None]:
     user_prompt = "\n\n".join(
         [
             json_block(
@@ -87,7 +88,7 @@ async def repair_controller_decision(
     context: ControllerContext,
     decision: ControllerDecision,
     reason: str,
-) -> ControllerDecision:
+) -> tuple[ControllerDecision, ProviderUsageSnapshot | None]:
     user_prompt = "\n\n".join(
         [
             json_block(
@@ -123,7 +124,7 @@ async def repair_reflection_draft(
     context: ReflectionContext,
     draft: ReflectionAdviceDraft,
     reason: str,
-) -> ReflectionAdviceDraft:
+) -> tuple[ReflectionAdviceDraft, ProviderUsageSnapshot | None]:
     user_prompt = "\n\n".join(
         [
             json_block(

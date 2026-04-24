@@ -16,7 +16,7 @@ from seektalent.models import (
 )
 from seektalent.prompting import LoadedPrompt, json_block
 from seektalent.repair import repair_reflection_draft
-from seektalent.tracing import ProviderUsageSnapshot, provider_usage_from_result
+from seektalent.tracing import ProviderUsageSnapshot, combine_provider_usage, provider_usage_from_result
 
 
 def _join_terms(terms: Iterable[str]) -> str:
@@ -276,7 +276,10 @@ class ReflectionCritic:
         prompt_cache_key: str | None = None,
     ) -> ReflectionAdvice:
         self._reset_metadata()
+        total_provider_usage: ProviderUsageSnapshot | None = None
         draft = await self._reflect_live(context=context, prompt_cache_key=prompt_cache_key)
+        total_provider_usage = combine_provider_usage(total_provider_usage, self.last_provider_usage)
+        self.last_provider_usage = total_provider_usage
         reason = validate_reflection_draft(draft)
         if reason is None:
             return materialize_reflection_advice(context=context, draft=draft)
@@ -288,13 +291,15 @@ class ReflectionCritic:
         if repaired_reason is not None:
             self.last_repair_attempt_count = 1
             self.last_repair_reason = repaired_reason
-            repaired = await repair_reflection_draft(
+            repaired, repair_usage = await repair_reflection_draft(
                 self.settings,
                 self.prompt,
                 context,
                 repaired,
                 repaired_reason,
             )
+            total_provider_usage = combine_provider_usage(total_provider_usage, repair_usage)
+            self.last_provider_usage = total_provider_usage
             repaired_reason = validate_reflection_draft(repaired)
         if repaired_reason is None:
             if self.last_repair_attempt_count > 0:
@@ -303,6 +308,8 @@ class ReflectionCritic:
 
         self.last_full_retry_count = 1
         retried = await self._reflect_live(context=context, prompt_cache_key=prompt_cache_key)
+        total_provider_usage = combine_provider_usage(total_provider_usage, self.last_provider_usage)
+        self.last_provider_usage = total_provider_usage
         retry_reason = validate_reflection_draft(retried)
         if retry_reason is None:
             return materialize_reflection_advice(context=context, draft=retried)

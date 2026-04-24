@@ -12,7 +12,7 @@ from seektalent.prompting import LoadedPrompt
 from seektalent.repair import repair_requirement_draft
 from seektalent.requirements.normalization import normalize_requirement_draft
 from seektalent.runtime.exact_llm_cache import get_cached_json, put_cached_json, stable_cache_key
-from seektalent.tracing import ProviderUsageSnapshot, provider_usage_from_result
+from seektalent.tracing import ProviderUsageSnapshot, combine_provider_usage, provider_usage_from_result
 
 
 def render_requirements_prompt(input_truth: InputTruth) -> str:
@@ -104,6 +104,7 @@ class RequirementExtractor:
 
     async def extract_with_draft(self, *, input_truth: InputTruth) -> tuple[RequirementExtractionDraft, RequirementSheet]:
         self._reset_metadata()
+        total_provider_usage: ProviderUsageSnapshot | None = None
         key = requirement_cache_key(self.settings, prompt=self.prompt, input_truth=input_truth)
         self.last_cache_key = key
         lookup_started = perf_counter()
@@ -119,23 +120,29 @@ class RequirementExtractor:
         if prompt_cache_key is not None:
             self.last_prompt_cache_retention = self.settings.openai_prompt_cache_retention
         draft = await self._extract_live(input_truth=input_truth, prompt_cache_key=prompt_cache_key)
+        total_provider_usage = combine_provider_usage(total_provider_usage, self.last_provider_usage)
+        self.last_provider_usage = total_provider_usage
         try:
             requirement_sheet = normalize_requirement_draft(draft, job_title=input_truth.job_title)
         except ValueError as exc:
             self.last_repair_attempt_count = 1
             self.last_repair_reason = str(exc)
-            draft = await repair_requirement_draft(
+            draft, repair_usage = await repair_requirement_draft(
                 self.settings,
                 self.prompt,
                 input_truth,
                 draft,
                 self.last_repair_reason,
             )
+            total_provider_usage = combine_provider_usage(total_provider_usage, repair_usage)
+            self.last_provider_usage = total_provider_usage
             try:
                 requirement_sheet = normalize_requirement_draft(draft, job_title=input_truth.job_title)
             except ValueError:
                 self.last_full_retry_count = 1
                 draft = await self._extract_live(input_truth=input_truth, prompt_cache_key=prompt_cache_key)
+                total_provider_usage = combine_provider_usage(total_provider_usage, self.last_provider_usage)
+                self.last_provider_usage = total_provider_usage
                 requirement_sheet = normalize_requirement_draft(draft, job_title=input_truth.job_title)
             else:
                 self.last_repair_succeeded = True

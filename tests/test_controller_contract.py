@@ -30,6 +30,7 @@ from seektalent.models import (
 )
 from seektalent.prompting import LoadedPrompt
 from seektalent.runtime import WorkflowRuntime
+from seektalent.tracing import ProviderUsageSnapshot
 from tests.settings_factory import make_settings
 
 
@@ -203,6 +204,24 @@ def _fake_usage_result(output: ControllerDecision):
             return FakeUsage()
 
     return FakeResult(output)
+
+
+def _provider_usage(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> ProviderUsageSnapshot:
+    return ProviderUsageSnapshot(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        details={"reasoning_tokens": reasoning_tokens} if reasoning_tokens else {},
+    )
 
 
 def _controller_context(
@@ -492,7 +511,7 @@ def test_controller_repair_avoids_pydantic_output_retry(monkeypatch: pytest.Monk
         settings, prompt, repair_context, decision, reason  # noqa: ANN001
     ) -> ControllerDecision:
         del settings, prompt, repair_context, decision, reason
-        return repaired
+        return repaired, None
 
     monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
     monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
@@ -588,7 +607,7 @@ def test_controller_full_retry_after_failed_semantic_repair(monkeypatch: pytest.
         settings, prompt, repair_context, decision, reason  # noqa: ANN001
     ) -> ControllerDecision:
         del settings, prompt, repair_context, decision, reason
-        return still_invalid
+        return still_invalid, None
 
     monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
     monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
@@ -599,6 +618,77 @@ def test_controller_full_retry_after_failed_semantic_repair(monkeypatch: pytest.
     assert calls["count"] == 2
     assert prompt_cache_keys == ["controller-cache-key", "controller-cache-key"]
     assert controller.last_full_retry_count == 1
+
+
+def test_controller_aggregates_provider_usage_across_repair_and_full_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    controller = ReActController(
+        make_settings(),
+        LoadedPrompt(name="controller", path=Path("controller.md"), content="controller prompt", sha256="hash"),
+    )
+    context = _controller_context(
+        round_no=2,
+        previous_reflection=ReflectionSummaryView(decision="continue", reflection_summary="Add one term."),
+    )
+    invalid = SearchControllerDecision(
+        thought_summary="Search again.",
+        action="search_cts",
+        decision_rationale="Add one more term.",
+        proposed_query_terms=["python", "resume matching", "trace"],
+        proposed_filter_plan=ProposedFilterPlan(),
+    )
+    still_invalid = invalid.model_copy(update={"response_to_reflection": " "})
+    valid = invalid.model_copy(update={"response_to_reflection": "Addressed previous reflection."})
+    first_usage = _provider_usage(
+        input_tokens=14,
+        output_tokens=5,
+        cache_read_tokens=9,
+        cache_write_tokens=1,
+        reasoning_tokens=7,
+    )
+    repair_usage = _provider_usage(
+        input_tokens=3,
+        output_tokens=2,
+        cache_read_tokens=1,
+        cache_write_tokens=0,
+        reasoning_tokens=1,
+    )
+    retry_usage = _provider_usage(
+        input_tokens=11,
+        output_tokens=4,
+        cache_read_tokens=6,
+        cache_write_tokens=2,
+        reasoning_tokens=5,
+    )
+    calls = {"count": 0}
+
+    async def fake_decide_live(*, context: ControllerContext, prompt_cache_key: str | None = None) -> ControllerDecision:
+        del context, prompt_cache_key
+        calls["count"] += 1
+        controller.last_provider_usage = first_usage if calls["count"] == 1 else retry_usage
+        return invalid if calls["count"] == 1 else valid
+
+    async def fake_repair_controller_decision(
+        settings, prompt, repair_context, decision, reason  # noqa: ANN001
+    ) -> ControllerDecision:
+        del settings, prompt, repair_context, decision, reason
+        return still_invalid, repair_usage
+
+    monkeypatch.setattr(controller, "_decide_live", fake_decide_live)
+    monkeypatch.setattr("seektalent.controller.react_controller.repair_controller_decision", fake_repair_controller_decision)
+
+    result = asyncio.run(controller.decide(context=context))
+
+    assert result == valid
+    assert controller.last_provider_usage is not None
+    assert controller.last_provider_usage.model_dump(mode="json") == {
+        "input_tokens": 28,
+        "output_tokens": 11,
+        "total_tokens": 39,
+        "cache_read_tokens": 16,
+        "cache_write_tokens": 3,
+        "details": {"reasoning_tokens": 13},
+    }
 
 
 def test_runtime_sanitizes_premature_max_round_claims_in_stop_decision() -> None:

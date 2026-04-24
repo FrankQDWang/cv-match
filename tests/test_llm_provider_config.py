@@ -797,7 +797,25 @@ def test_repair_model_settings_force_non_thinking(
             self.kwargs = kwargs
 
         async def run(self, user_prompt: str):  # noqa: ANN001
-            return type("Result", (), {"output": "ok"})()
+            class Result:
+                output = "ok"
+
+                @staticmethod
+                def usage():
+                    return type(
+                        "Usage",
+                        (),
+                        {
+                            "input_tokens": 7,
+                            "output_tokens": 2,
+                            "cache_read_tokens": 1,
+                            "cache_write_tokens": 3,
+                            "details": {"reasoning_tokens": 4},
+                        },
+                    )()
+
+            del user_prompt
+            return Result()
 
     monkeypatch.setattr("seektalent.repair.build_model_settings", fake_repair_settings)
     monkeypatch.setattr("seektalent.repair.build_model", lambda model_id: object())
@@ -808,7 +826,7 @@ def test_repair_model_settings_force_non_thinking(
         structured_repair_reasoning_effort="off",
     )
 
-    result = asyncio.run(
+    result, usage = asyncio.run(
         _repair_with_model(
             settings,
             output_type=str,
@@ -818,4 +836,13 @@ def test_repair_model_settings_force_non_thinking(
     )
 
     assert result == "ok"
+    assert usage is not None
+    assert usage.model_dump(mode="json") == {
+        "input_tokens": 7,
+        "output_tokens": 2,
+        "total_tokens": 9,
+        "cache_read_tokens": 1,
+        "cache_write_tokens": 3,
+        "details": {"reasoning_tokens": 4},
+    }
     assert calls == [{"reasoning_effort": "off", "enable_thinking": False}]

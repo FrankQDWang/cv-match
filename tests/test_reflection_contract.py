@@ -22,6 +22,7 @@ from seektalent.reflection.critic import (
     repair_reflection_stop_fields,
     validate_reflection_draft,
 )
+from seektalent.tracing import ProviderUsageSnapshot
 from tests.settings_factory import make_settings
 
 
@@ -57,6 +58,24 @@ def _scored_candidate(
         overall_score=overall_score,
         must_have_match_score=must_have_match_score,
         risk_score=risk_score,
+    )
+
+
+def _provider_usage(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> ProviderUsageSnapshot:
+    return ProviderUsageSnapshot(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        details={"reasoning_tokens": reasoning_tokens} if reasoning_tokens else {},
     )
 
 
@@ -341,7 +360,7 @@ def test_reflection_critic_repairs_stop_reason_with_model(monkeypatch: pytest.Mo
 
     async def fake_repair_reflection_draft(settings, prompt, repair_context, draft, reason):  # noqa: ANN001
         del settings, prompt, repair_context, draft, reason
-        return repaired
+        return repaired, None
 
     monkeypatch.setattr(critic, "_reflect_live", fake_reflect_live)
     monkeypatch.setattr("seektalent.reflection.critic.repair_reflection_draft", fake_repair_reflection_draft)
@@ -421,7 +440,7 @@ def test_reflection_critic_full_retry_after_failed_repair(monkeypatch: pytest.Mo
 
     async def fake_repair_reflection_draft(settings, prompt, repair_context, draft, reason):  # noqa: ANN001
         del settings, prompt, repair_context, draft, reason
-        return invalid
+        return invalid, None
 
     monkeypatch.setattr(critic, "_reflect_live", fake_reflect_live)
     monkeypatch.setattr("seektalent.reflection.critic.repair_reflection_draft", fake_repair_reflection_draft)
@@ -437,3 +456,59 @@ def test_reflection_critic_full_retry_after_failed_repair(monkeypatch: pytest.Mo
     assert critic.last_repair_succeeded is False
     assert critic.last_repair_reason == "suggested_stop_reason is required when suggest_stop is true"
     assert critic.last_full_retry_count == 1
+
+
+def test_reflection_critic_aggregates_provider_usage_across_model_repair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    critic = ReflectionCritic(
+        make_settings(),
+        LoadedPrompt(name="reflection", path=Path("reflection.md"), content="reflection prompt", sha256="hash"),
+    )
+    context = cast(Any, _context(round_no=2, unique_new_count=6))
+    invalid = ReflectionAdviceDraft(
+        keyword_advice=ReflectionKeywordAdviceDraft(),
+        filter_advice=ReflectionFilterAdviceDraft(),
+        suggest_stop=True,
+        reflection_rationale="Top pool is stable.",
+    )
+    repaired = invalid.model_copy(update={"suggested_stop_reason": "Search is saturated."})
+    live_usage = _provider_usage(
+        input_tokens=9,
+        output_tokens=4,
+        cache_read_tokens=5,
+        cache_write_tokens=1,
+        reasoning_tokens=3,
+    )
+    repair_usage = _provider_usage(
+        input_tokens=4,
+        output_tokens=2,
+        cache_read_tokens=1,
+        cache_write_tokens=2,
+        reasoning_tokens=1,
+    )
+
+    async def fake_reflect_live(*, context, prompt_cache_key=None):  # noqa: ANN001
+        del context, prompt_cache_key
+        critic.last_provider_usage = live_usage
+        return invalid
+
+    async def fake_repair_reflection_draft(settings, prompt, repair_context, draft, reason):  # noqa: ANN001
+        del settings, prompt, repair_context, draft, reason
+        return repaired, repair_usage
+
+    monkeypatch.setattr(critic, "_reflect_live", fake_reflect_live)
+    monkeypatch.setattr("seektalent.reflection.critic.repair_reflection_draft", fake_repair_reflection_draft)
+
+    advice = asyncio.run(critic.reflect(context=context))
+
+    assert advice.suggest_stop is True
+    assert critic.last_provider_usage is not None
+    assert critic.last_provider_usage.model_dump(mode="json") == {
+        "input_tokens": 13,
+        "output_tokens": 6,
+        "total_tokens": 19,
+        "cache_read_tokens": 6,
+        "cache_write_tokens": 3,
+        "details": {"reasoning_tokens": 4},
+    }

@@ -10,7 +10,7 @@ from seektalent.models import ControllerContext, ControllerDecision, FilterField
 from seektalent.prompting import LoadedPrompt, json_block
 from seektalent.repair import repair_controller_decision
 from seektalent.retrieval.query_plan import canonicalize_controller_query_terms
-from seektalent.tracing import ProviderUsageSnapshot, provider_usage_from_result
+from seektalent.tracing import ProviderUsageSnapshot, combine_provider_usage, provider_usage_from_result
 
 
 def _items(values: list[str]) -> str:
@@ -184,7 +184,10 @@ class ReActController:
         prompt_cache_key: str | None = None,
     ) -> ControllerDecision:
         self._reset_metadata()
+        total_provider_usage: ProviderUsageSnapshot | None = None
         decision = await self._decide_live(context=context, prompt_cache_key=prompt_cache_key)
+        total_provider_usage = combine_provider_usage(total_provider_usage, self.last_provider_usage)
+        self.last_provider_usage = total_provider_usage
         reason = validate_controller_decision(context=context, decision=decision)
         if reason is None:
             return decision
@@ -192,13 +195,15 @@ class ReActController:
         self._record_retry(reason)
         self.last_repair_attempt_count = 1
         self.last_repair_reason = reason
-        repaired = await repair_controller_decision(
+        repaired, repair_usage = await repair_controller_decision(
             self.settings,
             self.prompt,
             context,
             decision,
             reason,
         )
+        total_provider_usage = combine_provider_usage(total_provider_usage, repair_usage)
+        self.last_provider_usage = total_provider_usage
         repaired_reason = validate_controller_decision(context=context, decision=repaired)
         if repaired_reason is None:
             self.last_repair_succeeded = True
@@ -206,6 +211,8 @@ class ReActController:
 
         self.last_full_retry_count = 1
         retried = await self._decide_live(context=context, prompt_cache_key=prompt_cache_key)
+        total_provider_usage = combine_provider_usage(total_provider_usage, self.last_provider_usage)
+        self.last_provider_usage = total_provider_usage
         retry_reason = validate_controller_decision(context=context, decision=retried)
         if retry_reason is None:
             return retried

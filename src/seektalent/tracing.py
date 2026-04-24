@@ -68,6 +68,27 @@ class ProviderUsageSnapshot(BaseModel):
     details: dict[str, int] = Field(default_factory=dict)
 
 
+def combine_provider_usage(
+    left: ProviderUsageSnapshot | None,
+    right: ProviderUsageSnapshot | None,
+) -> ProviderUsageSnapshot | None:
+    if left is None:
+        return right
+    if right is None:
+        return left
+    details = dict(left.details)
+    for key, value in right.details.items():
+        details[key] = details.get(key, 0) + value
+    return ProviderUsageSnapshot(
+        input_tokens=left.input_tokens + right.input_tokens,
+        output_tokens=left.output_tokens + right.output_tokens,
+        total_tokens=left.total_tokens + right.total_tokens,
+        cache_read_tokens=left.cache_read_tokens + right.cache_read_tokens,
+        cache_write_tokens=left.cache_write_tokens + right.cache_write_tokens,
+        details=details,
+    )
+
+
 def provider_usage_from_result(result: Any) -> ProviderUsageSnapshot | None:
     usage_fn = getattr(result, "usage", None)
     if not callable(usage_fn):

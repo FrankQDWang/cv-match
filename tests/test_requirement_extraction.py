@@ -8,6 +8,7 @@ from seektalent.prompting import LoadedPrompt
 from seektalent.requirements import build_input_truth, build_scoring_policy, normalize_requirement_draft
 from seektalent.requirements.extractor import RequirementExtractor, requirement_cache_key
 from seektalent.runtime.exact_llm_cache import put_cached_json
+from seektalent.tracing import ProviderUsageSnapshot
 from tests.settings_factory import make_settings
 
 
@@ -39,6 +40,24 @@ def _fake_usage_result(output: RequirementExtractionDraft):
             return FakeUsage()
 
     return FakeResult(output)
+
+
+def _provider_usage(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> ProviderUsageSnapshot:
+    return ProviderUsageSnapshot(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        details={"reasoning_tokens": reasoning_tokens} if reasoning_tokens else {},
+    )
 
 
 def test_normalize_requirement_draft_covers_standard_slots() -> None:
@@ -388,7 +407,7 @@ def test_requirement_repair_fixes_empty_non_anchor_jd_terms(
         return bad_draft
 
     async def fake_repair(settings, prompt, input_truth, draft, reason):  # noqa: ANN001
-        return fixed_draft
+        return fixed_draft, None
 
     monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
     monkeypatch.setattr("seektalent.requirements.extractor.repair_requirement_draft", fake_repair)
@@ -451,7 +470,7 @@ def test_requirement_full_retry_when_repaired_draft_still_fails_normalization(
         return second_live_draft
 
     async def fake_repair(settings, prompt, input_truth, draft, reason):  # noqa: ANN001
-        return repaired_but_still_invalid
+        return repaired_but_still_invalid, None
 
     monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
     monkeypatch.setattr("seektalent.requirements.extractor.repair_requirement_draft", fake_repair)
@@ -464,3 +483,72 @@ def test_requirement_full_retry_when_repaired_draft_still_fails_normalization(
     assert extractor.last_repair_attempt_count == 1
     assert extractor.last_repair_succeeded is False
     assert extractor.last_full_retry_count == 1
+
+
+def test_requirement_repair_usage_contributes_to_stage_total(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(llm_cache_dir=str(tmp_path / "cache"))
+    prompt = LoadedPrompt(name="requirements", path=Path("requirements.md"), content="requirements prompt", sha256="p7")
+    extractor = RequirementExtractor(settings, prompt)
+    input_truth = build_input_truth(
+        job_title="Senior Python Engineer",
+        jd="Build retrieval systems in Python.",
+        notes="",
+    )
+    bad_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Python"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+    fixed_draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build retrieval systems in Python.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python.",
+    )
+    live_usage = _provider_usage(
+        input_tokens=12,
+        output_tokens=4,
+        cache_read_tokens=8,
+        cache_write_tokens=2,
+        reasoning_tokens=6,
+    )
+    repair_usage = _provider_usage(
+        input_tokens=5,
+        output_tokens=3,
+        cache_read_tokens=1,
+        cache_write_tokens=4,
+        reasoning_tokens=2,
+    )
+
+    async def fake_extract_live(*, input_truth, prompt_cache_key=None):  # noqa: ANN001
+        del input_truth, prompt_cache_key
+        extractor.last_provider_usage = live_usage
+        return bad_draft
+
+    async def fake_repair(settings, prompt, input_truth, draft, reason):  # noqa: ANN001
+        del settings, prompt, input_truth, draft, reason
+        return fixed_draft, repair_usage
+
+    monkeypatch.setattr(extractor, "_extract_live", fake_extract_live)
+    monkeypatch.setattr("seektalent.requirements.extractor.repair_requirement_draft", fake_repair)
+
+    draft, _sheet = asyncio.run(extractor.extract_with_draft(input_truth=input_truth))
+
+    assert draft == fixed_draft
+    assert extractor.last_provider_usage is not None
+    assert extractor.last_provider_usage.model_dump(mode="json") == {
+        "input_tokens": 17,
+        "output_tokens": 7,
+        "total_tokens": 24,
+        "cache_read_tokens": 9,
+        "cache_write_tokens": 6,
+        "details": {"reasoning_tokens": 8},
+    }
