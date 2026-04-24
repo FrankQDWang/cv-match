@@ -13,6 +13,8 @@ from seektalent.models import (
     NormalizedExperience,
     NormalizedResume,
     QueryTermCandidate,
+    ReflectionFilterAdvice,
+    ReflectionKeywordAdvice,
     ReflectionContext,
     ReflectionSummaryView,
     RequirementSheet,
@@ -182,6 +184,13 @@ def test_controller_prompt_contains_decision_brief_and_exact_data() -> None:
                 decision="continue",
                 reflection_summary="Activate retrieval and continue.",
             ),
+            latest_reflection_keyword_advice=ReflectionKeywordAdvice(
+                suggested_activate_terms=["retrieval"],
+                suggested_drop_terms=["internal roadmap"],
+            ),
+            latest_reflection_filter_advice=ReflectionFilterAdvice(
+                suggested_drop_filter_fields=["position"]
+            ),
             shortage_history=[8],
         )
     )
@@ -191,6 +200,14 @@ def test_controller_prompt_contains_decision_brief_and_exact_data() -> None:
     assert "TERM BANK" in prompt
     assert "CURRENT TOP POOL" in prompt
     assert "PREVIOUS REFLECTION" in prompt
+    assert "REFLECTION ADVICE" in prompt
+    assert "suggested_activate_terms" in prompt
+    assert "retrieval" in prompt
+    assert "suggested_drop_filter_fields" in prompt
+    assert "position" in prompt
+    assert "STRUCTURED CONSTRAINTS" in prompt
+    assert "locations" in prompt
+    assert "quality_gate_status" in prompt
     assert "EXACT DATA" in prompt
     assert "Need more candidates." in prompt
     assert "retrieval" in prompt

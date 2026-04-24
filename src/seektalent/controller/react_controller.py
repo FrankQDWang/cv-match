@@ -17,6 +17,14 @@ def _items(values: list[str]) -> str:
     return "\n".join(f"- {value}" for value in values) if values else "- (none)"
 
 
+def _compact_json(value: object) -> str:
+    if value is None:
+        return "(none)"
+    if hasattr(value, "model_dump"):
+        return json_block("DATA", value.model_dump(mode="json"))
+    return json_block("DATA", value)
+
+
 def _reflection_backed_inactive_terms(context: ControllerContext) -> set[str]:
     if context.previous_reflection is None:
         return set()
@@ -56,7 +64,15 @@ def render_controller_prompt(context: ControllerContext) -> str:
     ]
     latest = context.latest_search_observation
     latest_search = (
-        f"new={latest.unique_new_count}; shortage={latest.shortage_count}; attempts={latest.fetch_attempt_count}"
+        "\n".join(
+            [
+                f"- new={latest.unique_new_count}; shortage={latest.shortage_count}; attempts={latest.fetch_attempt_count}",
+                f"- exhausted_reason={latest.exhausted_reason or '(none)'}",
+                f"- adapter_notes={', '.join(latest.adapter_notes) or '(none)'}",
+                f"- new_candidate_summaries={'; '.join(latest.new_candidate_summaries[:5]) or '(none)'}",
+                f"- city_search_summaries={latest.city_search_summaries}",
+            ]
+        )
         if latest is not None
         else "(none yet)"
     )
@@ -69,6 +85,25 @@ def render_controller_prompt(context: ControllerContext) -> str:
         )
     else:
         previous_reflection = f"{context.previous_reflection.decision}: {context.previous_reflection.reflection_summary}"
+    reflection_advice = {
+        "keyword_advice": (
+            context.latest_reflection_keyword_advice.model_dump(mode="json")
+            if context.latest_reflection_keyword_advice is not None
+            else None
+        ),
+        "filter_advice": (
+            context.latest_reflection_filter_advice.model_dump(mode="json")
+            if context.latest_reflection_filter_advice is not None
+            else None
+        ),
+        "previous_reflection": (
+            context.previous_reflection.model_dump(mode="json") if context.previous_reflection is not None else None
+        ),
+    }
+    structured_constraints = {
+        "hard_constraints": sheet.hard_constraints.model_dump(mode="json"),
+        "preferences": sheet.preferences.model_dump(mode="json"),
+    }
     exact_data = {
         "round_no": context.round_no,
         "action_options": ["search_cts", "stop"],
@@ -76,6 +111,7 @@ def render_controller_prompt(context: ControllerContext) -> str:
         "admitted_terms": [item.term for item in admitted_terms],
         "role_anchor_terms": [item.term for item in admitted_terms if item.retrieval_role == "role_anchor"],
         "stop_guidance_can_stop": context.stop_guidance.can_stop,
+        "quality_gate_status": context.stop_guidance.quality_gate_status,
     }
     return "\n\n".join(
         [
@@ -98,6 +134,13 @@ def render_controller_prompt(context: ControllerContext) -> str:
                 f"- Can stop: {context.stop_guidance.can_stop}\n"
                 f"- Reason: {context.stop_guidance.reason}\n"
                 f"- Top pool strength: {context.stop_guidance.top_pool_strength}\n"
+                f"- Fit count: {context.stop_guidance.fit_count}\n"
+                f"- Strong fit count: {context.stop_guidance.strong_fit_count}\n"
+                f"- High-risk fit count: {context.stop_guidance.high_risk_fit_count}\n"
+                f"- Productive rounds: {context.stop_guidance.productive_round_count}\n"
+                f"- Zero-gain rounds: {context.stop_guidance.zero_gain_round_count}\n"
+                f"- Quality gate status: {context.stop_guidance.quality_gate_status}\n"
+                f"- Broadening attempted: {context.stop_guidance.broadening_attempted}\n"
                 f"- Continue reasons: {', '.join(context.stop_guidance.continue_reasons) or '(none)'}\n"
                 f"- Untried admitted families: {', '.join(context.stop_guidance.untried_admitted_families) or '(none)'}"
             ),
@@ -115,6 +158,8 @@ def render_controller_prompt(context: ControllerContext) -> str:
             "SENT QUERY HISTORY\n" + ("\n".join(query_history) if query_history else "- (none)"),
             f"LATEST SEARCH OBSERVATION\n{latest_search}",
             "CURRENT TOP POOL\n" + ("\n".join(top_pool) if top_pool else "- (empty)"),
+            json_block("STRUCTURED CONSTRAINTS", structured_constraints),
+            json_block("REFLECTION ADVICE", reflection_advice),
             f"PREVIOUS REFLECTION\n{previous_reflection}",
             json_block("EXACT DATA", exact_data),
         ]
