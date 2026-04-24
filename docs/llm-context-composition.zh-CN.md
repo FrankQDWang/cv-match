@@ -63,7 +63,7 @@ flowchart TD
     F --> G["用户输入第 6 段<br/>SENT QUERY HISTORY<br/>最近几轮已经发过的查询"]
     G --> H["用户输入第 7 段<br/>LATEST SEARCH OBSERVATION<br/>上一轮新增多少、缺口多少、尝试次数"]
     H --> I["用户输入第 8 段<br/>CURRENT TOP POOL<br/>当前全局候选池前 8 名摘要"]
-    I --> J["用户输入第 9 段<br/>PREVIOUS REFLECTION<br/>上一轮复盘意见；第一轮为空"]
+    I --> J["用户输入第 9 段<br/>PREVIOUS REFLECTION<br/>上一轮完整复盘建议；第一轮为空"]
     J --> K["用户输入第 10 段<br/>EXACT DATA<br/>允许动作、允许筛选字段、准入词、锚点词、是否可停止"]
     K --> L["结构化输出要求<br/>ControllerDecision"]
     L --> M["runtime 校验和收口<br/>校验搜索词、筛选字段、停止条件；再生成实际检索计划"]
@@ -73,7 +73,7 @@ flowchart TD
 
 这一步像“每轮搜索前的调度员”。它会看岗位需求、预算、之前搜过什么、上一轮效果如何、当前候选池质量如何，然后决定下一轮继续搜什么，或者是否可以收工。
 
-它不能自己拼 CTS 请求，也不能随便编新词。它只能从已经准入的词库里选词，真正的检索请求由 runtime 生成。
+它会看到上一轮 reflection 的完整建议字段，但 reflection 只有建议权。Controller 需要在 `response_to_reflection` 中说明采纳、部分采纳或拒绝。Runtime 只执行 Controller 的结构化决定，并校验查询词、筛选字段和停止条件。
 
 业务上可以理解成：每一轮开搜前，先决定“这次用什么关键词组合，是否该继续扩大或收窄”。
 
@@ -84,7 +84,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["系统提示词<br/>prompts/scoring.md<br/>规则: 只判断这一份简历是否匹配本岗位"] --> B["用户输入第 1 段<br/>TASK<br/>给单份简历打分"]
-    B --> C["用户输入第 2 段<br/>SCORING POLICY<br/>岗位、岗位摘要、必备项、加分项、排除项、硬性地点、评分理由"]
+    B --> C["用户输入第 2 段<br/>SCORING POLICY<br/>岗位、岗位摘要、必备项、加分项、排除项、完整结构化 hard constraints、preferences、runtime-only constraints、评分理由"]
     C --> D["用户输入第 3 段<br/>RESUME CARD<br/>姓名、当前职位、公司、年限、地点、学历、技能、成就、完整度"]
     D --> E["用户输入第 4 段<br/>RECENT EXPERIENCE<br/>最近最多 3 段经历摘要"]
     E --> F["用户输入第 5 段<br/>RAW EXCERPT<br/>简历原文摘录"]
@@ -96,7 +96,7 @@ flowchart TD
 
 大白话：
 
-这一步像“单份简历评审”。每个评分调用只看一份简历和同一套岗位评分标准，不看其他候选人。这样可以避免模型因为候选人之间互相比较而改变标准。
+这一步像“单份简历评审”。Scoring prompt 会包含完整的结构化 hard constraints、preferences，以及本轮未能投到 CTS 的 runtime-only constraints。每个评分调用仍然只看一份简历和同一套岗位评分标准，不看其他候选人。这样可以避免模型因为候选人之间互相比较而改变标准。
 
 模型只负责判断这份简历的匹配度、分数、风险、命中的必备项和缺失项。候选人的最终排序、证据汇总、强弱点展示字段由 runtime 再统一整理。
 
@@ -133,25 +133,27 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["系统提示词<br/>prompts/reflection.md<br/>规则: 复盘本轮结果，给关键词、筛选和停止建议"] --> B["用户输入第 1 段<br/>TASK<br/>返回结构化关键词/筛选建议、复盘理由和停止建议"]
-    B --> C["用户输入第 2 段<br/>ROUND RESULT<br/>本轮请求数、原始候选数、新增数、缺口、抓取次数、耗尽原因、适配器备注"]
-    C --> D["用户输入第 3 段<br/>CURRENT QUERY<br/>本轮搜索词、keyword query、非地点筛选、搜索理由"]
-    D --> E["用户输入第 4 段<br/>SEARCH ATTEMPTS<br/>最多前 8 次抓取尝试的原始数、新增数、重复数、耗尽原因"]
-    E --> F["用户输入第 5 段<br/>SENT QUERY HISTORY<br/>最近最多 8 条已发查询"]
-    F --> G["用户输入第 6 段<br/>TOP CANDIDATES<br/>当前全局候选池前 8 名摘要"]
-    G --> H["用户输入第 7 段<br/>DROPPED CANDIDATES<br/>本轮被挤出候选池的最多 5 人"]
-    H --> I["用户输入第 8 段<br/>SCORING FAILURES<br/>评分失败摘要，通常为空"]
-    I --> J["用户输入第 9 段<br/>UNTRIED ADMITTED TERMS<br/>还没试过的准入搜索词"]
-    J --> K["用户输入第 10 段<br/>EXACT DATA<br/>轮次、当前查询词、筛选字段、候选人 id、停止建议字段名"]
-    K --> L["结构化输出要求<br/>ReflectionAdviceDraft"]
-    L --> M["runtime 后处理<br/>生成 ReflectionAdvice，必要时压制过早停止建议"]
-    M --> N["给下一轮 controller 使用<br/>作为上一轮复盘意见"]
+    B --> C["用户输入第 2 段<br/>REQUIREMENTS<br/>岗位、完整需求表、完整 JD、完整 notes"]
+    C --> D["用户输入第 3 段<br/>ROUND RESULT<br/>本轮请求数、原始候选数、新增数、缺口、抓取次数、耗尽原因、适配器备注"]
+    D --> E["用户输入第 4 段<br/>CURRENT QUERY<br/>本轮搜索词、keyword query、非地点筛选、搜索理由"]
+    E --> F["用户输入第 5 段<br/>TERM BANK<br/>当前 runtime 搜索词池"]
+    F --> G["用户输入第 6 段<br/>SEARCH ATTEMPTS<br/>最多前 8 次抓取尝试的原始数、新增数、重复数、耗尽原因"]
+    G --> H["用户输入第 7 段<br/>SENT QUERY HISTORY<br/>最近最多 8 条已发查询"]
+    H --> I["用户输入第 8 段<br/>TOP CANDIDATES<br/>当前全局候选池前 8 名摘要"]
+    I --> J["用户输入第 9 段<br/>DROPPED CANDIDATES<br/>本轮被挤出候选池的最多 5 人"]
+    J --> K["用户输入第 10 段<br/>SCORING FAILURES<br/>评分失败摘要，通常为空"]
+    K --> L["用户输入第 11 段<br/>UNTRIED ADMITTED TERMS<br/>还没试过的准入搜索词"]
+    L --> M["用户输入第 12 段<br/>EXACT DATA<br/>轮次、当前查询词、筛选字段、候选人 id、停止建议字段名"]
+    M --> N["结构化输出要求<br/>ReflectionAdviceDraft"]
+    N --> O["runtime 后处理<br/>生成 ReflectionAdvice，必要时压制过早停止建议"]
+    O --> P["给下一轮 controller 使用<br/>作为上一轮复盘建议"]
 ```
 
 大白话：
 
-这一步像“每轮结束后的复盘会”。它主要看这一轮搜得怎么样、有没有新增、缺口大不大、用了哪些词、当前前排候选人质量如何、哪些人被挤出候选池，然后建议下一轮保留、激活、降权或放弃哪些已有搜索词。
+这一步像“每轮结束后的复盘会”。它主要看需求、当前 runtime 词池、这一轮搜得怎么样、有没有新增、缺口大不大、用了哪些词、当前前排候选人质量如何、哪些人被挤出候选池，然后建议下一轮保留、激活、降权或放弃哪些已有搜索词。
 
-注意：当前实际发送给复盘模型的可读 prompt 重点是本轮检索结果和候选池，不是重新展开整份 JD。岗位需求已经在前面的需求表、词池和评分结果里体现。
+注意：Reflection 不直接修改 `query_term_pool`，也不决定下一轮 query。它只输出关键词、筛选和停止建议。下一轮 Controller 会看到这些建议，并决定是否采纳。
 
 业务上可以理解成：它不直接开搜，只告诉下一轮调度员“刚才这一轮哪里有效，哪里需要调整”。
 
@@ -190,7 +192,7 @@ flowchart TD
 flowchart TD
     A["系统提示词<br/>prompts/finalize.md<br/>规则: 只生成最终展示文案，不改变候选人和排序"] --> B["用户输入第 1 段<br/>TASK<br/>写最终 shortlist 展示文本"]
     B --> C["用户输入第 2 段<br/>FINALIZATION STATE<br/>run_id、执行轮数、停止原因"]
-    C --> D["用户输入第 3 段<br/>RANKED CANDIDATES<br/>按 runtime 排好的候选人列表，含分数、fit、must、risk、评分摘要"]
+    C --> D["用户输入第 3 段<br/>RANKED CANDIDATES<br/>按 runtime 排好的候选人列表，含 score、fit、must/risk、matched_must_haves、matched_preferences、strengths、weaknesses、risk_flags"]
     D --> E["用户输入第 4 段<br/>EXACT DATA<br/>run_id、run_dir、轮数、停止原因、候选人顺序"]
     E --> F["结构化输出要求<br/>FinalResultDraft"]
     F --> G["runtime 校验<br/>候选人不能增删、不能重复、不能改顺序"]

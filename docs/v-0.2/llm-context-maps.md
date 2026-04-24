@@ -100,7 +100,7 @@ flowchart LR
 - 第 1 行：`RequirementExtractionDraft` 会被归一化成 `RequirementSheet`，并冻结出 `ScoringPolicy`
 - 第 2 行：`ControllerDecision` 会进入 `RoundHistory`，驱动下一步执行
 - 第 3 行：`ScoredCandidate` 会进入 `Stores`，并参与排序和 top pool 更新
-- 第 4 行：`ReflectionAdvice` 会更新 `RetrievalState`，同时写入 `RoundHistory`
+- 第 4 行：`ReflectionAdvice` 只作为建议历史写入 `RoundHistory`；controller/runtime 负责采纳和执行
 - 第 5 行：`FinalResult` 会被 runtime 接住并写出最终产物；这是终点，不再进入下一轮循环
 
 ---
@@ -154,7 +154,11 @@ mindmap
         query_term_pool
         current_top_pool summary
         latest search summary
-        latest reflection summary
+        latest reflection advice
+          keyword advice
+          filter advice
+          stop advice
+          summary and rationale
         shortage history
       output: ControllerDecision
     Resume Scorer
@@ -162,6 +166,7 @@ mindmap
       context: ScoringContext
       sees
         frozen ScoringPolicy
+        runtime-only constraints
         one NormalizedResume
         round_no
       output: ScoredCandidate
@@ -170,7 +175,8 @@ mindmap
       context: ReflectionContext
       sees
         full JD + notes
-        RequirementSheet
+        full requirement sheet
+        current runtime term bank
         current retrieval plan
         search_observation
         search_attempts
@@ -186,7 +192,7 @@ mindmap
         run_dir
         rounds_executed
         stop_reason
-        ranked_candidates
+        ranked_candidates with score, fit, must/risk, matched signals, strengths, weaknesses, risk flags
       output: FinalResult
 ```
 
@@ -197,6 +203,8 @@ mindmap
 - `Scorer` 看得最窄，只看冻结评分标准和一份简历
 - `Reflection` 看得最宽，因为它负责复盘
 - `Finalizer` 当前实际看到的是排序后的候选结果，不是全量 `RunState`
+
+Reflection advice is advisory-only. Runtime records advice history, but controller/runtime own adoption and execution.
 
 ---
 
@@ -222,7 +230,7 @@ mindmap
         RequirementSheet
         top pool summary
         latest search summary
-        latest reflection summary
+        latest reflection advice
       does_not_see
         full candidate_store
         raw resumes
@@ -245,8 +253,9 @@ mindmap
     Reflection Critic
       sees
         full JD + notes
-        RequirementSheet
+        full requirement sheet
         current retrieval outcome
+        current runtime term bank
         sent_query_history
       does_not_see
         full candidate_store
@@ -284,7 +293,7 @@ mindmap
 - `run_dir`
 - `rounds_executed`
 - `stop_reason`
-- `ranked_candidates`
+- `ranked_candidates` with score, fit, must/risk, matched signals, strengths, weaknesses, and risk flags
 
 补充：
 
