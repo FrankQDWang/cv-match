@@ -80,7 +80,6 @@ flowchart LR
     O_REQ --> SP2
     O_CTL --> RH2
     O_SCO --> STORES2
-    O_REF --> RT2
     O_REF --> RH2
     O_FIN --> STORES2
 ```
@@ -200,7 +199,7 @@ mindmap
 
 - `Requirement Extractor` 只看原始输入
 - `Controller` 看完整业务真相，但只看运行态摘要，不看全量底层细节
-- `Scorer` 看得最窄，只看冻结评分标准和一份简历
+- `Scorer` 看得最窄，只看含完整 hard constraints/preferences 的冻结评分标准、runtime-only constraints 和一份简历，不比较候选人
 - `Reflection` 看得最宽，因为它负责复盘
 - `Finalizer` 当前实际看到的是排序后的候选结果，不是全量 `RunState`
 
