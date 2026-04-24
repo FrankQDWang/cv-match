@@ -133,6 +133,7 @@ KNOWN_COMMANDS = {
     "update",
     "inspect",
 }
+_NO_ARG_DEFAULT = object()
 
 
 @dataclass(frozen=True)
@@ -238,7 +239,7 @@ def _arg_spec(
     required: bool = False,
     repeatable: bool = False,
     mutually_exclusive_with: list[str] | None = None,
-    default: object | None = None,
+    default: object = _NO_ARG_DEFAULT,
     applies_to: str | None = None,
 ) -> dict[str, object]:
     spec: dict[str, object] = {
@@ -249,7 +250,7 @@ def _arg_spec(
         "mutually_exclusive_with": mutually_exclusive_with or [],
         "description": description,
     }
-    if default is not None:
+    if default is not _NO_ARG_DEFAULT:
         spec["default"] = default
     if applies_to:
         spec["applies_to"] = applies_to
@@ -522,14 +523,17 @@ def _inspect_payload() -> dict[str, object]:
             "side_effects": "Creates a run artifact directory under ./runs or the path passed to --output-dir.",
         },
         "benchmark": {
-            "description": "Run benchmark JDs sequentially from a JSONL file.",
+            "description": "Run benchmark JDs from maintained domain JSONL files.",
             "machine_readable": False,
             "arguments": [
-                _arg_spec("--jds-file", "path", "Path to a JSONL file or directory with benchmark JDs.", default=str(DEFAULT_BENCHMARKS_DIR)),
+                _arg_spec("--jds-file", "path", "Path to one JSONL file with benchmark JDs. When omitted, --benchmarks-dir is scanned.", default=None),
+                _arg_spec("--benchmarks-dir", "path", "Directory of maintained benchmark JSONL files.", default="artifacts/benchmarks"),
                 _arg_spec("--env-file", "path", "Path to the env file for this run.", default=".env"),
                 _arg_spec("--output-dir", "path", "Directory where run artifacts should be written."),
                 _arg_spec("--json", "flag", "Emit a single JSON object."),
                 _arg_spec("--benchmark-max-concurrency", "integer", "Override max parallel benchmark rows.", default=1),
+                _arg_spec("--benchmark-run-retries", "integer", "Retry each failed benchmark row this many times.", default=1),
+                _arg_spec("--benchmark-upload-retries", "integer", "Retry each failed remote eval upload this many times.", default=1),
                 _arg_spec("--enable-eval", "flag", "Enable judge + eval for this run.", mutually_exclusive_with=["--disable-eval"]),
                 _arg_spec("--disable-eval", "flag", "Disable judge + eval for this run.", mutually_exclusive_with=["--enable-eval"]),
                 _arg_spec("--enable-reflection", "flag", "Enable reflection for this run.", mutually_exclusive_with=["--disable-reflection"]),
@@ -540,7 +544,7 @@ def _inspect_payload() -> dict[str, object]:
                 "seektalent benchmark --jds-file ./artifacts/benchmarks/agent_jds.jsonl --enable-eval --json",
             ],
             "outputs": "Human-readable per-JD run ids on stdout by default. In --json mode, stdout contains one JSON object.",
-            "side_effects": "Runs each JD sequentially and writes benchmark_summary_*.json under the runs directory.",
+            "side_effects": "Scans maintained benchmark files in directory mode, runs each JD, writes benchmark_summary_*.json under the runs directory, and serializes remote uploads when eval is enabled.",
         },
         "doctor": {
             "description": "Run local configuration checks without network calls.",
@@ -770,17 +774,18 @@ def _benchmark_command(args: argparse.Namespace) -> int:
             )
         )
     cleanup_runtime_artifacts(settings)
-    benchmark_path = resolve_user_path(args.jds_file)
-    if benchmark_path.is_dir():
-        rows, benchmark_files = _load_benchmark_directory(benchmark_path)
+    benchmark_file: Path | None = resolve_user_path(args.jds_file) if args.jds_file else None
+    if benchmark_file is not None:
+        rows = _load_benchmark_rows(benchmark_file)
+        benchmark_files = [str(benchmark_file)]
+        benchmark_metadata = {"benchmark_file": str(benchmark_file)}
+    else:
+        benchmark_dir_path = resolve_user_path(args.benchmarks_dir)
+        rows, benchmark_files = _load_benchmark_directory(benchmark_dir_path)
         benchmark_metadata = {
-            "benchmark_dir": str(benchmark_path),
+            "benchmark_dir": str(benchmark_dir_path),
             "benchmark_files": benchmark_files,
         }
-    else:
-        rows = _load_benchmark_rows(benchmark_path)
-        benchmark_files = [str(benchmark_path)]
-        benchmark_metadata = {"benchmark_file": str(benchmark_path)}
     if args.benchmark_max_concurrency < 1:
         raise ValueError("benchmark_max_concurrency must be >= 1")
     benchmark_run_retries = getattr(args, "benchmark_run_retries", 1)
@@ -886,12 +891,12 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     if args.json_output:
         _emit_json(sys.stdout, payload)
         return 1 if has_failed_rows else 0
-    if benchmark_path.is_dir():
-        print(f"benchmark_dir: {benchmark_path}")
+    if benchmark_file is None:
+        print(f"benchmark_dir: {benchmark_dir_path}")
         for file_path in benchmark_files:
             print(f"benchmark_file: {file_path}")
     else:
-        print(f"benchmark_file: {benchmark_path}")
+        print(f"benchmark_file: {benchmark_file}")
     print(f"count: {len(results)}")
     print(f"summary_path: {summary_path}")
     for item in results:
@@ -1158,11 +1163,16 @@ def build_exec_parser() -> argparse.ArgumentParser:
     )
     run_parser.set_defaults(handler=_run_command)
 
-    benchmark_parser = subparsers.add_parser("benchmark", help="Run benchmark JDs sequentially from a JSONL file or directory.")
+    benchmark_parser = subparsers.add_parser("benchmark", help="Run benchmark JDs from domain JSONL files.")
     benchmark_parser.add_argument(
         "--jds-file",
+        default=None,
+        help="Path to one JSONL file with benchmark JDs. When omitted, --benchmarks-dir is scanned.",
+    )
+    benchmark_parser.add_argument(
+        "--benchmarks-dir",
         default=str(DEFAULT_BENCHMARKS_DIR),
-        help="Path to a JSONL file or directory with benchmark JDs.",
+        help="Directory of maintained benchmark JSONL files.",
     )
     benchmark_parser.add_argument("--env-file", default=".env", help="Path to the env file for this run.")
     benchmark_parser.add_argument("--output-dir", help="Directory where run artifacts should be written.")
@@ -1172,6 +1182,18 @@ def build_exec_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Override max parallel benchmark rows.",
+    )
+    benchmark_parser.add_argument(
+        "--benchmark-run-retries",
+        type=int,
+        default=1,
+        help="Retry each failed benchmark row this many times.",
+    )
+    benchmark_parser.add_argument(
+        "--benchmark-upload-retries",
+        type=int,
+        default=1,
+        help="Retry each failed remote eval upload this many times.",
     )
     benchmark_parser.add_argument(
         "--enable-eval",

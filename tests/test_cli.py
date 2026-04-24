@@ -163,6 +163,11 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     assert run_args["--jd"]["mutually_exclusive_with"] == ["--jd-file"]
     assert run_args["--jd-file"]["mutually_exclusive_with"] == ["--jd"]
     assert run_args["--enable-eval"]["mutually_exclusive_with"] == ["--disable-eval"]
+    benchmark_args = {item["name"]: item for item in payload["commands"]["benchmark"]["arguments"]}
+    assert benchmark_args["--jds-file"]["default"] is None
+    assert benchmark_args["--benchmarks-dir"]["default"] == "artifacts/benchmarks"
+    assert benchmark_args["--benchmark-run-retries"]["default"] == 1
+    assert benchmark_args["--benchmark-upload-retries"]["default"] == 1
     assert payload["json_contracts"]["run"]["stdout_success_fields"] == [
         "final_markdown",
         "run_id",
@@ -650,6 +655,66 @@ def test_benchmark_json_runs_rows_sequentially(
     assert summary["runs"] == payload["runs"]
 
 
+def test_benchmark_defaults_to_benchmarks_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    benchmarks_dir = tmp_path / "benchmarks"
+    benchmarks_dir.mkdir()
+    benchmark_file = benchmarks_dir / "agent_jds.jsonl"
+    benchmark_file.write_text(
+        json.dumps({"jd_id": "agent_jd_001", "job_title": "A", "job_description": "JD A"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def fake_run_match(*, job_title: str, jd: str, notes: str = "", settings=None, env_file=".env", **kwargs) -> MatchRunResult:
+        del jd, notes, settings, env_file, kwargs
+        calls.append(job_title)
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        trace_log = run_dir / "trace.log"
+        trace_log.write_text("", encoding="utf-8")
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id="run-1",
+                run_dir=str(run_dir),
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="done",
+                candidates=[],
+            ),
+            final_markdown="# Final",
+            run_id="run-1",
+            run_dir=run_dir,
+            trace_log_path=trace_log,
+            evaluation_result=None,
+            terminal_stop_guidance=None,
+        )
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+
+    assert main(
+        [
+            "benchmark",
+            "--benchmarks-dir",
+            str(benchmarks_dir),
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert calls == ["A"]
+    assert payload["benchmark_dir"] == str(benchmarks_dir)
+    assert payload["benchmark_files"] == [str(benchmark_file)]
+    assert "benchmark_file" not in payload
+
+
 def test_benchmark_json_directory_reports_included_files(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -698,7 +763,7 @@ def test_benchmark_json_directory_reports_included_files(
     assert main(
         [
             "benchmark",
-            "--jds-file",
+            "--benchmarks-dir",
             str(benchmarks_dir),
             "--output-dir",
             str(tmp_path / "runs"),
