@@ -742,7 +742,10 @@ class StubReflection:
     async def reflect(self, *, context) -> ReflectionAdvice:
         del context
         return ReflectionAdvice(
-            keyword_advice=ReflectionKeywordAdvice(),
+            keyword_advice=ReflectionKeywordAdvice(
+                suggested_activate_terms=["python"],
+                suggested_keep_terms=["django"],
+            ),
             filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
             suggest_stop=False,
             suggested_stop_reason=None,
@@ -1328,9 +1331,10 @@ def test_runtime_search_diagnostics_records_reflection_advice_application(tmp_pa
     diagnostic_round = search_diagnostics["rounds"][1]
     adoption = diagnostic_round["reflection_advice_application"]
     assert adoption["controller_response"] == "Accepted previous reflection filter guidance."
-    assert "suggested_activate_terms" in adoption
-    assert "accepted_terms" in adoption
-    assert "ignored_terms" in adoption
+    assert adoption["suggested_activate_terms"] == ["python"]
+    assert adoption["suggested_keep_terms"] == ["django"]
+    assert adoption["accepted_terms"] == ["python"]
+    assert adoption["ignored_terms"] == ["django"]
     assert adoption["suggested_filter_fields"] == ["position"]
     assert adoption["accepted_filter_fields"] == ["position"]
     assert adoption["ignored_filter_fields"] == []
