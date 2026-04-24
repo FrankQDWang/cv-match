@@ -12,8 +12,9 @@ Capture the role summary, capabilities, constraints, query terms, preferences, a
 
 - Read only the provided `job_title`, `JD`, and `notes`.
 - Set `role_title` to the normalized job title.
-- Set `title_anchor_term` to one stable searchable anchor extracted from `job_title`.
-- Set `jd_query_terms` to high-signal resume-searchable capability, tool, or concept nouns from the `JD` only. Do not repeat `title_anchor_term` inside `jd_query_terms`.
+- Set `title_anchor_terms` to one or two stable searchable anchors extracted from `job_title`.
+- Set `title_anchor_rationale` to a short explanation of why those anchors best capture the searchable role title.
+- Set `jd_query_terms` to high-signal resume-searchable capability, tool, or concept nouns from the `JD` only. Do not repeat any `title_anchor_terms` inside `jd_query_terms`.
 - Keep `jd_query_terms` short. Avoid long responsibility phrases, internal project wording, marketing adjectives, and concepts that are unlikely to appear on resumes.
 - If the `JD` contains an over-composed phrase like `X 架构`, `X 平台`, `X 系统`, `X 方案`, `X 能力`, or `X 落地`, prefer the shorter searchable concept `X` only when `X` appears in the input and would plausibly appear on resumes.
 - Do not invent aliases, synonyms, or broader domain terms that are not present in the input.
@@ -31,8 +32,8 @@ Capture the role summary, capabilities, constraints, query terms, preferences, a
 
 ## Title Anchor Discipline
 
-- `title_anchor_term` is a CTS keyword seed, not the full job title.
-- Prefer one short resume-side role or technology anchor that candidates are likely to write in resumes.
+- `title_anchor_terms` are CTS keyword seeds, not the full job title.
+- Prefer one short resume-side role or technology anchor that candidates are likely to write in resumes. Add a second anchor only when the title clearly supports a nearby alternate title that is also likely to appear on resumes.
 - Remove company names, project names, title suffixes, and role-direction composites when the shorter anchor is still supported by `job_title`.
 - Do not put suffixes like `工程师`, `开发`, `研发`, `算法`, `训推`, `技术专家`, or company-branded prefixes into the anchor when a shorter searchable anchor remains.
 

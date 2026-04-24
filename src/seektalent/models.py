@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from hashlib import sha1
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 FitBucket = Literal["fit", "not_fit"]
 DecisionType = Literal["continue", "stop"]
@@ -131,6 +131,23 @@ class RequirementExtractionDraft(BaseModel):
     preferred_query_terms: list[str] = Field(default_factory=list, description="Reusable query-term hints, not a round query.")
     scoring_rationale: str = Field(min_length=1, description="Short explanation of the core scoring emphasis.")
 
+    @model_validator(mode="before")
+    @classmethod
+    def fill_title_anchor_compatibility(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        legacy_anchor = data.pop("title_anchor_term", None)
+        if "title_anchor_terms" not in data and legacy_anchor is not None:
+            data["title_anchor_terms"] = [legacy_anchor]
+        if "title_anchor_rationale" not in data and data.get("title_anchor_terms"):
+            data["title_anchor_rationale"] = "Primary title anchor carried forward from the legacy title_anchor_term field."
+        return data
+
+    @computed_field
+    @property
+    def title_anchor_term(self) -> str:
+        return self.title_anchor_terms[0]
+
 
 class DegreeRequirement(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -199,7 +216,7 @@ class PreferenceSlots(BaseModel):
 
 def _default_retrieval_role(category: str) -> QueryRetrievalRole:
     if category == "role_anchor":
-        return "primary_role_anchor"
+        return "role_anchor"
     if category == "tooling":
         return "framework_tool"
     return "domain_context"
@@ -264,6 +281,23 @@ class RequirementSheet(BaseModel):
     preferences: PreferenceSlots = Field(default_factory=PreferenceSlots)
     initial_query_term_pool: list[QueryTermCandidate] = Field(default_factory=list)
     scoring_rationale: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def fill_title_anchor_compatibility(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        legacy_anchor = data.pop("title_anchor_term", None)
+        if "title_anchor_terms" not in data and legacy_anchor is not None:
+            data["title_anchor_terms"] = [legacy_anchor]
+        if "title_anchor_rationale" not in data and data.get("title_anchor_terms"):
+            data["title_anchor_rationale"] = "Primary title anchor carried forward from the legacy title_anchor_term field."
+        return data
+
+    @computed_field
+    @property
+    def title_anchor_term(self) -> str:
+        return self.title_anchor_terms[0]
 
 
 class RequirementDigest(BaseModel):

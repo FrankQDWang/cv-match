@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 import re
 
 from seektalent.locations import normalize_locations
@@ -208,19 +207,9 @@ def _compile_initial_query_term_pool(
     hard_constraints: HardConstraintSlots,
     preferences: PreferenceSlots,
 ):
-    kwargs = dict(
-        job_title=job_title,
-        title_anchor_terms=title_anchor_terms,
-        jd_query_terms=jd_query_terms,
-        notes_query_terms=notes_query_terms,
-        hard_constraints=hard_constraints,
-        preferences=preferences,
-    )
-    if "title_anchor_terms" in inspect.signature(compile_query_term_pool).parameters:
-        return compile_query_term_pool(**kwargs)
     return compile_query_term_pool(
         job_title=job_title,
-        title_anchor_term=title_anchor_terms[0],
+        title_anchor_terms=title_anchor_terms,
         jd_query_terms=jd_query_terms,
         notes_query_terms=notes_query_terms,
         hard_constraints=hard_constraints,

@@ -61,7 +61,8 @@ FILTER_ONLY_PATTERNS = (
 def compile_query_term_pool(
     *,
     job_title: str,
-    title_anchor_term: str,
+    title_anchor_terms: list[str] | None = None,
+    title_anchor_term: str | None = None,
     jd_query_terms: list[str],
     notes_query_terms: list[str],
     hard_constraints: HardConstraintSlots | None = None,
@@ -121,7 +122,11 @@ def compile_query_term_pool(
         pool.append(candidate)
 
     priority = 1
-    for anchor in _compile_role_anchors(job_title=job_title, title_anchor_term=title_anchor_term):
+    for anchor in _compile_role_anchors(
+        job_title=job_title,
+        title_anchor_terms=title_anchor_terms,
+        title_anchor_term=title_anchor_term,
+    ):
         add_candidate(
             term=anchor,
             source="job_title",
@@ -153,9 +158,15 @@ def compile_query_term_pool(
     return pool
 
 
-def _compile_role_anchors(*, job_title: str, title_anchor_term: str) -> list[str]:
+def _compile_role_anchors(
+    *,
+    job_title: str,
+    title_anchor_terms: list[str] | None = None,
+    title_anchor_term: str | None = None,
+) -> list[str]:
     title = _clean_text(job_title)
-    anchor = _clean_text(title_anchor_term)
+    anchors = unique_strings(title_anchor_terms or [])
+    anchor = _clean_text(anchors[0] if anchors else title_anchor_term)
     return unique_strings([_clean_title_anchor(anchor) or _clean_title_anchor(title) or anchor or title])
 
 

@@ -103,3 +103,14 @@ def test_query_compiler_deduplicates_terms_and_keeps_generic_families() -> None:
     assert [item.term for item in pool].count("LangChain") == 1
     assert _by_term(pool)["LangChain"].family == "domain.langchain"
     assert _by_term(pool)["RAG"].queryability == "score_only"
+
+
+def test_query_compiler_accepts_title_anchor_terms_interface() -> None:
+    pool = compile_query_term_pool(
+        job_title="Python 工程师",
+        title_anchor_terms=["Python", "Backend Engineer"],
+        jd_query_terms=["LangChain"],
+        notes_query_terms=["RAG"],
+    )
+
+    assert pool[0].term == "Python"

@@ -379,6 +379,24 @@ def test_normalize_requirement_draft_rejects_more_than_two_title_anchors() -> No
         )
 
 
+def test_requirement_models_accept_legacy_title_anchor_term_during_transition() -> None:
+    draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_term="Python",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build retrieval and ranking capabilities.",
+        must_have_capabilities=["Python"],
+        scoring_rationale="Prioritize Python and retrieval depth.",
+    )
+    sheet = normalize_requirement_draft(draft, job_title="Senior Python Engineer")
+
+    assert draft.title_anchor_terms == ["Python"]
+    assert draft.title_anchor_term == "Python"
+    assert sheet.title_anchor_terms == ["Python"]
+    assert sheet.title_anchor_term == "Python"
+    assert sheet.title_anchor_rationale
+
+
 def test_requirements_extractor_records_provider_usage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
