@@ -620,9 +620,15 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     cleanup_runtime_artifacts(settings)
     benchmark_path = resolve_user_path(args.jds_file)
     if benchmark_path.is_dir():
-        rows, _benchmark_files = _load_benchmark_directory(benchmark_path)
+        rows, benchmark_files = _load_benchmark_directory(benchmark_path)
+        benchmark_metadata = {
+            "benchmark_dir": str(benchmark_path),
+            "benchmark_files": benchmark_files,
+        }
     else:
         rows = _load_benchmark_rows(benchmark_path)
+        benchmark_files = [str(benchmark_path)]
+        benchmark_metadata = {"benchmark_file": str(benchmark_path)}
     if args.benchmark_max_concurrency < 1:
         raise ValueError("benchmark_max_concurrency must be >= 1")
 
@@ -662,7 +668,7 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     summary_path.write_text(
         json.dumps(
             {
-                "benchmark_file": str(benchmark_path),
+                **benchmark_metadata,
                 "count": len(results),
                 "runs": results,
             },
@@ -672,7 +678,7 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
     payload = {
-        "benchmark_file": str(benchmark_path),
+        **benchmark_metadata,
         "count": len(results),
         "runs": results,
         "summary_path": str(summary_path),
@@ -680,7 +686,12 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     if args.json_output:
         _emit_json(sys.stdout, payload)
         return 0
-    print(f"benchmark_file: {benchmark_path}")
+    if benchmark_path.is_dir():
+        print(f"benchmark_dir: {benchmark_path}")
+        for file_path in benchmark_files:
+            print(f"benchmark_file: {file_path}")
+    else:
+        print(f"benchmark_file: {benchmark_path}")
     print(f"count: {len(results)}")
     print(f"summary_path: {summary_path}")
     for item in results:

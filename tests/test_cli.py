@@ -651,6 +651,71 @@ def test_benchmark_json_runs_rows_sequentially(
     assert summary["runs"] == payload["runs"]
 
 
+def test_benchmark_json_directory_reports_included_files(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    benchmarks_dir = tmp_path / "benchmarks"
+    benchmarks_dir.mkdir()
+    included_file = benchmarks_dir / "agent_jds.jsonl"
+    skipped_file = benchmarks_dir / "phase_2_2_pilot.jsonl"
+    included_file.write_text(
+        json.dumps({"jd_id": "agent_jd_001", "job_title": "A", "job_description": "JD A"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    skipped_file.write_text(
+        json.dumps({"jd_id": "skip", "job_title": "Skip", "job_description": "Skip JD"}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_match(*, job_title: str, jd: str, notes: str = "", settings=None, env_file=".env") -> MatchRunResult:
+        del job_title, jd, notes, settings, env_file
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        trace_log = run_dir / "trace.log"
+        trace_log.write_text("", encoding="utf-8")
+        return MatchRunResult(
+            final_result=FinalResult(
+                run_id="run-1",
+                run_dir=str(run_dir),
+                rounds_executed=1,
+                stop_reason="controller_stop",
+                summary="done",
+                candidates=[],
+            ),
+            final_markdown="# Final",
+            run_id="run-1",
+            run_dir=run_dir,
+            trace_log_path=trace_log,
+            evaluation_result=None,
+        )
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+
+    assert main(
+        [
+            "benchmark",
+            "--jds-file",
+            str(benchmarks_dir),
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["benchmark_dir"] == str(benchmarks_dir)
+    assert payload["benchmark_files"] == [str(included_file)]
+    assert "benchmark_file" not in payload
+    summary = json.loads(Path(payload["summary_path"]).read_text(encoding="utf-8"))
+    assert summary["benchmark_dir"] == str(benchmarks_dir)
+    assert summary["benchmark_files"] == [str(included_file)]
+    assert "benchmark_file" not in summary
+
+
 def test_benchmark_json_can_run_rows_in_parallel(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
