@@ -517,7 +517,9 @@ def _inspect_payload() -> dict[str, object]:
             },
             "benchmark": {
                 "flag": "--json",
-                "stdout_success_fields": ["benchmark_file", "count", "runs", "summary_path"],
+                "stdout_success_fields": ["count", "runs", "summary_path"],
+                "file_mode_fields": ["benchmark_file"],
+                "directory_mode_fields": ["benchmark_dir", "benchmark_files"],
             },
             "doctor": {
                 "flag": "--json",

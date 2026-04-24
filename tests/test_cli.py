@@ -171,12 +171,9 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
         "evaluation_result",
     ]
     assert payload["json_contracts"]["run"]["nullable_fields"] == ["evaluation_result"]
-    assert payload["json_contracts"]["benchmark"]["stdout_success_fields"] == [
-        "benchmark_file",
-        "count",
-        "runs",
-        "summary_path",
-    ]
+    assert payload["json_contracts"]["benchmark"]["stdout_success_fields"] == ["count", "runs", "summary_path"]
+    assert payload["json_contracts"]["benchmark"]["file_mode_fields"] == ["benchmark_file"]
+    assert payload["json_contracts"]["benchmark"]["directory_mode_fields"] == ["benchmark_dir", "benchmark_files"]
     assert payload["json_contracts"]["migrate-judge-assets"]["stdout_success_fields"] == [
         "runs_scanned",
         "jd_assets_upserted",
