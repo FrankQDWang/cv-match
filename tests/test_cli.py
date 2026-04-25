@@ -12,7 +12,7 @@ from seektalent.api import MatchRunResult
 from seektalent.evaluation import EvaluationResult, EvaluationStageResult
 from seektalent.cli import _load_benchmark_directory, _load_benchmark_rows, main
 from seektalent.models import FinalResult
-from seektalent.resources import read_env_example_template
+from seektalent.resources import REQUIRED_PROMPTS, read_env_example_template
 from seektalent.runtime.exact_llm_cache import get_cached_json, put_cached_json
 from tests.settings_factory import make_settings
 
@@ -77,6 +77,25 @@ def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "OPENAI_API_KEY" in help_text
     assert "seektalent doctor" in help_text
     assert "seektalent inspect --json" in help_text
+
+
+def test_required_prompts_include_auxiliary_prompt_files() -> None:
+    assert REQUIRED_PROMPTS == (
+        "requirements",
+        "controller",
+        "scoring",
+        "reflection",
+        "finalize",
+        "judge",
+        "tui_summary",
+        "candidate_feedback",
+        "company_discovery_plan",
+        "company_discovery_extract",
+        "company_discovery_reduce",
+        "repair_requirements",
+        "repair_controller",
+        "repair_reflection",
+    )
 
 
 def test_no_args_tty_launches_tui_after_cleanup(
