@@ -61,6 +61,16 @@ def test_app_settings_accepts_explicit_judge_model() -> None:
     assert settings.effective_judge_model == "openai-chat:qwen-plus"
 
 
+def test_app_settings_treats_empty_optional_model_env_vars_as_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEEKTALENT_JUDGE_MODEL", "")
+    monkeypatch.setenv("SEEKTALENT_TUI_SUMMARY_MODEL", "")
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.judge_model is None
+    assert settings.tui_summary_model is None
+
+
 def test_app_settings_accepts_explicit_judge_reasoning_effort() -> None:
     settings = make_settings(
         reasoning_effort="off",
@@ -822,9 +832,11 @@ def test_repair_model_settings_force_non_thinking(
         structured_repair_reasoning_effort="off",
     )
 
-    result, usage = asyncio.run(
+    result, usage, artifact = asyncio.run(
         _repair_with_model(
             settings,
+            prompt_name="repair_requirements",
+            user_payload={"REPAIR_REASON": {"reason": "broken"}},
             output_type=str,
             system_prompt="repair prompt",
             user_prompt="repair payload",
@@ -841,4 +853,5 @@ def test_repair_model_settings_force_non_thinking(
         "cache_write_tokens": 3,
         "details": {"reasoning_tokens": 4},
     }
+    assert artifact["prompt_name"] == "repair_requirements"
     assert calls == [{"reasoning_effort": "off", "enable_thinking": False}]
