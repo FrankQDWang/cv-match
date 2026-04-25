@@ -120,7 +120,10 @@ def compile_query_term_pool(
         family = family or inferred_family
         if source == "notes":
             if queryability == "admitted" and not _should_admit_notes_term(clean):
-                return
+                role = "score_only"
+                queryability = "score_only"
+                category = "expansion"
+                family = f"score.{_compact_key(clean) or 'notes'}"
         active = queryability == "admitted"
         if role not in {"primary_role_anchor", "secondary_title_anchor", "role_anchor"}:
             if active:
@@ -252,7 +255,7 @@ def _looks_like_domain_notes_term(term: str) -> bool:
         if has_cjk:
             return True
         return False
-    return 2 <= len(term) <= 8
+    return False
 
 
 def _is_filter_only(term: str, compact: str) -> bool:

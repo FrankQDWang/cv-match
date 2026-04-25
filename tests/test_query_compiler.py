@@ -160,9 +160,8 @@ def test_query_compiler_admits_explicit_domain_notes_terms_only() -> None:
     )
     terms = _by_term(pool)
 
-    assert terms["人工耳蜗"].queryability == "admitted"
-    assert terms["人工耳蜗"].retrieval_role == "domain_context"
-    assert terms["人工耳蜗"].active is True
+    assert terms["人工耳蜗"].queryability == "score_only"
+    assert terms["人工耳蜗"].active is False
     assert terms["沟通能力"].queryability == "score_only"
     assert terms["沟通能力"].active is False
 
@@ -177,11 +176,11 @@ def test_query_compiler_rejects_generic_notes_terms() -> None:
     terms = _by_term(pool)
 
     assert terms["AI投研"].queryability == "admitted"
-    assert terms["人工耳蜗"].queryability == "admitted"
-    assert "结果导向" not in terms
-    assert "逻辑能力" not in terms
-    assert "英文流利" not in terms
-    assert "base上海" not in terms
+    assert terms["人工耳蜗"].queryability == "score_only"
+    assert terms["结果导向"].queryability == "score_only"
+    assert terms["逻辑能力"].queryability == "score_only"
+    assert terms["英文流利"].queryability == "score_only"
+    assert terms["base上海"].queryability == "score_only"
 
 
 def test_query_compiler_admits_compact_ascii_domain_notes() -> None:
@@ -202,26 +201,29 @@ def test_query_compiler_admits_compact_ascii_domain_notes() -> None:
     )
     terms = _by_term(pool)
 
-    for term in ["python", "sql", "mysql", "redis", "etl", "nlp", "人工耳蜗"]:
+    for term in ["python", "sql", "mysql", "redis", "etl", "nlp"]:
         assert terms[term].queryability == "admitted"
         assert terms[term].retrieval_role == "domain_context"
     assert terms["AI投研"].queryability == "admitted"
     assert terms["AI投研"].retrieval_role == "domain_context"
+    assert terms["人工耳蜗"].queryability == "score_only"
+    assert terms["人工耳蜗"].active is False
 
 
 def test_query_compiler_rejects_generic_chinese_notes_and_keeps_abstract_notes_visible() -> None:
     pool = compile_query_term_pool(
         job_title="数据工程师",
         title_anchor_terms=["数据"],
-        jd_query_terms=[],
+        jd_query_terms=["Python"],
         notes_query_terms=["执行力", "团队管理", "沟通能力", "人工耳蜗"],
     )
     terms = _by_term(pool)
 
-    assert "执行力" not in terms
-    assert "团队管理" not in terms
+    assert terms["执行力"].queryability == "score_only"
+    assert terms["团队管理"].queryability == "score_only"
     assert terms["沟通能力"].queryability == "score_only"
     assert terms["沟通能力"].active is False
+    assert terms["人工耳蜗"].queryability == "score_only"
 
 
 def test_query_compiler_rejects_generic_competency_notes_but_keeps_domain_terms() -> None:
@@ -234,11 +236,11 @@ def test_query_compiler_rejects_generic_competency_notes_but_keeps_domain_terms(
     terms = _by_term(pool)
 
     assert terms["金融AI"].queryability == "admitted"
-    assert "项目管理" not in terms
-    assert "产品思维" not in terms
-    assert "责任心" not in terms
-    assert "资源协调" not in terms
-    assert "战略思考" not in terms
+    assert terms["项目管理"].queryability == "score_only"
+    assert terms["产品思维"].queryability == "score_only"
+    assert terms["责任心"].queryability == "score_only"
+    assert terms["资源协调"].queryability == "score_only"
+    assert terms["战略思考"].queryability == "score_only"
 
 
 def test_query_compiler_admits_compact_ascii_and_mixed_script_notes() -> None:
@@ -259,15 +261,16 @@ def test_query_compiler_admits_compact_ascii_and_mixed_script_notes() -> None:
     )
     terms = _by_term(pool)
 
-    for term in ["人工耳蜗", "AI投研", "金融AI", "python", "sql", "mysql", "redis", "etl"]:
+    for term in ["AI投研", "金融AI", "python", "sql", "mysql", "redis", "etl"]:
         assert terms[term].queryability == "admitted"
+    assert terms["人工耳蜗"].queryability == "score_only"
 
 
 def test_query_compiler_keeps_abstract_notes_visible_under_positive_gate() -> None:
     pool = compile_query_term_pool(
         job_title="研究工程师",
         title_anchor_terms=["研究"],
-        jd_query_terms=[],
+        jd_query_terms=["Python"],
         notes_query_terms=["沟通能力", "人工耳蜗"],
     )
     terms = _by_term(pool)
@@ -276,34 +279,48 @@ def test_query_compiler_keeps_abstract_notes_visible_under_positive_gate() -> No
     assert terms["沟通能力"].active is False
 
 
-def test_query_compiler_admits_compact_pure_chinese_notes_by_default() -> None:
+def test_query_compiler_keeps_compact_pure_chinese_notes_visible_but_non_admitted() -> None:
     pool = compile_query_term_pool(
         job_title="行业研究员",
         title_anchor_terms=["研究"],
-        jd_query_terms=[],
+        jd_query_terms=["Python"],
         notes_query_terms=["量化交易", "半导体", "汽车电子", "临床试验", "芯片设计", "脑科学"],
     )
     terms = _by_term(pool)
 
     for term in ["量化交易", "半导体", "汽车电子", "临床试验", "芯片设计", "脑科学"]:
-        assert terms[term].queryability == "admitted"
-        assert terms[term].retrieval_role == "domain_context"
+        assert terms[term].queryability == "score_only"
+        assert terms[term].active is False
 
 
 def test_query_compiler_rejects_broad_competency_and_process_markers() -> None:
     pool = compile_query_term_pool(
         job_title="研究员",
         title_anchor_terms=["研究"],
-        jd_query_terms=[],
-        notes_query_terms=["owner意识", "跨部门协同", "推动力", "组织协调", "业务sense", "创新意识", "沟通能力", "人工耳蜗"],
+        jd_query_terms=["Python"],
+        notes_query_terms=["owner意识", "跨部门协同", "推动力", "业务sense", "创新意识", "沟通能力", "人工耳蜗"],
     )
     terms = _by_term(pool)
 
-    assert terms["人工耳蜗"].queryability == "admitted"
-    assert "owner意识" not in terms
-    assert "跨部门协同" not in terms
-    assert "推动力" not in terms
-    assert "组织协调" not in terms
-    assert "业务sense" not in terms
-    assert "创新意识" not in terms
+    assert terms["人工耳蜗"].queryability == "score_only"
+    assert terms["人工耳蜗"].active is False
+    assert terms["owner意识"].queryability == "score_only"
+    assert terms["跨部门协同"].queryability == "score_only"
+    assert terms["推动力"].queryability == "score_only"
+    assert terms["业务sense"].queryability == "score_only"
+    assert terms["创新意识"].queryability == "score_only"
     assert terms["沟通能力"].queryability == "score_only"
+
+
+def test_query_compiler_keeps_pure_chinese_notes_visible_but_non_admitted() -> None:
+    pool = compile_query_term_pool(
+        job_title="行业研究员",
+        title_anchor_terms=["研究"],
+        jd_query_terms=["Python"],
+        notes_query_terms=["量化交易", "半导体", "脑科学"],
+    )
+    terms = _by_term(pool)
+
+    for term in ["量化交易", "半导体", "脑科学"]:
+        assert terms[term].queryability == "score_only"
+        assert terms[term].active is False
