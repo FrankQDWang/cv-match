@@ -21,6 +21,12 @@ from seektalent.tracing import ProviderUsageSnapshot, provider_usage_from_result
 OutputT = TypeVar("OutputT")
 
 
+class RepairCallError(RuntimeError):
+    def __init__(self, message: str, call_artifact: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.call_artifact = call_artifact
+
+
 async def _repair_with_model(
     settings: AppSettings,
     *,
@@ -47,7 +53,25 @@ async def _repair_with_model(
     ))
     started_at = datetime.now().astimezone().isoformat(timespec="seconds")
     started_clock = perf_counter()
-    result = await agent.run(user_prompt)
+    try:
+        result = await agent.run(user_prompt)
+    except Exception as exc:
+        raise RepairCallError(
+            str(exc),
+            {
+                "stage": prompt_name,
+                "prompt_name": prompt_name,
+                "model_id": model_id,
+                "user_payload": user_payload,
+                "user_prompt_text": user_prompt,
+                "started_at": started_at,
+                "latency_ms": max(1, int((perf_counter() - started_clock) * 1000)),
+                "status": "failed",
+                "retries": 0,
+                "output_retries": 2,
+                "error_message": str(exc),
+            },
+        ) from exc
     output = result.output
     usage = provider_usage_from_result(result)
     return (

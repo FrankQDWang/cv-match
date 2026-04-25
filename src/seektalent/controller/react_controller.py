@@ -8,7 +8,7 @@ from seektalent.config import AppSettings
 from seektalent.llm import build_model, build_model_settings, build_output_spec
 from seektalent.models import ControllerContext, ControllerDecision, FilterField, SearchControllerDecision
 from seektalent.prompting import LoadedPrompt, json_block
-from seektalent.repair import repair_controller_decision
+from seektalent.repair import RepairCallError, repair_controller_decision
 from seektalent.retrieval.query_plan import canonicalize_controller_query_terms, normalize_term
 from seektalent.tracing import ProviderUsageSnapshot, combine_provider_usage, provider_usage_from_result
 
@@ -269,14 +269,18 @@ class ReActController:
         self._record_retry(reason)
         self.last_repair_attempt_count = 1
         self.last_repair_reason = reason
-        repaired, repair_usage, repair_call_artifact = await repair_controller_decision(
-            self.settings,
-            self.prompt,
-            self.repair_prompt,
-            source_user_prompt,
-            decision,
-            reason,
-        )
+        try:
+            repaired, repair_usage, repair_call_artifact = await repair_controller_decision(
+                self.settings,
+                self.prompt,
+                self.repair_prompt,
+                source_user_prompt,
+                decision,
+                reason,
+            )
+        except RepairCallError as exc:
+            self.last_repair_call_artifact = exc.call_artifact
+            raise
         self.last_repair_call_artifact = repair_call_artifact
         total_provider_usage = combine_provider_usage(total_provider_usage, repair_usage)
         self.last_provider_usage = total_provider_usage
