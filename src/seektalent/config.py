@@ -140,6 +140,8 @@ class AppSettings(BaseSettings):
     @field_validator(*MODEL_FIELDS)
     @classmethod
     def validate_model_id(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value == "" and info.field_name in {"judge_model", "tui_summary_model"}:
+            return None
         if value is None:
             if info.field_name in {"judge_model", "tui_summary_model"}:
                 return value

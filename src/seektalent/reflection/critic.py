@@ -15,7 +15,7 @@ from seektalent.models import (
     ReflectionKeywordAdvice,
 )
 from seektalent.prompting import LoadedPrompt, json_block
-from seektalent.repair import repair_reflection_draft
+from seektalent.repair import RepairCallError, repair_reflection_draft, unpack_repair_result
 from seektalent.tracing import ProviderUsageSnapshot, combine_provider_usage, provider_usage_from_result
 
 
@@ -245,9 +245,15 @@ def materialize_reflection_advice(*, context: ReflectionContext, draft: Reflecti
 
 
 class ReflectionCritic:
-    def __init__(self, settings: AppSettings, prompt: LoadedPrompt) -> None:
+    def __init__(
+        self,
+        settings: AppSettings,
+        prompt: LoadedPrompt,
+        repair_prompt: LoadedPrompt | None = None,
+    ) -> None:
         self.settings = settings
         self.prompt = prompt
+        self.repair_prompt = repair_prompt or prompt
         self.last_validator_retry_count = 0
         self.last_validator_retry_reasons: list[str] = []
         self.last_provider_usage: ProviderUsageSnapshot | None = None
@@ -255,6 +261,7 @@ class ReflectionCritic:
         self.last_repair_succeeded = False
         self.last_repair_reason: str | None = None
         self.last_full_retry_count = 0
+        self.last_repair_call_artifact: dict[str, object] | None = None
 
     def _record_retry(self, reason: str) -> None:
         self.last_validator_retry_count += 1
@@ -268,6 +275,7 @@ class ReflectionCritic:
         self.last_repair_succeeded = False
         self.last_repair_reason = None
         self.last_full_retry_count = 0
+        self.last_repair_call_artifact = None
 
     def _get_agent(self, prompt_cache_key: str | None = None) -> Agent[None, ReflectionAdviceDraft]:
         model_settings_kwargs: dict[str, str | bool] = {"enable_thinking": self.settings.reflection_enable_thinking}
@@ -326,13 +334,21 @@ class ReflectionCritic:
         if repaired_reason is not None:
             self.last_repair_attempt_count = 1
             self.last_repair_reason = repaired_reason
-            repaired, repair_usage = await repair_reflection_draft(
-                self.settings,
-                self.prompt,
-                source_user_prompt,
-                repaired,
-                repaired_reason,
-            )
+            try:
+                repaired, repair_usage, repair_call_artifact = unpack_repair_result(
+                    await repair_reflection_draft(
+                        self.settings,
+                        self.prompt,
+                        self.repair_prompt,
+                        source_user_prompt,
+                        repaired,
+                        repaired_reason,
+                    )
+                )
+            except RepairCallError as exc:
+                self.last_repair_call_artifact = exc.call_artifact
+                raise
+            self.last_repair_call_artifact = repair_call_artifact
             total_provider_usage = combine_provider_usage(total_provider_usage, repair_usage)
             self.last_provider_usage = total_provider_usage
             repaired_reason = validate_reflection_draft(repaired)

@@ -5,7 +5,10 @@ import os
 import site
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
+
+from seektalent.resources import REQUIRED_PROMPTS
 
 
 def _bin_dir(venv_dir: Path) -> Path:
@@ -16,6 +19,10 @@ def test_built_wheel_runs_outside_repo(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     subprocess.run(["uv", "build"], cwd=repo_root, check=True)
     wheel = max((repo_root / "dist").glob("seektalent-*.whl"))
+    with zipfile.ZipFile(wheel) as archive:
+        archive_names = set(archive.namelist())
+    for name in REQUIRED_PROMPTS:
+        assert f"seektalent/prompts/{name}.md" in archive_names
 
     venv_dir = tmp_path / "venv"
     subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)

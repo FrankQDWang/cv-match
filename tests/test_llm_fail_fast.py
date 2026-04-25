@@ -25,6 +25,7 @@ from seektalent.models import (
     ReflectionFilterAdviceDraft,
     ReflectionKeywordAdviceDraft,
     RequirementSheet,
+    RequirementExtractionDraft,
     RoundRetrievalPlan,
     ScoringContext,
     ScoringPolicy,
@@ -33,7 +34,8 @@ from seektalent.models import (
     StopGuidance,
 )
 from seektalent.prompting import LoadedPrompt
-from seektalent.repair import repair_controller_decision, repair_reflection_draft
+from seektalent.runtime.orchestrator import WorkflowRuntime
+from seektalent.repair import repair_controller_decision, repair_reflection_draft, repair_requirement_draft
 from seektalent.requirements import RequirementExtractor
 from seektalent.reflection.critic import ReflectionCritic
 from seektalent.scoring.scorer import ResumeScorer
@@ -264,6 +266,50 @@ def test_controller_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPat
         asyncio.run(controller.decide(context=_controller_context()))
 
 
+def test_requirement_repair_prompt_uses_explicit_repair_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, str] = {}
+    draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_terms=["Python"],
+        title_anchor_rationale="Python is the stable searchable anchor from the title.",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build resume matching workflows.",
+        must_have_capabilities=["python"],
+        scoring_rationale="Score Python fit first.",
+    )
+
+    async def fake_repair_with_model(settings, **kwargs):  # noqa: ANN001, ANN003
+        del settings
+        captured["system_prompt"] = kwargs["system_prompt"]
+        captured["user_prompt"] = kwargs["user_prompt"]
+        return draft, None
+
+    monkeypatch.setattr("seektalent.repair._repair_with_model", fake_repair_with_model)
+
+    repaired, _ = asyncio.run(
+        repair_requirement_draft(
+            _settings(monkeypatch),
+            _prompt("requirements"),
+            _prompt("repair_requirements"),
+            InputTruth(
+                job_title="Senior Python Engineer",
+                jd="jd",
+                notes="notes",
+                job_title_sha256="title-hash",
+                jd_sha256="jd-hash",
+                notes_sha256="notes-hash",
+            ),
+            draft,
+            "broken",
+        )
+    )
+
+    assert repaired == draft
+    assert captured["system_prompt"] == "repair_requirements prompt"
+    assert "SOURCE_PROMPT" in captured["user_prompt"]
+    assert "requirements prompt" in captured["user_prompt"]
+
+
 def test_controller_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, str] = {}
     decision = SearchControllerDecision(
@@ -276,6 +322,7 @@ def test_controller_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
 
     async def fake_repair_with_model(settings, **kwargs):  # noqa: ANN001, ANN003
         del settings
+        captured["system_prompt"] = kwargs["system_prompt"]
         captured["user_prompt"] = kwargs["user_prompt"]
         return decision, None
 
@@ -285,6 +332,7 @@ def test_controller_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
         repair_controller_decision(
             _settings(monkeypatch),
             _prompt("controller"),
+            _prompt("repair_controller"),
             "VISIBLE CONTROLLER PROMPT",
             decision,
             "broken",
@@ -292,6 +340,7 @@ def test_controller_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
     )
 
     assert repaired == decision
+    assert captured["system_prompt"] == "repair_controller prompt"
     assert "SOURCE_USER_PROMPT" in captured["user_prompt"]
     assert "VISIBLE CONTROLLER PROMPT" in captured["user_prompt"]
     assert "CONTROLLER_CONTEXT" not in captured["user_prompt"]
@@ -317,6 +366,7 @@ def test_reflection_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
 
     async def fake_repair_with_model(settings, **kwargs):  # noqa: ANN001, ANN003
         del settings
+        captured["system_prompt"] = kwargs["system_prompt"]
         captured["user_prompt"] = kwargs["user_prompt"]
         return draft, None
 
@@ -326,6 +376,7 @@ def test_reflection_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
         repair_reflection_draft(
             _settings(monkeypatch),
             _prompt("reflection"),
+            _prompt("repair_reflection"),
             "VISIBLE REFLECTION PROMPT",
             draft,
             "broken",
@@ -333,9 +384,89 @@ def test_reflection_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
     )
 
     assert repaired == draft
+    assert captured["system_prompt"] == "repair_reflection prompt"
     assert "SOURCE_USER_PROMPT" in captured["user_prompt"]
     assert "VISIBLE REFLECTION PROMPT" in captured["user_prompt"]
     assert "REFLECTION_CONTEXT" not in captured["user_prompt"]
+
+
+def test_requirement_repair_captures_call_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
+    draft = RequirementExtractionDraft(
+        role_title="Senior Python Engineer",
+        title_anchor_terms=["Python"],
+        title_anchor_rationale="Python is the stable searchable anchor from the title.",
+        jd_query_terms=["Retrieval Systems"],
+        role_summary="Build resume matching workflows.",
+        must_have_capabilities=["python"],
+        scoring_rationale="Score Python fit first.",
+    )
+
+    class FakeUsage:
+        input_tokens = 5
+        output_tokens = 2
+        cache_read_tokens = 1
+        cache_write_tokens = 0
+        details = {"reasoning_tokens": 3}
+
+    class FakeResult:
+        def __init__(self, output: RequirementExtractionDraft) -> None:
+            self.output = output
+
+        def usage(self) -> FakeUsage:
+            return FakeUsage()
+
+    class FakeAgent:
+        def __class_getitem__(cls, item):  # noqa: ANN001, N805
+            del item
+            return cls
+
+        def __init__(self, **kwargs):  # noqa: ANN003
+            self.kwargs = kwargs
+
+        async def run(self, user_prompt: str):  # noqa: ANN001
+            assert "REPAIR_REASON" in user_prompt
+            return FakeResult(draft)
+
+    monkeypatch.setattr("seektalent.repair.Agent", FakeAgent)
+    monkeypatch.setattr("seektalent.repair.build_model", lambda model_id: f"model:{model_id}")
+    monkeypatch.setattr("seektalent.repair.build_output_spec", lambda *args, **kwargs: "output-spec")
+    monkeypatch.setattr("seektalent.repair.build_model_settings", lambda *args, **kwargs: {"ok": True})
+
+    repaired, usage, artifact = asyncio.run(
+        repair_requirement_draft(
+            _settings(monkeypatch),
+            _prompt("requirements"),
+            _prompt("repair_requirements"),
+            InputTruth(
+                job_title="Senior Python Engineer",
+                jd="jd",
+                notes="notes",
+                job_title_sha256="title-hash",
+                jd_sha256="jd-hash",
+                notes_sha256="notes-hash",
+            ),
+            draft,
+            "broken",
+        )
+    )
+
+    assert repaired == draft
+    assert usage is not None
+    assert usage.model_dump(mode="json") == {
+        "input_tokens": 5,
+        "output_tokens": 2,
+        "total_tokens": 7,
+        "cache_read_tokens": 1,
+        "cache_write_tokens": 0,
+        "details": {"reasoning_tokens": 3},
+    }
+    assert artifact["stage"] == "repair_requirements"
+    assert artifact["prompt_name"] == "repair_requirements"
+    assert artifact["model_id"]
+    assert artifact["status"] == "succeeded"
+    assert artifact["user_payload"]["REPAIR_REASON"] == {"reason": "broken"}
+    assert artifact["structured_output"]["role_title"] == "Senior Python Engineer"
+    assert artifact["provider_usage"].model_dump(mode="json") == usage.model_dump(mode="json")
 
 
 def test_finalizer_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -352,6 +483,20 @@ def test_finalizer_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatc
                 ranked_candidates=[],
             )
         )
+
+
+def test_runtime_does_not_eagerly_load_candidate_feedback_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_load_many(self, names):  # noqa: ANN001
+        captured["names"] = list(names)
+        return {name: _prompt(name) for name in names}
+
+    monkeypatch.setattr("seektalent.runtime.orchestrator.PromptRegistry.load_many", fake_load_many)
+
+    WorkflowRuntime(make_settings(mock_cts=True))
+
+    assert "candidate_feedback" not in captured["names"]
 
 
 def test_scorer_returns_failure_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:

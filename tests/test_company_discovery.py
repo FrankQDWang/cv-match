@@ -1,9 +1,11 @@
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 import pytest
 
+from seektalent.company_discovery.model_steps import CompanyDiscoveryModelSteps
 from seektalent.company_discovery.bocha_provider import BochaWebSearchProvider
 from seektalent.company_discovery.models import (
     CompanyDiscoveryInput,
@@ -19,6 +21,7 @@ from seektalent.company_discovery.query_injection import inject_target_company_t
 from seektalent.company_discovery.scheduler import select_company_seed_terms
 from seektalent.company_discovery.service import CompanyDiscoveryService
 from seektalent.models import HardConstraintSlots, QueryTermCandidate, RequirementSheet, SentQueryRecord
+from seektalent.prompting import LoadedPrompt
 from seektalent.retrieval.query_plan import canonicalize_controller_query_terms
 from tests.settings_factory import make_settings
 
@@ -424,6 +427,27 @@ class StubCompanyModelSteps:
         )
 
 
+class FailingCompanyModelSteps:
+    def __init__(self) -> None:
+        self.last_call_artifact: dict[str, object] | None = None
+
+    async def plan_search_queries(self, discovery_input: CompanyDiscoveryInput) -> list[CompanySearchTask]:
+        self.last_call_artifact = {
+            "stage": "company_discovery_plan",
+            "prompt_name": "company_discovery_plan",
+            "model_id": "openai-chat:qwen3.5-flash",
+            "user_payload": {"DISCOVERY_INPUT": discovery_input.model_dump(mode="json")},
+            "user_prompt_text": "plan discovery prompt",
+            "started_at": "2026-01-01T00:00:00+00:00",
+            "latency_ms": 5,
+            "status": "failed",
+            "retries": 0,
+            "output_retries": 2,
+            "error_message": "plan failed",
+        }
+        raise RuntimeError("plan failed")
+
+
 def test_company_discovery_service_returns_evidence_backed_plan() -> None:
     import asyncio
 
@@ -456,3 +480,149 @@ def test_company_discovery_service_returns_evidence_backed_plan() -> None:
     assert result.search_result_count == 1
     assert result.opened_page_count == 1
     assert result.plan.web_discovery_attempted is True
+
+
+def test_company_discovery_service_retains_failed_step_artifact() -> None:
+    settings = make_settings(mock_cts=True, bocha_api_key="bocha-key")
+    service = CompanyDiscoveryService(
+        settings,
+        search_provider=StubSearchProvider(),
+        page_reader=StubPageReader(),
+        model_steps=FailingCompanyModelSteps(),
+    )
+    requirement_sheet = RequirementSheet(
+        role_title="AI Platform Engineer",
+        title_anchor_term="AI Platform",
+        role_summary="Build AI platform systems.",
+        must_have_capabilities=["LLM serving", "Kubernetes"],
+        hard_constraints=HardConstraintSlots(locations=["上海"]),
+        initial_query_term_pool=[_anchor()],
+        scoring_rationale="Score platform fit.",
+    )
+
+    with pytest.raises(RuntimeError, match="plan failed"):
+        asyncio.run(
+            service.discover_web(
+                requirement_sheet=requirement_sheet,
+                round_no=2,
+                trigger_reason="low recall",
+            )
+        )
+
+    assert service.last_call_artifacts == [
+        {
+            "stage": "company_discovery_plan",
+            "prompt_name": "company_discovery_plan",
+            "model_id": "openai-chat:qwen3.5-flash",
+            "user_payload": {
+                "DISCOVERY_INPUT": {
+                    "role_title": "AI Platform Engineer",
+                    "title_anchor_term": "AI Platform",
+                    "must_have_capabilities": ["LLM serving", "Kubernetes"],
+                    "preferred_domains": [],
+                    "preferred_backgrounds": [],
+                    "locations": ["上海"],
+                    "exclusions": [],
+                }
+            },
+            "user_prompt_text": "plan discovery prompt",
+            "started_at": "2026-01-01T00:00:00+00:00",
+            "latency_ms": 5,
+            "status": "failed",
+            "retries": 0,
+            "output_retries": 2,
+            "error_message": "plan failed",
+        }
+    ]
+
+
+def test_company_discovery_model_steps_store_named_prompts() -> None:
+    prompts = {
+        "company_discovery_plan": LoadedPrompt(
+            name="company_discovery_plan",
+            path=Path("company_discovery_plan.md"),
+            content="plan prompt",
+            sha256="h1",
+        ),
+        "company_discovery_extract": LoadedPrompt(
+            name="company_discovery_extract",
+            path=Path("company_discovery_extract.md"),
+            content="extract prompt",
+            sha256="h2",
+        ),
+        "company_discovery_reduce": LoadedPrompt(
+            name="company_discovery_reduce",
+            path=Path("company_discovery_reduce.md"),
+            content="reduce prompt",
+            sha256="h3",
+        ),
+    }
+
+    steps = CompanyDiscoveryModelSteps(make_settings(), prompts)
+
+    assert steps.prompts == prompts
+
+
+def test_company_discovery_model_steps_fail_fast_when_prompt_is_missing() -> None:
+    with pytest.raises(ValueError, match="company_discovery_extract"):
+        CompanyDiscoveryModelSteps(
+            make_settings(),
+            {
+                "company_discovery_plan": LoadedPrompt(
+                    name="company_discovery_plan",
+                    path=Path("company_discovery_plan.md"),
+                    content="plan prompt",
+                    sha256="h1",
+                ),
+                "company_discovery_reduce": LoadedPrompt(
+                    name="company_discovery_reduce",
+                    path=Path("company_discovery_reduce.md"),
+                    content="reduce prompt",
+                    sha256="h3",
+                ),
+            },
+        )
+
+
+def test_company_discovery_model_steps_use_named_prompt_content(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAgent:
+        def __class_getitem__(cls, item):  # noqa: ANN001, N805
+            del item
+            return cls
+
+        def __init__(self, **kwargs):  # noqa: ANN003
+            captured["system_prompt"] = kwargs["system_prompt"]
+
+    monkeypatch.setattr("seektalent.company_discovery.model_steps.Agent", FakeAgent)
+    monkeypatch.setattr("seektalent.company_discovery.model_steps.build_model", lambda model_id: object())
+    monkeypatch.setattr("seektalent.company_discovery.model_steps.build_output_spec", lambda *args, **kwargs: object())
+    monkeypatch.setattr("seektalent.company_discovery.model_steps.build_model_settings", lambda *args, **kwargs: {})
+
+    prompts = {
+        "company_discovery_plan": LoadedPrompt(
+            name="company_discovery_plan",
+            path=Path("company_discovery_plan.md"),
+            content="plan system prompt",
+            sha256="h1",
+        ),
+        "company_discovery_extract": LoadedPrompt(
+            name="company_discovery_extract",
+            path=Path("company_discovery_extract.md"),
+            content="extract system prompt",
+            sha256="h2",
+        ),
+        "company_discovery_reduce": LoadedPrompt(
+            name="company_discovery_reduce",
+            path=Path("company_discovery_reduce.md"),
+            content="reduce system prompt",
+            sha256="h3",
+        ),
+    }
+
+    steps = CompanyDiscoveryModelSteps(make_settings(), prompts)
+
+    steps._agent("company_discovery_extract", CompanyDiscoveryInput)
+
+    assert captured["system_prompt"] == "extract system prompt"

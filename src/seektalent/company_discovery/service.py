@@ -19,6 +19,7 @@ from seektalent.company_discovery.models import (
 from seektalent.company_discovery.page_reader import PageReader
 from seektalent.config import AppSettings
 from seektalent.models import RequirementSheet
+from seektalent.prompting import LoadedPrompt
 
 T = TypeVar("T")
 
@@ -31,11 +32,18 @@ class CompanyDiscoveryService:
         search_provider: Any | None = None,
         page_reader: Any | None = None,
         model_steps: Any | None = None,
+        prompts: dict[str, LoadedPrompt] | None = None,
     ) -> None:
         self.settings = settings
         self.search_provider = search_provider or BochaWebSearchProvider(settings)
         self.page_reader = page_reader or PageReader()
-        self.model_steps = model_steps or CompanyDiscoveryModelSteps(settings)
+        self.last_call_artifacts: list[dict[str, object]] = []
+        if model_steps is not None:
+            self.model_steps = model_steps
+        else:
+            if prompts is None:
+                raise ValueError("CompanyDiscoveryService requires prompts when model_steps is not provided.")
+            self.model_steps = CompanyDiscoveryModelSteps(settings, prompts)
 
     async def discover_web(
         self,
@@ -45,15 +53,13 @@ class CompanyDiscoveryService:
         trigger_reason: str,
     ) -> CompanyDiscoveryResult:
         del round_no
+        self.last_call_artifacts = []
         if not self.settings.bocha_api_key:
             raise ValueError("SEEKTALENT_BOCHA_API_KEY is required when company web discovery runs.")
 
         deadline = perf_counter() + self.settings.company_discovery_timeout_seconds
         discovery_input = build_discovery_input(requirement_sheet)
-        search_tasks = await self._with_deadline(
-            self.model_steps.plan_search_queries(discovery_input),
-            deadline,
-        )
+        search_tasks = await self._run_model_step(self.model_steps.plan_search_queries(discovery_input), deadline)
         search_results = await self._search(search_tasks, deadline)
         if not search_results:
             return _empty_result(
@@ -62,7 +68,7 @@ class CompanyDiscoveryService:
                 stop_reason="no_accepted_companies",
             )
         reranked_results, page_reads = await self._read_pages(discovery_input, search_results, deadline)
-        candidates = await self._with_deadline(
+        candidates = await self._run_model_step(
             self.model_steps.extract_company_evidence(page_reads, search_results),
             deadline,
         )
@@ -123,7 +129,7 @@ class CompanyDiscoveryService:
         accepted = _accepted_candidates(candidates, self.settings.company_discovery_min_confidence)
         if not accepted:
             return TargetCompanyPlan(web_discovery_attempted=True, stop_reason="no_accepted_companies")
-        plan = await self._with_deadline(
+        plan = await self._run_model_step(
             self.model_steps.reduce_company_plan(accepted, discovery_input, stop_reason="completed"),
             deadline,
         )
@@ -137,6 +143,16 @@ class CompanyDiscoveryService:
                 close()
             raise TimeoutError
         return await asyncio.wait_for(awaitable, timeout=remaining)
+
+    async def _run_model_step(self, awaitable: Awaitable[T], deadline: float) -> T:
+        if hasattr(self.model_steps, "last_call_artifact"):
+            self.model_steps.last_call_artifact = None
+        try:
+            return await self._with_deadline(awaitable, deadline)
+        finally:
+            artifact = getattr(self.model_steps, "last_call_artifact", None)
+            if artifact is not None:
+                self.last_call_artifacts.append(dict(artifact))
 
 
 def build_discovery_input(requirement_sheet: RequirementSheet) -> CompanyDiscoveryInput:

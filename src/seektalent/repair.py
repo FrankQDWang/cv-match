@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from time import perf_counter
+from typing import Any
 from typing import TypeVar, cast
 
 from pydantic_ai import Agent
@@ -18,13 +21,31 @@ from seektalent.tracing import ProviderUsageSnapshot, provider_usage_from_result
 OutputT = TypeVar("OutputT")
 
 
+class RepairCallError(RuntimeError):
+    def __init__(self, message: str, call_artifact: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.call_artifact = call_artifact
+
+
+def unpack_repair_result(
+    result: tuple[OutputT, ProviderUsageSnapshot | None] | tuple[OutputT, ProviderUsageSnapshot | None, dict[str, Any]],
+) -> tuple[OutputT, ProviderUsageSnapshot | None, dict[str, Any] | None]:
+    if len(result) == 2:
+        output, usage = result
+        return output, usage, None
+    output, usage, call_artifact = result
+    return output, usage, call_artifact
+
+
 async def _repair_with_model(
     settings: AppSettings,
     *,
+    prompt_name: str,
+    user_payload: dict[str, Any],
     output_type: type[OutputT],
     system_prompt: str,
     user_prompt: str,
-) -> tuple[OutputT, ProviderUsageSnapshot | None]:
+) -> tuple[OutputT, ProviderUsageSnapshot | None, dict[str, Any]]:
     model_id = settings.structured_repair_model
     model = build_model(model_id)
     agent = cast(Agent[None, OutputT], Agent(
@@ -40,42 +61,74 @@ async def _repair_with_model(
         retries=0,
         output_retries=2,
     ))
-    result = await agent.run(user_prompt)
-    return result.output, provider_usage_from_result(result)
+    started_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    started_clock = perf_counter()
+    try:
+        result = await agent.run(user_prompt)
+    except Exception as exc:
+        raise RepairCallError(
+            str(exc),
+            {
+                "stage": prompt_name,
+                "prompt_name": prompt_name,
+                "model_id": model_id,
+                "user_payload": user_payload,
+                "user_prompt_text": user_prompt,
+                "started_at": started_at,
+                "latency_ms": max(1, int((perf_counter() - started_clock) * 1000)),
+                "status": "failed",
+                "retries": 0,
+                "output_retries": 2,
+                "error_message": str(exc),
+            },
+        ) from exc
+    output = result.output
+    usage = provider_usage_from_result(result)
+    return (
+        output,
+        usage,
+        {
+            "stage": prompt_name,
+            "prompt_name": prompt_name,
+            "model_id": model_id,
+            "user_payload": user_payload,
+            "user_prompt_text": user_prompt,
+            "structured_output": output.model_dump(mode="json") if hasattr(output, "model_dump") else output,
+            "started_at": started_at,
+            "latency_ms": max(1, int((perf_counter() - started_clock) * 1000)),
+            "status": "succeeded",
+            "retries": 0,
+            "output_retries": 2,
+            "provider_usage": usage,
+        },
+    )
 
 
 async def repair_requirement_draft(
     settings: AppSettings,
     prompt: LoadedPrompt,
+    repair_prompt: LoadedPrompt,
     input_truth: InputTruth,
     draft: RequirementExtractionDraft,
     reason: str,
-) -> tuple[RequirementExtractionDraft, ProviderUsageSnapshot | None]:
-    user_prompt = "\n\n".join(
-        [
-            json_block(
-                "REPAIR_REASON",
-                {"reason": reason},
-            ),
-            json_block(
-                "SOURCE_PROMPT",
-                {
-                    "name": prompt.name,
-                    "sha256": prompt.sha256,
-                    "content": prompt.content,
-                },
-            ),
-            json_block("INPUT_TRUTH", input_truth.model_dump(mode="json")),
-            json_block("BROKEN_DRAFT", draft.model_dump(mode="json")),
-        ]
-    )
+) -> tuple[RequirementExtractionDraft, ProviderUsageSnapshot | None, dict[str, Any]]:
+    user_payload = {
+        "REPAIR_REASON": {"reason": reason},
+        "SOURCE_PROMPT": {
+            "name": prompt.name,
+            "sha256": prompt.sha256,
+            "content": prompt.content,
+        },
+        "INPUT_TRUTH": input_truth.model_dump(mode="json"),
+        "BROKEN_DRAFT": draft.model_dump(mode="json"),
+    }
+    user_prompt = "\n\n".join([json_block(title, payload) for title, payload in user_payload.items()])
     return await _repair_with_model(
         settings,
+        prompt_name=repair_prompt.name,
+        user_payload=user_payload,
         output_type=RequirementExtractionDraft,
-        system_prompt=(
-            "Repair one RequirementExtractionDraft. "
-            "Return complete JSON that preserves source intent and fixes the reported issue."
-        ),
+        system_prompt=repair_prompt.content,
         user_prompt=user_prompt,
     )
 
@@ -83,35 +136,28 @@ async def repair_requirement_draft(
 async def repair_controller_decision(
     settings: AppSettings,
     prompt: LoadedPrompt,
+    repair_prompt: LoadedPrompt,
     source_user_prompt: str,
     decision: ControllerDecision,
     reason: str,
-) -> tuple[ControllerDecision, ProviderUsageSnapshot | None]:
-    user_prompt = "\n\n".join(
-        [
-            json_block(
-                "REPAIR_REASON",
-                {"reason": reason},
-            ),
-            json_block(
-                "SOURCE_PROMPT",
-                {
-                    "name": prompt.name,
-                    "sha256": prompt.sha256,
-                    "content": prompt.content,
-                },
-            ),
-            json_block("SOURCE_USER_PROMPT", {"content": source_user_prompt}),
-            json_block("CURRENT_DECISION", decision.model_dump(mode="json")),
-        ]
-    )
+) -> tuple[ControllerDecision, ProviderUsageSnapshot | None, dict[str, Any]]:
+    user_payload = {
+        "REPAIR_REASON": {"reason": reason},
+        "SOURCE_PROMPT": {
+            "name": prompt.name,
+            "sha256": prompt.sha256,
+            "content": prompt.content,
+        },
+        "SOURCE_USER_PROMPT": {"content": source_user_prompt},
+        "CURRENT_DECISION": decision.model_dump(mode="json"),
+    }
+    user_prompt = "\n\n".join([json_block(title, payload) for title, payload in user_payload.items()])
     return await _repair_with_model(
         settings,
+        prompt_name=repair_prompt.name,
+        user_payload=user_payload,
         output_type=ControllerDecision,
-        system_prompt=(
-            "Repair one ControllerDecision. "
-            "Return complete JSON that preserves intent and fixes the reported issue."
-        ),
+        system_prompt=repair_prompt.content,
         user_prompt=user_prompt,
     )
 
@@ -119,23 +165,27 @@ async def repair_controller_decision(
 async def repair_reflection_draft(
     settings: AppSettings,
     prompt: LoadedPrompt,
+    repair_prompt: LoadedPrompt,
     source_user_prompt: str,
     draft: ReflectionAdviceDraft,
     reason: str,
-) -> tuple[ReflectionAdviceDraft, ProviderUsageSnapshot | None]:
-    user_prompt = "\n\n".join(
-        [
-            json_block(
-                "REPAIR_REASON",
-                {"reason": reason},
-            ),
-            json_block("SOURCE_USER_PROMPT", {"content": source_user_prompt}),
-            json_block("CURRENT_DRAFT", draft.model_dump(mode="json")),
-        ]
-    )
+) -> tuple[ReflectionAdviceDraft, ProviderUsageSnapshot | None, dict[str, Any]]:
+    user_payload = {
+        "REPAIR_REASON": {"reason": reason},
+        "SOURCE_PROMPT": {
+            "name": prompt.name,
+            "sha256": prompt.sha256,
+            "content": prompt.content,
+        },
+        "SOURCE_USER_PROMPT": {"content": source_user_prompt},
+        "CURRENT_DRAFT": draft.model_dump(mode="json"),
+    }
+    user_prompt = "\n\n".join([json_block(title, payload) for title, payload in user_payload.items()])
     return await _repair_with_model(
         settings,
+        prompt_name=repair_prompt.name,
+        user_payload=user_payload,
         output_type=ReflectionAdviceDraft,
-        system_prompt=prompt.content,
+        system_prompt=repair_prompt.content,
         user_prompt=user_prompt,
     )
