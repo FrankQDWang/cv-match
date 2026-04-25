@@ -18,6 +18,7 @@ from seektalent.models import (
     TopPoolEntryView,
     TopPoolStrength,
     unique_strings,
+    is_title_anchor_role,
 )
 from seektalent.requirements import build_requirement_digest
 from seektalent.tracing import json_sha256
@@ -321,7 +322,7 @@ def _untried_admitted_families(
     tried = set(tried_families)
     family_candidates: dict[str, QueryTermCandidate] = {}
     for item in query_term_pool:
-        if not item.active or item.queryability != "admitted" or item.retrieval_role == "role_anchor":
+        if not item.active or item.queryability != "admitted" or is_title_anchor_role(item.retrieval_role):
             continue
         if item.family in tried:
             continue

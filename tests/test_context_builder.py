@@ -561,3 +561,138 @@ def test_stop_guidance_allows_strong_pool_before_budget_threshold() -> None:
     assert context.stop_guidance.top_pool_strength == "strong"
     assert context.stop_guidance.strong_fit_count == 5
     assert context.stop_guidance.quality_gate_status == "pass"
+
+
+def test_stop_guidance_excludes_secondary_title_anchor_from_untried_families() -> None:
+    requirement_sheet = RequirementSheet(
+        role_title="Backend Platform Engineer",
+        title_anchor_terms=["Backend", "Platform"],
+        role_summary="Build backend platform services.",
+        must_have_capabilities=["Python"],
+        hard_constraints=HardConstraintSlots(locations=["上海市"]),
+        initial_query_term_pool=[
+            QueryTermCandidate(
+                term="Backend",
+                source="job_title",
+                category="role_anchor",
+                priority=1,
+                evidence="Compiled title",
+                first_added_round=0,
+                retrieval_role="primary_role_anchor",
+                queryability="admitted",
+                family="role.backend",
+            ),
+            QueryTermCandidate(
+                term="Platform",
+                source="job_title",
+                category="role_anchor",
+                priority=2,
+                evidence="Compiled title",
+                first_added_round=0,
+                retrieval_role="secondary_title_anchor",
+                queryability="admitted",
+                family="role.platform",
+            ),
+            QueryTermCandidate(
+                term="Python",
+                source="jd",
+                category="domain",
+                priority=3,
+                evidence="JD body",
+                first_added_round=0,
+                retrieval_role="core_skill",
+                queryability="admitted",
+                family="skill.python",
+            ),
+        ],
+        scoring_rationale="Prefer backend platform resumes with Python signal.",
+    )
+    run_state = RunState(
+        input_truth=InputTruth(
+            job_title="Backend Platform Engineer",
+            jd="Build backend platform services.",
+            notes="Prefer Python signal.",
+            job_title_sha256="title-hash",
+            jd_sha256="jd-hash",
+            notes_sha256="notes-hash",
+        ),
+        requirement_sheet=requirement_sheet,
+        scoring_policy=ScoringPolicy(
+            role_title=requirement_sheet.role_title,
+            role_summary=requirement_sheet.role_summary,
+            must_have_capabilities=requirement_sheet.must_have_capabilities,
+            preferred_capabilities=[],
+            exclusion_signals=[],
+            hard_constraints=requirement_sheet.hard_constraints,
+            preferences=requirement_sheet.preferences,
+            scoring_rationale=requirement_sheet.scoring_rationale,
+        ),
+        retrieval_state=RetrievalState(
+            current_plan_version=1,
+            query_term_pool=requirement_sheet.initial_query_term_pool,
+            sent_query_history=[
+                SentQueryRecord(
+                    round_no=1,
+                    city="上海市",
+                    phase="balanced",
+                    batch_no=1,
+                    requested_count=10,
+                    query_terms=["Backend", "Platform"],
+                    keyword_query="Backend Platform",
+                    source_plan_version=1,
+                    rationale="Round 1 query budget.",
+                )
+            ],
+        ),
+        scorecards_by_resume_id={f"fit-{index}": _scored_candidate(f"fit-{index}", round_no=1) for index in range(2)},
+        top_pool_ids=["fit-0", "fit-1"],
+        round_history=[
+            RoundState(
+                round_no=1,
+                controller_decision=SearchControllerDecision(
+                    thought_summary="Round 1 search.",
+                    action="search_cts",
+                    decision_rationale="Start with both title anchors.",
+                    proposed_query_terms=["Backend", "Platform"],
+                    proposed_filter_plan=ProposedFilterPlan(),
+                ),
+                retrieval_plan=RoundRetrievalPlan(
+                    plan_version=1,
+                    round_no=1,
+                    query_terms=["Backend", "Platform"],
+                    keyword_query="Backend Platform",
+                    projected_cts_filters={},
+                    runtime_only_constraints=[],
+                    location_execution_plan=LocationExecutionPlan(
+                        mode="single",
+                        allowed_locations=["上海市"],
+                        preferred_locations=[],
+                        priority_order=[],
+                        balanced_order=["上海市"],
+                        rotation_offset=0,
+                        target_new=10,
+                    ),
+                    target_new=10,
+                    rationale="Round 1",
+                ),
+                search_observation=SearchObservation(
+                    round_no=1,
+                    requested_count=10,
+                    raw_candidate_count=4,
+                    unique_new_count=2,
+                    shortage_count=6,
+                    fetch_attempt_count=1,
+                ),
+            )
+        ],
+    )
+
+    context = build_controller_context(
+        run_state=run_state,
+        round_no=2,
+        min_rounds=1,
+        max_rounds=5,
+        target_new=10,
+    )
+
+    assert context.stop_guidance.untried_admitted_families == ["skill.python"]

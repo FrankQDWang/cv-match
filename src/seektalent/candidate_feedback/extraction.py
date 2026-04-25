@@ -4,7 +4,7 @@ import re
 from collections import Counter, defaultdict
 
 from seektalent.candidate_feedback.models import CandidateFeedbackDecision, FeedbackCandidateTerm
-from seektalent.models import QueryTermCandidate, ScoredCandidate
+from seektalent.models import QueryTermCandidate, ScoredCandidate, is_primary_anchor_role
 
 GENERIC_TERMS = {
     "平台",
@@ -251,7 +251,7 @@ def _resume_field_texts(resume: ScoredCandidate) -> dict[str, list[str]]:
 
 def _active_anchor(existing_terms: list[QueryTermCandidate]) -> QueryTermCandidate | None:
     for term in existing_terms:
-        if term.active and term.queryability == "admitted" and term.retrieval_role == "role_anchor":
+        if term.active and term.queryability == "admitted" and is_primary_anchor_role(term.retrieval_role):
             return term
     return None
 

@@ -194,6 +194,17 @@ def test_select_company_seed_terms_picks_first_untried_company() -> None:
     assert [item.term for item in selected] == ["python", "阿里云"]
 
 
+def test_select_company_seed_terms_uses_primary_role_anchor() -> None:
+    pool = [
+        _anchor().model_copy(update={"retrieval_role": "primary_role_anchor"}),
+        _company_term("火山引擎", "company.volcengine"),
+    ]
+
+    selected = select_company_seed_terms(pool, [], forced_families=set(), max_terms=2)
+
+    assert [item.term for item in selected] == ["python", "火山引擎"]
+
+
 def test_query_plan_accepts_company_terms_without_counting_company_families_as_compiler_duplicates() -> None:
     pool = [
         _anchor(),
@@ -204,7 +215,7 @@ def test_query_plan_accepts_company_terms_without_counting_company_families_as_c
     assert canonicalize_controller_query_terms(
         ["python", "火山引擎", "阿里云"],
         round_no=2,
-        title_anchor_term="python",
+        title_anchor_terms=["python"],
         query_term_pool=pool,
     ) == ["python", "火山引擎", "阿里云"]
 
@@ -240,7 +251,7 @@ def test_query_plan_still_rejects_repeated_non_company_families() -> None:
         canonicalize_controller_query_terms(
             ["python", "python data", "python infra"],
             round_no=2,
-            title_anchor_term="python",
+            title_anchor_terms=["python"],
             query_term_pool=pool,
         )
 

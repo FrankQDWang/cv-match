@@ -54,6 +54,8 @@ from seektalent.models import (
     TerminalControllerRound,
     scored_candidate_sort_key,
     unique_strings,
+    is_primary_anchor_role,
+    is_title_anchor_role,
 )
 from seektalent.normalization import normalize_resume
 from seektalent.prompting import PromptRegistry
@@ -2014,7 +2016,7 @@ class WorkflowRuntime:
             [
                 item
                 for item in query_term_pool
-                if item.active and item.queryability == "admitted" and item.retrieval_role == "role_anchor"
+                if item.active and item.queryability == "admitted" and is_primary_anchor_role(item.retrieval_role)
             ],
             key=lambda item: (item.priority, item.first_added_round, item.term.casefold()),
         )
@@ -2027,7 +2029,9 @@ class WorkflowRuntime:
         candidates = [
             item
             for item in retrieval_state.query_term_pool
-            if item.queryability == "admitted" and item.retrieval_role != "role_anchor" and item.family not in tried
+            if item.queryability == "admitted"
+            and not is_title_anchor_role(item.retrieval_role)
+            and item.family not in tried
         ]
         return min(
             candidates,

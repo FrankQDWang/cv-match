@@ -1431,6 +1431,63 @@ def test_runtime_diagnostics_does_not_label_collapsed_multi_anchor_query_after_r
     assert diagnostics["audit_labels"] == []
 
 
+def test_runtime_helpers_use_primary_anchor_and_skip_secondary_title_anchor_reserve(tmp_path: Path) -> None:
+    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+    retrieval_state = RetrievalState(
+        current_plan_version=1,
+        query_term_pool=[
+            QueryTermCandidate(
+                term="Backend",
+                source="job_title",
+                category="role_anchor",
+                priority=1,
+                evidence="Compiled title",
+                first_added_round=0,
+                retrieval_role="primary_role_anchor",
+                queryability="admitted",
+                family="role.backend",
+            ),
+            QueryTermCandidate(
+                term="Platform",
+                source="job_title",
+                category="role_anchor",
+                priority=2,
+                evidence="Compiled title",
+                first_added_round=0,
+                retrieval_role="secondary_title_anchor",
+                queryability="admitted",
+                family="role.platform",
+            ),
+            QueryTermCandidate(
+                term="Python",
+                source="jd",
+                category="domain",
+                priority=3,
+                evidence="JD body",
+                first_added_round=0,
+                active=False,
+                retrieval_role="core_skill",
+                queryability="admitted",
+                family="skill.python",
+            ),
+        ],
+        sent_query_history=[
+            SentQueryRecord(
+                round_no=1,
+                query_terms=["Backend", "Platform"],
+                keyword_query="Backend Platform",
+                batch_no=1,
+                requested_count=10,
+                source_plan_version=1,
+                rationale="round 1",
+            )
+        ],
+    )
+
+    assert runtime._active_admitted_anchor(retrieval_state.query_term_pool).term == "Backend"
+    assert runtime._untried_admitted_non_anchor_reserve(retrieval_state).term == "Python"
+
+
 def test_runtime_diagnostics_does_not_flag_compiled_short_title_anchors_as_collapsed(tmp_path: Path) -> None:
     runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
     requirement_sheet = RequirementSheet(

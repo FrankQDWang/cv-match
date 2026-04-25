@@ -59,6 +59,15 @@ def canonicalize_controller_query_terms(
         raise ValueError("round 1 requires exactly 1 companion admitted term.")
     if round_no > 1 and len(companion_terms) not in {1, 2}:
         raise ValueError("rounds after 1 require 1 or 2 companion admitted terms.")
+    if round_no > 1:
+        secondary_title_terms = [
+            item.term for item in companion_candidates if item.retrieval_role == "secondary_title_anchor"
+        ]
+        if secondary_title_terms:
+            raise ValueError(
+                "rounds after 1 must not use secondary_title_anchor as a support term: "
+                + ", ".join(secondary_title_terms)
+            )
     allowed_inactive = allowed_inactive_non_anchor_terms or set()
     inactive_terms = [
         item.term

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from seektalent.models import QueryTermCandidate, SentQueryRecord
+from seektalent.models import QueryTermCandidate, SentQueryRecord, is_primary_anchor_role
 
 
 def select_company_seed_terms(
@@ -32,7 +32,7 @@ def select_company_seed_terms(
 
 
 def _is_admitted_anchor(item: QueryTermCandidate) -> bool:
-    return item.queryability == "admitted" and item.active and item.retrieval_role == "role_anchor"
+    return item.queryability == "admitted" and item.active and is_primary_anchor_role(item.retrieval_role)
 
 
 def _is_admitted_company(item: QueryTermCandidate) -> bool:

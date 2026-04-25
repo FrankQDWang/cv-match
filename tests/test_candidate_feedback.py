@@ -246,6 +246,30 @@ def test_build_feedback_decision_prefers_shaped_term_over_plain_english_phrase()
     assert decision.accepted_term.term == "Node.js"
 
 
+def test_build_feedback_decision_uses_primary_role_anchor() -> None:
+    decision = build_feedback_decision(
+        seed_resumes=[
+            _scored_candidate("seed-1", evidence=["LangGraph"]),
+            _scored_candidate("seed-2", evidence=["LangGraph"]),
+        ],
+        negative_resumes=[],
+        existing_terms=[
+            _query_term(
+                "AI Agent",
+                source="job_title",
+                category="role_anchor",
+                retrieval_role="primary_role_anchor",
+                family="role.aiagent",
+            )
+        ],
+        sent_query_terms=[],
+        round_no=4,
+    )
+
+    assert decision.accepted_term is not None
+    assert decision.forced_query_terms == ["AI Agent", "LangGraph"]
+
+
 def test_candidate_feedback_model_ranking_forbids_unknown_terms() -> None:
     ranking = CandidateFeedbackModelRanking(
         accepted_terms=["langgraph", "InventedTerm"],

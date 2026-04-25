@@ -486,6 +486,52 @@ def test_query_plan_round_one_falls_back_to_primary_plus_domain_term() -> None:
     assert select_query_terms(pool, round_no=1, title_anchor_terms=["Backend Engineer"]) == ["Backend", "Python"]
 
 
+def test_query_plan_rejects_secondary_title_anchor_after_round_one() -> None:
+    pool = [
+        QueryTermCandidate(
+            term="Backend",
+            source="job_title",
+            category="role_anchor",
+            priority=1,
+            evidence="compiled title",
+            first_added_round=0,
+            retrieval_role="primary_role_anchor",
+            queryability="admitted",
+            family="role.backend",
+        ),
+        QueryTermCandidate(
+            term="Platform",
+            source="job_title",
+            category="role_anchor",
+            priority=2,
+            evidence="compiled title",
+            first_added_round=0,
+            retrieval_role="secondary_title_anchor",
+            queryability="admitted",
+            family="role.platform",
+        ),
+        QueryTermCandidate(
+            term="Python",
+            source="jd",
+            category="domain",
+            priority=1,
+            evidence="jd",
+            first_added_round=0,
+            retrieval_role="core_skill",
+            queryability="admitted",
+            family="skill.python",
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="secondary_title_anchor"):
+        canonicalize_controller_query_terms(
+            ["Backend", "Platform"],
+            round_no=2,
+            title_anchor_terms=["Backend Engineer", "Platform Engineer"],
+            query_term_pool=pool,
+        )
+
+
 def test_query_plan_derives_distinct_explore_query_from_active_and_reserve_terms() -> None:
     pool = [
         QueryTermCandidate(
