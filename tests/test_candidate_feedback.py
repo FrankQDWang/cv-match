@@ -334,3 +334,32 @@ def test_candidate_feedback_model_steps_store_loaded_prompt() -> None:
     steps = CandidateFeedbackModelSteps(make_settings(), prompt)
 
     assert steps.prompt is prompt
+
+
+def test_candidate_feedback_model_steps_use_loaded_prompt_content(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAgent:
+        def __class_getitem__(cls, item):  # noqa: ANN001, N805
+            del item
+            return cls
+
+        def __init__(self, **kwargs):  # noqa: ANN003
+            captured["system_prompt"] = kwargs["system_prompt"]
+
+    monkeypatch.setattr("seektalent.candidate_feedback.model_steps.Agent", FakeAgent)
+    monkeypatch.setattr("seektalent.candidate_feedback.model_steps.build_model", lambda model_id: object())
+    monkeypatch.setattr("seektalent.candidate_feedback.model_steps.build_output_spec", lambda *args, **kwargs: object())
+    monkeypatch.setattr("seektalent.candidate_feedback.model_steps.build_model_settings", lambda *args, **kwargs: {})
+
+    prompt = LoadedPrompt(
+        name="candidate_feedback",
+        path=Path("candidate_feedback.md"),
+        content="feedback system prompt",
+        sha256="hash",
+    )
+    steps = CandidateFeedbackModelSteps(make_settings(), prompt)
+
+    steps._agent()
+
+    assert captured["system_prompt"] == "feedback system prompt"

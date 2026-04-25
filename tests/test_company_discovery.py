@@ -486,3 +486,68 @@ def test_company_discovery_model_steps_store_named_prompts() -> None:
     steps = CompanyDiscoveryModelSteps(make_settings(), prompts)
 
     assert steps.prompts == prompts
+
+
+def test_company_discovery_model_steps_fail_fast_when_prompt_is_missing() -> None:
+    with pytest.raises(ValueError, match="company_discovery_extract"):
+        CompanyDiscoveryModelSteps(
+            make_settings(),
+            {
+                "company_discovery_plan": LoadedPrompt(
+                    name="company_discovery_plan",
+                    path=Path("company_discovery_plan.md"),
+                    content="plan prompt",
+                    sha256="h1",
+                ),
+                "company_discovery_reduce": LoadedPrompt(
+                    name="company_discovery_reduce",
+                    path=Path("company_discovery_reduce.md"),
+                    content="reduce prompt",
+                    sha256="h3",
+                ),
+            },
+        )
+
+
+def test_company_discovery_model_steps_use_named_prompt_content(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAgent:
+        def __class_getitem__(cls, item):  # noqa: ANN001, N805
+            del item
+            return cls
+
+        def __init__(self, **kwargs):  # noqa: ANN003
+            captured["system_prompt"] = kwargs["system_prompt"]
+
+    monkeypatch.setattr("seektalent.company_discovery.model_steps.Agent", FakeAgent)
+    monkeypatch.setattr("seektalent.company_discovery.model_steps.build_model", lambda model_id: object())
+    monkeypatch.setattr("seektalent.company_discovery.model_steps.build_output_spec", lambda *args, **kwargs: object())
+    monkeypatch.setattr("seektalent.company_discovery.model_steps.build_model_settings", lambda *args, **kwargs: {})
+
+    prompts = {
+        "company_discovery_plan": LoadedPrompt(
+            name="company_discovery_plan",
+            path=Path("company_discovery_plan.md"),
+            content="plan system prompt",
+            sha256="h1",
+        ),
+        "company_discovery_extract": LoadedPrompt(
+            name="company_discovery_extract",
+            path=Path("company_discovery_extract.md"),
+            content="extract system prompt",
+            sha256="h2",
+        ),
+        "company_discovery_reduce": LoadedPrompt(
+            name="company_discovery_reduce",
+            path=Path("company_discovery_reduce.md"),
+            content="reduce system prompt",
+            sha256="h3",
+        ),
+    }
+
+    steps = CompanyDiscoveryModelSteps(make_settings(), prompts)
+
+    steps._agent("company_discovery_extract", CompanyDiscoveryInput)
+
+    assert captured["system_prompt"] == "extract system prompt"

@@ -97,3 +97,23 @@ def test_resume_quality_commenter_uses_loaded_prompt() -> None:
     commenter = ResumeQualityCommenter(make_settings(), prompt)
 
     assert commenter.prompt is prompt
+
+
+def test_resume_quality_commenter_builds_agent_with_loaded_prompt(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs):  # noqa: ANN003
+            captured["system_prompt"] = kwargs["system_prompt"]
+
+    monkeypatch.setattr("seektalent.resume_quality.Agent", FakeAgent)
+    monkeypatch.setattr("seektalent.resume_quality.build_model", lambda model_id: object())
+
+    commenter = ResumeQualityCommenter(
+        make_settings(),
+        LoadedPrompt(name="tui_summary", path=Path("tui_summary.md"), content="summary system prompt", sha256="hash"),
+    )
+
+    commenter._build_agent()
+
+    assert captured["system_prompt"] == "summary system prompt"

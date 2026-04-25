@@ -34,6 +34,7 @@ from seektalent.models import (
     StopGuidance,
 )
 from seektalent.prompting import LoadedPrompt
+from seektalent.runtime.orchestrator import WorkflowRuntime
 from seektalent.repair import repair_controller_decision, repair_reflection_draft, repair_requirement_draft
 from seektalent.requirements import RequirementExtractor
 from seektalent.reflection.critic import ReflectionCritic
@@ -403,6 +404,20 @@ def test_finalizer_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatc
                 ranked_candidates=[],
             )
         )
+
+
+def test_runtime_does_not_eagerly_load_candidate_feedback_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_load_many(self, names):  # noqa: ANN001
+        captured["names"] = list(names)
+        return {name: _prompt(name) for name in names}
+
+    monkeypatch.setattr("seektalent.runtime.orchestrator.PromptRegistry.load_many", fake_load_many)
+
+    WorkflowRuntime(make_settings(mock_cts=True))
+
+    assert "candidate_feedback" not in captured["names"]
 
 
 def test_scorer_returns_failure_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:

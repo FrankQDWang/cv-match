@@ -22,6 +22,17 @@ from seektalent.prompting import LoadedPrompt
 class CompanyDiscoveryModelSteps:
     def __init__(self, settings: AppSettings, prompts: dict[str, LoadedPrompt]) -> None:
         self.settings = settings
+        missing = [
+            name
+            for name in [
+                "company_discovery_plan",
+                "company_discovery_extract",
+                "company_discovery_reduce",
+            ]
+            if name not in prompts
+        ]
+        if missing:
+            raise ValueError(f"Missing company discovery prompts: {', '.join(missing)}")
         self.prompts = prompts
 
     async def plan_search_queries(self, discovery_input: CompanyDiscoveryInput) -> list[CompanySearchTask]:

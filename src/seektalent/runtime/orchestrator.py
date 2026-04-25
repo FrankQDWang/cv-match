@@ -183,7 +183,6 @@ class WorkflowRuntime:
                 "finalize",
                 "judge",
                 "tui_summary",
-                "candidate_feedback",
                 "company_discovery_plan",
                 "company_discovery_extract",
                 "company_discovery_reduce",
