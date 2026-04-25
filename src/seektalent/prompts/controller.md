@@ -17,11 +17,14 @@ Decide whether to continue or stop. If continuing, propose this round's query te
 - If stopping, cite visible `stop_guidance` facts such as `reason`, `top_pool_strength`, productive or zero-gain round counts, and untried admitted families.
 - If `action=stop`, ground `decision_rationale` and `stop_reason` only in facts visible in the provided controller prompt sections.
 - You only own the primary round query. Runtime may derive a secondary exploration query after round 1.
-- Round 1 must return exactly 2 query terms: 1 compiler-admitted anchor + 1 active admitted non-anchor term.
-- Round 2 and later must return 2 or 3 query terms: 1 compiler-admitted anchor + 1~2 active admitted non-anchor terms.
+- Round 1 must return exactly 2 query terms unless anchor-only rescue is the only viable admitted option.
+- Round 1 should prefer `primary_role_anchor + secondary_title_anchor`.
+- Otherwise, round 1 should use `primary_role_anchor + strongest_domain_term`.
+- Round 2 and later must return exactly 1 `primary_role_anchor` plus 1~2 active admitted support terms.
 - All query terms must come from the current query term pool with `queryability=admitted`.
-- Use exactly one term whose `retrieval_role` is `role_anchor`; do not repeat a `family` inside one query.
+- Use exactly one primary anchor term whose `retrieval_role` is `primary_role_anchor`; do not repeat a `family` inside one query.
 - Pick only the highest-signal terms for this round. Do not dump the full requirement list.
+- Treat `secondary_title_anchor` as a round-1 support term when present, not as a second fixed anchor for later rounds.
 - Prefer high-signal non-anchor terms with `retrieval_role=core_skill` or `framework_tool` over generic `domain_context` terms when they fit the round.
 - When `near_budget_limit` is true, prefer exploit/high-signal narrowing over broad exploration.
 - `near_budget_limit=true` means the 80% budget stop threshold is reached; it allows stopping when `stop_guidance.can_stop=true`, but it is not the same as max rounds reached.

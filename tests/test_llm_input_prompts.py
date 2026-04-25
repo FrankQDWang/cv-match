@@ -46,7 +46,8 @@ from seektalent.scoring.scorer import render_scoring_prompt
 def _requirement_sheet() -> RequirementSheet:
     return RequirementSheet(
         role_title="Senior Python Engineer",
-        title_anchor_term="python",
+        title_anchor_terms=["python", "backend engineer"],
+        title_anchor_rationale="Python is the primary title anchor and backend engineer is the closest resume-side alternate title.",
         role_summary="Build resume matching workflows.",
         must_have_capabilities=["python", "retrieval"],
         preferred_capabilities=["RAG"],
@@ -59,15 +60,26 @@ def _requirement_sheet() -> RequirementSheet:
                 priority=1,
                 evidence="Job title",
                 first_added_round=0,
-                retrieval_role="role_anchor",
+                retrieval_role="primary_role_anchor",
                 queryability="admitted",
                 family="role.python",
+            ),
+            QueryTermCandidate(
+                term="backend engineer",
+                source="job_title",
+                category="role_anchor",
+                priority=2,
+                evidence="Job title alternate title",
+                first_added_round=0,
+                retrieval_role="secondary_title_anchor",
+                queryability="admitted",
+                family="role.backend_engineer",
             ),
             QueryTermCandidate(
                 term="retrieval",
                 source="jd",
                 category="domain",
-                priority=2,
+                priority=3,
                 evidence="JD body",
                 first_added_round=0,
                 retrieval_role="core_skill",
@@ -145,6 +157,15 @@ def test_requirements_prompt_is_readable_text_not_full_input_truth_json() -> Non
     assert "Build Python retrieval systems." in prompt
     assert "INPUT_TRUTH" not in prompt
     assert '"job_title_sha256"' not in prompt
+
+
+def test_requirements_prompt_describes_one_or_two_title_anchors() -> None:
+    prompt = Path("src/seektalent/prompts/requirements.md").read_text(encoding="utf-8")
+
+    assert "Set `title_anchor_terms` to one or two stable searchable anchors extracted from `job_title`." in prompt
+    assert "Add a second anchor only when the title clearly supports a nearby alternate title that is also likely to appear on resumes." in prompt
+    assert "Set `title_anchor_rationale` to a short explanation of why those anchors best capture the searchable role title." in prompt
+    assert "Do not invent fake title anchors from JD-only terms, seniority words, org labels, or soft skills." in prompt
 
 
 def test_controller_prompt_contains_decision_brief_and_exact_data() -> None:
@@ -237,6 +258,15 @@ def test_controller_prompt_contains_decision_brief_and_exact_data() -> None:
     assert '"action_options"' in prompt
     assert '"admitted_terms"' in prompt
     assert "CONTROLLER_CONTEXT" not in prompt
+
+
+def test_controller_prompt_prefers_title_title_round_one_pairing() -> None:
+    prompt = Path("src/seektalent/prompts/controller.md").read_text(encoding="utf-8")
+
+    assert "Round 1 must return exactly 2 query terms unless anchor-only rescue is the only viable admitted option." in prompt
+    assert "Round 1 should prefer `primary_role_anchor + secondary_title_anchor`." in prompt
+    assert "Otherwise, round 1 should use `primary_role_anchor + strongest_domain_term`." in prompt
+    assert "Round 2 and later must return exactly 1 `primary_role_anchor` plus 1~2 active admitted support terms." in prompt
 
 
 def test_controller_prompt_says_few_shot_terms_are_not_reusable() -> None:
@@ -360,7 +390,7 @@ def test_reflection_prompt_contains_round_review_and_candidate_ids() -> None:
     assert "skill.retrieval" in prompt
     assert "skill.vector_search" in prompt
     assert "Vector Search" in prompt
-    assert "UNTRIED ADMITTED TERMS\nVector Search" in prompt
+    assert "UNTRIED ADMITTED TERMS\nbackend engineer, Vector Search" in prompt
     assert "| Graph Search | skill.graph_search | framework_tool | admitted | True | 3 | reflection | yes |" in prompt
     assert "active" in prompt
     assert "TOP CANDIDATES" in prompt

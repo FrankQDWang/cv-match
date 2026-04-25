@@ -510,7 +510,8 @@ class StubRequirementExtractor:
         del input_truth
         draft = RequirementExtractionDraft(
             role_title="Senior Python Engineer",
-            title_anchor_term="python",
+            title_anchor_terms=["python"],
+            title_anchor_rationale="Python is the stable searchable anchor from the title.",
             jd_query_terms=["resume matching", "trace"],
             role_summary="Build resume matching workflows.",
             must_have_capabilities=["python", "resume matching"],
@@ -520,7 +521,8 @@ class StubRequirementExtractor:
         )
         return draft, RequirementSheet(
             role_title="Senior Python Engineer",
-            title_anchor_term="python",
+            title_anchor_terms=["python"],
+            title_anchor_rationale="Python is the stable searchable anchor from the title.",
             role_summary="Build resume matching workflows.",
             must_have_capabilities=["python", "resume matching"],
             hard_constraints=HardConstraintSlots(locations=["上海"]),
@@ -532,6 +534,9 @@ class StubRequirementExtractor:
                     priority=1,
                     evidence="Job title",
                     first_added_round=0,
+                    retrieval_role="primary_role_anchor",
+                    queryability="admitted",
+                    family="role.python",
                 ),
                 QueryTermCandidate(
                     term="resume matching",
@@ -540,6 +545,9 @@ class StubRequirementExtractor:
                     priority=2,
                     evidence="JD body",
                     first_added_round=0,
+                    retrieval_role="core_skill",
+                    queryability="admitted",
+                    family="skill.resume_matching",
                 ),
                 QueryTermCandidate(
                     term="trace",
@@ -548,6 +556,9 @@ class StubRequirementExtractor:
                     priority=3,
                     evidence="JD body",
                     first_added_round=0,
+                    retrieval_role="framework_tool",
+                    queryability="admitted",
+                    family="skill.trace",
                 ),
             ],
             scoring_rationale="Score Python fit first.",
@@ -559,7 +570,8 @@ class SurfaceRequirementExtractor:
         del input_truth
         draft = RequirementExtractionDraft(
             role_title="AI Agent Engineer",
-            title_anchor_term="AI Agent",
+            title_anchor_terms=["AI Agent", "Agent Engineer"],
+            title_anchor_rationale="AI Agent is the fixed title direction and Agent Engineer is the closest alternate resume-side title.",
             jd_query_terms=["MultiAgent 架构"],
             role_summary="Build agent applications.",
             must_have_capabilities=["AI Agent", "MultiAgent 架构"],
@@ -569,7 +581,8 @@ class SurfaceRequirementExtractor:
         )
         return draft, RequirementSheet(
             role_title="AI Agent Engineer",
-            title_anchor_term="AI Agent",
+            title_anchor_terms=["AI Agent", "Agent Engineer"],
+            title_anchor_rationale="AI Agent is the fixed title direction and Agent Engineer is the closest alternate resume-side title.",
             role_summary="Build agent applications.",
             must_have_capabilities=["AI Agent", "MultiAgent 架构"],
             hard_constraints=HardConstraintSlots(locations=["上海"]),
@@ -581,15 +594,26 @@ class SurfaceRequirementExtractor:
                     priority=1,
                     evidence="Job title",
                     first_added_round=0,
-                    retrieval_role="role_anchor",
+                    retrieval_role="primary_role_anchor",
                     queryability="admitted",
                     family="role.agent",
+                ),
+                QueryTermCandidate(
+                    term="Agent Engineer",
+                    source="job_title",
+                    category="role_anchor",
+                    priority=2,
+                    evidence="Job title alternate title",
+                    first_added_round=0,
+                    retrieval_role="secondary_title_anchor",
+                    queryability="admitted",
+                    family="role.agent_engineer",
                 ),
                 QueryTermCandidate(
                     term="MultiAgent 架构",
                     source="jd",
                     category="domain",
-                    priority=2,
+                    priority=3,
                     evidence="JD body",
                     first_added_round=0,
                     retrieval_role="domain_context",
@@ -1090,6 +1114,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert diagnostic_round["scoring"]["fit_count"] == len(scorecards)
     assert diagnostic_round["reflection"]["reflection_summary"] == "No reflection changes."
     assert diagnostic_round["controller_response_to_previous_reflection"] is None
+    assert diagnostic_round["audit_labels"] == []
     assert {"requirements", "controller", "scoring", "reflection", "finalize"} <= schema_pressure_stages
     assert all("output_retries" in item for item in search_diagnostics["llm_schema_pressure"])
     assert all("validator_retry_count" in item for item in search_diagnostics["llm_schema_pressure"])
@@ -1415,13 +1440,15 @@ def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monk
     audit_terms = {item["term"]: item for item in term_surface_audit["terms"]}
     audit_surfaces = {item["original_term"]: item for item in term_surface_audit["surfaces"]}
     assert term_surface_audit["summary"] == {
-        "term_count": 2,
+        "term_count": 3,
         "used_term_count": 2,
         "candidate_surface_rule_count": 2,
         "eval_enabled": False,
     }
     assert audit_terms["AI Agent"]["used_rounds"] == [1]
+    assert audit_terms["Agent Engineer"]["used_rounds"] == []
     assert audit_terms["AI Agent"]["judge_positive_count_from_used_rounds"] is None
+    assert search_diagnostics["rounds"][0]["audit_labels"] == ["title_multi_anchor_collapsed"]
     assert audit_surfaces["AI Agent"]["canonical_surface"] == "Agent"
     assert audit_surfaces["AI Agent"]["surface_transform"] == "candidate_alias_not_applied"
     assert audit_surfaces["AI Agent"]["used_in_query"] is True

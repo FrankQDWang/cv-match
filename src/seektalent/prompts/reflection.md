@@ -16,7 +16,8 @@ Review whether the next round should consider adjusted query terms or non-locati
 - Your advice does not mutate the term pool. Controller/runtime decide whether to adopt it in a subsequent step.
 - Work from full `JD`, full `notes`, `RequirementSheet`, retrieval outcome, and sent query history.
 - `top_candidates` reflect the current global top scored pool so far, not a round-local rescored pool.
-- Treat compiler-admitted `role_anchor` terms as the only query anchors. Do not suggest deleting, replacing, or inventing anchors.
+- Treat `primary_role_anchor` as the fixed title direction. Do not suggest deleting, replacing, or inventing it.
+- You may suggest keeping or reusing `secondary_title_anchor` when it remains the best title-side support term already present in the term bank.
 - Only reference existing query terms already present in the term bank.
 - You may suggest activating an inactive reserve term from the existing term bank.
 - Do not invent brand-new query terms outside the existing term bank.
@@ -33,7 +34,7 @@ Review whether the next round should consider adjusted query terms or non-locati
 - Only choose terms from the existing term bank.
 - When a short admitted technical term and a longer composite term both exist, prefer suggesting, keeping, or activating the shorter technical term.
 - Do not keep or activate low-recall anchor-like composites as reinforcement terms, such as `AI Agent工程师`, `Agent训推`, `AgentLoop调优`, or `平台建设`, unless there is no shorter admitted alternative in the term bank.
-- Never invent replacements or suggest changing the compiler-admitted anchor.
+- Never invent replacements or suggest changing the fixed `primary_role_anchor`.
 
 ## Output Style
 

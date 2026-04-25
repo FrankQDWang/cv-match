@@ -34,8 +34,10 @@ Capture the role summary, capabilities, constraints, query terms, preferences, a
 
 - `title_anchor_terms` are CTS keyword seeds, not the full job title.
 - Prefer one short resume-side role or technology anchor that candidates are likely to write in resumes. Add a second anchor only when the title clearly supports a nearby alternate title that is also likely to appear on resumes.
+- `title_anchor_rationale` should explain why the chosen one or two anchors preserve the searchable title direction better than the raw title.
 - Remove company names, project names, title suffixes, and role-direction composites when the shorter anchor is still supported by `job_title`.
 - Do not put suffixes like `工程师`, `开发`, `研发`, `算法`, `训推`, `技术专家`, or company-branded prefixes into the anchor when a shorter searchable anchor remains.
+- Do not invent fake title anchors from JD-only terms, seniority words, org labels, or soft skills.
 
 ## Title Anchor Few-Shots
 
