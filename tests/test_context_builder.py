@@ -537,7 +537,15 @@ def test_controller_context_direct_module_preserves_stop_guidance() -> None:
         max_rounds=4,
         target_new=10,
     )
+    legacy_context = build_controller_context(
+        run_state=run_state,
+        round_no=2,
+        min_rounds=1,
+        max_rounds=4,
+        target_new=10,
+    )
 
+    assert context.model_dump(mode="json") == legacy_context.model_dump(mode="json")
     assert context.stop_guidance.can_stop is False
     assert context.stop_guidance.untried_admitted_families
     assert context.latest_search_observation is not None
