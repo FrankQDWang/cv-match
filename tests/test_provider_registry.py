@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from seektalent.core.retrieval.provider_contract import ProviderCapabilities
 from seektalent.core.retrieval.provider_contract import SearchRequest
@@ -78,3 +79,11 @@ def test_provider_contract_fake_provider_search() -> None:
     assert capabilities.paging_mode == "cursor"
     assert result.candidates[0].resume_id == "resume-1"
     assert result.next_cursor == "page=2"
+
+
+def test_runtime_orchestrator_no_longer_imports_cts_client_directly() -> None:
+    source = Path("src/seektalent/runtime/orchestrator.py").read_text(encoding="utf-8")
+
+    assert "seektalent.clients.cts_client" not in source
+    assert "CTSClient(" not in source
+    assert "MockCTSClient(" not in source

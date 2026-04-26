@@ -1,12 +1,12 @@
 # Architecture
 
-`SeekTalent` is a local-first resume matching engine. Public entrypoints collect a job title, JD, and optional notes, then hand them to one deterministic runtime. The runtime owns orchestration, budgets, CTS retrieval, deduplication, artifact writing, and final ranking. LLM calls are bounded stages that return structured outputs; they do not execute tools directly.
+`SeekTalent` is a CLI-first, local-first resume matching engine. Public entrypoints collect a job title, JD, and optional notes, then hand them to one deterministic runtime rooted in `src/seektalent/runtime/orchestrator.py`. The runtime owns orchestration, budgets, provider selection, retrieval execution, deduplication, artifact writing, and final ranking. LLM calls are bounded stages that return structured outputs; they do not execute tools directly.
 
 ## Public entrypoints
 
 | Entrypoint | Files | Role |
 | --- | --- | --- |
-| CLI | `src/seektalent/cli.py` | User-facing `seektalent` command, env loading, argument parsing, human and JSON output. |
+| CLI | `src/seektalent/cli.py` | Primary user-facing `seektalent` command, env loading, argument parsing, human and JSON output. |
 | Python API | `src/seektalent/api.py` | Stable wrapper functions: `run_match(...)` and `run_match_async(...)`. |
 | Local UI API | `src/seektalent_ui/server.py` | Thin local HTTP API that runs the same runtime in a background thread. |
 | Web UI | `apps/web-user-lite/` | Minimal browser shell over the local UI API. |
@@ -31,9 +31,11 @@ flowchart LR
 
     runtime --> req["RequirementExtractor\nrequirements/"]
     runtime --> controller["ReActController\ncontroller/"]
-    runtime --> retrieval["Retrieval planning\nretrieval/"]
+    runtime --> retrieval["Retrieval planning\nretrieval/ + core/retrieval/"]
     runtime --> rescue["Rescue routing\nruntime/rescue_router.py"]
-    runtime --> cts["CTS client\nclients/cts_client.py"]
+    runtime --> registry["Provider registry\nproviders/registry.py"]
+    runtime --> service["Retrieval service\ncore/retrieval/service.py"]
+    service --> adapter["Provider adapter\nproviders/cts/adapter.py"]
     runtime --> scoring["ResumeScorer\nscoring/"]
     runtime --> reflection["ReflectionCritic\nreflection/"]
     runtime --> finalizer["Finalizer\nfinalize/"]
@@ -47,9 +49,10 @@ flowchart LR
     finalizer -. "presentation text" .-> llm
     eval -. "judge calls when enabled" .-> llm
 
-    retrieval --> cts
-    cts --> livects["Live CTS service"]
-    cts --> mockcts["Mock CTS corpus\ndev/tests only"]
+    retrieval --> service
+    registry --> adapter
+    adapter --> livects["Live CTS service"]
+    adapter --> mockcts["Mock CTS corpus\ndev/tests only"]
 
     rescue --> feedback["Candidate feedback\ncandidate_feedback/"]
     rescue --> discovery["Company discovery\ncompany_discovery/"]
@@ -70,7 +73,9 @@ sequenceDiagram
     participant Req as RequirementExtractor
     participant Controller as ReActController
     participant Retrieval as Retrieval planner
-    participant CTS as CTS client
+    participant Registry as Provider registry
+    participant Service as Retrieval service
+    participant Adapter as Provider adapter
     participant Scorer as ResumeScorer
     participant Reflection as ReflectionCritic
     participant Finalizer as Finalizer
@@ -99,8 +104,11 @@ sequenceDiagram
         else search CTS
             Runtime->>Retrieval: project filters and build retrieval plan
             Retrieval-->>Runtime: CTS queries + runtime constraints
-            Runtime->>CTS: execute paginated search
-            CTS-->>Runtime: raw candidates
+            Runtime->>Registry: resolve provider adapter
+            Runtime->>Service: execute paginated search
+            Service->>Adapter: provider search request
+            Adapter-->>Service: provider search result
+            Service-->>Runtime: raw candidates + audit metadata
             Runtime-->>Runtime: normalize, dedupe, update candidate store
             Runtime->>Scorer: score new resumes in parallel
             Scorer->>LLM: ScoredCandidateDraft per resume
@@ -133,13 +141,15 @@ The local web UI follows the same runtime sequence after `RunRegistry.create_run
 
 | Module | Responsibility |
 | --- | --- |
-| `src/seektalent/runtime/orchestrator.py` | Main control loop, round lifecycle, progress events, artifact writes, stop handling, rescue handoff, finalization. |
+| `src/seektalent/runtime/orchestrator.py` | Main control loop, round lifecycle, progress events, artifact writes, stop handling, rescue handoff, provider resolution, and finalization. |
 | `src/seektalent/runtime/context_builder.py` | Builds slim context objects for controller, scoring, reflection, and finalization. |
 | `src/seektalent/models.py` | Shared Pydantic contracts for requirements, retrieval plans, controller decisions, scorecards, final results, and run state. |
 | `src/seektalent/requirements/` | Turns input truth into a normalized requirement sheet and scoring policy. |
 | `src/seektalent/controller/` | Chooses each round's action and proposed query/filter plan. The controller does not execute CTS or other tools. |
-| `src/seektalent/retrieval/` | Canonicalizes query terms, builds round retrieval plans, projects constraints to CTS-native filters, and manages location execution plans. |
-| `src/seektalent/clients/` | Adapts runtime retrieval plans to live CTS requests or the development mock corpus. |
+| `src/seektalent/retrieval/` | Generic retrieval planning helpers: query-term compilation, query planning, and location execution planning. |
+| `src/seektalent/core/retrieval/` | Source-agnostic retrieval contract and service used by runtime to call providers. |
+| `src/seektalent/providers/` | Provider registry plus provider-specific adapters and provider-local projection logic. |
+| `src/seektalent/clients/` | Concrete CTS transport clients used behind the CTS provider adapter for live CTS requests or the development mock corpus. |
 | `src/seektalent/scoring/` | Scores normalized resumes concurrently, one resume per LLM branch. |
 | `src/seektalent/reflection/` | Reviews a completed round and produces advice for subsequent retrieval. |
 | `src/seektalent/finalize/` | Preserves runtime ranking order while generating final shortlist presentation text. |
@@ -169,10 +179,12 @@ See [Outputs](outputs.md) for the full file reference.
 
 ## Boundaries
 
-- CLI, Python API, and UI API are shells around `WorkflowRuntime`.
+- CLI, Python API, and UI API are shells around `WorkflowRuntime`, with the CLI as the primary user entrypoint.
 - UI depends on core runtime code; `src/seektalent` must not import `seektalent_ui` or `experiments`.
 - The controller returns structured decisions only. Python runtime code executes CTS, scoring fan-out, artifact writes, and stop rules.
-- CTS-specific request details stay inside `src/seektalent/clients/cts_client.py` and retrieval projection code.
+- Generic retrieval planning stays under `src/seektalent/retrieval/` and `src/seektalent/core/retrieval/`.
+- Provider-specific request details stay under `src/seektalent/providers/`; runtime search execution now flows through `get_provider_adapter(...)` plus `RetrievalService` instead of importing CTS clients directly.
+- CTS transport details stay inside `src/seektalent/clients/cts_client.py`, behind `src/seektalent/providers/cts/adapter.py`.
 - Mock CTS is for source-checkout development and tests; the published CLI rejects it.
 - Optional rescue lanes are runtime decisions. They can broaden the term pool, inject candidate feedback, run company discovery, or try anchor-only retrieval when quality gates require more search.
 - LLM structured output retries are local to Pydantic AI calls. The runtime does not add fallback model chains.
