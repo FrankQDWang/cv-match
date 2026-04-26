@@ -11,10 +11,11 @@ from seektalent.models import (
     RunState,
     RuntimeConstraint,
     ScoredCandidate,
-    ScoringContext,
     scored_candidate_sort_key,
 )
 from seektalent.normalization import normalize_resume
+from seektalent.runtime.runtime_diagnostics import slim_top_pool_snapshot
+from seektalent.runtime.scoring_context import build_scoring_context
 from seektalent.tracing import RunTracer, json_char_count, json_sha256
 
 
@@ -26,10 +27,8 @@ async def score_round(
     tracer: RunTracer,
     runtime_only_constraints: list[RuntimeConstraint],
     resume_scorer: Any,
-    build_scoring_context: Callable[..., ScoringContext],
     format_scoring_failure_message: Callable[[Collection[object]], str],
     run_stage_error: Callable[[str, str], Exception],
-    slim_top_pool_snapshot: Callable[[list[ScoredCandidate]], list[dict[str, object]]],
 ) -> tuple[list[ScoredCandidate], list[PoolDecision], list[ScoredCandidate]]:
     scoring_pool = build_scoring_pool(
         new_candidates=new_candidates,

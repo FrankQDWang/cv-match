@@ -2074,10 +2074,8 @@ class WorkflowRuntime:
             tracer=tracer,
             runtime_only_constraints=runtime_only_constraints,
             resume_scorer=self.resume_scorer,
-            build_scoring_context=build_scoring_context,
             format_scoring_failure_message=self._format_scoring_failure_message,
             run_stage_error=RunStageError,
-            slim_top_pool_snapshot=self._slim_top_pool_snapshot,
         )
 
     def _build_public_run_config(self) -> dict[str, object]:
