@@ -246,7 +246,7 @@ class WorkflowRuntime:
     def retrieval_service(self, retrieval_service: RetrievalService) -> None:
         self._retrieval_service = retrieval_service
         if hasattr(self, "retrieval_runtime"):
-            self.retrieval_runtime.retrieval_service = retrieval_service
+            object.__setattr__(self.retrieval_runtime, "retrieval_service", retrieval_service)
 
     def run(
         self,

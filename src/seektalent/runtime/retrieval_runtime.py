@@ -6,7 +6,7 @@ from seektalent.config import AppSettings
 from seektalent.core.retrieval.service import RetrievalService
 
 
-@dataclass
+@dataclass(frozen=True)
 class RetrievalRuntime:
     settings: AppSettings
     retrieval_service: RetrievalService

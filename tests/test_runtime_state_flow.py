@@ -1,5 +1,6 @@
 import asyncio
 import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any, cast
 
@@ -880,6 +881,13 @@ def test_workflow_runtime_retrieval_service_rebind_syncs_retrieval_runtime(tmp_p
 
     assert runtime.retrieval_service is fake_retrieval_service
     assert runtime.retrieval_runtime.retrieval_service is fake_retrieval_service
+
+
+def test_workflow_runtime_retrieval_runtime_rejects_direct_rebinding(tmp_path: Path) -> None:
+    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+
+    with pytest.raises(FrozenInstanceError):
+        runtime.retrieval_runtime.retrieval_service = cast(Any, object())
 
 
 def test_runtime_records_terminal_controller_round_separately(tmp_path: Path) -> None:
