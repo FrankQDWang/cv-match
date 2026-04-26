@@ -19,28 +19,21 @@ Default to pragmatic simplicity, but do not preserve experimental-stage shortcut
 - Be more deliberate at external boundaries, user-facing flows, and integration points.
 
 ## Python First
+
 - Write idiomatic Python, not Java/C# in Python syntax.
-- Prefer module-level functions over classes.
-- Only introduce a class when it must hold real state across calls.
-- Never create `Utils`, `Helpers`, `Managers`, or similar garbage containers for stateless code.
-- Avoid abstract base class hierarchies unless explicitly required.
-- Prefer duck typing and simple protocols over ceremony-heavy inheritance.
+- Prefer module-level functions over classes by default.
+- Only introduce a class when it holds real state, lifecycle, or identity.
+- Never create `Utils`, `Helpers`, `Managers`, or similar junk containers for stateless code.
+- Prefer simple protocols and direct interfaces over hierarchy-heavy design.
 
 ## Pydantic Usage
-- Use Pydantic models where typed input/output structure is genuinely needed.
-- Keep models small, explicit, and close to usage.
-- Do not create model layers just for architecture vanity.
-- Do not wrap every internal value in a Pydantic model.
-- Prefer clear field names and direct types.
-- Add validators only when they encode real business meaning or prevent a real bug.
-- Do not add validation theater.
 
-## Function Design
-- Prefer short functions with obvious inputs and outputs.
-- If a function can be understood top-to-bottom without jumping around, that is good.
-- If logic is only used once, keep it inline instead of extracting prematurely.
-- Extract a function only when it improves clarity, reuse, or testability.
-- Avoid deep call stacks for trivial logic.
+- Use Pydantic models where typed boundaries or structured input/output genuinely need them.
+- Keep models small, explicit, and close to usage.
+- Do not create model layers for architecture vanity.
+- Do not wrap every internal value in a model.
+- Add validators only when they enforce real business meaning or prevent a real bug.
+- Do not add validation theater.
 
 ## Naming
 - Use simple, literal names.
@@ -48,12 +41,23 @@ Default to pragmatic simplicity, but do not preserve experimental-stage shortcut
 - Do not use clever abbreviations unless they are already standard in the codebase.
 - Do not invent grand architectural names for small local code.
 
-## State and Mutation
+## Function And Module Design
+
+- Prefer short functions with obvious inputs and outputs.
+- Keep the main path readable top-to-bottom.
+- Keep logic inline when extraction would only add indirection.
+- Extract functions when it improves clarity, reuse, or testability.
+- Keep module responsibilities legible.
+- If a file becomes hard to reason about, split it by responsibility instead of stacking more local helpers into it.
+- Do not add layers just to look organized.
+
+## State And Mutation
+
 - Keep state explicit.
-- Prefer passing values directly over hiding state inside objects.
+- Prefer passing values directly over hiding state in broad containers.
 - Mutate data only when mutation is the clearest choice.
-- Do not simulate immutability with pointless copying everywhere.
-- Do not add getters/setters for no reason.
+- Do not simulate immutability with pointless copying.
+- Do not add getters and setters without a real boundary reason.
 
 ## Error Handling
 - Fail loudly on invalid assumptions.
