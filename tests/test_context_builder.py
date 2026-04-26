@@ -36,6 +36,11 @@ from seektalent.runtime.finalize_context import build_finalize_context as build_
 from seektalent.runtime.reflection_context import build_reflection_context as build_reflection_context_direct
 from seektalent.runtime.scoring_context import build_scoring_context as build_scoring_context_direct
 
+CONTROLLER_CONTEXT_BUILDERS = [
+    pytest.param(build_controller_context, id="legacy"),
+    pytest.param(build_controller_context_direct, id="direct"),
+]
+
 
 def _requirement_sheet() -> RequirementSheet:
     return RequirementSheet(
@@ -551,7 +556,8 @@ def test_controller_context_direct_module_preserves_stop_guidance() -> None:
     assert context.latest_search_observation is not None
 
 
-def test_stop_guidance_blocks_usable_low_quality_pool_before_budget_threshold() -> None:
+@pytest.mark.parametrize("build_context", CONTROLLER_CONTEXT_BUILDERS)
+def test_stop_guidance_blocks_usable_low_quality_pool_before_budget_threshold(build_context) -> None:
     candidates = [
         _scored_candidate(f"strong-{index}", round_no=1)
         for index in range(2)
@@ -559,7 +565,7 @@ def test_stop_guidance_blocks_usable_low_quality_pool_before_budget_threshold() 
         _scored_candidate(f"weak-{index}", round_no=1, overall_score=65, must_have_match_score=60, risk_score=40)
         for index in range(8)
     ]
-    context = build_controller_context(
+    context = build_context(
         run_state=_run_state_for_stop_gate(
             candidates=candidates,
             completed_rounds=3,
@@ -580,7 +586,8 @@ def test_stop_guidance_blocks_usable_low_quality_pool_before_budget_threshold() 
     assert "strong-fit candidates" in context.stop_guidance.reason
 
 
-def test_stop_guidance_allows_low_quality_pool_at_budget_threshold() -> None:
+@pytest.mark.parametrize("build_context", CONTROLLER_CONTEXT_BUILDERS)
+def test_stop_guidance_allows_low_quality_pool_at_budget_threshold(build_context) -> None:
     candidates = [
         _scored_candidate(f"strong-{index}", round_no=1)
         for index in range(2)
@@ -588,7 +595,7 @@ def test_stop_guidance_allows_low_quality_pool_at_budget_threshold() -> None:
         _scored_candidate(f"weak-{index}", round_no=1, overall_score=65, must_have_match_score=60, risk_score=40)
         for index in range(8)
     ]
-    context = build_controller_context(
+    context = build_context(
         run_state=_run_state_for_stop_gate(
             candidates=candidates,
             completed_rounds=7,
@@ -607,7 +614,8 @@ def test_stop_guidance_allows_low_quality_pool_at_budget_threshold() -> None:
     assert "8/10 near-budget stop threshold" in context.stop_guidance.reason
 
 
-def test_stop_guidance_requires_broaden_when_low_quality_pool_has_no_active_families_before_budget() -> None:
+@pytest.mark.parametrize("build_context", CONTROLLER_CONTEXT_BUILDERS)
+def test_stop_guidance_requires_broaden_when_low_quality_pool_has_no_active_families_before_budget(build_context) -> None:
     candidates = [
         _scored_candidate(f"strong-{index}", round_no=1)
         for index in range(2)
@@ -615,7 +623,7 @@ def test_stop_guidance_requires_broaden_when_low_quality_pool_has_no_active_fami
         _scored_candidate(f"weak-{index}", round_no=1, overall_score=65, must_have_match_score=60, risk_score=40)
         for index in range(8)
     ]
-    context = build_controller_context(
+    context = build_context(
         run_state=_run_state_for_stop_gate(
             candidates=candidates,
             completed_rounds=3,
@@ -633,7 +641,8 @@ def test_stop_guidance_requires_broaden_when_low_quality_pool_has_no_active_fami
     assert context.stop_guidance.broadening_attempted is False
 
 
-def test_stop_guidance_allows_low_quality_exhausted_after_anchor_only_broaden() -> None:
+@pytest.mark.parametrize("build_context", CONTROLLER_CONTEXT_BUILDERS)
+def test_stop_guidance_allows_low_quality_exhausted_after_anchor_only_broaden(build_context) -> None:
     candidates = [
         _scored_candidate(f"strong-{index}", round_no=1)
         for index in range(2)
@@ -641,7 +650,7 @@ def test_stop_guidance_allows_low_quality_exhausted_after_anchor_only_broaden() 
         _scored_candidate(f"weak-{index}", round_no=1, overall_score=65, must_have_match_score=60, risk_score=40)
         for index in range(8)
     ]
-    context = build_controller_context(
+    context = build_context(
         run_state=_run_state_for_stop_gate(
             candidates=candidates,
             completed_rounds=4,
@@ -660,7 +669,8 @@ def test_stop_guidance_allows_low_quality_exhausted_after_anchor_only_broaden() 
     assert context.stop_guidance.broadening_attempted is True
 
 
-def test_stop_guidance_allows_strong_pool_before_budget_threshold() -> None:
+@pytest.mark.parametrize("build_context", CONTROLLER_CONTEXT_BUILDERS)
+def test_stop_guidance_allows_strong_pool_before_budget_threshold(build_context) -> None:
     candidates = [
         _scored_candidate(f"strong-{index}", round_no=1)
         for index in range(5)
@@ -668,7 +678,7 @@ def test_stop_guidance_allows_strong_pool_before_budget_threshold() -> None:
         _scored_candidate(f"weak-{index}", round_no=1, overall_score=65, must_have_match_score=60, risk_score=40)
         for index in range(5)
     ]
-    context = build_controller_context(
+    context = build_context(
         run_state=_run_state_for_stop_gate(
             candidates=candidates,
             completed_rounds=3,
@@ -686,7 +696,8 @@ def test_stop_guidance_allows_strong_pool_before_budget_threshold() -> None:
     assert context.stop_guidance.quality_gate_status == "pass"
 
 
-def test_stop_guidance_excludes_secondary_title_anchor_from_untried_families() -> None:
+@pytest.mark.parametrize("build_context", CONTROLLER_CONTEXT_BUILDERS)
+def test_stop_guidance_excludes_secondary_title_anchor_from_untried_families(build_context) -> None:
     requirement_sheet = RequirementSheet(
         role_title="Backend Platform Engineer",
         title_anchor_terms=["Backend", "Platform"],
@@ -811,7 +822,7 @@ def test_stop_guidance_excludes_secondary_title_anchor_from_untried_families() -
         ],
     )
 
-    context = build_controller_context(
+    context = build_context(
         run_state=run_state,
         round_no=2,
         min_rounds=1,
