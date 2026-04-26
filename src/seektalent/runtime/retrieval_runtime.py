@@ -19,6 +19,7 @@ from seektalent.models import (
     SentQueryRecord,
     unique_strings,
 )
+from seektalent.providers.cts.query_builder import CTSQueryBuildInput, build_cts_query
 from seektalent.retrieval import allocate_balanced_city_targets
 from seektalent.tracing import RunTracer
 
@@ -183,15 +184,17 @@ class RetrievalRuntime:
 
             if location_plan.mode == "none":
                 batch_no += 1
-                query = CTSQuery(
-                    query_role=query_state.query_role,
-                    query_terms=query_state.query_terms,
-                    keyword_query=query_state.keyword_query,
-                    native_filters=dict(retrieval_plan.projected_cts_filters),
-                    page=query_state.next_page,
-                    page_size=requested_count,
-                    rationale=retrieval_plan.rationale,
-                    adapter_notes=list(query_state.adapter_notes),
+                query = build_cts_query(
+                    CTSQueryBuildInput(
+                        query_role=query_state.query_role,
+                        query_terms=query_state.query_terms,
+                        keyword_query=query_state.keyword_query,
+                        base_filters=retrieval_plan.projected_cts_filters,
+                        adapter_notes=query_state.adapter_notes,
+                        page=query_state.next_page,
+                        page_size=requested_count,
+                        rationale=retrieval_plan.rationale,
+                    )
                 )
                 sent_query_record = SentQueryRecord(
                     round_no=round_no,
@@ -529,15 +532,18 @@ class RetrievalRuntime:
         seen_dedup_keys: set[str],
         tracer: RunTracer,
     ) -> _CityDispatchResult:
-        cts_query = CTSQuery(
-            query_role=query_state.query_role,
-            query_terms=query_state.query_terms,
-            keyword_query=query_state.keyword_query,
-            native_filters={**retrieval_plan.projected_cts_filters, "location": [city]},
-            page=city_state.next_page,
-            page_size=requested_count,
-            rationale=retrieval_plan.rationale,
-            adapter_notes=unique_strings([*query_state.adapter_notes, f"runtime location dispatch: {city}"]),
+        cts_query = build_cts_query(
+            CTSQueryBuildInput(
+                query_role=query_state.query_role,
+                query_terms=query_state.query_terms,
+                keyword_query=query_state.keyword_query,
+                base_filters=retrieval_plan.projected_cts_filters,
+                adapter_notes=query_state.adapter_notes,
+                page=city_state.next_page,
+                page_size=requested_count,
+                rationale=retrieval_plan.rationale,
+                city=city,
+            )
         )
         sent_query_record = SentQueryRecord(
             round_no=round_no,

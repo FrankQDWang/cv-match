@@ -658,6 +658,76 @@ def test_workflow_runtime_uses_retrieval_runtime_for_round_search(tmp_path: Path
     assert result[2] == []
 
 
+def test_runtime_round_search_uses_cts_builder_for_non_location_query(tmp_path: Path, monkeypatch) -> None:
+    from seektalent.providers.cts.query_builder import CTSQueryBuildInput
+
+    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+    tracer = RunTracer(tmp_path / "trace-builder")
+    captured: list[CTSQueryBuildInput] = []
+
+    def fake_build_cts_query(input: CTSQueryBuildInput) -> CTSQuery:
+        captured.append(input)
+        return CTSQuery(
+            query_role=input.query_role,
+            query_terms=input.query_terms,
+            keyword_query=input.keyword_query,
+            native_filters=dict(input.base_filters),
+            page=input.page,
+            page_size=input.page_size,
+            rationale=input.rationale,
+            adapter_notes=list(input.adapter_notes),
+        )
+
+    monkeypatch.setattr("seektalent.runtime.retrieval_runtime.build_cts_query", fake_build_cts_query)
+
+    retrieval_plan = RoundRetrievalPlan(
+        plan_version=1,
+        round_no=1,
+        query_terms=["python"],
+        keyword_query="python",
+        projected_cts_filters={"age": 3},
+        runtime_only_constraints=[],
+        location_execution_plan=LocationExecutionPlan(
+            mode="none",
+            allowed_locations=[],
+            preferred_locations=[],
+            priority_order=[],
+            balanced_order=[],
+            rotation_offset=0,
+            target_new=1,
+        ),
+        target_new=1,
+        rationale="builder seam test",
+    )
+    query_states = runtime._build_round_query_states(
+        round_no=1,
+        retrieval_plan=retrieval_plan,
+        title_anchor_terms=["python"],
+        query_term_pool=[],
+        sent_query_history=[],
+    )
+
+    try:
+        asyncio.run(
+            runtime._execute_location_search_plan(
+                round_no=1,
+                retrieval_plan=retrieval_plan,
+                query_states=query_states,
+                base_adapter_notes=["projection: age mapped to CTS code 3"],
+                target_new=1,
+                seen_resume_ids=set(),
+                seen_dedup_keys=set(),
+                tracer=tracer,
+            )
+        )
+    finally:
+        tracer.close()
+
+    assert len(captured) == 1
+    assert captured[0].base_filters == {"age": 3}
+    assert captured[0].city is None
+
+
 def _fit_scorecard(
     resume_id: str,
     *,
