@@ -451,6 +451,8 @@ class DuplicatePagingCTS:
         *,
         query_terms,
         query_role,
+        keyword_query,
+        adapter_notes,
         provider_filters,
         runtime_constraints,
         page_size,
@@ -459,7 +461,7 @@ class DuplicatePagingCTS:
         fetch_mode="summary",
         cursor=None,
     ) -> SearchResult:
-        del query_terms, query_role, provider_filters, runtime_constraints, round_no, trace_id, fetch_mode
+        del query_terms, query_role, keyword_query, adapter_notes, provider_filters, runtime_constraints, round_no, trace_id, fetch_mode
         page = int(cursor or "1")
         if page == 1:
             candidates = [_make_candidate("dup-1"), _make_candidate("dup-1")]

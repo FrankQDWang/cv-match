@@ -83,6 +83,8 @@ class RecordingCTS:
         *,
         query_terms,
         query_role,
+        keyword_query,
+        adapter_notes,
         provider_filters,
         runtime_constraints,
         page_size,
@@ -91,7 +93,7 @@ class RecordingCTS:
         fetch_mode="summary",
         cursor=None,
     ) -> SearchResult:
-        del query_terms, query_role, runtime_constraints, round_no, trace_id, fetch_mode
+        del query_terms, query_role, keyword_query, adapter_notes, runtime_constraints, round_no, trace_id, fetch_mode
         locations = provider_filters.get("location")
         city = locations[0] if isinstance(locations, list) else ""
         page = int(cursor or "1")
@@ -118,6 +120,8 @@ class DualQueryCTS:
         *,
         query_terms,
         query_role,
+        keyword_query,
+        adapter_notes,
         provider_filters,
         runtime_constraints,
         page_size,
@@ -126,7 +130,7 @@ class DualQueryCTS:
         fetch_mode="summary",
         cursor=None,
     ) -> SearchResult:
-        del query_terms, provider_filters, runtime_constraints, round_no, trace_id, fetch_mode
+        del query_terms, keyword_query, adapter_notes, provider_filters, runtime_constraints, round_no, trace_id, fetch_mode
         page = int(cursor or "1")
         self.calls.append((query_role, page, page_size))
         pages = {

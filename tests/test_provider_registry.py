@@ -64,6 +64,8 @@ def test_provider_contract_fake_provider_search() -> None:
     request = SearchRequest(
         query_terms=["python"],
         query_role="primary",
+        keyword_query="python",
+        adapter_notes=[],
         runtime_constraints=[],
         fetch_mode="summary",
         page_size=25,
