@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Literal, Protocol
 
 from seektalent.models import ResumeCandidate
 from seektalent.models import RuntimeConstraint
+
+
+PagingMode = Literal["cursor"]
+FetchMode = Literal["summary", "detail"]
+QueryRole = Literal["primary", "expansion"]
 
 
 @dataclass(frozen=True)
@@ -13,7 +18,7 @@ class ProviderCapabilities:
     supports_detail_fetch: bool
     supports_fetch_mode_summary: bool
     supports_fetch_mode_detail: bool
-    paging_mode: str
+    paging_mode: PagingMode
     recommended_max_concurrency: int
     has_stable_external_id: bool
     has_stable_dedup_key: bool
@@ -22,9 +27,9 @@ class ProviderCapabilities:
 @dataclass(frozen=True)
 class SearchRequest:
     query_terms: list[str]
-    query_role: str
+    query_role: QueryRole
     runtime_constraints: list[RuntimeConstraint]
-    fetch_mode: str
+    fetch_mode: FetchMode
     page_size: int
     cursor: str | None = None
 

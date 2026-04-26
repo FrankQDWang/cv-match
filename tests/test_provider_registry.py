@@ -37,7 +37,8 @@ def test_provider_contract_fake_provider_search() -> None:
 
         async def search(self, request: SearchRequest, *, round_no: int, trace_id: str) -> SearchResult:
             assert request.query_terms == ["python"]
-            assert request.query_role == "Backend Engineer"
+            assert request.query_role == "primary"
+            assert request.fetch_mode == "summary"
             assert round_no == 1
             assert trace_id == "trace-1"
             return SearchResult(
@@ -59,7 +60,7 @@ def test_provider_contract_fake_provider_search() -> None:
     provider = FakeProvider()
     request = SearchRequest(
         query_terms=["python"],
-        query_role="Backend Engineer",
+        query_role="primary",
         runtime_constraints=[],
         fetch_mode="summary",
         page_size=25,
@@ -67,6 +68,8 @@ def test_provider_contract_fake_provider_search() -> None:
     result = asyncio.run(provider.search(request, round_no=1, trace_id="trace-1"))
 
     assert provider.name == "fake"
-    assert provider.describe_capabilities().supports_structured_filters is True
+    capabilities = provider.describe_capabilities()
+    assert capabilities.supports_structured_filters is True
+    assert capabilities.paging_mode == "cursor"
     assert result.candidates[0].resume_id == "resume-1"
     assert result.next_cursor == "page=2"

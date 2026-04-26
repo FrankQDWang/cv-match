@@ -11,9 +11,6 @@ class _PendingCTSProviderAdapter:
     # Phase-one placeholder until Task 4 adds the real CTS adapter.
     name = "cts"
 
-    def __init__(self, settings: AppSettings) -> None:
-        self._settings = settings
-
     def describe_capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
             supports_structured_filters=True,
@@ -31,7 +28,6 @@ class _PendingCTSProviderAdapter:
 
 
 def get_provider_adapter(settings: AppSettings) -> ProviderAdapter:
-    provider_name = getattr(settings, "retrieval_provider", "cts")
-    if provider_name == "cts":
-        return _PendingCTSProviderAdapter(settings)
-    raise ValueError(f"Unsupported retrieval_provider: {provider_name}")
+    # Phase one is intentionally static; a later task will make provider selection configurable.
+    _ = settings
+    return _PendingCTSProviderAdapter()
