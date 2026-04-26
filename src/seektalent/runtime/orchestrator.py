@@ -69,11 +69,8 @@ from seektalent.providers.cts.filter_projection import (
 from seektalent.reflection.critic import ReflectionCritic, render_reflection_prompt
 from seektalent.requirements import (
     RequirementExtractor,
-    build_input_truth,
     build_requirement_digest,
-    build_scoring_policy,
 )
-from seektalent.requirements.extractor import render_requirements_prompt
 from seektalent.retrieval import (
     build_location_execution_plan,
     build_round_retrieval_plan,
@@ -88,6 +85,7 @@ from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime.controller_context import build_controller_context
 from seektalent.runtime.finalize_context import build_finalize_context
 from seektalent.runtime.reflection_context import build_reflection_context
+from seektalent.runtime.requirements_runtime import build_run_state as build_requirements_run_state
 from seektalent.runtime.runtime_diagnostics import (
     build_judge_packet as build_judge_packet_direct,
     build_search_diagnostics as build_search_diagnostics_direct,
@@ -585,222 +583,20 @@ class WorkflowRuntime:
         tracer: RunTracer,
         progress_callback: ProgressCallback | None = None,
     ) -> RunState:
-        input_truth = build_input_truth(job_title=job_title, jd=jd, notes=notes)
-        call_id = "requirements"
-        call_payload = {"INPUT_TRUTH": input_truth.model_dump(mode="json")}
-        user_prompt = render_requirements_prompt(input_truth)
-        artifact_paths = [
-            "requirement_extraction_draft.json",
-            "requirements_call.json",
-            "requirement_sheet.json",
-        ]
-        started_at = datetime.now().astimezone().isoformat(timespec="seconds")
-        started_clock = perf_counter()
-        self._emit_llm_event(
+        return await build_requirements_run_state(
+            settings=self.settings,
+            requirement_extractor=self.requirement_extractor,
             tracer=tracer,
-            event_type="requirements_started",
-            call_id=call_id,
-            model_id=self.settings.requirements_model,
-            status="started",
-            summary="Extracting requirement truth from the job title, JD, and notes.",
-            artifact_paths=artifact_paths,
+            job_title=job_title,
+            jd=jd,
+            notes=notes,
+            progress_callback=progress_callback,
+            emit_llm_event=self._emit_llm_event,
+            emit_progress=self._emit_progress,
+            build_llm_call_snapshot=self._build_llm_call_snapshot,
+            write_aux_llm_call_artifact=self._write_aux_llm_call_artifact,
+            run_stage_error_factory=RunStageError,
         )
-        self._emit_progress(
-            progress_callback,
-            "requirements_started",
-            "正在分析岗位标题、JD 和 notes。",
-            payload={"stage": "requirements"},
-        )
-        try:
-            requirement_draft, requirement_sheet = await self.requirement_extractor.extract_with_draft(
-                input_truth=input_truth
-            )
-        except Exception as exc:  # noqa: BLE001
-            requirement_cache_hit = bool(getattr(self.requirement_extractor, "last_cache_hit", False))
-            requirement_cache_key = getattr(self.requirement_extractor, "last_cache_key", None)
-            requirement_cache_lookup_latency_ms = getattr(
-                self.requirement_extractor,
-                "last_cache_lookup_latency_ms",
-                None,
-            )
-            requirement_prompt_cache_key = getattr(self.requirement_extractor, "last_prompt_cache_key", None)
-            requirement_prompt_cache_retention = getattr(
-                self.requirement_extractor,
-                "last_prompt_cache_retention",
-                None,
-            )
-            requirement_repair_attempt_count = int(getattr(self.requirement_extractor, "last_repair_attempt_count", 0))
-            requirement_repair_succeeded = bool(getattr(self.requirement_extractor, "last_repair_succeeded", False))
-            requirement_repair_reason = getattr(self.requirement_extractor, "last_repair_reason", None)
-            requirement_full_retry_count = int(getattr(self.requirement_extractor, "last_full_retry_count", 0))
-            requirement_provider_usage = getattr(self.requirement_extractor, "last_provider_usage", None)
-            repair_model = (
-                self.settings.structured_repair_model
-                if requirement_repair_attempt_count > 0
-                else None
-            )
-            latency_ms = max(1, int((perf_counter() - started_clock) * 1000))
-            tracer.write_json(
-                "requirements_call.json",
-                self._build_llm_call_snapshot(
-                    stage="requirements",
-                    call_id=call_id,
-                    model_id=self.settings.requirements_model,
-                    prompt_name="requirements",
-                    user_payload=call_payload,
-                    user_prompt_text=user_prompt,
-                    input_artifact_refs=["input_truth.json", "input_snapshot.json"],
-                    output_artifact_refs=[],
-                    started_at=started_at,
-                    latency_ms=latency_ms,
-                    status="failed",
-                    retries=0,
-                    output_retries=2,
-                    error_message=str(exc),
-                    cache_hit=requirement_cache_hit,
-                    cache_key=requirement_cache_key,
-                    cache_lookup_latency_ms=requirement_cache_lookup_latency_ms,
-                    prompt_cache_key=requirement_prompt_cache_key,
-                    prompt_cache_retention=requirement_prompt_cache_retention,
-                    repair_attempt_count=requirement_repair_attempt_count,
-                    repair_succeeded=requirement_repair_succeeded,
-                    repair_model=repair_model,
-                    repair_reason=requirement_repair_reason,
-                    full_retry_count=requirement_full_retry_count,
-                    provider_usage=(
-                        requirement_provider_usage.model_dump(mode="json")
-                        if requirement_provider_usage is not None
-                        else None
-                    ),
-                ).model_dump(mode="json"),
-            )
-            self._write_aux_llm_call_artifact(
-                tracer=tracer,
-                path="repair_requirements_call.json",
-                call_artifact=getattr(self.requirement_extractor, "last_repair_call_artifact", None),
-                input_artifact_refs=["input_truth.json", "requirements_call.json"],
-                output_artifact_refs=[],
-            )
-            self._emit_llm_event(
-                tracer=tracer,
-                event_type="requirements_failed",
-                call_id=call_id,
-                model_id=self.settings.requirements_model,
-                status="failed",
-                summary=str(exc),
-                artifact_paths=["requirements_call.json"],
-                latency_ms=latency_ms,
-                error_message=str(exc),
-            )
-            self._emit_progress(
-                progress_callback,
-                "requirements_failed",
-                str(exc),
-                payload={"stage": "requirements", "error_type": type(exc).__name__},
-            )
-            raise RunStageError("requirement_extraction", str(exc)) from exc
-        requirement_cache_hit = bool(getattr(self.requirement_extractor, "last_cache_hit", False))
-        requirement_cache_key = getattr(self.requirement_extractor, "last_cache_key", None)
-        requirement_cache_lookup_latency_ms = getattr(
-            self.requirement_extractor,
-            "last_cache_lookup_latency_ms",
-            None,
-        )
-        requirement_prompt_cache_key = getattr(self.requirement_extractor, "last_prompt_cache_key", None)
-        requirement_prompt_cache_retention = getattr(
-            self.requirement_extractor,
-            "last_prompt_cache_retention",
-            None,
-        )
-        requirement_repair_attempt_count = int(getattr(self.requirement_extractor, "last_repair_attempt_count", 0))
-        requirement_repair_succeeded = bool(getattr(self.requirement_extractor, "last_repair_succeeded", False))
-        requirement_repair_reason = getattr(self.requirement_extractor, "last_repair_reason", None)
-        requirement_full_retry_count = int(getattr(self.requirement_extractor, "last_full_retry_count", 0))
-        requirement_provider_usage = getattr(self.requirement_extractor, "last_provider_usage", None)
-        repair_model = (
-            self.settings.structured_repair_model
-            if requirement_repair_attempt_count > 0
-            else None
-        )
-        latency_ms = max(1, int((perf_counter() - started_clock) * 1000))
-        tracer.write_json("requirement_extraction_draft.json", requirement_draft.model_dump(mode="json"))
-        tracer.write_json(
-            "requirements_call.json",
-            self._build_llm_call_snapshot(
-                stage="requirements",
-                call_id=call_id,
-                model_id=self.settings.requirements_model,
-                prompt_name="requirements",
-                user_payload=call_payload,
-                user_prompt_text=user_prompt,
-                input_artifact_refs=["input_truth.json", "input_snapshot.json"],
-                output_artifact_refs=["requirement_extraction_draft.json", "requirement_sheet.json"],
-                started_at=started_at,
-                latency_ms=latency_ms,
-                status="succeeded",
-                retries=0,
-                output_retries=2,
-                structured_output=requirement_draft.model_dump(mode="json"),
-                cache_hit=requirement_cache_hit,
-                cache_key=requirement_cache_key,
-                cache_lookup_latency_ms=requirement_cache_lookup_latency_ms,
-                prompt_cache_key=requirement_prompt_cache_key,
-                prompt_cache_retention=requirement_prompt_cache_retention,
-                repair_attempt_count=requirement_repair_attempt_count,
-                repair_succeeded=requirement_repair_succeeded,
-                repair_model=repair_model,
-                repair_reason=requirement_repair_reason,
-                full_retry_count=requirement_full_retry_count,
-                provider_usage=(
-                    requirement_provider_usage.model_dump(mode="json")
-                    if requirement_provider_usage is not None
-                    else None
-                ),
-            ).model_dump(mode="json"),
-        )
-        self._write_aux_llm_call_artifact(
-            tracer=tracer,
-            path="repair_requirements_call.json",
-            call_artifact=getattr(self.requirement_extractor, "last_repair_call_artifact", None),
-            input_artifact_refs=["input_truth.json", "requirements_call.json"],
-            output_artifact_refs=["requirement_extraction_draft.json", "requirement_sheet.json"],
-        )
-        scoring_policy = build_scoring_policy(requirement_sheet)
-        run_state = RunState(
-            input_truth=input_truth,
-            requirement_sheet=requirement_sheet,
-            scoring_policy=scoring_policy,
-            retrieval_state=RetrievalState(
-                current_plan_version=0,
-                query_term_pool=requirement_sheet.initial_query_term_pool,
-            ),
-        )
-        tracer.write_json("input_truth.json", input_truth.model_dump(mode="json"))
-        tracer.write_json("requirement_sheet.json", requirement_sheet.model_dump(mode="json"))
-        tracer.write_json("scoring_policy.json", scoring_policy.model_dump(mode="json"))
-        tracer.write_json("sent_query_history.json", [])
-        self._emit_llm_event(
-            tracer=tracer,
-            event_type="requirements_completed",
-            call_id=call_id,
-            model_id=self.settings.requirements_model,
-            status="succeeded",
-            summary=requirement_sheet.role_title,
-            artifact_paths=artifact_paths,
-            latency_ms=latency_ms,
-        )
-        self._emit_progress(
-            progress_callback,
-            "requirements_completed",
-            f"岗位需求解析完成：{requirement_sheet.role_title}",
-            payload={
-                "stage": "requirements",
-                "role_title": requirement_sheet.role_title,
-                "must_have_capabilities": requirement_sheet.must_have_capabilities,
-                "preferred_capabilities": requirement_sheet.preferred_capabilities,
-            },
-        )
-        return run_state
 
     def _write_run_preamble(self, *, tracer: RunTracer, job_title: str, jd: str, notes: str) -> None:
         tracer.write_json("run_config.json", self._build_public_run_config())
