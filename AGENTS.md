@@ -9,14 +9,14 @@ Default to pragmatic simplicity, but do not preserve experimental-stage shortcut
 
 ## Core Philosophy
 
-- Write idiomatic Python, not Java/C# in Python syntax.
+- Bias toward mainstream Python clarity over imported pattern language.
 - Prefer direct code over ceremony.
 - Prefer the simplest design that remains clear at repository scale.
 - Do not engineer for hypothetical future needs.
 - Allow necessary abstraction when it improves boundaries, API stability, or collaboration cost.
 - Reject speculative flexibility, architecture vanity, and no-payoff indirection.
-- Fail fast inside trusted internal logic.
-- Be more deliberate at external boundaries, user-facing flows, and integration points.
+- Keep internal failure behavior direct and explicit.
+- Treat external boundaries, user-facing flows, and integrations more deliberately.
 
 ## Python First
 
@@ -101,11 +101,11 @@ Default to pragmatic simplicity, but do not preserve experimental-stage shortcut
 - Do not make risky changes to important paths without verification.
 - If code is stable and correct, do not churn it for style alone.
 
-## Code Volume Discipline
-- Minimize line count, but never at the cost of clarity.
-- Shorter is better only when still readable.
-- Do not introduce indirection to look “clean”.
-- Remove dead layers, dead wrappers, and dead abstractions aggressively.
+## Complexity Discipline
+- Reduce unnecessary layers, wrappers, and indirection aggressively.
+- Do not optimize for fewer lines if it makes ownership or behavior harder to follow.
+- Prefer direct code over compressed cleverness.
+- Remove dead complexity when it no longer pays for itself.
 
 ## When Changing Code
 
