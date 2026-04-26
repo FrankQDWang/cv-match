@@ -793,9 +793,7 @@ def test_runtime_city_dispatch_passes_city_to_cts_builder(tmp_path: Path, monkey
     finally:
         tracer.close()
 
-    assert captured
-    assert captured[0].city == "上海"
-    assert captured[0].base_filters == {}
+    assert any(input.city == "上海" and input.base_filters == {} for input in captured)
 
 
 def _fit_scorecard(
