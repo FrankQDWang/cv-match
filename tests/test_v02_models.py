@@ -159,7 +159,7 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
         hard_constraint_summary=["location=上海市", "degree=本科及以上"],
     )
     projection = ConstraintProjectionResult(
-        cts_native_filters={},
+        provider_filters={},
         runtime_only_constraints=[
             RuntimeConstraint(
                 field="age_requirement",
@@ -176,7 +176,7 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
         round_no=1,
         query_terms=["python", "resume matching"],
         keyword_query='python "resume matching"',
-        projected_cts_filters=projection.cts_native_filters,
+        projected_provider_filters=projection.provider_filters,
         runtime_only_constraints=projection.runtime_only_constraints,
         location_execution_plan=LocationExecutionPlan(
             mode="single",
@@ -324,3 +324,43 @@ def test_v02_context_and_round_models_capture_round_truth() -> None:
     assert finalize_context.top_candidates[0].resume_id == "r-1"
     assert round_state.search_observation is not None
     assert round_state.search_observation.city_search_summaries[0].city == "上海市"
+
+
+def test_constraint_projection_result_uses_provider_filters_key() -> None:
+    projection = ConstraintProjectionResult(
+        provider_filters={"age": 3},
+        runtime_only_constraints=[],
+        adapter_notes=[],
+    )
+
+    dump = projection.model_dump(mode="json")
+
+    assert dump["provider_filters"] == {"age": 3}
+    assert "cts_native_filters" not in dump
+
+
+def test_round_retrieval_plan_uses_projected_provider_filters_key() -> None:
+    plan = RoundRetrievalPlan(
+        plan_version=1,
+        round_no=1,
+        query_terms=["python"],
+        keyword_query="python",
+        projected_provider_filters={"age": 3},
+        runtime_only_constraints=[],
+        location_execution_plan=LocationExecutionPlan(
+            mode="none",
+            allowed_locations=[],
+            preferred_locations=[],
+            priority_order=[],
+            balanced_order=[],
+            rotation_offset=0,
+            target_new=1,
+        ),
+        target_new=1,
+        rationale="test",
+    )
+
+    dump = plan.model_dump(mode="json")
+
+    assert dump["projected_provider_filters"] == {"age": 3}
+    assert "projected_cts_filters" not in dump

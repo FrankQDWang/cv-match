@@ -397,7 +397,7 @@ class RuntimeConstraint(BaseModel):
 class ConstraintProjectionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    cts_native_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
+    provider_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
     runtime_only_constraints: list[RuntimeConstraint] = Field(default_factory=list)
     adapter_notes: list[str] = Field(default_factory=list)
 
@@ -430,7 +430,7 @@ class RoundRetrievalPlan(BaseModel):
     round_no: int
     query_terms: list[str] = Field(default_factory=list)
     keyword_query: str
-    projected_cts_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
+    projected_provider_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
     runtime_only_constraints: list[RuntimeConstraint] = Field(default_factory=list)
     location_execution_plan: LocationExecutionPlan
     target_new: int
