@@ -31,6 +31,7 @@ from seektalent.runtime.context_builder import (
     build_reflection_context,
     build_scoring_context,
 )
+from seektalent.runtime.controller_context import build_controller_context as build_controller_context_direct
 from seektalent.runtime.finalize_context import build_finalize_context as build_finalize_context_direct
 from seektalent.runtime.reflection_context import build_reflection_context as build_reflection_context_direct
 from seektalent.runtime.scoring_context import build_scoring_context as build_scoring_context_direct
@@ -520,6 +521,26 @@ def test_split_modules_build_scoring_reflection_and_finalize_contexts() -> None:
     assert finalize_context.model_dump(mode="json") == legacy_finalize_context.model_dump(mode="json")
     assert finalize_context.requirement_digest == legacy_finalize_context.requirement_digest
     assert finalize_context.top_candidates[0].resume_id == "resume-1"
+
+
+def test_controller_context_direct_module_preserves_stop_guidance() -> None:
+    run_state = _run_state_for_stop_gate(
+        candidates=[_scored_candidate("resume-1", round_no=1)],
+        completed_rounds=1,
+        include_untried_family=True,
+    )
+
+    context = build_controller_context_direct(
+        run_state=run_state,
+        round_no=2,
+        min_rounds=1,
+        max_rounds=4,
+        target_new=10,
+    )
+
+    assert context.stop_guidance.can_stop is False
+    assert context.stop_guidance.untried_admitted_families
+    assert context.latest_search_observation is not None
 
 
 def test_stop_guidance_blocks_usable_low_quality_pool_before_budget_threshold() -> None:
