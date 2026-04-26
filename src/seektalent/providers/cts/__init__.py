@@ -1,3 +1,3 @@
-"""CTS provider package placeholders for phase-one extraction."""
+from seektalent.providers.cts.adapter import CTSProviderAdapter
 
-__all__: list[str] = []
+__all__ = ["CTSProviderAdapter"]
