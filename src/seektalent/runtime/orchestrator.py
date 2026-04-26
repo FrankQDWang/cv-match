@@ -57,7 +57,6 @@ from seektalent.models import (
     is_primary_anchor_role,
     is_title_anchor_role,
 )
-from seektalent.normalization import normalize_resume
 from seektalent.prompting import PromptRegistry
 from seektalent.progress import ProgressCallback, ProgressEvent
 from seektalent.providers import get_provider_adapter
@@ -117,6 +116,7 @@ from seektalent.runtime.runtime_reports import (
 from seektalent.runtime.retrieval_runtime import LogicalQueryState, RetrievalRuntime
 from seektalent.runtime.rescue_router import RescueDecision, RescueInputs, SkippedRescueLane, choose_rescue_lane
 from seektalent.runtime.scoring_context import build_scoring_context
+from seektalent.runtime.scoring_runtime import score_round as score_round_direct
 from seektalent.scoring.scorer import ResumeScorer
 from seektalent.tracing import LLMCallSnapshot, ProviderUsageSnapshot, RunTracer
 from seektalent.tracing import json_char_count, json_sha256, text_char_count, text_sha256
@@ -2067,64 +2067,18 @@ class WorkflowRuntime:
         tracer: RunTracer,
         runtime_only_constraints: list[RuntimeConstraint],
     ) -> tuple[list[ScoredCandidate], list[PoolDecision], list[ScoredCandidate]]:
-        scoring_pool = self._build_scoring_pool(
+        return await score_round_direct(
+            round_no=round_no,
             new_candidates=new_candidates,
-            scorecards_by_resume_id=run_state.scorecards_by_resume_id,
-        )
-        normalized_scoring_pool = self._normalize_scoring_pool(
-            round_no=round_no,
-            scoring_pool=scoring_pool,
+            run_state=run_state,
             tracer=tracer,
-            normalized_store=run_state.normalized_store,
+            runtime_only_constraints=runtime_only_constraints,
+            resume_scorer=self.resume_scorer,
+            build_scoring_context=build_scoring_context,
+            format_scoring_failure_message=self._format_scoring_failure_message,
+            run_stage_error=RunStageError,
+            slim_top_pool_snapshot=self._slim_top_pool_snapshot,
         )
-        tracer.write_jsonl(
-            f"rounds/round_{round_no:02d}/scoring_input_refs.jsonl",
-            [self._scoring_input_ref(item) for item in normalized_scoring_pool],
-        )
-        scoring_contexts = [
-            build_scoring_context(
-                run_state=run_state,
-                round_no=round_no,
-                normalized_resume=item,
-                runtime_only_constraints=runtime_only_constraints,
-            )
-            for item in normalized_scoring_pool
-        ]
-        previous_top_ids = set(run_state.top_pool_ids)
-        if scoring_contexts:
-            scored_candidates, scoring_failures = await self.resume_scorer.score_candidates_parallel(
-                contexts=scoring_contexts,
-                tracer=tracer,
-            )
-            if scoring_failures:
-                raise RunStageError("scoring", self._format_scoring_failure_message(scoring_failures))
-            for candidate in scored_candidates:
-                if candidate.resume_id not in run_state.scorecards_by_resume_id:
-                    run_state.scorecards_by_resume_id[candidate.resume_id] = candidate
-        else:
-            scored_candidates = []
-        global_ranked_candidates = sorted(run_state.scorecards_by_resume_id.values(), key=scored_candidate_sort_key)
-        current_top_candidates = global_ranked_candidates[:TOP_K]
-        run_state.top_pool_ids = [item.resume_id for item in current_top_candidates]
-        pool_decisions = self._build_pool_decisions(
-            round_no=round_no,
-            top_candidates=current_top_candidates,
-            previous_top_ids=previous_top_ids,
-        )
-        tracer.write_jsonl(
-            f"rounds/round_{round_no:02d}/scorecards.jsonl",
-            [item.model_dump(mode="json") for item in scored_candidates],
-        )
-        tracer.write_json(
-            f"rounds/round_{round_no:02d}/top_pool_snapshot.json",
-            self._slim_top_pool_snapshot(current_top_candidates),
-        )
-        dropped_candidates = [
-            run_state.scorecards_by_resume_id[resume_id]
-            for resume_id in previous_top_ids
-            if resume_id not in run_state.top_pool_ids and resume_id in run_state.scorecards_by_resume_id
-        ]
-        return current_top_candidates, pool_decisions, dropped_candidates
 
     def _build_public_run_config(self) -> dict[str, object]:
         return {
@@ -2468,17 +2422,6 @@ class WorkflowRuntime:
 
     def _slim_search_attempt(self, attempt: SearchAttempt) -> dict[str, object]:
         return slim_search_attempt_payload(attempt)
-
-    def _scoring_input_ref(self, resume: NormalizedResume) -> dict[str, object]:
-        payload = resume.model_dump(mode="json")
-        return {
-            "resume_id": resume.resume_id,
-            "source_round": resume.source_round,
-            "normalized_resume_ref": f"resumes/{resume.resume_id}.json",
-            "normalized_resume_sha256": json_sha256(payload),
-            "normalized_resume_chars": json_char_count(payload),
-            "summary": resume.compact_summary(),
-        }
 
     def _slim_scored_candidate(self, candidate: ScoredCandidate, *, rank: int | None = None) -> dict[str, object]:
         return slim_scored_candidate_payload(candidate, rank=rank)
@@ -2895,88 +2838,6 @@ class WorkflowRuntime:
             attempt_no=attempt_no,
             tracer=tracer,
         )
-
-    def _build_scoring_pool(
-        self,
-        *,
-        new_candidates: list[ResumeCandidate],
-        scorecards_by_resume_id: dict[str, ScoredCandidate],
-    ) -> list[ResumeCandidate]:
-        pool: list[ResumeCandidate] = []
-        seen_ids: set[str] = set()
-        for candidate in new_candidates:
-            if candidate.resume_id in seen_ids or candidate.resume_id in scorecards_by_resume_id:
-                continue
-            seen_ids.add(candidate.resume_id)
-            pool.append(candidate)
-        return pool
-
-    def _normalize_scoring_pool(
-        self,
-        *,
-        round_no: int,
-        scoring_pool: list[ResumeCandidate],
-        tracer: RunTracer,
-        normalized_store: dict[str, NormalizedResume],
-    ) -> list[NormalizedResume]:
-        normalized_pool: list[NormalizedResume] = []
-        for candidate in scoring_pool:
-            tracer.emit(
-                "resume_normalization_started",
-                round_no=round_no,
-                resume_id=candidate.resume_id,
-                summary=candidate.compact_summary(),
-            )
-            normalized = normalize_resume(candidate)
-            normalized_store[normalized.resume_id] = normalized
-            tracer.write_json(
-                f"resumes/{normalized.resume_id}.json",
-                normalized.model_dump(mode="json"),
-            )
-            normalized_pool.append(normalized)
-        return normalized_pool
-
-    def _build_pool_decisions(
-        self,
-        *,
-        round_no: int,
-        top_candidates: list[ScoredCandidate],
-        previous_top_ids: set[str],
-    ) -> list[PoolDecision]:
-        top_ids = {candidate.resume_id for candidate in top_candidates}
-        decisions: list[PoolDecision] = []
-        for rank, candidate in enumerate(top_candidates, start=1):
-            decision_type = "retained" if candidate.resume_id in previous_top_ids else "selected"
-            decisions.append(
-                PoolDecision(
-                    resume_id=candidate.resume_id,
-                    round_no=round_no,
-                    decision=decision_type,
-                    rank_in_round=rank,
-                    reasons_for_selection=(
-                        candidate.strengths[:3]
-                        or [f"Ranked into current global top pool with score {candidate.overall_score}."]
-                    ),
-                    reasons_for_rejection=candidate.weaknesses[:2],
-                    compared_against_pool_summary=f"Deterministically ranked #{rank} in the global scored set.",
-                )
-            )
-        for rank, resume_id in enumerate(
-            sorted(previous_top_ids - top_ids),
-            start=len(top_candidates) + 1,
-        ):
-            decisions.append(
-                PoolDecision(
-                    resume_id=resume_id,
-                    round_no=round_no,
-                    decision="dropped",
-                    rank_in_round=rank,
-                    reasons_for_selection=[],
-                    reasons_for_rejection=["Replaced by higher-ranked resumes in the global scored set."],
-                    compared_against_pool_summary="Dropped from the global top pool after this round's new scores landed.",
-                )
-            )
-        return decisions
 
     def _render_round_review(
         self,
