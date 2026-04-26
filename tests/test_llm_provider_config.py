@@ -203,6 +203,18 @@ def test_with_overrides_preserves_explicit_paths_after_non_mode_override() -> No
     assert settings.llm_cache_dir == "/tmp/custom-cache"
 
 
+def test_app_settings_resolves_relative_paths_against_workspace_root(tmp_path: Path) -> None:
+    settings = make_settings(
+        workspace_root=str(tmp_path),
+        runs_dir="runs",
+        llm_cache_dir=".seektalent/cache",
+    )
+
+    assert settings.project_root == tmp_path
+    assert settings.runs_path == tmp_path / "runs"
+    assert settings.llm_cache_path == tmp_path / ".seektalent" / "cache"
+
+
 def test_resolve_user_path_expands_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
 

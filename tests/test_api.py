@@ -167,6 +167,33 @@ def test_run_match_passes_eval_options_to_runtime(monkeypatch, tmp_path: Path) -
     assert captured["eval_remote_logging"] is False
 
 
+def test_run_match_uses_explicit_workspace_root(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRuntime:
+        def __init__(self, settings: AppSettings, **_: object) -> None:
+            captured["project_root"] = settings.project_root
+            captured["runs_path"] = settings.runs_path
+
+        def run(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
+            del job_title, jd, notes, progress_callback
+            return _artifacts(tmp_path)
+
+    monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
+    monkeypatch.setattr("seektalent.api.load_process_env", lambda env_file: None)
+
+    run_match(
+        job_title="Python Engineer",
+        jd="JD",
+        settings=make_settings(runs_dir="runs", mock_cts=True),
+        env_file=None,
+        workspace_root=tmp_path,
+    )
+
+    assert captured["project_root"] == tmp_path
+    assert captured["runs_path"] == tmp_path / "runs"
+
+
 def test_match_run_result_constructor_keeps_terminal_guidance_optional(tmp_path: Path) -> None:
     trace_log = tmp_path / "trace.log"
     trace_log.write_text("", encoding="utf-8")
@@ -289,6 +316,35 @@ def test_run_match_async_passes_progress_callback(monkeypatch, tmp_path: Path) -
 
     assert isinstance(result, MatchRunResult)
     assert events == [progress_event]
+
+
+def test_run_match_async_uses_explicit_workspace_root(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRuntime:
+        def __init__(self, settings: AppSettings, **_: object) -> None:
+            captured["project_root"] = settings.project_root
+            captured["runs_path"] = settings.runs_path
+
+        async def run_async(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> RunArtifacts:
+            del job_title, jd, notes, progress_callback
+            return _artifacts(tmp_path)
+
+    monkeypatch.setattr("seektalent.api.WorkflowRuntime", FakeRuntime)
+    monkeypatch.setattr("seektalent.api.load_process_env", lambda env_file: None)
+
+    asyncio.run(
+        run_match_async(
+            job_title="Python Engineer",
+            jd="JD",
+            settings=make_settings(runs_dir="runs", mock_cts=True),
+            env_file=None,
+            workspace_root=tmp_path,
+        )
+    )
+
+    assert captured["project_root"] == tmp_path
+    assert captured["runs_path"] == tmp_path / "runs"
 
 
 def test_run_match_async_defaults_notes_to_empty_string(monkeypatch, tmp_path: Path) -> None:

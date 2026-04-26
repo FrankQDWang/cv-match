@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from seektalent.config import AppSettings
-from seektalent.resources import resolve_user_path
 from seektalent.tracing import jsonable, json_sha256
 
 
@@ -16,8 +15,7 @@ def stable_cache_key(parts: Any) -> str:
 
 
 def _cache_path(settings: AppSettings) -> Path:
-    assert settings.llm_cache_dir is not None
-    path = resolve_user_path(settings.llm_cache_dir)
+    path = settings.llm_cache_path
     path.mkdir(parents=True, exist_ok=True)
     return path / "exact_llm_cache.sqlite3"
 

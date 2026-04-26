@@ -8,7 +8,14 @@ from typing import Literal
 from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from seektalent.resources import DEFAULT_CTS_SPEC_NAME, package_prompt_dir, package_spec_file, resolve_user_path
+from seektalent.core.runtime_context import RuntimeContext
+from seektalent.resources import (
+    DEFAULT_CTS_SPEC_NAME,
+    package_prompt_dir,
+    package_spec_file,
+    resolve_path_from_root,
+    resolve_user_path,
+)
 
 
 ReasoningEffort = Literal["off", "low", "medium", "high"]
@@ -124,6 +131,7 @@ class AppSettings(BaseSettings):
     search_max_attempts_per_round: int = 3
     search_no_progress_limit: int = 2
     runtime_mode: RuntimeMode = "dev"
+    workspace_root: str | None = None
     llm_cache_dir: str | None = None
     openai_prompt_cache_enabled: bool = False
     openai_prompt_cache_retention: str | None = None
@@ -210,7 +218,11 @@ class AppSettings(BaseSettings):
 
     @property
     def project_root(self) -> Path:
-        return Path.cwd()
+        return self.runtime_context.workspace_root
+
+    @property
+    def runtime_context(self) -> RuntimeContext:
+        return RuntimeContext.from_value(self.workspace_root)
 
     @property
     def prompt_dir(self) -> Path:
@@ -223,10 +235,16 @@ class AppSettings(BaseSettings):
         return resolve_user_path(self.cts_spec_path)
 
     @property
+    def llm_cache_path(self) -> Path:
+        if self.llm_cache_dir is None:
+            raise ValueError("llm_cache_dir was not resolved")
+        return resolve_path_from_root(self.llm_cache_dir, root=self.project_root)
+
+    @property
     def runs_path(self) -> Path:
         if self.runs_dir is None:
             raise ValueError("runs_dir was not resolved")
-        return resolve_user_path(self.runs_dir)
+        return resolve_path_from_root(self.runs_dir, root=self.project_root)
 
     @property
     def effective_judge_model(self) -> str:

@@ -47,3 +47,14 @@ def test_clear_exact_llm_cache_removes_sqlite_file(tmp_path) -> None:
     clear_exact_llm_cache(settings)
 
     assert get_cached_json(settings, namespace="scoring", key="k") is None
+
+
+def test_exact_cache_uses_workspace_root_for_relative_cache_dir(tmp_path) -> None:
+    settings = make_settings(
+        workspace_root=str(tmp_path),
+        llm_cache_dir=".seektalent/cache",
+    )
+
+    put_cached_json(settings, namespace="scoring", key="k", payload={"value": 1})
+
+    assert (tmp_path / ".seektalent" / "cache" / "exact_llm_cache.sqlite3").exists()

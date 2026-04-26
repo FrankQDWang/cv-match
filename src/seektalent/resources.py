@@ -54,3 +54,10 @@ def resolve_user_path(path_value: str | Path) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def resolve_path_from_root(path_value: str | Path, *, root: Path) -> Path:
+    path = Path(path_value).expanduser()
+    if path.is_absolute():
+        return path
+    return root / path

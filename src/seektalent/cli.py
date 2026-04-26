@@ -258,7 +258,9 @@ def _arg_spec(
 
 
 def _build_settings(args: argparse.Namespace) -> AppSettings:
+    workspace_root = Path.cwd().resolve()
     overrides = {
+        "workspace_root": str(workspace_root),
         "mock_cts": getattr(args, "mock_cts", None),
         "max_rounds": getattr(args, "max_rounds", None),
         "min_rounds": getattr(args, "min_rounds", None),

@@ -9,8 +9,8 @@ import pytest
 
 from seektalent import __version__
 from seektalent.api import MatchRunResult
+from seektalent.cli import _build_settings, _load_benchmark_directory, _load_benchmark_rows, main
 from seektalent.evaluation import EvaluationResult, EvaluationStageResult
-from seektalent.cli import _load_benchmark_directory, _load_benchmark_rows, main
 from seektalent.models import FinalResult
 from seektalent.resources import REQUIRED_PROMPTS, package_prompt_dir, read_env_example_template
 from seektalent.runtime.exact_llm_cache import get_cached_json, put_cached_json
@@ -1449,3 +1449,32 @@ def test_output_dir_flag_overrides_env_file(
     assert captured["job_title"] == "Python Engineer"
     assert captured["runs_dir"] == str((tmp_path / "explicit-runs").resolve())
     assert "run_id: run-1" in capsys.readouterr().out
+
+
+def test_build_settings_uses_launch_directory_for_workspace_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    args = type(
+        "Args",
+        (),
+        {
+            "env_file": None,
+            "output_dir": "runs",
+            "mock_cts": None,
+            "max_rounds": None,
+            "min_rounds": None,
+            "scoring_max_concurrency": None,
+            "search_max_pages_per_round": None,
+            "search_max_attempts_per_round": None,
+            "search_no_progress_limit": None,
+            "enable_eval": None,
+            "enable_reflection": None,
+        },
+    )()
+
+    settings = _build_settings(args)
+
+    assert settings.project_root == tmp_path
+    assert settings.runs_path == tmp_path / "runs"

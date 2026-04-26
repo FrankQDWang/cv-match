@@ -37,12 +37,18 @@ def _effective_settings(
     *,
     settings: AppSettings | None,
     env_file: str | Path | None,
+    workspace_root: str | Path | None = None,
 ) -> AppSettings:
     if env_file is not None:
         load_process_env(env_file)
     if settings is not None:
-        return settings
-    return AppSettings(_env_file=env_file)  # ty: ignore[unknown-argument]
+        if workspace_root is None:
+            return settings
+        return settings.with_overrides(workspace_root=str(workspace_root))
+    return AppSettings(  # ty: ignore[unknown-argument]
+        _env_file=env_file,
+        workspace_root=str(workspace_root) if workspace_root else None,
+    )
 
 
 def run_match(
@@ -52,12 +58,13 @@ def run_match(
     notes: str = "",
     settings: AppSettings | None = None,
     env_file: str | Path | None = ".env",
+    workspace_root: str | Path | None = None,
     progress_callback: ProgressCallback | None = None,
     judge_limiter: AsyncJudgeLimiter | None = None,
     eval_remote_logging: bool = True,
 ) -> MatchRunResult:
     runtime = WorkflowRuntime(
-        _effective_settings(settings=settings, env_file=env_file),
+        _effective_settings(settings=settings, env_file=env_file, workspace_root=workspace_root),
         judge_limiter=judge_limiter,
         eval_remote_logging=eval_remote_logging,
     )
@@ -73,12 +80,13 @@ async def run_match_async(
     notes: str = "",
     settings: AppSettings | None = None,
     env_file: str | Path | None = ".env",
+    workspace_root: str | Path | None = None,
     progress_callback: ProgressCallback | None = None,
     judge_limiter: AsyncJudgeLimiter | None = None,
     eval_remote_logging: bool = True,
 ) -> MatchRunResult:
     runtime = WorkflowRuntime(
-        _effective_settings(settings=settings, env_file=env_file),
+        _effective_settings(settings=settings, env_file=env_file, workspace_root=workspace_root),
         judge_limiter=judge_limiter,
         eval_remote_logging=eval_remote_logging,
     )
