@@ -112,12 +112,6 @@ CANONICAL_STOP_REASONS = {
 }
 
 
-def _provider_query_role(query_role: QueryRole) -> Literal["primary", "expansion"]:
-    if query_role == "exploit":
-        return "primary"
-    return "expansion"
-
-
 @dataclass
 class RunArtifacts:
     final_result: FinalResult
@@ -4196,17 +4190,12 @@ class WorkflowRuntime:
         tracer: RunTracer,
     ) -> SearchResult:
         try:
-            return await self.retrieval_service.search(
-                query_terms=attempt_query.query_terms,
-                query_role=_provider_query_role(attempt_query.query_role),
-                keyword_query=attempt_query.keyword_query,
-                adapter_notes=attempt_query.adapter_notes,
-                provider_filters=attempt_query.native_filters,
+            return await self.retrieval_runtime.search_once(
+                attempt_query=attempt_query,
                 runtime_constraints=runtime_constraints,
-                page_size=attempt_query.page_size,
                 round_no=round_no,
-                trace_id=f"{tracer.run_id}-r{round_no}-a{attempt_no}",
-                cursor=str(attempt_query.page),
+                attempt_no=attempt_no,
+                tracer=tracer,
             )
         except Exception as exc:  # noqa: BLE001
             tracer.emit(

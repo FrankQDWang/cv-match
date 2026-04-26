@@ -518,6 +518,65 @@ def _install_broaden_stubs(runtime: WorkflowRuntime, *, include_reserve: bool) -
     runtime_any.finalizer = StubFinalizer()
 
 
+def test_workflow_runtime_search_once_delegates_to_retrieval_runtime(tmp_path: Path) -> None:
+    runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
+    captured: dict[str, object] = {}
+
+    class FakeRetrievalRuntime:
+        async def search_once(
+            self,
+            *,
+            attempt_query,
+            runtime_constraints,
+            round_no,
+            attempt_no,
+            tracer,
+        ) -> SearchResult:
+            captured["attempt_query"] = attempt_query
+            captured["runtime_constraints"] = runtime_constraints
+            captured["round_no"] = round_no
+            captured["attempt_no"] = attempt_no
+            captured["tracer"] = tracer
+            return SearchResult(
+                candidates=[_make_candidate("resume-1")],
+                diagnostics=["provider search"],
+                request_payload={"page": 2, "pageSize": 5},
+                raw_candidate_count=1,
+                latency_ms=7,
+            )
+
+    runtime.retrieval_runtime = FakeRetrievalRuntime()
+    tracer = RunTracer(tmp_path / "trace-runtime-search")
+    attempt_query = CTSQuery(
+        query_role="exploit",
+        query_terms=["python", "resume matching"],
+        keyword_query="python resume matching",
+        native_filters={"age": 3},
+        page=2,
+        page_size=5,
+        rationale="runtime seam test",
+        adapter_notes=["runtime location dispatch: 上海"],
+    )
+
+    try:
+        result = asyncio.run(
+            runtime._search_once(
+                attempt_query=attempt_query,
+                runtime_constraints=[],
+                round_no=1,
+                attempt_no=2,
+                tracer=tracer,
+            )
+        )
+    finally:
+        tracer.close()
+
+    assert captured["attempt_query"] is attempt_query
+    assert captured["round_no"] == 1
+    assert captured["attempt_no"] == 2
+    assert result.raw_candidate_count == 1
+
+
 def _fit_scorecard(
     resume_id: str,
     *,
