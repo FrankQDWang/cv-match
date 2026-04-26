@@ -88,6 +88,14 @@ from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime.controller_context import build_controller_context
 from seektalent.runtime.finalize_context import build_finalize_context
 from seektalent.runtime.reflection_context import build_reflection_context
+from seektalent.runtime.runtime_diagnostics import (
+    slim_controller_context as slim_controller_context_payload,
+    slim_finalize_context as slim_finalize_context_payload,
+    slim_reflection_context as slim_reflection_context_payload,
+    slim_scored_candidate as slim_scored_candidate_payload,
+    slim_search_attempt as slim_search_attempt_payload,
+    slim_top_pool_snapshot as slim_top_pool_snapshot_payload,
+)
 from seektalent.runtime.retrieval_runtime import LogicalQueryState, RetrievalRuntime
 from seektalent.runtime.rescue_router import RescueDecision, RescueInputs, SkippedRescueLane, choose_rescue_lane
 from seektalent.runtime.scoring_context import build_scoring_context
@@ -2629,119 +2637,21 @@ class WorkflowRuntime:
         }
 
     def _slim_controller_context(self, context: ControllerContext) -> dict[str, object]:
-        digest = context.requirement_digest or build_requirement_digest(context.requirement_sheet)
-        return {
-            "schema_version": "v0.2.3a",
-            "context_type": "controller",
-            "round_no": context.round_no,
-            "input": self._input_text_refs(
-                role_title=context.requirement_sheet.role_title,
-                jd=context.full_jd,
-                notes=context.full_notes,
-            ),
-            "refs": {
-                "requirement_sheet": "requirement_sheet.json",
-                "sent_query_history": "sent_query_history.json",
-            },
-            "budget": {
-                "min_rounds": context.min_rounds,
-                "max_rounds": context.max_rounds,
-                "retrieval_rounds_completed": context.retrieval_rounds_completed,
-                "rounds_remaining_after_current": context.rounds_remaining_after_current,
-                "budget_used_ratio": context.budget_used_ratio,
-                "near_budget_limit": context.near_budget_limit,
-                "is_final_allowed_round": context.is_final_allowed_round,
-                "target_new": context.target_new,
-                "budget_reminder": context.budget_reminder,
-            },
-            "stop_guidance": context.stop_guidance.model_dump(mode="json"),
-            "requirement_digest": digest.model_dump(mode="json"),
-            "query_term_pool": [item.model_dump(mode="json") for item in context.query_term_pool],
-            "current_top_pool": [item.model_dump(mode="json") for item in context.current_top_pool],
-            "latest_search_observation": (
-                context.latest_search_observation.model_dump(mode="json")
-                if context.latest_search_observation is not None
-                else None
-            ),
-            "previous_reflection": (
-                context.previous_reflection.model_dump(mode="json") if context.previous_reflection is not None else None
-            ),
-            "latest_reflection_keyword_advice": (
-                context.latest_reflection_keyword_advice.model_dump(mode="json")
-                if context.latest_reflection_keyword_advice is not None
-                else None
-            ),
-            "latest_reflection_filter_advice": (
-                context.latest_reflection_filter_advice.model_dump(mode="json")
-                if context.latest_reflection_filter_advice is not None
-                else None
-            ),
-            "shortage_history": context.shortage_history,
-        }
+        return slim_controller_context_payload(context=context, input_text_refs_builder=self._input_text_refs)
 
     def _slim_reflection_context(self, context: ReflectionContext) -> dict[str, object]:
-        return {
-            "schema_version": "v0.2.3a",
-            "context_type": "reflection",
-            "round_no": context.round_no,
-            "input": self._input_text_refs(
-                role_title=context.requirement_sheet.role_title,
-                jd=context.full_jd,
-                notes=context.full_notes,
-            ),
-            "refs": {
-                "requirement_sheet": "requirement_sheet.json",
-                "sent_query_history": "sent_query_history.json",
-            },
-            "requirement_digest": build_requirement_digest(context.requirement_sheet).model_dump(mode="json"),
-            "query_term_pool": [item.model_dump(mode="json") for item in context.query_term_pool],
-            "current_retrieval_plan": context.current_retrieval_plan.model_dump(mode="json"),
-            "search_observation": context.search_observation.model_dump(mode="json"),
-            "search_attempts": [self._slim_search_attempt(item) for item in context.search_attempts],
-            "top_candidates": [
-                self._slim_scored_candidate(candidate, rank=index)
-                for index, candidate in enumerate(context.top_candidates[:8], start=1)
-            ],
-            "dropped_candidates": [
-                self._slim_scored_candidate(candidate, rank=index)
-                for index, candidate in enumerate(context.dropped_candidates[:5], start=1)
-            ],
-            "scoring_failures": [item.model_dump(mode="json") for item in context.scoring_failures],
-            "sent_query_count": len(context.sent_query_history),
-        }
+        return slim_reflection_context_payload(
+            context=context,
+            input_text_refs_builder=self._input_text_refs,
+            slim_search_attempt=self._slim_search_attempt,
+            slim_scored_candidate=self._slim_scored_candidate,
+        )
 
     def _slim_finalize_context(self, context: FinalizeContext) -> dict[str, object]:
-        return {
-            "schema_version": "v0.2.3a",
-            "context_type": "finalize",
-            "run_id": context.run_id,
-            "run_dir": context.run_dir,
-            "rounds_executed": context.rounds_executed,
-            "stop_reason": context.stop_reason,
-            "refs": {
-                "requirement_sheet": "requirement_sheet.json",
-                "sent_query_history": "sent_query_history.json",
-                "scorecards": "rounds/*/scorecards.jsonl",
-                "top_pool_snapshots": "rounds/*/top_pool_snapshot.json",
-            },
-            "requirement_digest": (
-                context.requirement_digest.model_dump(mode="json")
-                if context.requirement_digest is not None
-                else None
-            ),
-            "top_candidates": [
-                self._slim_scored_candidate(candidate, rank=index)
-                for index, candidate in enumerate(context.top_candidates, start=1)
-            ],
-            "sent_query_count": len(context.sent_query_history),
-        }
+        return slim_finalize_context_payload(context=context, slim_scored_candidate=self._slim_scored_candidate)
 
     def _slim_search_attempt(self, attempt: SearchAttempt) -> dict[str, object]:
-        payload = attempt.model_dump(mode="json")
-        request_payload = payload.pop("request_payload", {})
-        payload["request_payload_sha256"] = json_sha256(request_payload)
-        payload["request_payload_chars"] = json_char_count(request_payload)
-        return payload
+        return slim_search_attempt_payload(attempt)
 
     def _scoring_input_ref(self, resume: NormalizedResume) -> dict[str, object]:
         payload = resume.model_dump(mode="json")
@@ -2755,40 +2665,10 @@ class WorkflowRuntime:
         }
 
     def _slim_scored_candidate(self, candidate: ScoredCandidate, *, rank: int | None = None) -> dict[str, object]:
-        payload: dict[str, object] = {
-            "resume_id": candidate.resume_id,
-            "fit_bucket": candidate.fit_bucket,
-            "overall_score": candidate.overall_score,
-            "must_have_match_score": candidate.must_have_match_score,
-            "preferred_match_score": candidate.preferred_match_score,
-            "risk_score": candidate.risk_score,
-            "source_round": candidate.source_round,
-            "sort_key": list(scored_candidate_sort_key(candidate)),
-            "matched_must_haves": candidate.matched_must_haves[:3],
-            "missing_must_haves": candidate.missing_must_haves[:1],
-            "matched_preferences": candidate.matched_preferences[:1],
-            "negative_signals": candidate.negative_signals[:1],
-            "risk_flags": candidate.risk_flags[:1],
-            "reasoning_summary": self._preview_text(candidate.reasoning_summary, limit=80),
-        }
-        if rank is not None:
-            payload["rank"] = rank
-        return payload
+        return slim_scored_candidate_payload(candidate, rank=rank)
 
     def _slim_top_pool_snapshot(self, candidates: list[ScoredCandidate]) -> list[dict[str, object]]:
-        return [
-            {
-                "resume_id": candidate.resume_id,
-                "rank": index,
-                "fit_bucket": candidate.fit_bucket,
-                "overall_score": candidate.overall_score,
-                "must_have_match_score": candidate.must_have_match_score,
-                "risk_score": candidate.risk_score,
-                "source_round": candidate.source_round,
-                "sort_key": list(scored_candidate_sort_key(candidate)),
-            }
-            for index, candidate in enumerate(candidates, start=1)
-        ]
+        return slim_top_pool_snapshot_payload(candidates)
 
     def _emit_llm_event(
         self,

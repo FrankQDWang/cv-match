@@ -35,10 +35,17 @@ from seektalent.models import (
     SearchObservation,
     StopControllerDecision,
 )
+from seektalent.runtime.context_builder import build_controller_context, build_finalize_context, build_reflection_context
+from seektalent.runtime.runtime_diagnostics import (
+    slim_controller_context as slim_controller_context_direct,
+    slim_finalize_context as slim_finalize_context_direct,
+    slim_reflection_context as slim_reflection_context_direct,
+)
 from seektalent.progress import ProgressEvent
 from seektalent.runtime import WorkflowRuntime
 from seektalent.tracing import LLMCallSnapshot, ProviderUsageSnapshot, RunTracer, json_sha256, provider_usage_from_result
 from tests.settings_factory import make_settings
+from tests.test_context_builder import _run_state_for_stop_gate, _scored_candidate
 
 
 def _read_json(path: Path) -> Any:
@@ -100,6 +107,53 @@ def _single_run_dir(runs_root: Path) -> Path:
     run_dirs = sorted(runs_root.iterdir())
     assert len(run_dirs) == 1
     return run_dirs[0]
+
+
+def _build_run_state_fixture():
+    return _run_state_for_stop_gate(
+        candidates=[
+            _scored_candidate("resume-1", round_no=1),
+            _scored_candidate("resume-2", round_no=1),
+        ],
+        completed_rounds=1,
+        include_untried_family=True,
+    )
+
+
+def test_runtime_diagnostics_direct_helpers_match_legacy_outputs() -> None:
+    runtime = WorkflowRuntime(make_settings())
+    run_state = _build_run_state_fixture()
+    round_state = run_state.round_history[0]
+    controller_context = build_controller_context(
+        run_state=run_state,
+        round_no=1,
+        min_rounds=1,
+        max_rounds=4,
+        target_new=10,
+    )
+    reflection_context = build_reflection_context(run_state=run_state, round_state=round_state)
+    finalize_context = build_finalize_context(
+        run_state=run_state,
+        rounds_executed=1,
+        stop_reason="max_rounds_reached",
+        run_id="run-1",
+        run_dir="/tmp/run-1",
+    )
+
+    assert slim_controller_context_direct(
+        context=controller_context,
+        input_text_refs_builder=runtime._input_text_refs,
+    ) == runtime._slim_controller_context(controller_context)
+    assert slim_reflection_context_direct(
+        context=reflection_context,
+        input_text_refs_builder=runtime._input_text_refs,
+        slim_search_attempt=runtime._slim_search_attempt,
+        slim_scored_candidate=runtime._slim_scored_candidate,
+    ) == runtime._slim_reflection_context(reflection_context)
+    assert slim_finalize_context_direct(
+        context=finalize_context,
+        slim_scored_candidate=runtime._slim_scored_candidate,
+    ) == runtime._slim_finalize_context(finalize_context)
 
 
 def test_run_config_records_sanitized_rescue_settings(tmp_path: Path) -> None:
