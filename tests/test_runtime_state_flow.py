@@ -1013,6 +1013,13 @@ def test_workflow_runtime_builds_retrieval_runtime(tmp_path: Path) -> None:
     assert runtime.retrieval_runtime.retrieval_service is runtime.retrieval_service
 
 
+def test_workflow_runtime_uses_retrieval_runtime_module_for_retrieval_execution() -> None:
+    source = Path("src/seektalent/runtime/orchestrator.py").read_text(encoding="utf-8")
+
+    assert "from seektalent.runtime.retrieval_runtime import LogicalQueryState, RetrievalRuntime" in source
+    assert "self.retrieval_runtime = RetrievalRuntime(" in source
+
+
 def test_workflow_runtime_retrieval_service_rebind_syncs_retrieval_runtime(tmp_path: Path) -> None:
     runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
     fake_retrieval_service = cast(Any, object())
