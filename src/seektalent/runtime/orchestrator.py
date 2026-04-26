@@ -223,11 +223,12 @@ class WorkflowRuntime:
         self.judge_prompt = prompt_map["judge"]
         self.evaluation_runner = evaluate_run
         self.provider = get_provider_adapter(settings)
-        self.retrieval_service = RetrievalService(provider=self.provider)
+        retrieval_service = RetrievalService(provider=self.provider)
         self.retrieval_runtime = RetrievalRuntime(
             settings=settings,
-            retrieval_service=self.retrieval_service,
+            retrieval_service=retrieval_service,
         )
+        self.retrieval_service = retrieval_service
         self.company_discovery = CompanyDiscoveryService(
             settings,
             prompts={
@@ -236,6 +237,16 @@ class WorkflowRuntime:
                 "company_discovery_reduce": prompt_map["company_discovery_reduce"],
             },
         )
+
+    @property
+    def retrieval_service(self) -> RetrievalService:
+        return self._retrieval_service
+
+    @retrieval_service.setter
+    def retrieval_service(self, retrieval_service: RetrievalService) -> None:
+        self._retrieval_service = retrieval_service
+        if hasattr(self, "retrieval_runtime"):
+            self.retrieval_runtime.retrieval_service = retrieval_service
 
     def run(
         self,
