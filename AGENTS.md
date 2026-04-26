@@ -86,12 +86,20 @@ Default to pragmatic simplicity, but do not preserve experimental-stage shortcut
 - Do not extend this exception to network failures, tool failures, timeouts, rate limits, or generic recovery logic.
 - Do not add fallback model chains unless explicitly requested.
 
-## Comments and Docstrings
+## Comments And Docstrings
+
 - Write comments only when the reason is non-obvious.
 - Do not comment what the code already says.
 - Prefer self-explanatory code over explanatory comments.
-- Use docstrings for public functions or non-obvious behavior.
-- Keep docstrings short and factual. Python’s own style guidance treats these as conventions for clarity, not ceremony.  [oai_citation:1‡Python Enhancement Proposals (PEPs)](https://peps.python.org/pep-0257/)
+- Use short, factual docstrings for public functions or non-obvious behavior.
+
+## Testing And Change Safety
+
+- Productization work should consider regression risk by default.
+- Changes to public behavior, failure modes, or critical paths should come with tests or updated tests.
+- Tests should track real behavior, not ceremony.
+- Do not make risky changes to important paths without verification.
+- If code is stable and correct, do not churn it for style alone.
 
 ## Code Volume Discipline
 - Minimize line count, but never at the cost of clarity.
@@ -100,11 +108,14 @@ Default to pragmatic simplicity, but do not preserve experimental-stage shortcut
 - Remove dead layers, dead wrappers, and dead abstractions aggressively.
 
 ## When Changing Code
+
 - Make the smallest change that fully solves the problem.
+- Prefer surgical diffs by default.
 - Preserve working code unless there is a real reason to change it.
-- Do not rewrite large sections without explicit need.
-- Do not reshape the whole file for style reasons alone.
-- If editing existing logic, prefer surgical diffs over broad rewrites.
+- Do not rewrite large sections without need.
+- Do not reshape stable code for style alone.
+- If the current structure is actively harming clarity or maintenance, limited restructuring is allowed.
+- When restructuring, improve boundaries and readability, not architecture theater.
 
 ## What to Avoid
 - No enterprise architecture cosplay.
