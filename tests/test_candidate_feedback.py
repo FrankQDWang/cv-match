@@ -11,7 +11,12 @@ from seektalent.candidate_feedback import (
     select_feedback_seed_resumes,
 )
 from seektalent.candidate_feedback.model_steps import CandidateFeedbackModelSteps
-from seektalent.candidate_feedback.models import CandidateFeedbackModelRanking, FeedbackCandidateTerm
+from seektalent.candidate_feedback.models import (
+    CandidateFeedbackModelRanking,
+    FeedbackCandidateExpression,
+    FeedbackCandidateTerm,
+)
+from seektalent.candidate_feedback.policy import PRFGateInput, build_prf_policy_decision
 from seektalent.models import (
     FitBucket,
     QueryRetrievalRole,
@@ -80,6 +85,26 @@ def _query_term(
         retrieval_role=retrieval_role,
         queryability=queryability,
         family=family or f"feedback.{term.casefold().replace(' ', '').replace('.', '')}",
+    )
+
+
+def _expression(
+    expression: str,
+    *,
+    candidate_term_type: str = "technical_phrase",
+    positive_seed_support_count: int = 2,
+    negative_support_count: int = 0,
+    reject_reasons: list[str] | None = None,
+) -> FeedbackCandidateExpression:
+    return FeedbackCandidateExpression(
+        term_family_id=f"feedback.{expression.casefold().replace(' ', '-')}",
+        canonical_expression=expression,
+        surface_forms=[expression],
+        candidate_term_type=candidate_term_type,
+        source_seed_resume_ids=[f"seed-{index}" for index in range(1, positive_seed_support_count + 1)],
+        positive_seed_support_count=positive_seed_support_count,
+        negative_support_count=negative_support_count,
+        reject_reasons=reject_reasons or [],
     )
 
 
@@ -180,6 +205,58 @@ def test_extract_feedback_candidate_expressions_handles_negative_only_evidence()
     assert expressions[0].negative_support_count == 1
     assert expressions[0].fit_support_rate == 0.0
     assert expressions[0].not_fit_support_rate == 1.0
+
+
+def test_build_prf_policy_decision_rejects_when_seed_count_is_insufficient() -> None:
+    decision = build_prf_policy_decision(
+        PRFGateInput(
+            seed_resume_ids=["seed-1"],
+            candidate_expressions=[_expression("LangGraph", positive_seed_support_count=1)],
+            tried_term_family_ids=[],
+        )
+    )
+
+    assert decision.prf_gate_passed is False
+    assert decision.reject_reasons == ["insufficient_seed_count"]
+    assert decision.accepted_expression is None
+
+
+def test_build_prf_policy_decision_marks_company_and_tried_family_rejections_on_candidates() -> None:
+    decision = build_prf_policy_decision(
+        PRFGateInput(
+            seed_resume_ids=["seed-1", "seed-2"],
+            candidate_expressions=[
+                _expression(
+                    "ByteDance",
+                    candidate_term_type="company_entity",
+                    reject_reasons=["company_entity"],
+                ),
+                _expression("Databricks"),
+            ],
+            tried_term_family_ids=["feedback.databricks"],
+        )
+    )
+
+    assert decision.prf_gate_passed is False
+    assert decision.reject_reasons == ["no_safe_candidate_expression"]
+    assert decision.evaluated_expressions[0].reject_reasons == ["company_entity"]
+    assert decision.evaluated_expressions[1].reject_reasons == ["tried_term_family"]
+
+
+def test_build_prf_policy_decision_rejects_candidate_when_negative_support_is_too_high() -> None:
+    decision = build_prf_policy_decision(
+        PRFGateInput(
+            seed_resume_ids=["seed-1", "seed-2"],
+            candidate_expressions=[
+                _expression("LangGraph", positive_seed_support_count=1, negative_support_count=1),
+            ],
+            tried_term_family_ids=[],
+        )
+    )
+
+    assert decision.prf_gate_passed is False
+    assert decision.reject_reasons == ["no_safe_candidate_expression"]
+    assert decision.evaluated_expressions[0].reject_reasons == ["negative_support_too_high"]
 
 
 def test_build_feedback_decision_picks_one_supported_novel_term() -> None:

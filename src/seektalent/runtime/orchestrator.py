@@ -10,7 +10,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from seektalent.candidate_feedback import select_feedback_seed_resumes
+from seektalent.candidate_feedback import (
+    build_term_family_id,
+    extract_feedback_candidate_expressions,
+    select_feedback_seed_resumes,
+)
+from seektalent.candidate_feedback.policy import PRFGateInput, PRFPolicyDecision, build_prf_policy_decision
 from seektalent.company_discovery import (
     CompanyDiscoveryService,
 )
@@ -556,12 +561,14 @@ class WorkflowRuntime:
                 projection_result.model_dump(mode="json"),
             )
             job_intent_fingerprint = self._build_job_intent_fingerprint(run_state=run_state)
+            prf_decision = self._build_prf_policy_decision(run_state=run_state, retrieval_plan=retrieval_plan)
             query_states, second_lane_decision = self._build_round_query_bundle(
                 round_no=round_no,
                 retrieval_plan=retrieval_plan,
                 title_anchor_terms=run_state.requirement_sheet.title_anchor_terms,
                 query_term_pool=run_state.retrieval_state.query_term_pool,
                 sent_query_history=run_state.retrieval_state.sent_query_history,
+                prf_decision=prf_decision,
                 run_id=tracer.run_id,
                 job_intent_fingerprint=job_intent_fingerprint,
                 source_plan_version=str(retrieval_plan.plan_version),
@@ -1816,6 +1823,7 @@ class WorkflowRuntime:
         title_anchor_terms: list[str],
         query_term_pool: list[QueryTermCandidate],
         sent_query_history: list[SentQueryRecord],
+        prf_decision: PRFPolicyDecision | None,
         run_id: str,
         job_intent_fingerprint: str,
         source_plan_version: str,
@@ -1849,7 +1857,7 @@ class WorkflowRuntime:
             retrieval_plan=retrieval_plan,
             query_term_pool=query_term_pool,
             sent_query_history=sent_query_history,
-            prf_decision=None,
+            prf_decision=prf_decision,
             run_id=run_id,
             job_intent_fingerprint=job_intent_fingerprint,
             source_plan_version=source_plan_version,
@@ -1857,6 +1865,55 @@ class WorkflowRuntime:
         if second_lane_query_state is not None:
             query_states.append(second_lane_query_state)
         return query_states, second_lane_decision
+
+    def _build_prf_policy_decision(
+        self,
+        *,
+        run_state: RunState,
+        retrieval_plan,
+    ) -> PRFPolicyDecision:
+        seed_candidates = [
+            run_state.scorecards_by_resume_id[resume_id]
+            for resume_id in run_state.top_pool_ids
+            if resume_id in run_state.scorecards_by_resume_id
+        ]
+        seeds = select_feedback_seed_resumes(seed_candidates)
+        negatives = [
+            item
+            for item in run_state.scorecards_by_resume_id.values()
+            if item.fit_bucket == "not_fit" or item.risk_score > 60
+        ]
+        expressions = extract_feedback_candidate_expressions(
+            seed_resumes=seeds,
+            negative_resumes=negatives,
+            known_company_entities=self._known_company_entities(run_state=run_state),
+            known_product_platforms=set(),
+        )
+        tried_term_family_ids = unique_strings(
+            [
+                build_term_family_id(term)
+                for record in run_state.retrieval_state.sent_query_history
+                for term in record.query_terms
+            ]
+            + [build_term_family_id(term) for term in retrieval_plan.query_terms]
+        )
+        return build_prf_policy_decision(
+            PRFGateInput(
+                seed_resume_ids=[item.resume_id for item in seeds],
+                candidate_expressions=expressions,
+                tried_term_family_ids=tried_term_family_ids,
+            )
+        )
+
+    def _known_company_entities(self, *, run_state: RunState) -> set[str]:
+        entities = {
+            item.term
+            for item in run_state.retrieval_state.query_term_pool
+            if item.category == "company" or item.retrieval_role == "target_company"
+        }
+        entities.update(run_state.requirement_sheet.hard_constraints.company_names)
+        entities.update(run_state.requirement_sheet.preferences.preferred_companies)
+        return entities
 
     def _contains_target_company_term(
         self,

@@ -285,6 +285,82 @@ class StubScorer:
         return scored, failures
 
 
+class PRFProbeScorer:
+    async def score_candidates_parallel(self, *, contexts, tracer):
+        scored: list[ScoredCandidate] = []
+        failures: list[ScoringFailure] = []
+        for context in contexts:
+            tracer.emit(
+                "score_branch_completed",
+                round_no=context.round_no,
+                resume_id=context.normalized_resume.resume_id,
+                branch_id=f"r{context.round_no}-{context.normalized_resume.resume_id}",
+                model="stub-scorer",
+                summary="stub score",
+                payload={},
+            )
+            scored.append(
+                ScoredCandidate(
+                    resume_id=context.normalized_resume.resume_id,
+                    fit_bucket="fit",
+                    overall_score=92 if context.round_no == 1 else 90,
+                    must_have_match_score=88,
+                    preferred_match_score=70,
+                    risk_score=8,
+                    risk_flags=[],
+                    reasoning_summary="PRF seed candidate.",
+                    evidence=["LangGraph"],
+                    confidence="high",
+                    matched_must_haves=["python"],
+                    missing_must_haves=[],
+                    matched_preferences=[],
+                    negative_signals=[],
+                    strengths=[],
+                    weaknesses=[],
+                    source_round=context.normalized_resume.source_round or context.round_no,
+                )
+            )
+        return scored, failures
+
+
+class GenericFallbackScorer:
+    async def score_candidates_parallel(self, *, contexts, tracer):
+        scored: list[ScoredCandidate] = []
+        failures: list[ScoringFailure] = []
+        for context in contexts:
+            tracer.emit(
+                "score_branch_completed",
+                round_no=context.round_no,
+                resume_id=context.normalized_resume.resume_id,
+                branch_id=f"r{context.round_no}-{context.normalized_resume.resume_id}",
+                model="stub-scorer",
+                summary="stub score",
+                payload={},
+            )
+            scored.append(
+                ScoredCandidate(
+                    resume_id=context.normalized_resume.resume_id,
+                    fit_bucket="fit",
+                    overall_score=90 if context.round_no == 1 else 91,
+                    must_have_match_score=88,
+                    preferred_match_score=70,
+                    risk_score=8,
+                    risk_flags=[],
+                    reasoning_summary="Fallback scorer accepted the candidate.",
+                    evidence=["trace"],
+                    confidence="high",
+                    matched_must_haves=["python"],
+                    missing_must_haves=[],
+                    matched_preferences=[],
+                    negative_signals=[],
+                    strengths=[],
+                    weaknesses=[],
+                    source_round=context.normalized_resume.source_round or context.round_no,
+                )
+            )
+        return scored, failures
+
+
 class LowQualityScorer:
     async def score_candidates_parallel(self, *, contexts, tracer):
         del tracer
@@ -385,6 +461,49 @@ class DuplicateAcrossLanesCTS:
             diagnostics=[f"round {round_no} returned one candidate"],
             request_payload={"round_no": round_no, "cursor": cursor},
             raw_candidate_count=1,
+            latency_ms=1,
+        )
+
+
+class PRFProbeCTS:
+    async def search(
+        self,
+        *,
+        query_terms,
+        query_role,
+        keyword_query,
+        adapter_notes,
+        provider_filters,
+        runtime_constraints,
+        page_size,
+        round_no,
+        trace_id,
+        fetch_mode="summary",
+        cursor=None,
+    ) -> SearchResult:
+        del query_terms, keyword_query, adapter_notes, provider_filters, runtime_constraints, page_size, trace_id, fetch_mode
+        if int(cursor or "1") > 1:
+            return SearchResult(
+                candidates=[],
+                diagnostics=[f"round {round_no} page exhausted"],
+                request_payload={"round_no": round_no, "cursor": cursor},
+                raw_candidate_count=0,
+                latency_ms=1,
+            )
+        if round_no == 1:
+            candidates = [
+                _make_candidate("seed-1", source_round=1),
+                _make_candidate("seed-2", source_round=1),
+            ]
+        elif query_role == "exploit":
+            candidates = [_make_candidate("round-2-exploit", source_round=2)]
+        else:
+            candidates = [_make_candidate("round-2-prf", source_round=2)]
+        return SearchResult(
+            candidates=candidates,
+            diagnostics=[f"round {round_no} returned {len(candidates)} candidates"],
+            request_payload={"round_no": round_no, "cursor": cursor, "query_role": query_role},
+            raw_candidate_count=len(candidates),
             latency_ms=1,
         )
 
@@ -1190,7 +1309,7 @@ def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
         max_rounds=2,
     )
     runtime = WorkflowRuntime(settings)
-    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=GenericFallbackScorer())
     tracer = RunTracer(tmp_path / "trace-runs")
     job_title, jd, notes = _sample_inputs()
     progress_events = []
@@ -1288,7 +1407,7 @@ def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
 def test_round_two_serializes_exploit_and_generic_lane_types(tmp_path: Path) -> None:
     settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=2)
     runtime = WorkflowRuntime(settings)
-    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=GenericFallbackScorer())
     tracer = RunTracer(tmp_path / "trace")
 
     try:
@@ -1312,7 +1431,7 @@ def test_round_two_serializes_exploit_and_generic_lane_types(tmp_path: Path) -> 
     assert decision["selected_lane_type"] == "generic_explore"
     assert decision["fallback_lane_type"] == "generic_explore"
     assert decision["fallback_query_fingerprint"] == decision["selected_query_fingerprint"]
-    assert decision["reject_reasons"] == ["prf_policy_not_available"]
+    assert decision["reject_reasons"] == ["no_safe_candidate_expression"]
     generic_query = queries[1]
     generic_sent_query = sent_query_records[1]
     assert generic_query["query_instance_id"] == decision["selected_query_instance_id"]
@@ -1321,10 +1440,43 @@ def test_round_two_serializes_exploit_and_generic_lane_types(tmp_path: Path) -> 
     assert generic_sent_query["query_fingerprint"] == decision["selected_query_fingerprint"]
 
 
+def test_round_two_uses_prf_probe_when_gate_passes(tmp_path: Path) -> None:
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=2)
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=PRFProbeScorer())
+    runtime.retrieval_service = PRFProbeCTS()
+    tracer = RunTracer(tmp_path / "trace")
+
+    try:
+        job_title, jd, notes = _sample_inputs()
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        asyncio.run(runtime._run_rounds(run_state=run_state, tracer=tracer, progress_callback=None))
+    finally:
+        tracer.close()
+
+    queries = json.loads((tracer.run_dir / "rounds" / "round_02" / "cts_queries.json").read_text())
+    sent_query_records = json.loads((tracer.run_dir / "rounds" / "round_02" / "sent_query_records.json").read_text())
+    decision = json.loads((tracer.run_dir / "rounds" / "round_02" / "second_lane_decision.json").read_text())
+
+    assert [item["lane_type"] for item in queries] == ["exploit", "prf_probe"]
+    assert [item["lane_type"] for item in sent_query_records] == ["exploit", "prf_probe"]
+    assert queries[1]["query_terms"] == ["python", "LangGraph"]
+    assert sent_query_records[1]["query_terms"] == ["python", "LangGraph"]
+    assert decision["attempted_prf"] is True
+    assert decision["prf_gate_passed"] is True
+    assert decision["selected_lane_type"] == "prf_probe"
+    assert decision["accepted_prf_expression"] == "LangGraph"
+    assert decision["accepted_prf_term_family_id"] == "feedback.langgraph"
+    assert decision["prf_seed_resume_ids"] == ["seed-1", "seed-2"]
+    assert decision["prf_candidate_expression_count"] == 1
+    assert queries[1]["query_instance_id"] == decision["selected_query_instance_id"]
+    assert queries[1]["query_fingerprint"] == decision["selected_query_fingerprint"]
+
+
 def test_duplicate_hit_does_not_overwrite_first_hit_attribution(tmp_path: Path) -> None:
     settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=2)
     runtime = WorkflowRuntime(settings)
-    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=GenericFallbackScorer())
     runtime.retrieval_service = DuplicateAcrossLanesCTS()
     tracer = RunTracer(tmp_path / "trace")
 

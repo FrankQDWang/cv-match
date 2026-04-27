@@ -455,6 +455,8 @@ class RoundRetrievalPlan(BaseModel):
     plan_version: int
     round_no: int
     query_terms: list[str] = Field(default_factory=list)
+    role_anchor_terms: list[str] = Field(default_factory=list)
+    must_have_anchor_terms: list[str] = Field(default_factory=list)
     keyword_query: str
     projected_provider_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
     runtime_only_constraints: list[RuntimeConstraint] = Field(default_factory=list)

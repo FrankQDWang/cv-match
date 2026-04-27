@@ -399,10 +399,13 @@ def build_round_retrieval_plan(
         allowed_inactive_non_anchor_terms=allowed_inactive_non_anchor_terms,
         allow_anchor_only=allow_anchor_only_query,
     )
+    role_anchor_terms = _plan_role_anchor_terms(canonical_terms, query_term_pool=query_term_pool)
     return RoundRetrievalPlan(
         plan_version=plan_version,
         round_no=round_no,
         query_terms=canonical_terms,
+        role_anchor_terms=role_anchor_terms,
+        must_have_anchor_terms=[term for term in canonical_terms if term not in role_anchor_terms],
         keyword_query=serialize_keyword_query(canonical_terms),
         projected_provider_filters=projected_provider_filters,
         runtime_only_constraints=list(runtime_only_constraints),
@@ -416,3 +419,18 @@ def _rotation_offset(round_no: int, city_count: int) -> int:
     if city_count <= 0:
         return 0
     return (round_no - 1) % city_count
+
+
+def _plan_role_anchor_terms(
+    query_terms: list[str],
+    *,
+    query_term_pool: list[QueryTermCandidate],
+) -> list[str]:
+    term_index = _query_term_index(query_term_pool)
+    anchors: list[str] = []
+    for term in query_terms:
+        candidate = term_index.get(normalize_term(term).casefold())
+        if candidate is None or not _is_title_anchor_candidate(candidate):
+            continue
+        anchors.append(candidate.term)
+    return unique_strings(anchors)

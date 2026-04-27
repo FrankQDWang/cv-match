@@ -1,4 +1,6 @@
 from seektalent.models import RoundRetrievalPlan, SecondLaneDecision
+from seektalent.candidate_feedback.models import FeedbackCandidateExpression
+from seektalent.candidate_feedback.policy import PRFGateInput, build_prf_policy_decision
 from seektalent.retrieval import build_location_execution_plan
 from seektalent.runtime.retrieval_runtime import build_logical_query_state
 from seektalent.runtime.second_lane_runtime import build_second_lane_decision
@@ -9,6 +11,8 @@ def _retrieval_plan(*, query_terms: list[str]) -> RoundRetrievalPlan:
         plan_version=2,
         round_no=2,
         query_terms=query_terms,
+        role_anchor_terms=[query_terms[0]],
+        must_have_anchor_terms=query_terms[1:],
         keyword_query=" ".join(query_terms),
         projected_provider_filters={},
         runtime_only_constraints=[],
@@ -52,6 +56,48 @@ def test_build_second_lane_decision_falls_back_to_generic_when_prf_policy_is_una
     )
     assert lane is not None
     assert lane.lane_type == "generic_explore"
+
+
+def test_build_second_lane_decision_selects_prf_probe_when_gate_passes() -> None:
+    retrieval_plan = _retrieval_plan(query_terms=["python", "ranking", "trace"])
+    prf_decision = build_prf_policy_decision(
+        PRFGateInput(
+            seed_resume_ids=["seed-1", "seed-2"],
+            candidate_expressions=[
+                FeedbackCandidateExpression(
+                    term_family_id="feedback.langgraph",
+                    canonical_expression="LangGraph",
+                    surface_forms=["LangGraph"],
+                    candidate_term_type="technical_phrase",
+                    source_seed_resume_ids=["seed-1", "seed-2"],
+                    positive_seed_support_count=2,
+                    negative_support_count=0,
+                )
+            ],
+            tried_term_family_ids=["feedback.python", "feedback.ranking", "feedback.trace"],
+        )
+    )
+
+    decision, lane = build_second_lane_decision(
+        round_no=2,
+        retrieval_plan=retrieval_plan,
+        query_term_pool=[],
+        sent_query_history=[],
+        prf_decision=prf_decision,
+        run_id="run-a",
+        job_intent_fingerprint="job-1",
+        source_plan_version="2",
+    )
+
+    assert lane is not None
+    assert lane.lane_type == "prf_probe"
+    assert lane.query_terms == ["python", "LangGraph"]
+    assert decision.selected_lane_type == "prf_probe"
+    assert decision.prf_gate_passed is True
+    assert decision.accepted_prf_expression == "LangGraph"
+    assert decision.accepted_prf_term_family_id == "feedback.langgraph"
+    assert decision.prf_seed_resume_ids == ["seed-1", "seed-2"]
+    assert decision.prf_candidate_expression_count == 1
 
 
 def test_build_logical_query_state_fingerprint_changes_with_filters_and_location_plan() -> None:
