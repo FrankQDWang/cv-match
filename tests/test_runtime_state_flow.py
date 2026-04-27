@@ -1262,6 +1262,7 @@ def test_round_two_serializes_exploit_and_generic_lane_types(tmp_path: Path) -> 
     assert decision["prf_gate_passed"] is False
     assert decision["selected_lane_type"] == "generic_explore"
     assert decision["fallback_lane_type"] == "generic_explore"
+    assert decision["fallback_query_fingerprint"] == decision["selected_query_fingerprint"]
     assert decision["reject_reasons"] == ["prf_policy_not_available"]
 
 

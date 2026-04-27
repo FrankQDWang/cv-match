@@ -88,6 +88,7 @@ def build_second_lane_decision(
             selected_query_fingerprint=query_state.query_fingerprint,
             reject_reasons=["prf_policy_not_available"],
             fallback_lane_type="generic_explore",
+            fallback_query_fingerprint=query_state.query_fingerprint,
             prf_policy_version="unavailable",
             generic_explore_version="v1",
         ),

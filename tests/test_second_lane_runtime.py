@@ -45,6 +45,7 @@ def test_build_second_lane_decision_falls_back_to_generic_when_prf_policy_is_una
         selected_query_fingerprint=decision.selected_query_fingerprint,
         reject_reasons=["prf_policy_not_available"],
         fallback_lane_type="generic_explore",
+        fallback_query_fingerprint=decision.selected_query_fingerprint,
         prf_policy_version="unavailable",
         generic_explore_version="v1",
     )
