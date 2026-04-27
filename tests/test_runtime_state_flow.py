@@ -2,6 +2,7 @@ import asyncio
 import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -37,6 +38,7 @@ from seektalent.models import (
     RunState,
 )
 from seektalent.retrieval import build_location_execution_plan, build_round_retrieval_plan
+import seektalent.runtime.orchestrator as orchestrator_module
 import seektalent.runtime.rescue_execution_runtime as rescue_execution_runtime
 from seektalent.runtime.retrieval_runtime import RetrievalExecutionResult, RetrievalRuntime
 from seektalent.runtime.runtime_reports import render_round_review as render_round_review_direct
@@ -1226,6 +1228,89 @@ def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
         },
         {"query_role": "explore", "query_terms": ["python", "trace"], "keyword_query": "python trace"},
     ]
+
+
+def test_run_rounds_delegates_controller_stage_to_runtime_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=1,
+    )
+    runtime = WorkflowRuntime(settings)
+
+    class FailingController:
+        last_validator_retry_count = 0
+        last_validator_retry_reasons: list[str] = []
+
+        async def decide(self, *, context):
+            del context
+            raise AssertionError("controller.decide should not be called directly from _run_rounds")
+
+    _install_runtime_stubs(runtime, controller=FailingController(), resume_scorer=StubScorer())
+    tracer = RunTracer(tmp_path / "trace-runs")
+    job_title, jd, notes = _sample_inputs()
+    expected_decision = StopControllerDecision(
+        thought_summary="Stop.",
+        action="stop",
+        decision_rationale="Delegated controller stage decided to stop.",
+        stop_reason="controller_stop",
+    )
+    recorded: dict[str, Any] = {}
+
+    async def fake_run_controller_stage(**kwargs):
+        recorded["round_no"] = kwargs["round_no"]
+        recorded["controller_context_round_no"] = kwargs["controller_context"].round_no
+        recorded["controller"] = kwargs["controller"]
+        recorded["progress_callback"] = kwargs["progress_callback"]
+        return expected_decision, {
+            "call_id": "controller-r01",
+            "call_payload": {},
+            "prompt": "",
+            "prompt_cache_key": None,
+            "prompt_cache_retention": None,
+            "artifacts": [],
+            "started_at": "2026-04-27T00:00:00+08:00",
+            "started_clock": 0.0,
+        }
+
+    async def fake_resolve_round_decision(**kwargs):
+        assert kwargs["controller_decision"] is expected_decision
+        return expected_decision, None
+
+    def fake_complete_controller_stage(**kwargs):
+        recorded["completed_decision"] = kwargs["controller_decision"]
+
+    monkeypatch.setattr(
+        orchestrator_module,
+        "controller_runtime",
+        SimpleNamespace(
+            run_controller_stage=fake_run_controller_stage,
+            complete_controller_stage=fake_complete_controller_stage,
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(orchestrator_module.round_decision_runtime, "resolve_round_decision", fake_resolve_round_decision)
+
+    try:
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        _, stop_reason, rounds_executed, terminal_controller_round = asyncio.run(
+            runtime._run_rounds(run_state=run_state, tracer=tracer)
+        )
+    finally:
+        tracer.close()
+
+    assert recorded["round_no"] == 1
+    assert recorded["controller_context_round_no"] == 1
+    assert recorded["controller"] is runtime.controller
+    assert recorded["progress_callback"] is None
+    assert recorded["completed_decision"] is expected_decision
+    assert stop_reason == "controller_stop"
+    assert rounds_executed == 0
+    assert terminal_controller_round is not None
+    assert terminal_controller_round.round_no == 1
 
 
 def test_runtime_reflection_does_not_mutate_query_term_pool(tmp_path: Path) -> None:

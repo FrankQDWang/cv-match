@@ -20,7 +20,6 @@ from seektalent.config import AppSettings
 from seektalent.controller import ReActController
 from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.core.retrieval.service import RetrievalService
-from seektalent.controller.react_controller import render_controller_prompt
 from seektalent.evaluation import TOP_K, AsyncJudgeLimiter, EvaluationResult, evaluate_run
 from seektalent.finalize.finalizer import Finalizer, render_finalize_prompt
 from seektalent.llm import model_provider, preflight_models
@@ -72,6 +71,7 @@ from seektalent.retrieval import (
 from seektalent.resume_quality import ResumeQualityCommenter
 from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime import company_discovery_runtime
+from seektalent.runtime import controller_runtime
 from seektalent.runtime import round_decision_runtime
 from seektalent.runtime import rescue_execution_runtime
 from seektalent.runtime.controller_context import build_controller_context
@@ -648,121 +648,20 @@ class WorkflowRuntime:
                 f"rounds/round_{round_no:02d}/controller_context.json",
                 self._slim_controller_context(controller_context),
             )
-            controller_call_id = f"controller-r{round_no:02d}"
-            controller_call_payload = {"CONTROLLER_CONTEXT": controller_context.model_dump(mode="json")}
-            controller_prompt = render_controller_prompt(controller_context)
-            controller_prompt_cache_key = self._prompt_cache_key(
-                stage="controller",
-                model_id=self.settings.controller_model,
-                input_hash=json_sha256(controller_context.requirement_sheet.model_dump(mode="json")),
-            )
-            controller_prompt_cache_retention = (
-                self.settings.openai_prompt_cache_retention if controller_prompt_cache_key is not None else None
-            )
-            controller_artifacts = [
-                f"rounds/round_{round_no:02d}/controller_context.json",
-                f"rounds/round_{round_no:02d}/controller_call.json",
-                f"rounds/round_{round_no:02d}/controller_decision.json",
-            ]
-            controller_started_at = datetime.now().astimezone().isoformat(timespec="seconds")
-            controller_started_clock = perf_counter()
-            self._emit_llm_event(
+            controller_decision, controller_stage_state = await controller_runtime.run_controller_stage(
+                settings=self.settings,
+                controller=self.controller,
+                controller_context=controller_context,
+                round_no=round_no,
                 tracer=tracer,
-                event_type="controller_started",
-                round_no=round_no,
-                call_id=controller_call_id,
-                model_id=self.settings.controller_model,
-                status="started",
-                summary=f"Planning round {round_no} action.",
-                artifact_paths=controller_artifacts,
+                progress_callback=progress_callback,
+                build_llm_call_snapshot=self._build_llm_call_snapshot,
+                write_aux_llm_call_artifact=self._write_aux_llm_call_artifact,
+                emit_llm_event=self._emit_llm_event,
+                emit_progress=self._emit_progress,
+                prompt_cache_key=self._prompt_cache_key,
+                run_stage_error=RunStageError,
             )
-            self._emit_progress(
-                progress_callback,
-                "controller_started",
-                f"正在判断第 {round_no} 轮搜索策略。",
-                round_no=round_no,
-                payload={"stage": "controller"},
-            )
-            try:
-                if isinstance(self.controller, ReActController):
-                    controller_decision = await self.controller.decide(
-                        context=controller_context,
-                        prompt_cache_key=controller_prompt_cache_key,
-                    )
-                else:
-                    controller_decision = await self.controller.decide(context=controller_context)
-            except Exception as exc:  # noqa: BLE001
-                latency_ms = max(1, int((perf_counter() - controller_started_clock) * 1000))
-                controller_repair_attempt_count = int(getattr(self.controller, "last_repair_attempt_count", 0))
-                controller_repair_model = (
-                    self.settings.structured_repair_model if controller_repair_attempt_count > 0 else None
-                )
-                controller_provider_usage = getattr(self.controller, "last_provider_usage", None)
-                tracer.write_json(
-                    f"rounds/round_{round_no:02d}/controller_call.json",
-                    self._build_llm_call_snapshot(
-                        stage="controller",
-                        call_id=controller_call_id,
-                        model_id=self.settings.controller_model,
-                        prompt_name="controller",
-                        user_payload=controller_call_payload,
-                        user_prompt_text=controller_prompt,
-                        input_artifact_refs=[
-                            f"rounds/round_{round_no:02d}/controller_context.json",
-                            "requirement_sheet.json",
-                            "sent_query_history.json",
-                        ],
-                        output_artifact_refs=[],
-                        started_at=controller_started_at,
-                        latency_ms=latency_ms,
-                        status="failed",
-                        retries=0,
-                        output_retries=2,
-                        error_message=str(exc),
-                        round_no=round_no,
-                        validator_retry_count=self.controller.last_validator_retry_count,
-                        validator_retry_reasons=self.controller.last_validator_retry_reasons,
-                        prompt_cache_key=controller_prompt_cache_key,
-                        prompt_cache_retention=controller_prompt_cache_retention,
-                        repair_attempt_count=controller_repair_attempt_count,
-                        repair_succeeded=bool(getattr(self.controller, "last_repair_succeeded", False)),
-                        repair_model=controller_repair_model,
-                        repair_reason=getattr(self.controller, "last_repair_reason", None),
-                        full_retry_count=int(getattr(self.controller, "last_full_retry_count", 0)),
-                        provider_usage=controller_provider_usage,
-                    ).model_dump(mode="json"),
-                )
-                self._write_aux_llm_call_artifact(
-                    tracer=tracer,
-                    path=f"rounds/round_{round_no:02d}/repair_controller_call.json",
-                    call_artifact=getattr(self.controller, "last_repair_call_artifact", None),
-                    input_artifact_refs=[
-                        f"rounds/round_{round_no:02d}/controller_context.json",
-                        f"rounds/round_{round_no:02d}/controller_call.json",
-                    ],
-                    output_artifact_refs=[],
-                    round_no=round_no,
-                )
-                self._emit_llm_event(
-                    tracer=tracer,
-                    event_type="controller_failed",
-                    round_no=round_no,
-                    call_id=controller_call_id,
-                    model_id=self.settings.controller_model,
-                    status="failed",
-                    summary=str(exc),
-                    artifact_paths=controller_artifacts[:2],
-                    latency_ms=latency_ms,
-                    error_message=str(exc),
-                )
-                self._emit_progress(
-                    progress_callback,
-                    "controller_failed",
-                    str(exc),
-                    round_no=round_no,
-                    payload={"stage": "controller", "error_type": type(exc).__name__},
-                )
-                raise RunStageError("controller", str(exc)) from exc
             controller_decision, rescue_decision = await round_decision_runtime.resolve_round_decision(
                 run_state=run_state,
                 round_no=round_no,
@@ -780,91 +679,18 @@ class WorkflowRuntime:
                 force_anchor_only_decision=self._force_anchor_only_decision,
                 write_rescue_decision=self._write_rescue_decision,
             )
-            tracer.write_json(
-                f"rounds/round_{round_no:02d}/controller_decision.json",
-                controller_decision.model_dump(mode="json"),
-            )
-            latency_ms = max(1, int((perf_counter() - controller_started_clock) * 1000))
-            controller_provider_usage = getattr(self.controller, "last_provider_usage", None)
-            tracer.write_json(
-                f"rounds/round_{round_no:02d}/controller_call.json",
-                self._build_llm_call_snapshot(
-                    stage="controller",
-                    call_id=controller_call_id,
-                    model_id=self.settings.controller_model,
-                    prompt_name="controller",
-                    user_payload=controller_call_payload,
-                    user_prompt_text=controller_prompt,
-                    input_artifact_refs=[
-                        f"rounds/round_{round_no:02d}/controller_context.json",
-                        "requirement_sheet.json",
-                        "sent_query_history.json",
-                    ],
-                    output_artifact_refs=[f"rounds/round_{round_no:02d}/controller_decision.json"],
-                    started_at=controller_started_at,
-                    latency_ms=latency_ms,
-                    status="succeeded",
-                    retries=0,
-                    output_retries=2,
-                    structured_output=controller_decision.model_dump(mode="json"),
-                    round_no=round_no,
-                    validator_retry_count=self.controller.last_validator_retry_count,
-                    validator_retry_reasons=self.controller.last_validator_retry_reasons,
-                    prompt_cache_key=controller_prompt_cache_key,
-                    prompt_cache_retention=controller_prompt_cache_retention,
-                    repair_attempt_count=int(getattr(self.controller, "last_repair_attempt_count", 0)),
-                    repair_succeeded=bool(getattr(self.controller, "last_repair_succeeded", False)),
-                    repair_model=(
-                        self.settings.structured_repair_model
-                        if int(getattr(self.controller, "last_repair_attempt_count", 0)) > 0
-                        else None
-                    ),
-                    repair_reason=getattr(self.controller, "last_repair_reason", None),
-                    full_retry_count=int(getattr(self.controller, "last_full_retry_count", 0)),
-                    provider_usage=controller_provider_usage,
-                ).model_dump(mode="json"),
-            )
-            self._write_aux_llm_call_artifact(
+            controller_runtime.complete_controller_stage(
+                settings=self.settings,
+                controller=self.controller,
+                controller_decision=controller_decision,
+                controller_stage_state=controller_stage_state,
+                round_no=round_no,
                 tracer=tracer,
-                path=f"rounds/round_{round_no:02d}/repair_controller_call.json",
-                call_artifact=getattr(self.controller, "last_repair_call_artifact", None),
-                input_artifact_refs=[
-                    f"rounds/round_{round_no:02d}/controller_context.json",
-                    f"rounds/round_{round_no:02d}/controller_call.json",
-                ],
-                output_artifact_refs=[f"rounds/round_{round_no:02d}/controller_decision.json"],
-                round_no=round_no,
-            )
-            self._emit_llm_event(
-                tracer=tracer,
-                event_type="controller_completed",
-                round_no=round_no,
-                call_id=controller_call_id,
-                model_id=self.settings.controller_model,
-                status="succeeded",
-                summary=controller_decision.decision_rationale,
-                artifact_paths=controller_artifacts,
-                latency_ms=latency_ms,
-            )
-            self._emit_progress(
-                progress_callback,
-                "controller_completed",
-                controller_decision.decision_rationale,
-                round_no=round_no,
-                payload={
-                    "stage": "controller",
-                    "action": controller_decision.action,
-                    "query_terms": (
-                        controller_decision.proposed_query_terms
-                        if isinstance(controller_decision, SearchControllerDecision)
-                        else []
-                    ),
-                    "stop_reason": (
-                        controller_decision.stop_reason
-                        if isinstance(controller_decision, StopControllerDecision)
-                        else None
-                    ),
-                },
+                progress_callback=progress_callback,
+                build_llm_call_snapshot=self._build_llm_call_snapshot,
+                write_aux_llm_call_artifact=self._write_aux_llm_call_artifact,
+                emit_llm_event=self._emit_llm_event,
+                emit_progress=self._emit_progress,
             )
             if isinstance(controller_decision, StopControllerDecision):
                 stop_reason = self._normalize_stop_reason(
