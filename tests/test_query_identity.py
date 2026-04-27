@@ -1,4 +1,4 @@
-from seektalent.models import CanonicalQuerySpec
+from seektalent.models import CanonicalQuerySpec, ConstraintValue
 from seektalent.retrieval.query_identity import (
     build_job_intent_fingerprint,
     build_query_fingerprint,
@@ -6,7 +6,7 @@ from seektalent.retrieval.query_identity import (
 )
 
 
-def _spec(*, optional_terms: list[str], provider_filters: dict[str, object]) -> CanonicalQuerySpec:
+def _spec(*, optional_terms: list[str], provider_filters: dict[str, ConstraintValue]) -> CanonicalQuerySpec:
     return CanonicalQuerySpec(
         lane_type="generic_explore",
         anchors=["python"],
@@ -119,11 +119,11 @@ def test_query_fingerprint_rejects_lane_type_mismatch() -> None:
 def test_query_fingerprint_canonicalizes_list_valued_provider_filters() -> None:
     first = _spec(
         optional_terms=["resume matching", "trace"],
-        provider_filters={"cities": ["上海", "北京"], "experience_years": 5},
+        provider_filters={"cities": ["  New York ", "san Francisco"], "experience_years": 5},
     )
     second = _spec(
         optional_terms=["trace", "resume matching"],
-        provider_filters={"experience_years": 5, "cities": ["北京", "上海"]},
+        provider_filters={"experience_years": 5, "cities": ["SAN FRANCISCO", "new york"]},
     )
     job_fingerprint = build_job_intent_fingerprint(
         role_title="Python Engineer",
