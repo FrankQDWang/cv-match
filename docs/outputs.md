@@ -70,6 +70,9 @@ Common per-round files include:
 | `sent_query_records.json` | Query metadata recorded for the round. |
 | `search_observation.json` | Search outcome summary for the round. |
 | `search_attempts.json` | CTS search attempt records. |
+| `second_lane_decision.json` | Typed second-lane routing decision, including PRF gate outcome, selected lane, and query fingerprint. |
+| `query_resume_hits.json` | Query-to-resume visibility ledger, enriched after scoring with fit status and score fields. |
+| `replay_snapshot.json` | Minimal provider request/response snapshot plus version vector for replay and policy comparison. |
 | `scoring_input_refs.jsonl` | Per-resume scoring input refs pointing to `resumes/{resume_id}.json`, with hashes, character counts, and summaries. |
 | `scorecards.jsonl` | Ranked scored candidates for the round. |
 | `top_pool_snapshot.json` | Slim global top-pool snapshot with resume ids, ranks, sort-key facts, and short scoring signals. |
@@ -96,6 +99,12 @@ Optional recall-rescue files may also appear under a round when the quality gate
 | `company_evidence_cards.json` | Evidence-backed company candidates extracted from search/page evidence. |
 | `query_term_pool_after_company_discovery.json` | Query term pool after accepted company terms are injected. |
 | `company_discovery_decision.json` | Forced company seed terms, accepted company count, and discovery stop reason. |
+
+Evaluation exports may also include:
+
+| File | Purpose |
+| --- | --- |
+| `evaluation/replay_rows.jsonl` | One row per round replay snapshot for experiment comparison and replay tooling. |
 
 ## How to use them
 

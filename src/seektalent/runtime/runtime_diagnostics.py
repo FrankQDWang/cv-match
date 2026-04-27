@@ -17,13 +17,17 @@ from seektalent.models import (
     QueryOutcomeClassification,
     QueryOutcomeThresholds,
     QueryRole,
+    QueryResumeHit,
     QueryTermCandidate,
+    ReplaySnapshot,
     ReflectionContext,
     RoundState,
     RunState,
     ScoredCandidate,
     SearchAttempt,
+    SearchObservation,
     SearchControllerDecision,
+    SecondLaneDecision,
     TerminalControllerRound,
     scored_candidate_sort_key,
     unique_strings,
@@ -103,6 +107,38 @@ def classify_query_outcome(
     ]
     primary_label = next((label for label in priority if label in labels), "low_recall_high_precision")
     return QueryOutcomeClassification(primary_label=primary_label, labels=sorted(labels), reasons=reasons)
+
+
+def build_replay_snapshot(
+    *,
+    run_id: str,
+    round_no: int,
+    second_lane_decision: SecondLaneDecision,
+    search_attempts: list[SearchAttempt],
+    query_resume_hits: list[QueryResumeHit],
+    search_observation: SearchObservation,
+    scoring_model_version: str,
+    query_plan_version: str,
+) -> ReplaySnapshot:
+    ordered_resume_ids = [hit.resume_id for hit in query_resume_hits]
+    return ReplaySnapshot(
+        run_id=run_id,
+        round_no=round_no,
+        retrieval_snapshot_id=f"{run_id}:round:{round_no}",
+        second_lane_query_fingerprint=(
+            second_lane_decision.selected_query_fingerprint or second_lane_decision.fallback_query_fingerprint
+        ),
+        provider_request={
+            "search_attempts": [attempt.request_payload for attempt in search_attempts],
+        },
+        provider_response_resume_ids=unique_strings(ordered_resume_ids),
+        provider_response_raw_rank=ordered_resume_ids,
+        dedupe_version="v1",
+        scoring_model_version=scoring_model_version,
+        query_plan_version=query_plan_version,
+        prf_gate_version=second_lane_decision.prf_policy_version,
+        generic_explore_version=second_lane_decision.generic_explore_version,
+    )
 
 
 def slim_controller_context(

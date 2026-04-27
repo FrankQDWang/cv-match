@@ -14,6 +14,7 @@ from seektalent.evaluation import (
     ResumeJudge,
     _remove_path,
     _stage_result,
+    export_replay_rows,
     export_judge_tasks,
     persist_raw_resume_snapshot,
 )
@@ -65,6 +66,7 @@ async def evaluate_baseline_run(
         path = temp_root / "evaluation" / "evaluation.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(evaluation.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8")
+        export_replay_rows(run_dir=run_dir, output_dir=temp_root / "evaluation")
 
         _remove_path(final_evaluation_dir)
         _remove_path(final_raw_dir)

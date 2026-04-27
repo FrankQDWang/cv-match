@@ -20,7 +20,7 @@ from pydantic_ai import Agent
 
 from seektalent.config import AppSettings
 from seektalent.llm import build_model, build_model_settings, build_output_spec
-from seektalent.models import ResumeCandidate, StopGuidance
+from seektalent.models import ReplaySnapshot, ResumeCandidate, StopGuidance
 from seektalent.prompting import LoadedPrompt, json_block
 from seektalent.resources import package_prompt_dir
 
@@ -107,6 +107,42 @@ def task_sha256(jd: str, notes: str = "") -> str:
     if not notes.strip():
         return sha256(jd.encode("utf-8")).hexdigest()
     return sha256(canonical_json({"jd": jd, "notes": notes}).encode("utf-8")).hexdigest()
+
+
+def build_replay_rows(snapshots: Sequence[ReplaySnapshot]) -> list[dict[str, object]]:
+    return [
+        {
+            "run_id": snapshot.run_id,
+            "round_no": snapshot.round_no,
+            "retrieval_snapshot_id": snapshot.retrieval_snapshot_id,
+            "second_lane_query_fingerprint": snapshot.second_lane_query_fingerprint,
+            "provider_request": snapshot.provider_request,
+            "provider_response_resume_ids": snapshot.provider_response_resume_ids,
+            "provider_response_raw_rank": snapshot.provider_response_raw_rank,
+            "dedupe_version": snapshot.dedupe_version,
+            "scoring_model_version": snapshot.scoring_model_version,
+            "query_plan_version": snapshot.query_plan_version,
+            "prf_gate_version": snapshot.prf_gate_version,
+            "generic_explore_version": snapshot.generic_explore_version,
+        }
+        for snapshot in snapshots
+    ]
+
+
+def export_replay_rows(*, run_dir: Path, output_dir: Path | None = None) -> Path | None:
+    snapshots: list[ReplaySnapshot] = []
+    for path in sorted((run_dir / "rounds").glob("round_*/replay_snapshot.json")):
+        snapshots.append(ReplaySnapshot.model_validate_json(path.read_text(encoding="utf-8")))
+    if not snapshots:
+        return None
+    replay_rows_path = (output_dir or run_dir / "evaluation") / "replay_rows.jsonl"
+    replay_rows_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = build_replay_rows(snapshots)
+    replay_rows_path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+    return replay_rows_path
 
 
 def render_judge_prompt(
@@ -1300,6 +1336,7 @@ async def evaluate_run(
         path = temp_root / "evaluation" / "evaluation.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(evaluation.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8")
+        export_replay_rows(run_dir=run_dir, output_dir=temp_root / "evaluation")
         if log_remote:
             log_evaluation_remotely(
                 settings=settings,

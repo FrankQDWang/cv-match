@@ -2,11 +2,44 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from seektalent.config import AppSettings
+
+
+PolicyComparisonMode = Literal["none", "primary"]
+
+
+def build_policy_comparison_overrides(*, mode: PolicyComparisonMode) -> dict[str, object]:
+    if mode == "none":
+        return {}
+    if mode == "primary":
+        return {
+            "target_company_enabled": False,
+            "company_discovery_enabled": False,
+        }
+    raise ValueError(f"Unsupported policy comparison mode: {mode}")
+
+
+def build_policy_comparison_settings(
+    *,
+    base_settings: AppSettings,
+    mode: PolicyComparisonMode,
+) -> AppSettings:
+    return base_settings.with_overrides(**build_policy_comparison_overrides(mode=mode))
+
+
+def build_policy_comparison_env(*, mode: PolicyComparisonMode) -> dict[str, str]:
+    overrides = build_policy_comparison_overrides(mode=mode)
+    return {
+        f"SEEKTALENT_{key.upper()}": str(value).lower() if isinstance(value, bool) else str(value)
+        for key, value in overrides.items()
+    }
 
 
 def _load_rows(path: Path) -> list[dict[str, Any]]:
@@ -32,6 +65,7 @@ def _run_command(
     env_file: Path,
     output_root: Path,
     idle_timeout_seconds: int,
+    policy_comparison_mode: PolicyComparisonMode,
 ) -> dict[str, Any]:
     output_root.mkdir(parents=True, exist_ok=True)
     jd_path = output_root / "jd.md"
@@ -54,12 +88,15 @@ def _run_command(
         command.extend(["--notes-file", str(notes_path)])
 
     started_at = datetime.now().astimezone()
+    child_env = os.environ.copy()
+    child_env.update(build_policy_comparison_env(mode=policy_comparison_mode))
     proc = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
+        env=child_env,
     )
     trace_path: Path | None = None
     last_activity = time.time()
@@ -135,6 +172,12 @@ def main() -> int:
         default=600,
         help="Terminate a run when trace.log stops growing for this long.",
     )
+    parser.add_argument(
+        "--policy-comparison-mode",
+        choices=("none", "primary"),
+        default="none",
+        help="Optional experiment mode that adjusts runtime settings for policy comparison runs.",
+    )
     args = parser.parse_args()
 
     project_root = Path.cwd()
@@ -168,6 +211,7 @@ def main() -> int:
             env_file=(project_root / args.env_file).resolve(),
             output_root=batch_root / jd_id,
             idle_timeout_seconds=args.idle_timeout_seconds,
+            policy_comparison_mode=args.policy_comparison_mode,
         )
         attempts.append(entry)
         if entry["returncode"] == 0 and not entry["timed_out"] and entry["evaluation_result"] is not None:
@@ -178,6 +222,7 @@ def main() -> int:
         "env_file": str((project_root / args.env_file).resolve()),
         "start_from": args.start_from,
         "idle_timeout_seconds": args.idle_timeout_seconds,
+        "policy_comparison_mode": args.policy_comparison_mode,
         "attempt_count": len(attempts),
         "completed_count": len(completed),
         "attempts": attempts,

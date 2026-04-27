@@ -94,6 +94,7 @@ from seektalent.runtime.controller_context import build_controller_context
 from seektalent.runtime.finalize_context import build_finalize_context
 from seektalent.runtime.requirements_runtime import build_run_state as build_requirements_run_state
 from seektalent.runtime.runtime_diagnostics import (
+    build_replay_snapshot as build_replay_snapshot_direct,
     build_judge_packet as build_judge_packet_direct,
     build_search_diagnostics as build_search_diagnostics_direct,
     build_term_surface_audit as build_term_surface_audit_direct,
@@ -699,6 +700,20 @@ class WorkflowRuntime:
                     round_no=round_no,
                     query_resume_hits=query_resume_hits,
                     scorecards_by_resume_id=run_state.scorecards_by_resume_id,
+                )
+                replay_snapshot = build_replay_snapshot_direct(
+                    run_id=tracer.run_id,
+                    round_no=round_no,
+                    second_lane_decision=second_lane_decision,
+                    search_attempts=search_attempts,
+                    query_resume_hits=query_resume_hits,
+                    search_observation=search_observation,
+                    scoring_model_version=self.settings.scoring_model,
+                    query_plan_version=str(retrieval_plan.plan_version),
+                )
+                tracer.write_json(
+                    f"rounds/round_{round_no:02d}/replay_snapshot.json",
+                    replay_snapshot.model_dump(mode="json"),
                 )
             newly_scored_count = len(run_state.scorecards_by_resume_id) - previous_scored_count
             scored_this_round = [

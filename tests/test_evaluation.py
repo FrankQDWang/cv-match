@@ -25,10 +25,12 @@ from seektalent.evaluation import (
     _version_means_rows,
     _version_means_summary_markdown,
     _version_runs_markdown,
+    build_replay_rows,
     EvaluatedCandidate,
     EvaluationResult,
     EvaluationStageResult,
     evaluate_run,
+    export_replay_rows,
     log_evaluation_remotely,
     migrate_judge_assets,
     ndcg_at_10,
@@ -36,7 +38,7 @@ from seektalent.evaluation import (
     snapshot_sha256,
     task_sha256,
 )
-from seektalent.models import QueryOutcomeThresholds, ResumeCandidate
+from seektalent.models import QueryOutcomeThresholds, ReplaySnapshot, ResumeCandidate
 from seektalent.prompting import LoadedPrompt
 from seektalent.resources import package_prompt_dir
 from seektalent.runtime.runtime_diagnostics import classify_query_outcome
@@ -139,6 +141,77 @@ def test_classify_query_outcome_uses_plan_fallback_primary_label() -> None:
 
     assert outcome.labels == []
     assert outcome.primary_label == "low_recall_high_precision"
+
+
+def test_build_replay_rows_carries_provider_snapshot_and_versions() -> None:
+    rows = build_replay_rows(
+        [
+            ReplaySnapshot(
+                run_id="run-1",
+                round_no=2,
+                retrieval_snapshot_id="run-1:round:2",
+                second_lane_query_fingerprint="lane-2",
+                provider_request={"search_attempts": [{"page": 1, "query": "python trace"}]},
+                provider_response_resume_ids=["resume-1", "resume-2"],
+                provider_response_raw_rank=["resume-1", "resume-2", "resume-1"],
+                dedupe_version="v1",
+                scoring_model_version="openai-responses:gpt-5.4-mini",
+                query_plan_version="2",
+                prf_gate_version="prf-v1",
+                generic_explore_version="v1",
+            )
+        ]
+    )
+
+    assert rows == [
+        {
+            "run_id": "run-1",
+            "round_no": 2,
+            "retrieval_snapshot_id": "run-1:round:2",
+            "second_lane_query_fingerprint": "lane-2",
+            "provider_request": {"search_attempts": [{"page": 1, "query": "python trace"}]},
+            "provider_response_resume_ids": ["resume-1", "resume-2"],
+            "provider_response_raw_rank": ["resume-1", "resume-2", "resume-1"],
+            "dedupe_version": "v1",
+            "scoring_model_version": "openai-responses:gpt-5.4-mini",
+            "query_plan_version": "2",
+            "prf_gate_version": "prf-v1",
+            "generic_explore_version": "v1",
+        }
+    ]
+
+
+def test_export_replay_rows_collects_round_snapshots(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    round_dir = run_dir / "rounds" / "round_02"
+    round_dir.mkdir(parents=True)
+    (round_dir / "replay_snapshot.json").write_text(
+        json.dumps(
+            ReplaySnapshot(
+                run_id="run-2",
+                round_no=2,
+                retrieval_snapshot_id="run-2:round:2",
+                provider_request={"search_attempts": [{"page": 1}]},
+                provider_response_resume_ids=["resume-1"],
+                provider_response_raw_rank=["resume-1"],
+                dedupe_version="v1",
+                scoring_model_version="judge-model",
+                query_plan_version="2",
+                prf_gate_version="prf-v1",
+                generic_explore_version="v1",
+            ).model_dump(mode="json"),
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    path = export_replay_rows(run_dir=run_dir)
+
+    assert path == run_dir / "evaluation" / "replay_rows.jsonl"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert rows[0]["retrieval_snapshot_id"] == "run-2:round:2"
+    assert rows[0]["provider_response_resume_ids"] == ["resume-1"]
 
 
 def test_best_runs_by_version_rows_keeps_highest_final_total_and_latest_tiebreak() -> None:

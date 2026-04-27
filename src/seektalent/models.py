@@ -517,6 +517,23 @@ class QueryResumeHit(BaseModel):
     final_candidate_status: str | None = None
 
 
+class ReplaySnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    round_no: int
+    retrieval_snapshot_id: str
+    second_lane_query_fingerprint: str | None = None
+    provider_request: dict[str, Any] = Field(default_factory=dict)
+    provider_response_resume_ids: list[str] = Field(default_factory=list)
+    provider_response_raw_rank: list[str] = Field(default_factory=list)
+    dedupe_version: str
+    scoring_model_version: str
+    query_plan_version: str
+    prf_gate_version: str
+    generic_explore_version: str | None = None
+
+
 class SecondLaneDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -951,6 +951,29 @@ class StubScorer:
 
 class FailingScorer:
     async def score_candidates_parallel(self, *, contexts, tracer):
+        if not hasattr(tracer, "run_dir"):
+            return [
+                ScoredCandidate(
+                    resume_id=context.normalized_resume.resume_id,
+                    fit_bucket="fit",
+                    overall_score=78,
+                    must_have_match_score=75,
+                    preferred_match_score=60,
+                    risk_score=20,
+                    risk_flags=[],
+                    reasoning_summary="Preview scoring for query-outcome classification.",
+                    evidence=["preview"],
+                    confidence="medium",
+                    matched_must_haves=["python"],
+                    missing_must_haves=[],
+                    matched_preferences=[],
+                    negative_signals=[],
+                    strengths=[],
+                    weaknesses=[],
+                    source_round=context.round_no,
+                )
+                for context in contexts
+            ], []
         candidate = contexts[0].normalized_resume
         failure = ScoringFailure(
             resume_id=candidate.resume_id,
@@ -1428,6 +1451,31 @@ def test_query_resume_hits_are_enriched_after_scoring(tmp_path: Path) -> None:
     assert hit["risk_score"] is not None
     assert hit["off_intent_reason_count"] == 0
     assert hit["final_candidate_status"] == "fit"
+
+
+def test_replay_snapshot_contains_provider_snapshot_and_versions(tmp_path: Path) -> None:
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=2)
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SearchTwiceController(), resume_scorer=StubScorer())
+    tracer = RunTracer(tmp_path / "trace")
+
+    try:
+        job_title, jd, notes = _sample_inputs()
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        asyncio.run(runtime._run_rounds(run_state=run_state, tracer=tracer, progress_callback=None))
+    finally:
+        tracer.close()
+
+    snapshot = json.loads((tracer.run_dir / "rounds" / "round_02" / "replay_snapshot.json").read_text())
+    assert snapshot["retrieval_snapshot_id"]
+    assert snapshot["provider_request"]
+    assert isinstance(snapshot["provider_response_resume_ids"], list)
+    assert isinstance(snapshot["provider_response_raw_rank"], list)
+    assert snapshot["dedupe_version"] == "v1"
+    assert snapshot["scoring_model_version"] == settings.scoring_model
+    assert snapshot["query_plan_version"] == "2"
+    assert snapshot["prf_gate_version"]
+    assert "generic_explore_version" in snapshot
 
 
 def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
