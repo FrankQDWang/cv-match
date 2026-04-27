@@ -1471,12 +1471,20 @@ def test_run_async_delegates_finalizer_stage_to_runtime_host(
         )
         kwargs["tracer"].write_json("final_candidates.json", final_result.model_dump(mode="json"))
         kwargs["tracer"].write_text("final_answer.md", final_markdown)
-        return final_result, final_markdown
+        return final_result, final_markdown, {"stage_state": "finalizer-state"}
+
+    def fake_finalize_finalizer_stage(**kwargs):
+        recorded["finalizer_stage_state"] = kwargs["finalizer_stage_state"]
+        recorded["finalizer_completed_artifacts"] = kwargs["completed_artifact_paths"]
+        recorded["completed_final_result"] = kwargs["final_result"]
 
     monkeypatch.setattr(
         orchestrator_module,
         "finalize_runtime",
-        SimpleNamespace(run_finalizer_stage=fake_run_finalizer_stage),
+        SimpleNamespace(
+            run_finalizer_stage=fake_run_finalizer_stage,
+            finalize_finalizer_stage=fake_finalize_finalizer_stage,
+        ),
         raising=False,
     )
 
@@ -1487,6 +1495,12 @@ def test_run_async_delegates_finalizer_stage_to_runtime_host(
     assert recorded["finalize_context"].rounds_executed == 1
     assert recorded["finalize_context"].stop_reason == "max_rounds_reached"
     assert len(recorded["finalize_context"].top_candidates) > 0
+    assert recorded["finalizer_stage_state"] == {"stage_state": "finalizer-state"}
+    assert recorded["finalizer_completed_artifacts"] == [
+        "search_diagnostics.json",
+        "run_summary.md",
+    ]
+    assert recorded["completed_final_result"] == artifacts.final_result
     assert artifacts.final_result.summary == "Delegated finalizer summary."
     assert artifacts.final_markdown == "# Delegated final markdown\n"
 

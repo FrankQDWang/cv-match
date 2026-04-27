@@ -278,7 +278,7 @@ class WorkflowRuntime:
                 run_id=tracer.run_id,
                 run_dir=str(tracer.run_dir),
             )
-            final_result, final_markdown = await finalize_runtime.run_finalizer_stage(
+            final_result, final_markdown, finalizer_stage_state = await finalize_runtime.run_finalizer_stage(
                 settings=self.settings,
                 finalizer=self.finalizer,
                 finalize_context=finalize_context,
@@ -291,6 +291,7 @@ class WorkflowRuntime:
                 render_final_markdown=self._render_final_markdown,
                 run_stage_error=RunStageError,
             )
+            finalizer_completed_artifacts: list[str] = []
             if self.settings.enable_eval:
                 tracer.write_json(
                     "judge_packet.json",
@@ -303,6 +304,7 @@ class WorkflowRuntime:
                         terminal_controller_round=terminal_controller_round,
                     ),
                 )
+                finalizer_completed_artifacts.append("judge_packet.json")
             tracer.write_text(
                 "run_summary.md",
                 self._render_run_summary(
@@ -319,6 +321,19 @@ class WorkflowRuntime:
                     final_result=final_result,
                     terminal_controller_round=terminal_controller_round,
                 ),
+            )
+            finalizer_completed_artifacts.append("search_diagnostics.json")
+            finalizer_completed_artifacts.append("run_summary.md")
+            finalize_runtime.finalize_finalizer_stage(
+                settings=self.settings,
+                finalize_context=finalize_context,
+                final_result=final_result,
+                finalizer_stage_state=finalizer_stage_state,
+                completed_artifact_paths=finalizer_completed_artifacts,
+                tracer=tracer,
+                progress_callback=progress_callback,
+                emit_llm_event=self._emit_llm_event,
+                emit_progress=self._emit_progress,
             )
             evaluation_result: EvaluationResult | None = None
             if self.settings.enable_eval:

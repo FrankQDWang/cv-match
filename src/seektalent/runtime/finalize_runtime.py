@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 from time import perf_counter
-from typing import Any
+from typing import Any, TypedDict
 
 from seektalent.config import AppSettings
 from seektalent.finalize.finalizer import render_finalize_prompt
@@ -20,6 +20,12 @@ type RunStageErrorBuilder = Callable[[str, str], Exception]
 type SlimFinalizeContext = Callable[[FinalizeContext], dict[str, object]]
 
 
+class FinalizerStageState(TypedDict):
+    call_id: str
+    artifacts: list[str]
+    latency_ms: int
+
+
 async def run_finalizer_stage(
     *,
     settings: AppSettings,
@@ -33,7 +39,7 @@ async def run_finalizer_stage(
     slim_finalize_context: SlimFinalizeContext,
     render_final_markdown: RenderFinalMarkdown,
     run_stage_error: RunStageErrorBuilder,
-) -> tuple[FinalResult, str]:
+) -> tuple[FinalResult, str, FinalizerStageState]:
     tracer.write_json("finalizer_context.json", slim_finalize_context(finalize_context))
     finalizer_call_id = "finalizer"
     finalizer_payload = {
@@ -155,15 +161,34 @@ async def run_finalizer_stage(
     final_markdown = render_final_markdown(final_result)
     tracer.write_json("final_candidates.json", final_result.model_dump(mode="json"))
     tracer.write_text("final_answer.md", final_markdown)
+    return final_result, final_markdown, {
+        "call_id": finalizer_call_id,
+        "artifacts": finalizer_artifacts,
+        "latency_ms": latency_ms,
+    }
+
+
+def finalize_finalizer_stage(
+    *,
+    settings: AppSettings,
+    finalize_context: FinalizeContext,
+    final_result: FinalResult,
+    finalizer_stage_state: FinalizerStageState,
+    completed_artifact_paths: list[str],
+    tracer: RunTracer,
+    progress_callback: ProgressCallback | None,
+    emit_llm_event: EmitLLMEvent,
+    emit_progress: EmitProgress,
+) -> None:
     emit_llm_event(
         tracer=tracer,
         event_type="finalizer_completed",
-        call_id=finalizer_call_id,
+        call_id=finalizer_stage_state["call_id"],
         model_id=settings.finalize_model,
         status="succeeded",
         summary=final_result.summary,
-        artifact_paths=finalizer_artifacts,
-        latency_ms=latency_ms,
+        artifact_paths=finalizer_stage_state["artifacts"] + completed_artifact_paths,
+        latency_ms=finalizer_stage_state["latency_ms"],
     )
     emit_progress(
         progress_callback,
@@ -175,7 +200,6 @@ async def run_finalizer_stage(
             "stop_reason": finalize_context.stop_reason,
         },
     )
-    return final_result, final_markdown
 
 
 async def _finalize(*, finalizer: object, finalize_context: FinalizeContext) -> FinalResult:

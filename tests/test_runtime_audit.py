@@ -1714,6 +1714,9 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
         "finalizer_call.json",
         "final_candidates.json",
         "final_answer.md",
+        "judge_packet.json",
+        "search_diagnostics.json",
+        "run_summary.md",
     ]
     assert run_finished_event["summary"] == "Run completed after 1 retrieval rounds."
 
@@ -2130,6 +2133,8 @@ def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monk
         "finalizer_call.json",
         "final_candidates.json",
         "final_answer.md",
+        "search_diagnostics.json",
+        "run_summary.md",
     ]
     assert run_config["settings"]["enable_eval"] is False
     audit_terms = {item["term"]: item for item in term_surface_audit["terms"]}
