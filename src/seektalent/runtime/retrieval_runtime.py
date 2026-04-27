@@ -7,8 +7,10 @@ from seektalent.config import AppSettings
 from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.core.retrieval.service import RetrievalService
 from seektalent.models import (
+    CanonicalQuerySpec,
     CTSQuery,
     CitySearchSummary,
+    LaneType,
     LocationExecutionPhase,
     QueryRole,
     RoundRetrievalPlan,
@@ -20,7 +22,8 @@ from seektalent.models import (
     unique_strings,
 )
 from seektalent.providers.cts.query_builder import CTSQueryBuildInput, build_cts_query
-from seektalent.retrieval import allocate_balanced_city_targets
+from seektalent.retrieval import allocate_balanced_city_targets, serialize_keyword_query
+from seektalent.retrieval.query_identity import build_query_fingerprint, build_query_instance_id
 from seektalent.tracing import RunTracer
 
 
@@ -55,12 +58,63 @@ class CityExecutionState:
 @dataclass
 class LogicalQueryState:
     query_role: QueryRole
+    lane_type: LaneType
     query_terms: list[str]
     keyword_query: str
+    query_instance_id: str
+    query_fingerprint: str
     next_page: int = 1
     exhausted: bool = False
     adapter_notes: list[str] = field(default_factory=list)
     city_states: dict[str, CityExecutionState] = field(default_factory=dict)
+
+
+def build_logical_query_state(
+    *,
+    run_id: str,
+    round_no: int,
+    lane_type: LaneType,
+    query_terms: list[str],
+    job_intent_fingerprint: str,
+    source_plan_version: str,
+) -> LogicalQueryState:
+    keyword_query = serialize_keyword_query(query_terms)
+    spec = CanonicalQuerySpec(
+        lane_type=lane_type,
+        anchors=query_terms[:1],
+        expansion_terms=query_terms[1:],
+        promoted_prf_expression=query_terms[1] if lane_type == "prf_probe" and len(query_terms) > 1 else None,
+        generic_explore_terms=query_terms[1:] if lane_type == "generic_explore" else [],
+        required_terms=query_terms[:1],
+        optional_terms=query_terms[1:],
+        excluded_terms=[],
+        location_key=None,
+        provider_filters={},
+        boolean_template="required_plus_optional",
+        rendered_provider_query=keyword_query,
+        provider_name="cts",
+        source_plan_version=source_plan_version,
+    )
+    query_fingerprint = build_query_fingerprint(
+        job_intent_fingerprint=job_intent_fingerprint,
+        lane_type=lane_type,
+        canonical_query_spec=spec,
+        policy_version="typed-second-lane-v1",
+    )
+    return LogicalQueryState(
+        query_role="explore" if lane_type != "exploit" else "exploit",
+        lane_type=lane_type,
+        query_terms=query_terms,
+        keyword_query=keyword_query,
+        query_instance_id=build_query_instance_id(
+            run_id=run_id,
+            round_no=round_no,
+            lane_type=lane_type,
+            query_fingerprint=query_fingerprint,
+            source_plan_version=source_plan_version,
+        ),
+        query_fingerprint=query_fingerprint,
+    )
 
 
 @dataclass(frozen=True)
@@ -196,9 +250,19 @@ class RetrievalRuntime:
                         rationale=retrieval_plan.rationale,
                     )
                 )
+                query = query.model_copy(
+                    update={
+                        "lane_type": query_state.lane_type,
+                        "query_instance_id": query_state.query_instance_id,
+                        "query_fingerprint": query_state.query_fingerprint,
+                    }
+                )
                 sent_query_record = SentQueryRecord(
                     round_no=round_no,
                     query_role=query_state.query_role,
+                    lane_type=query_state.lane_type,
+                    query_instance_id=query_state.query_instance_id,
+                    query_fingerprint=query_state.query_fingerprint,
                     batch_no=batch_no,
                     requested_count=requested_count,
                     query_terms=query_state.query_terms,
@@ -545,9 +609,19 @@ class RetrievalRuntime:
                 city=city,
             )
         )
+        cts_query = cts_query.model_copy(
+            update={
+                "lane_type": query_state.lane_type,
+                "query_instance_id": query_state.query_instance_id,
+                "query_fingerprint": query_state.query_fingerprint,
+            }
+        )
         sent_query_record = SentQueryRecord(
             round_no=round_no,
             query_role=query_state.query_role,
+            lane_type=query_state.lane_type,
+            query_instance_id=query_state.query_instance_id,
+            query_fingerprint=query_state.query_fingerprint,
             city=city,
             phase=phase,
             batch_no=batch_no,

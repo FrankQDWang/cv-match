@@ -249,6 +249,12 @@ def is_title_anchor_role(role: QueryRetrievalRole | str) -> bool:
     return role in {"primary_role_anchor", "secondary_title_anchor", "role_anchor"}
 
 
+def _default_lane_type(query_role: QueryRole) -> LaneType:
+    if query_role == "exploit":
+        return "exploit"
+    return "generic_explore"
+
+
 def _default_query_family(term: str, category: str) -> str:
     clean = "".join(char.lower() for char in term.strip() if char.isalnum())
     if not clean:
@@ -462,6 +468,9 @@ class SentQueryRecord(BaseModel):
 
     round_no: int
     query_role: QueryRole = "exploit"
+    lane_type: LaneType | None = None
+    query_instance_id: str | None = None
+    query_fingerprint: str | None = None
     city: str | None = None
     phase: LocationExecutionPhase | None = None
     batch_no: int
@@ -470,6 +479,33 @@ class SentQueryRecord(BaseModel):
     keyword_query: str
     source_plan_version: int
     rationale: str
+
+    @model_validator(mode="after")
+    def fill_lane_type(self) -> SentQueryRecord:
+        if self.lane_type is None:
+            self.lane_type = _default_lane_type(self.query_role)
+        return self
+
+
+class SecondLaneDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    round_no: int
+    attempted_prf: bool
+    prf_gate_passed: bool
+    selected_lane_type: LaneType | None = None
+    selected_query_instance_id: str | None = None
+    selected_query_fingerprint: str | None = None
+    accepted_prf_expression: str | None = None
+    accepted_prf_term_family_id: str | None = None
+    prf_seed_resume_ids: list[str] = Field(default_factory=list)
+    prf_candidate_expression_count: int = 0
+    reject_reasons: list[str] = Field(default_factory=list)
+    fallback_lane_type: LaneType | None = None
+    fallback_query_fingerprint: str | None = None
+    no_fetch_reason: str | None = None
+    prf_policy_version: str
+    generic_explore_version: str | None = None
 
 
 class RetrievalState(BaseModel):
@@ -492,6 +528,9 @@ class CTSQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query_role: QueryRole = "exploit"
+    lane_type: LaneType | None = None
+    query_instance_id: str | None = None
+    query_fingerprint: str | None = None
     query_terms: list[str] = Field(default_factory=list)
     keyword_query: str
     native_filters: dict[str, ConstraintValue] = Field(default_factory=dict)
@@ -499,6 +538,12 @@ class CTSQuery(BaseModel):
     page_size: int = 10
     rationale: str
     adapter_notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def fill_lane_type(self) -> CTSQuery:
+        if self.lane_type is None:
+            self.lane_type = _default_lane_type(self.query_role)
+        return self
 
 
 class SearchAttempt(BaseModel):

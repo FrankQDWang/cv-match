@@ -42,6 +42,7 @@ from seektalent.models import (
     SearchControllerDecision,
     SearchAttempt,
     SearchObservation,
+    SecondLaneDecision,
     SentQueryRecord,
     StopGuidance,
     StopControllerDecision,
@@ -63,9 +64,8 @@ from seektalent.requirements import (
 from seektalent.retrieval import (
     build_location_execution_plan,
     build_round_retrieval_plan,
-    derive_explore_query_terms,
-    serialize_keyword_query,
 )
+from seektalent.retrieval.query_identity import build_job_intent_fingerprint
 from seektalent.resume_quality import ResumeQualityCommenter
 from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime import company_discovery_runtime
@@ -106,8 +106,13 @@ from seektalent.runtime.runtime_reports import (
     render_run_finished_summary as render_run_finished_summary_direct,
     render_run_summary as render_run_summary_direct,
 )
-from seektalent.runtime.retrieval_runtime import LogicalQueryState, RetrievalRuntime
+from seektalent.runtime.retrieval_runtime import (
+    LogicalQueryState,
+    RetrievalRuntime,
+    build_logical_query_state,
+)
 from seektalent.runtime.rescue_router import RescueDecision, RescueInputs, choose_rescue_lane
+from seektalent.runtime.second_lane_runtime import build_second_lane_decision
 from seektalent.runtime.scoring_runtime import score_round as score_round_direct
 from seektalent.scoring.scorer import ResumeScorer
 from seektalent.tracing import LLMCallSnapshot, ProviderUsageSnapshot, RunTracer
@@ -549,12 +554,20 @@ class WorkflowRuntime:
                 f"rounds/round_{round_no:02d}/constraint_projection_result.json",
                 projection_result.model_dump(mode="json"),
             )
-            query_states = self._build_round_query_states(
+            job_intent_fingerprint = self._build_job_intent_fingerprint(run_state=run_state)
+            query_states, second_lane_decision = self._build_round_query_bundle(
                 round_no=round_no,
                 retrieval_plan=retrieval_plan,
                 title_anchor_terms=run_state.requirement_sheet.title_anchor_terms,
                 query_term_pool=run_state.retrieval_state.query_term_pool,
                 sent_query_history=run_state.retrieval_state.sent_query_history,
+                run_id=tracer.run_id,
+                job_intent_fingerprint=job_intent_fingerprint,
+                source_plan_version=str(retrieval_plan.plan_version),
+            )
+            tracer.write_json(
+                f"rounds/round_{round_no:02d}/second_lane_decision.json",
+                second_lane_decision.model_dump(mode="json"),
             )
 
             self._emit_progress(
@@ -822,6 +835,7 @@ class WorkflowRuntime:
         return [
             {
                 "query_role": query.query_role,
+                "lane_type": query.lane_type,
                 "query_terms": query.query_terms,
                 "keyword_query": query.keyword_query,
             }
@@ -830,15 +844,16 @@ class WorkflowRuntime:
 
     def _executed_query_summaries(self, cts_queries: list[CTSQuery]) -> list[dict[str, object]]:
         summaries: list[dict[str, object]] = []
-        seen: set[tuple[str, tuple[str, ...], str]] = set()
+        seen: set[tuple[str | None, str, tuple[str, ...], str]] = set()
         for query in cts_queries:
-            key = (query.query_role, tuple(query.query_terms), query.keyword_query)
+            key = (query.lane_type, query.query_role, tuple(query.query_terms), query.keyword_query)
             if key in seen:
                 continue
             seen.add(key)
             summaries.append(
                 {
                     "query_role": query.query_role,
+                    "lane_type": query.lane_type,
                     "query_terms": query.query_terms,
                     "keyword_query": query.keyword_query,
                 }
@@ -1736,35 +1751,77 @@ class WorkflowRuntime:
         query_term_pool: list[QueryTermCandidate],
         sent_query_history: list[SentQueryRecord],
     ) -> list[LogicalQueryState]:
-        query_states = [
-            LogicalQueryState(
-                query_role="exploit",
-                query_terms=list(retrieval_plan.query_terms),
-                keyword_query=retrieval_plan.keyword_query,
-            )
-        ]
-        if len(retrieval_plan.query_terms) == 1:
-            return query_states
-        if round_no == 1:
-            return query_states
-        if self._contains_target_company_term(retrieval_plan.query_terms, query_term_pool):
-            return query_states
-        explore_terms = derive_explore_query_terms(
-            retrieval_plan.query_terms,
+        query_states, _ = self._build_round_query_bundle(
+            round_no=round_no,
+            retrieval_plan=retrieval_plan,
             title_anchor_terms=title_anchor_terms,
             query_term_pool=query_term_pool,
             sent_query_history=sent_query_history,
-        )
-        if explore_terms is None:
-            return query_states
-        query_states.append(
-            LogicalQueryState(
-                query_role="explore",
-                query_terms=explore_terms,
-                keyword_query=serialize_keyword_query(explore_terms),
-            )
+            run_id="test-run",
+            job_intent_fingerprint="test-job-intent",
+            source_plan_version=str(retrieval_plan.plan_version),
         )
         return query_states
+
+    def _build_job_intent_fingerprint(self, *, run_state: RunState) -> str:
+        requirement_sheet = run_state.requirement_sheet
+        return build_job_intent_fingerprint(
+            role_title=requirement_sheet.role_title,
+            must_haves=requirement_sheet.must_have_capabilities,
+            preferred_terms=requirement_sheet.preferences.preferred_query_terms,
+            hard_filters=requirement_sheet.hard_constraints.model_dump(mode="json", exclude_none=True),
+            location_preferences=requirement_sheet.preferences.preferred_locations,
+            normalized_intent_hash=run_state.input_truth.jd_sha256,
+            intent_schema_version="typed-second-lane-v1",
+        )
+
+    def _build_round_query_bundle(
+        self,
+        *,
+        round_no: int,
+        retrieval_plan,
+        title_anchor_terms: list[str],
+        query_term_pool: list[QueryTermCandidate],
+        sent_query_history: list[SentQueryRecord],
+        run_id: str,
+        job_intent_fingerprint: str,
+        source_plan_version: str,
+    ) -> tuple[list[LogicalQueryState], SecondLaneDecision]:
+        del title_anchor_terms
+        exploit_query_state = build_logical_query_state(
+            run_id=run_id,
+            round_no=round_no,
+            lane_type="exploit",
+            query_terms=list(retrieval_plan.query_terms),
+            job_intent_fingerprint=job_intent_fingerprint,
+            source_plan_version=source_plan_version,
+        )
+        query_states = [exploit_query_state]
+        if self._contains_target_company_term(retrieval_plan.query_terms, query_term_pool):
+            return (
+                query_states,
+                SecondLaneDecision(
+                    round_no=round_no,
+                    attempted_prf=False,
+                    prf_gate_passed=False,
+                    reject_reasons=["target_company_lane_locked"],
+                    no_fetch_reason="single_lane_round",
+                    prf_policy_version="unavailable",
+                ),
+            )
+        second_lane_decision, second_lane_query_state = build_second_lane_decision(
+            round_no=round_no,
+            retrieval_plan=retrieval_plan,
+            query_term_pool=query_term_pool,
+            sent_query_history=sent_query_history,
+            prf_decision=None,
+            run_id=run_id,
+            job_intent_fingerprint=job_intent_fingerprint,
+            source_plan_version=source_plan_version,
+        )
+        if second_lane_query_state is not None:
+            query_states.append(second_lane_query_state)
+        return query_states, second_lane_decision
 
     def _contains_target_company_term(
         self,

@@ -1230,6 +1230,29 @@ def test_runtime_updates_run_state_across_rounds(tmp_path: Path) -> None:
     ]
 
 
+def test_round_two_serializes_exploit_and_generic_lane_types(tmp_path: Path) -> None:
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=2)
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
+    tracer = RunTracer(tmp_path / "trace")
+
+    try:
+        job_title, jd, notes = _sample_inputs()
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        asyncio.run(runtime._run_rounds(run_state=run_state, tracer=tracer, progress_callback=None))
+    finally:
+        tracer.close()
+
+    queries = json.loads((tracer.run_dir / "rounds" / "round_02" / "cts_queries.json").read_text())
+    decision = json.loads((tracer.run_dir / "rounds" / "round_02" / "second_lane_decision.json").read_text())
+    assert [item["lane_type"] for item in queries] == ["exploit", "generic_explore"]
+    assert decision["attempted_prf"] is True
+    assert decision["prf_gate_passed"] is False
+    assert decision["selected_lane_type"] == "generic_explore"
+    assert decision["fallback_lane_type"] == "generic_explore"
+    assert decision["reject_reasons"] == ["prf_policy_not_available"]
+
+
 def test_run_rounds_delegates_controller_stage_to_runtime_host(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
