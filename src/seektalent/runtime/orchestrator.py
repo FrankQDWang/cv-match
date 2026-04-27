@@ -657,19 +657,21 @@ class WorkflowRuntime:
                 round_no=round_no,
                 payload={"stage": "scoring", "candidate_count": len(new_candidates)},
             )
-            current_top_candidates, pool_decisions, dropped_candidates = await self._score_round(
-                round_no=round_no,
-                new_candidates=new_candidates,
-                run_state=run_state,
-                tracer=tracer,
-                runtime_only_constraints=retrieval_plan.runtime_only_constraints,
-            )
-            self._write_query_resume_hits(
-                tracer=tracer,
-                round_no=round_no,
-                query_resume_hits=query_resume_hits,
-                scorecards_by_resume_id=run_state.scorecards_by_resume_id,
-            )
+            try:
+                current_top_candidates, pool_decisions, dropped_candidates = await self._score_round(
+                    round_no=round_no,
+                    new_candidates=new_candidates,
+                    run_state=run_state,
+                    tracer=tracer,
+                    runtime_only_constraints=retrieval_plan.runtime_only_constraints,
+                )
+            finally:
+                self._write_query_resume_hits(
+                    tracer=tracer,
+                    round_no=round_no,
+                    query_resume_hits=query_resume_hits,
+                    scorecards_by_resume_id=run_state.scorecards_by_resume_id,
+                )
             newly_scored_count = len(run_state.scorecards_by_resume_id) - previous_scored_count
             scored_this_round = [
                 candidate

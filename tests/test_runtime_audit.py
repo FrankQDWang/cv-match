@@ -2445,5 +2445,9 @@ def test_runtime_aborts_when_scoring_has_a_final_failure(tmp_path: Path, monkeyp
     run_dirs = sorted((tmp_path / "runs").iterdir())
     assert len(run_dirs) == 1
     run_dir = run_dirs[0]
+    query_resume_hits = _read_json(run_dir / "rounds" / "round_01" / "query_resume_hits.json")
     assert not (run_dir / "final_candidates.json").exists()
     assert not (run_dir / "final_answer.md").exists()
+    assert query_resume_hits
+    assert all(item["final_candidate_status"] == "not_scored" for item in query_resume_hits)
+    assert all(item["scored_fit_bucket"] is None for item in query_resume_hits)
