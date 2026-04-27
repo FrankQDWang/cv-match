@@ -15,7 +15,14 @@ from seektalent.candidate_feedback import (
     extract_feedback_candidate_expressions,
     select_feedback_seed_resumes,
 )
-from seektalent.candidate_feedback.policy import PRFGateInput, PRFPolicyDecision, build_prf_policy_decision
+from seektalent.candidate_feedback.policy import (
+    MAX_NEGATIVE_SUPPORT_RATE,
+    MIN_PRF_SEED_COUNT,
+    PRF_POLICY_VERSION,
+    PRFGateInput,
+    PRFPolicyDecision,
+    build_prf_policy_decision,
+)
 from seektalent.company_discovery import (
     CompanyDiscoveryService,
 )
@@ -562,6 +569,10 @@ class WorkflowRuntime:
             )
             job_intent_fingerprint = self._build_job_intent_fingerprint(run_state=run_state)
             prf_decision = self._build_prf_policy_decision(run_state=run_state, retrieval_plan=retrieval_plan)
+            tracer.write_json(
+                f"rounds/round_{round_no:02d}/prf_policy_decision.json",
+                prf_decision.model_dump(mode="json"),
+            )
             query_states, second_lane_decision = self._build_round_query_bundle(
                 round_no=round_no,
                 retrieval_plan=retrieval_plan,
@@ -1889,6 +1900,8 @@ class WorkflowRuntime:
             known_company_entities=self._known_company_entities(run_state=run_state),
             known_product_platforms=set(),
         )
+        seed_resume_ids = unique_strings([item.resume_id for item in seeds])
+        negative_resume_ids = unique_strings([item.resume_id for item in negatives])
         tried_term_family_ids = unique_strings(
             [
                 build_term_family_id(term)
@@ -1897,11 +1910,26 @@ class WorkflowRuntime:
             ]
             + [build_term_family_id(term) for term in retrieval_plan.query_terms]
         )
+        tried_query_fingerprints = unique_strings(
+            [
+                record.query_fingerprint
+                for record in run_state.retrieval_state.sent_query_history
+                if record.query_fingerprint is not None
+            ]
+        )
         return build_prf_policy_decision(
             PRFGateInput(
-                seed_resume_ids=[item.resume_id for item in seeds],
+                round_no=retrieval_plan.round_no,
+                seed_resume_ids=seed_resume_ids,
+                seed_count=len(seed_resume_ids),
+                negative_resume_ids=negative_resume_ids,
                 candidate_expressions=expressions,
+                candidate_expression_count=len(expressions),
                 tried_term_family_ids=tried_term_family_ids,
+                tried_query_fingerprints=tried_query_fingerprints,
+                min_seed_count=MIN_PRF_SEED_COUNT,
+                max_negative_support_rate=MAX_NEGATIVE_SUPPORT_RATE,
+                policy_version=PRF_POLICY_VERSION,
             )
         )
 

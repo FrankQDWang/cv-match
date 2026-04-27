@@ -62,7 +62,10 @@ def test_build_second_lane_decision_selects_prf_probe_when_gate_passes() -> None
     retrieval_plan = _retrieval_plan(query_terms=["python", "ranking", "trace"])
     prf_decision = build_prf_policy_decision(
         PRFGateInput(
+            round_no=2,
             seed_resume_ids=["seed-1", "seed-2"],
+            seed_count=2,
+            negative_resume_ids=[],
             candidate_expressions=[
                 FeedbackCandidateExpression(
                     term_family_id="feedback.langgraph",
@@ -74,7 +77,12 @@ def test_build_second_lane_decision_selects_prf_probe_when_gate_passes() -> None
                     negative_support_count=0,
                 )
             ],
+            candidate_expression_count=1,
             tried_term_family_ids=["feedback.python", "feedback.ranking", "feedback.trace"],
+            tried_query_fingerprints=["fp-1", "fp-2"],
+            min_seed_count=2,
+            max_negative_support_rate=0.4,
+            policy_version="prf-policy-v1",
         )
     )
 
@@ -98,6 +106,7 @@ def test_build_second_lane_decision_selects_prf_probe_when_gate_passes() -> None
     assert decision.accepted_prf_term_family_id == "feedback.langgraph"
     assert decision.prf_seed_resume_ids == ["seed-1", "seed-2"]
     assert decision.prf_candidate_expression_count == 1
+    assert decision.prf_policy_version == "prf-policy-v1"
 
 
 def test_build_logical_query_state_fingerprint_changes_with_filters_and_location_plan() -> None:

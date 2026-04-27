@@ -1431,7 +1431,7 @@ def test_round_two_serializes_exploit_and_generic_lane_types(tmp_path: Path) -> 
     assert decision["selected_lane_type"] == "generic_explore"
     assert decision["fallback_lane_type"] == "generic_explore"
     assert decision["fallback_query_fingerprint"] == decision["selected_query_fingerprint"]
-    assert decision["reject_reasons"] == ["no_safe_candidate_expression"]
+    assert decision["reject_reasons"] == ["no_safe_prf_expression"]
     generic_query = queries[1]
     generic_sent_query = sent_query_records[1]
     assert generic_query["query_instance_id"] == decision["selected_query_instance_id"]
@@ -1457,6 +1457,7 @@ def test_round_two_uses_prf_probe_when_gate_passes(tmp_path: Path) -> None:
     queries = json.loads((tracer.run_dir / "rounds" / "round_02" / "cts_queries.json").read_text())
     sent_query_records = json.loads((tracer.run_dir / "rounds" / "round_02" / "sent_query_records.json").read_text())
     decision = json.loads((tracer.run_dir / "rounds" / "round_02" / "second_lane_decision.json").read_text())
+    prf_policy = json.loads((tracer.run_dir / "rounds" / "round_02" / "prf_policy_decision.json").read_text())
 
     assert [item["lane_type"] for item in queries] == ["exploit", "prf_probe"]
     assert [item["lane_type"] for item in sent_query_records] == ["exploit", "prf_probe"]
@@ -1471,6 +1472,23 @@ def test_round_two_uses_prf_probe_when_gate_passes(tmp_path: Path) -> None:
     assert decision["prf_candidate_expression_count"] == 1
     assert queries[1]["query_instance_id"] == decision["selected_query_instance_id"]
     assert queries[1]["query_fingerprint"] == decision["selected_query_fingerprint"]
+    assert prf_policy["attempted"] is True
+    assert prf_policy["gate_passed"] is True
+    assert prf_policy["gate_input"]["round_no"] == 2
+    assert prf_policy["gate_input"]["seed_resume_ids"] == ["seed-1", "seed-2"]
+    assert prf_policy["gate_input"]["seed_count"] == 2
+    assert prf_policy["gate_input"]["negative_resume_ids"] == []
+    assert prf_policy["gate_input"]["candidate_expression_count"] == 1
+    assert prf_policy["gate_input"]["tried_term_family_ids"] == [
+        "feedback.python",
+        "feedback.resume-matching",
+        "feedback.trace",
+    ]
+    assert len(prf_policy["gate_input"]["tried_query_fingerprints"]) == 1
+    assert prf_policy["gate_input"]["min_seed_count"] == 2
+    assert prf_policy["gate_input"]["max_negative_support_rate"] == 0.4
+    assert prf_policy["gate_input"]["policy_version"] == "prf-policy-v1"
+    assert prf_policy["accepted_expression"]["canonical_expression"] == "LangGraph"
 
 
 def test_duplicate_hit_does_not_overwrite_first_hit_attribution(tmp_path: Path) -> None:

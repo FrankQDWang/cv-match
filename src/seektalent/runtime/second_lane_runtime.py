@@ -49,8 +49,9 @@ def build_second_lane_decision(
             None,
         )
 
-    if prf_decision is not None and prf_decision.prf_gate_passed and prf_decision.accepted_expression:
-        prf_terms = [_select_prf_anchor(retrieval_plan), prf_decision.accepted_expression]
+    if prf_decision is not None and prf_decision.gate_passed and prf_decision.accepted_expression is not None:
+        accepted_expression = prf_decision.accepted_expression
+        prf_terms = [_select_prf_anchor(retrieval_plan), accepted_expression.canonical_expression]
         query_state = build_logical_query_state(
             run_id=run_id,
             round_no=round_no,
@@ -69,11 +70,11 @@ def build_second_lane_decision(
                 selected_lane_type="prf_probe",
                 selected_query_instance_id=query_state.query_instance_id,
                 selected_query_fingerprint=query_state.query_fingerprint,
-                accepted_prf_expression=prf_decision.accepted_expression,
-                accepted_prf_term_family_id=prf_decision.accepted_term_family_id,
-                prf_seed_resume_ids=list(prf_decision.seed_resume_ids),
-                prf_candidate_expression_count=prf_decision.candidate_expression_count,
-                prf_policy_version=prf_decision.policy_version,
+                accepted_prf_expression=accepted_expression.canonical_expression,
+                accepted_prf_term_family_id=accepted_expression.term_family_id,
+                prf_seed_resume_ids=list(prf_decision.gate_input.seed_resume_ids),
+                prf_candidate_expression_count=prf_decision.gate_input.candidate_expression_count,
+                prf_policy_version=prf_decision.gate_input.policy_version,
             ),
             query_state,
         )
@@ -84,9 +85,9 @@ def build_second_lane_decision(
         sent_query_history=sent_query_history,
     )
     reject_reasons = prf_decision.reject_reasons if prf_decision is not None else ["prf_policy_not_available"]
-    prf_policy_version = prf_decision.policy_version if prf_decision is not None else "unavailable"
-    prf_seed_resume_ids = list(prf_decision.seed_resume_ids) if prf_decision is not None else []
-    prf_candidate_expression_count = prf_decision.candidate_expression_count if prf_decision is not None else 0
+    prf_policy_version = prf_decision.gate_input.policy_version if prf_decision is not None else "unavailable"
+    prf_seed_resume_ids = list(prf_decision.gate_input.seed_resume_ids) if prf_decision is not None else []
+    prf_candidate_expression_count = prf_decision.gate_input.candidate_expression_count if prf_decision is not None else 0
     if not explore_terms:
         return (
             SecondLaneDecision(
