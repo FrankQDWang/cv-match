@@ -648,7 +648,7 @@ class WorkflowRuntime:
                 f"rounds/round_{round_no:02d}/controller_context.json",
                 self._slim_controller_context(controller_context),
             )
-            controller_decision, complete_controller_stage = await controller_runtime.run_controller_stage(
+            controller_decision, controller_stage_state = await controller_runtime.run_controller_stage(
                 settings=self.settings,
                 controller=self.controller,
                 controller_context=controller_context,
@@ -679,7 +679,19 @@ class WorkflowRuntime:
                 force_anchor_only_decision=self._force_anchor_only_decision,
                 write_rescue_decision=self._write_rescue_decision,
             )
-            complete_controller_stage(controller_decision)
+            controller_runtime.finalize_controller_stage(
+                settings=self.settings,
+                controller=self.controller,
+                controller_decision=controller_decision,
+                controller_stage_state=controller_stage_state,
+                round_no=round_no,
+                tracer=tracer,
+                progress_callback=progress_callback,
+                build_llm_call_snapshot=self._build_llm_call_snapshot,
+                write_aux_llm_call_artifact=self._write_aux_llm_call_artifact,
+                emit_llm_event=self._emit_llm_event,
+                emit_progress=self._emit_progress,
+            )
             if isinstance(controller_decision, StopControllerDecision):
                 stop_reason = self._normalize_stop_reason(
                     proposed=controller_decision.stop_reason,

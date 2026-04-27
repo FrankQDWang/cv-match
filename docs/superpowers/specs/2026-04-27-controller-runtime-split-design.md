@@ -8,7 +8,7 @@ This is a narrow structural refactor:
 
 - move controller prompt/render and invocation shell
 - move controller failed artifact wiring
-- move controller success finalization wiring behind a controller-runtime finalizer
+- move controller success finalization wiring behind explicit controller stage state plus `finalize_controller_stage(...)`
 - move controller repair-call artifact wiring
 - keep decision resolution unchanged
 - keep retrieval planning unchanged
@@ -70,7 +70,7 @@ This stage shell does not need long-lived mutable state. It needs explicit input
 Own:
 
 - `run_controller_stage(...)`
-- a controller-stage finalizer returned by `run_controller_stage(...)`
+- `finalize_controller_stage(...)`
 
 This controller-runtime slice should own:
 
@@ -81,7 +81,7 @@ This controller-runtime slice should own:
 - repair artifact wiring
 - controller LLM event emission
 - controller progress emission
-- success-side `controller_call.json` / `controller_completed` finalization through the returned finalizer
+- success-side `controller_call.json` / `controller_completed` finalization through explicit controller stage state
 
 ### Keep in `WorkflowRuntime`
 
@@ -116,11 +116,16 @@ async def run_controller_stage(
     emit_llm_event,
     emit_progress,
     prompt_cache_key,
-) -> tuple[ControllerDecision, CompleteControllerStage]:
+) -> tuple[ControllerDecision, ControllerStageState]:
     ...
 ```
 
-`CompleteControllerStage` is a plain callable that accepts the final resolved `ControllerDecision` after `round_decision_runtime.resolve_round_decision(...)` runs in `WorkflowRuntime`.
+Then `WorkflowRuntime` calls:
+
+```python
+def finalize_controller_stage(..., controller_decision: ControllerDecision, controller_stage_state: ControllerStageState) -> None:
+    ...
+```
 
 Internal helpers should remain in the same module and be called directly.
 
@@ -164,6 +169,6 @@ Avoid tautological wrapper-parity tests.
 This step is successful if:
 
 - `_run_rounds(...)` is visibly thinner before decision resolution
-- `controller_runtime.py` becomes the single host for controller invocation shell logic, including the returned success finalizer
+- `controller_runtime.py` becomes the single host for controller invocation shell logic, with explicit stage state passed into `finalize_controller_stage(...)`
 - controller behavior, controller artifacts, repair handling, and event/progress semantics remain unchanged
 - existing runtime/state-flow/audit/controller-contract coverage remains green

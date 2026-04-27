@@ -4,7 +4,7 @@
 
 **Goal:** Move the controller invocation shell out of `_run_rounds(...)` without changing controller behavior, controller artifacts, repair handling, progress/event semantics, or downstream decision-resolution behavior.
 
-**Architecture:** Extract plain runtime functions into `controller_runtime.py` for controller prompt/render, invocation, failure handling, and a returned success finalizer. Keep `WorkflowRuntime` responsible for controller context construction, decision resolution, retrieval planning, and the overall round loop.
+**Architecture:** Extract plain runtime functions into `controller_runtime.py` for controller prompt/render, invocation, failure handling, and explicit success finalization via returned stage state plus `finalize_controller_stage(...)`. Keep `WorkflowRuntime` responsible for controller context construction, decision resolution, retrieval planning, and the overall round loop.
 
 **Tech Stack:** Python 3.12, Pydantic models, pytest, existing runtime state-flow, audit, and controller-contract tests
 
@@ -44,7 +44,7 @@ Move together:
 - `controller_failed` / `controller_completed` LLM events
 - `controller_failed` / `controller_completed` progress emission
 - `RunStageError("controller", ...)` failure handling
-- success-side controller artifact/progress finalization behind a returned controller-stage finalizer
+- success-side controller artifact/progress finalization through explicit controller stage state plus `finalize_controller_stage(...)`
 
 Do not change:
 
@@ -76,7 +76,7 @@ async def run_controller_stage(
     emit_llm_event,
     emit_progress,
     prompt_cache_key,
-) -> tuple[ControllerDecision, CompleteControllerStage]:
+) -> tuple[ControllerDecision, ControllerStageState]:
     ...
 ```
 
@@ -86,7 +86,7 @@ Keep this module free of classes.
 
 - [ ] **Step 3: Update `_run_rounds(...)` to use a thin controller-stage delegate**
 
-In `src/seektalent/runtime/orchestrator.py`, replace the inline controller invocation shell with a call into `controller_runtime.run_controller_stage(...)`, then invoke the returned finalizer after `round_decision_runtime.resolve_round_decision(...)` returns the final controller decision.
+In `src/seektalent/runtime/orchestrator.py`, replace the inline controller invocation shell with a call into `controller_runtime.run_controller_stage(...)`, then call `controller_runtime.finalize_controller_stage(...)` after `round_decision_runtime.resolve_round_decision(...)` returns the final controller decision.
 
 Keep these in `WorkflowRuntime`:
 

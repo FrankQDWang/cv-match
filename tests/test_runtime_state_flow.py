@@ -1266,21 +1266,24 @@ def test_run_rounds_delegates_controller_stage_to_runtime_host(
         recorded["controller"] = kwargs["controller"]
         recorded["progress_callback"] = kwargs["progress_callback"]
         assert "resolve_round_decision" not in kwargs
-
-        def fake_complete_controller_stage(controller_decision):
-            recorded["completed_decision"] = controller_decision
-
-        return expected_decision, fake_complete_controller_stage
+        return expected_decision, {"stage_state": "controller-state"}
 
     async def fake_resolve_round_decision(**kwargs):
         recorded["resolved_input"] = kwargs["controller_decision"]
         assert kwargs["controller_decision"] is expected_decision
         return expected_decision, None
 
+    def fake_finalize_controller_stage(**kwargs):
+        recorded["finalized_state"] = kwargs["controller_stage_state"]
+        recorded["completed_decision"] = kwargs["controller_decision"]
+
     monkeypatch.setattr(
         orchestrator_module,
         "controller_runtime",
-        SimpleNamespace(run_controller_stage=fake_run_controller_stage),
+        SimpleNamespace(
+            run_controller_stage=fake_run_controller_stage,
+            finalize_controller_stage=fake_finalize_controller_stage,
+        ),
         raising=False,
     )
     monkeypatch.setattr(orchestrator_module.round_decision_runtime, "resolve_round_decision", fake_resolve_round_decision)
@@ -1298,6 +1301,7 @@ def test_run_rounds_delegates_controller_stage_to_runtime_host(
     assert recorded["controller"] is runtime.controller
     assert recorded["progress_callback"] is None
     assert recorded["resolved_input"] is expected_decision
+    assert recorded["finalized_state"] == {"stage_state": "controller-state"}
     assert recorded["completed_decision"] is expected_decision
     assert stop_reason == "controller_stop"
     assert rounds_executed == 0
