@@ -1808,6 +1808,7 @@ class WorkflowRuntime:
             title_anchor_terms=title_anchor_terms,
             query_term_pool=query_term_pool,
             sent_query_history=sent_query_history,
+            prf_decision=None,
             run_id="test-run",
             job_intent_fingerprint="test-job-intent",
             source_plan_version=str(retrieval_plan.plan_version),
