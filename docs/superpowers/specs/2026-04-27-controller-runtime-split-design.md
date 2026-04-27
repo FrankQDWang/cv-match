@@ -7,7 +7,8 @@ Split the controller invocation shell out of `_run_rounds(...)` so `WorkflowRunt
 This is a narrow structural refactor:
 
 - move controller prompt/render and invocation shell
-- move controller failed/completed artifact wiring
+- move controller failed artifact wiring
+- move controller success finalization wiring behind a controller-runtime finalizer
 - move controller repair-call artifact wiring
 - keep decision resolution unchanged
 - keep retrieval planning unchanged
@@ -69,16 +70,18 @@ This stage shell does not need long-lived mutable state. It needs explicit input
 Own:
 
 - `run_controller_stage(...)`
+- a controller-stage finalizer returned by `run_controller_stage(...)`
 
-This function should own:
+This controller-runtime slice should own:
 
 - prompt rendering
 - prompt cache key/retention selection
 - controller invocation
-- success/failure `controller_call.json` snapshot construction
+- failure `controller_call.json` snapshot construction
 - repair artifact wiring
 - controller LLM event emission
 - controller progress emission
+- success-side `controller_call.json` / `controller_completed` finalization through the returned finalizer
 
 ### Keep in `WorkflowRuntime`
 
@@ -113,9 +116,11 @@ async def run_controller_stage(
     emit_llm_event,
     emit_progress,
     prompt_cache_key,
-) -> ControllerDecision:
+) -> tuple[ControllerDecision, CompleteControllerStage]:
     ...
 ```
+
+`CompleteControllerStage` is a plain callable that accepts the final resolved `ControllerDecision` after `round_decision_runtime.resolve_round_decision(...)` runs in `WorkflowRuntime`.
 
 Internal helpers should remain in the same module and be called directly.
 
@@ -125,6 +130,7 @@ Key rules:
 - keep `ControllerDecision` behavior unchanged
 - preserve controller artifact names and payload schemas
 - preserve controller failure semantics and `RunStageError("controller", ...)`
+- preserve the current requirement that success-side controller artifacts reflect the final resolved decision, not the raw controller output
 
 ## What This Step Does Not Do
 
@@ -158,6 +164,6 @@ Avoid tautological wrapper-parity tests.
 This step is successful if:
 
 - `_run_rounds(...)` is visibly thinner before decision resolution
-- `controller_runtime.py` becomes the single host for controller invocation shell logic
+- `controller_runtime.py` becomes the single host for controller invocation shell logic, including the returned success finalizer
 - controller behavior, controller artifacts, repair handling, and event/progress semantics remain unchanged
 - existing runtime/state-flow/audit/controller-contract coverage remains green

@@ -4,7 +4,7 @@
 
 **Goal:** Move the controller invocation shell out of `_run_rounds(...)` without changing controller behavior, controller artifacts, repair handling, progress/event semantics, or downstream decision-resolution behavior.
 
-**Architecture:** Extract plain runtime functions into `controller_runtime.py` for controller prompt/render, invocation, artifact wiring, and progress/event shell behavior only. Keep `WorkflowRuntime` responsible for controller context construction, decision resolution, retrieval planning, and the overall round loop.
+**Architecture:** Extract plain runtime functions into `controller_runtime.py` for controller prompt/render, invocation, failure handling, and a returned success finalizer. Keep `WorkflowRuntime` responsible for controller context construction, decision resolution, retrieval planning, and the overall round loop.
 
 **Tech Stack:** Python 3.12, Pydantic models, pytest, existing runtime state-flow, audit, and controller-contract tests
 
@@ -39,11 +39,12 @@ Move together:
 - controller prompt rendering
 - prompt cache key/retention selection
 - controller invocation
-- `controller_call.json` success/failure snapshot wiring
+- `controller_call.json` failure snapshot wiring
 - `repair_controller_call.json` wiring
 - `controller_failed` / `controller_completed` LLM events
 - `controller_failed` / `controller_completed` progress emission
 - `RunStageError("controller", ...)` failure handling
+- success-side controller artifact/progress finalization behind a returned controller-stage finalizer
 
 Do not change:
 
@@ -75,7 +76,7 @@ async def run_controller_stage(
     emit_llm_event,
     emit_progress,
     prompt_cache_key,
-) -> ControllerDecision:
+) -> tuple[ControllerDecision, CompleteControllerStage]:
     ...
 ```
 
@@ -85,7 +86,7 @@ Keep this module free of classes.
 
 - [ ] **Step 3: Update `_run_rounds(...)` to use a thin controller-stage delegate**
 
-In `src/seektalent/runtime/orchestrator.py`, replace the inline controller invocation shell with a call into `controller_runtime.run_controller_stage(...)`.
+In `src/seektalent/runtime/orchestrator.py`, replace the inline controller invocation shell with a call into `controller_runtime.run_controller_stage(...)`, then invoke the returned finalizer after `round_decision_runtime.resolve_round_decision(...)` returns the final controller decision.
 
 Keep these in `WorkflowRuntime`:
 
@@ -184,7 +185,7 @@ If no changes were needed, do not create an extra commit.
 Reviewers should check:
 
 - `_run_rounds(...)` is thinner before round-decision resolution
-- `controller_runtime.py` owns controller invocation shell logic
+- `controller_runtime.py` owns controller invocation shell logic, including the returned success finalizer
 - controller artifacts and repair artifacts remain unchanged
 - controller failure semantics remain unchanged
 - no wrapper-parity seam test was introduced
@@ -194,6 +195,6 @@ Reviewers should check:
 This plan is complete when:
 
 - `controller_runtime.py` exists
-- `WorkflowRuntime` delegates controller invocation shell to the new module
+- `WorkflowRuntime` delegates controller invocation shell to the new module and uses the returned finalizer after decision resolution
 - runtime state-flow/audit/API/CLI/controller-contract focused regression passes
 - controller behavior, controller artifacts, repair handling, and event/progress semantics remain unchanged
