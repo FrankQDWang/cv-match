@@ -28,15 +28,28 @@ class FeedbackCandidateExpression(BaseModel):
     canonical_expression: str
     surface_forms: list[str] = Field(default_factory=list)
     candidate_term_type: Literal["company_entity", "product_or_platform", "technical_phrase", "skill"]
-    supporting_resume_ids: list[str] = Field(default_factory=list)
-    negative_resume_ids: list[str] = Field(default_factory=list)
-    fit_support_count: int = 0
+    source_seed_resume_ids: list[str] = Field(default_factory=list)
+    linked_requirements: list[str] = Field(default_factory=list)
+    field_hits: dict[str, int] = Field(default_factory=dict)
+    positive_seed_support_count: int = 0
+    negative_support_count: int = 0
     fit_support_rate: float = 0.0
-    not_fit_support_count: int = 0
     not_fit_support_rate: float = 0.0
+    tried_query_fingerprints: list[str] = Field(default_factory=list)
     score: float = 0.0
     reject_reasons: list[str] = Field(default_factory=list)
-    rejection_reason: str | None = None
+
+    @property
+    def supporting_resume_ids(self) -> list[str]:
+        return self.source_seed_resume_ids
+
+    @property
+    def fit_support_count(self) -> int:
+        return self.positive_seed_support_count
+
+    @property
+    def not_fit_support_count(self) -> int:
+        return self.negative_support_count
 
 
 class CandidateFeedbackDecision(BaseModel):

@@ -1,6 +1,7 @@
 from seektalent.candidate_feedback.extraction import (
     build_term_family_id,
     build_feedback_decision,
+    classify_feedback_expressions,
     classify_candidate_expression,
     extract_surface_terms,
     extract_feedback_candidate_expressions,
@@ -19,6 +20,7 @@ __all__ = [
     "FeedbackCandidateTerm",
     "build_term_family_id",
     "build_feedback_decision",
+    "classify_feedback_expressions",
     "classify_candidate_expression",
     "extract_feedback_candidate_expressions",
     "extract_surface_terms",

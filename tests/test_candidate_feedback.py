@@ -5,6 +5,7 @@ from pathlib import Path
 
 from seektalent.candidate_feedback import (
     build_feedback_decision,
+    classify_feedback_expressions,
     extract_surface_terms,
     extract_feedback_candidate_expressions,
     select_feedback_seed_resumes,
@@ -134,21 +135,36 @@ def test_extract_feedback_candidate_expressions_keeps_short_phrase_as_single_fam
     assert expressions[0].canonical_expression == "tool calling"
     assert expressions[0].surface_forms == ["tool calling"]
     assert expressions[0].term_family_id == "feedback.tool-calling"
+    assert expressions[0].positive_seed_support_count == 2
     assert expressions[0].candidate_term_type == "technical_phrase"
 
 
-def test_extract_feedback_candidate_expressions_rejects_company_entity_but_keeps_product() -> None:
-    expressions = extract_feedback_candidate_expressions(
-        seed_resumes=[
-            _scored_candidate("seed-1", evidence=["OpenAI", "ChatGPT"]),
-            _scored_candidate("seed-2", evidence=["OpenAI", "ChatGPT"]),
-        ],
-        negative_resumes=[],
+def test_classify_feedback_expressions_rejects_known_company_entity_but_keeps_product() -> None:
+    expressions = classify_feedback_expressions(
+        ["ByteDance", "Databricks"],
+        known_company_entities={"ByteDance"},
+        known_product_platforms={"Databricks"},
     )
 
-    assert [item.canonical_expression for item in expressions] == ["ChatGPT"]
-    assert expressions[0].candidate_term_type == "product_or_platform"
-    assert expressions[0].rejection_reason is None
+    assert [item.canonical_expression for item in expressions] == ["ByteDance", "Databricks"]
+    assert expressions[0].candidate_term_type == "company_entity"
+    assert expressions[0].reject_reasons == ["company_entity"]
+    assert expressions[1].candidate_term_type == "product_or_platform"
+    assert expressions[1].reject_reasons == []
+
+
+def test_extract_feedback_candidate_expressions_returns_low_support_evidence_without_prf_gate() -> None:
+    expressions = extract_feedback_candidate_expressions(
+        seed_resumes=[_scored_candidate("seed-1", evidence=["Databricks"])],
+        negative_resumes=[],
+        known_product_platforms={"Databricks"},
+    )
+
+    assert len(expressions) == 1
+    assert expressions[0].canonical_expression == "Databricks"
+    assert expressions[0].positive_seed_support_count == 1
+    assert expressions[0].negative_support_count == 0
+    assert expressions[0].reject_reasons == []
 
 
 def test_build_feedback_decision_picks_one_supported_novel_term() -> None:

@@ -50,7 +50,8 @@ def force_candidate_feedback_decision(
     shared_expression_evidence = extract_feedback_candidate_expressions(
         seed_resumes=seeds,
         negative_resumes=negatives,
-        include_rejected=True,
+        known_company_entities=set(),
+        known_product_platforms=set(),
     )
     tracer.write_json(
         f"rounds/round_{round_no:02d}/candidate_feedback_input.json",

@@ -79,6 +79,7 @@ _COMMON_WORDS = {
 _ACRONYM_RE = re.compile(r"\b[A-Z]{2,}(?:\s+[A-Z]{2,})*\b")
 _CAMEL_CASE_RE = re.compile(r"\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b")
 _MIXED_CASE_TOKEN_RE = re.compile(r"\b[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*\b")
+_TITLE_CASE_TOKEN_RE = re.compile(r"\b[A-Z][a-z0-9]{2,}\b")
 _SYMBOL_TOKEN_RE = re.compile(r"\b[A-Za-z0-9]+(?:[./+_-][A-Za-z0-9]+)+\b|C\+\+|C#")
 _SHORT_ENGLISH_PHRASE_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9.+#-]*\s+[A-Za-z][A-Za-z0-9.+#-]*\b")
 _SHORT_CHINESE_PHRASE_RE = re.compile(r"[\u4e00-\u9fff]{2,6}")
@@ -93,16 +94,10 @@ _EXPRESSION_SURFACE_PATTERNS = (
     _SYMBOL_TOKEN_RE,
     _CAMEL_CASE_RE,
     _MIXED_CASE_TOKEN_RE,
+    _TITLE_CASE_TOKEN_RE,
     _ACRONYM_RE,
     _SHORT_ENGLISH_PHRASE_RE,
     _SHORT_CHINESE_PHRASE_RE,
-)
-_COMPANY_ENTITY_SUFFIX_RE = re.compile(
-    r"(?:"
-    r"inc|corp|llc|ltd|limited|company|technologies|technology|software"
-    r"|公司|集团|科技|信息|软件|网络|股份|有限"
-    r")$",
-    re.IGNORECASE,
 )
 _PRODUCT_OR_PLATFORM_HINT_RE = re.compile(
     r"(?:"
@@ -110,17 +105,6 @@ _PRODUCT_OR_PLATFORM_HINT_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
-_KNOWN_COMPANY_ENTITIES = {
-    "amazon",
-    "apple",
-    "bytedance",
-    "google",
-    "meta",
-    "microsoft",
-    "openai",
-    "salesforce",
-    "tencent",
-}
 
 
 def select_feedback_seed_resumes(candidates: list[ScoredCandidate], *, limit: int = 5) -> list[ScoredCandidate]:
@@ -166,53 +150,70 @@ def build_term_family_id(expression: str) -> str:
 
 
 def classify_candidate_expression(expression: str) -> FeedbackCandidateExpression:
-    normalized = normalize_expression(expression)
-    rejection_reason: str | None = None
-    reject_reasons: list[str] = []
+    return classify_feedback_expressions([expression], known_company_entities=set(), known_product_platforms=set())[0]
 
-    if not normalized:
-        candidate_term_type = "technical_phrase"
-        rejection_reason = "empty_expression"
-    elif not _is_allowed_expression_surface_term(normalized):
-        candidate_term_type = _candidate_term_type(normalized)
-        rejection_reason = "generic_or_filter_like"
-    elif _looks_like_company_entity(normalized):
-        candidate_term_type = "company_entity"
-        rejection_reason = "company_entity"
-    else:
-        candidate_term_type = _candidate_term_type(normalized)
 
-    if rejection_reason is not None:
-        reject_reasons.append(rejection_reason)
+def classify_feedback_expressions(
+    expressions: list[str],
+    *,
+    known_company_entities: set[str],
+    known_product_platforms: set[str],
+) -> list[FeedbackCandidateExpression]:
+    company_entity_keys = {_term_key(item) for item in known_company_entities}
+    product_platform_keys = {_term_key(item) for item in known_product_platforms}
+    classified: list[FeedbackCandidateExpression] = []
 
-    return FeedbackCandidateExpression(
-        term_family_id=build_term_family_id(normalized),
-        canonical_expression=normalized,
-        surface_forms=[normalized] if normalized else [],
-        candidate_term_type=candidate_term_type,
-        reject_reasons=reject_reasons,
-        rejection_reason=rejection_reason,
-    )
+    for expression in expressions:
+        normalized = normalize_expression(expression)
+        reject_reasons: list[str] = []
+
+        if not normalized:
+            candidate_term_type = "technical_phrase"
+            reject_reasons.append("empty_expression")
+        elif not _is_allowed_expression_surface_term(normalized):
+            candidate_term_type = _candidate_term_type(normalized, product_platform_keys)
+            reject_reasons.append("generic_or_filter_like")
+        elif _term_key(normalized) in company_entity_keys:
+            candidate_term_type = "company_entity"
+            reject_reasons.append("company_entity")
+        else:
+            candidate_term_type = _candidate_term_type(normalized, product_platform_keys)
+
+        classified.append(
+            FeedbackCandidateExpression(
+                term_family_id=build_term_family_id(normalized),
+                canonical_expression=normalized,
+                surface_forms=[normalized] if normalized else [],
+                candidate_term_type=candidate_term_type,
+                reject_reasons=reject_reasons,
+            )
+        )
+    return classified
 
 
 def extract_feedback_candidate_expressions(
     *,
     seed_resumes: list[ScoredCandidate],
     negative_resumes: list[ScoredCandidate],
-    include_rejected: bool = False,
+    known_company_entities: set[str] | None = None,
+    known_product_platforms: set[str] | None = None,
+    include_rejected: bool | None = None,
 ) -> list[FeedbackCandidateExpression]:
+    del include_rejected
     seed_support: dict[str, set[str]] = defaultdict(set)
     negative_support: dict[str, set[str]] = defaultdict(set)
+    field_hits: dict[str, Counter[str]] = defaultdict(Counter)
     surface_forms: dict[str, set[str]] = defaultdict(set)
     display_expressions: dict[str, str] = {}
 
     for resume in seed_resumes:
-        for texts in _shared_expression_field_texts(resume).values():
+        for field_name, texts in _shared_expression_field_texts(resume).items():
             for expression in _extract_expression_surface_terms(texts):
                 family_id = build_term_family_id(expression)
                 display_expressions.setdefault(family_id, normalize_expression(expression))
                 surface_forms[family_id].add(expression)
                 seed_support[family_id].add(resume.resume_id)
+                field_hits[family_id][field_name] += 1
     for resume in negative_resumes:
         for texts in _shared_expression_field_texts(resume).values():
             for expression in _extract_expression_surface_terms(texts):
@@ -221,49 +222,40 @@ def extract_feedback_candidate_expressions(
                 surface_forms[family_id].add(expression)
                 negative_support[family_id].add(resume.resume_id)
 
+    classified = {
+        item.term_family_id: item
+        for item in classify_feedback_expressions(
+            list(display_expressions.values()),
+            known_company_entities=known_company_entities or set(),
+            known_product_platforms=known_product_platforms or set(),
+        )
+    }
     expressions: list[FeedbackCandidateExpression] = []
-    use_negative_support = len(negative_resumes) >= 3
     for family_id, expression in display_expressions.items():
-        classified = classify_candidate_expression(expression)
+        classification = classified[family_id]
         seed_ids = sorted(seed_support.get(family_id, set()))
         negative_ids = sorted(negative_support.get(family_id, set()))
-        score = float(len(seed_ids) * 4 - (len(negative_ids) * 4 if use_negative_support else 0)) + _expression_shape_bonus(
-            expression
-        )
-        rejection_reason = classified.rejection_reason
-        reject_reasons = list(classified.reject_reasons)
-
-        if rejection_reason is None and len(seed_ids) < 2:
-            rejection_reason = "insufficient_seed_support"
-        elif (
-            rejection_reason is None
-            and use_negative_support
-            and negative_ids
-            and len(negative_ids) >= len(seed_ids)
-        ):
-            rejection_reason = "negative_support_too_high"
-        if rejection_reason is not None and rejection_reason not in reject_reasons:
-            reject_reasons.append(rejection_reason)
+        score = float(len(seed_ids) * 4 - len(negative_ids) * 4) + _expression_shape_bonus(expression)
 
         candidate = FeedbackCandidateExpression(
             term_family_id=family_id,
             canonical_expression=expression,
             surface_forms=sorted(surface_forms.get(family_id, {expression}), key=str.casefold),
-            candidate_term_type=classified.candidate_term_type,
-            supporting_resume_ids=seed_ids,
-            negative_resume_ids=negative_ids,
-            fit_support_count=len(seed_ids),
+            candidate_term_type=classification.candidate_term_type,
+            source_seed_resume_ids=seed_ids,
+            linked_requirements=[],
+            field_hits=dict(field_hits.get(family_id, {})),
+            positive_seed_support_count=len(seed_ids),
+            negative_support_count=len(negative_ids),
             fit_support_rate=_fit_rate(seed_ids, seed_resumes),
-            not_fit_support_count=len(negative_ids),
             not_fit_support_rate=_negative_rate(negative_ids, negative_resumes),
+            tried_query_fingerprints=[],
             score=score,
-            reject_reasons=reject_reasons,
-            rejection_reason=rejection_reason,
+            reject_reasons=list(classification.reject_reasons),
         )
-        if include_rejected or candidate.rejection_reason is None:
-            expressions.append(candidate)
+        expressions.append(candidate)
 
-    expressions.sort(key=lambda item: (-item.score, -item.fit_support_count, item.canonical_expression.casefold()))
+    expressions.sort(key=lambda item: (-item.score, -item.positive_seed_support_count, item.canonical_expression.casefold()))
     return expressions
 
 
@@ -507,22 +499,15 @@ def _is_allowed_expression_surface_term(term: str) -> bool:
         return False
     if len(term) > 32:
         return False
-    return _MIXED_CASE_TOKEN_RE.fullmatch(term) is not None
+    return _MIXED_CASE_TOKEN_RE.fullmatch(term) is not None or _TITLE_CASE_TOKEN_RE.fullmatch(term) is not None
 
 
-def _candidate_term_type(term: str) -> str:
-    if _looks_like_company_entity(term):
-        return "company_entity"
-    if _looks_like_product_or_platform(term):
+def _candidate_term_type(term: str, known_product_platform_keys: set[str]) -> str:
+    if _term_key(term) in known_product_platform_keys or _looks_like_product_or_platform(term):
         return "product_or_platform"
     if " " in term or any("\u4e00" <= char <= "\u9fff" for char in term):
         return "technical_phrase"
     return "skill"
-
-
-def _looks_like_company_entity(term: str) -> bool:
-    normalized = term.casefold()
-    return normalized in _KNOWN_COMPANY_ENTITIES or _COMPANY_ENTITY_SUFFIX_RE.search(normalized) is not None
 
 
 def _looks_like_product_or_platform(term: str) -> bool:
@@ -534,11 +519,17 @@ def _looks_like_product_or_platform(term: str) -> bool:
 
 
 def _expression_shape_bonus(term: str) -> float:
-    if any(pattern.fullmatch(term) for pattern in (_ACRONYM_RE, _CAMEL_CASE_RE, _MIXED_CASE_TOKEN_RE, _SYMBOL_TOKEN_RE)):
+    if any(
+        pattern.fullmatch(term)
+        for pattern in (_ACRONYM_RE, _CAMEL_CASE_RE, _MIXED_CASE_TOKEN_RE, _TITLE_CASE_TOKEN_RE, _SYMBOL_TOKEN_RE)
+    ):
         return 2.0
     pieces = term.split()
     if len(pieces) == 2 and any(
-        any(pattern.fullmatch(piece) for pattern in (_ACRONYM_RE, _CAMEL_CASE_RE, _MIXED_CASE_TOKEN_RE, _SYMBOL_TOKEN_RE))
+        any(
+            pattern.fullmatch(piece)
+            for pattern in (_ACRONYM_RE, _CAMEL_CASE_RE, _MIXED_CASE_TOKEN_RE, _TITLE_CASE_TOKEN_RE, _SYMBOL_TOKEN_RE)
+        )
         for piece in pieces
     ):
         return 1.0
