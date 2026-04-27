@@ -37,6 +37,7 @@ QueryRetrievalRole = Literal[
 ]
 Queryability = Literal["admitted", "score_only", "filter_only", "blocked"]
 QueryRole = Literal["exploit", "explore"]
+LaneType = Literal["exploit", "generic_explore", "prf_probe"]
 TopPoolStrength = Literal["empty", "weak", "usable", "strong"]
 StopQualityGateStatus = Literal[
     "pass",
@@ -142,6 +143,25 @@ class RequirementExtractionDraft(BaseModel):
         if "title_anchor_rationale" not in data and data.get("title_anchor_terms"):
             data["title_anchor_rationale"] = "Primary title anchor carried forward from the legacy title_anchor_term field."
         return data
+
+
+class CanonicalQuerySpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lane_type: LaneType
+    anchors: list[str] = Field(default_factory=list)
+    expansion_terms: list[str] = Field(default_factory=list)
+    promoted_prf_expression: str | None = None
+    generic_explore_terms: list[str] = Field(default_factory=list)
+    required_terms: list[str] = Field(default_factory=list)
+    optional_terms: list[str] = Field(default_factory=list)
+    excluded_terms: list[str] = Field(default_factory=list)
+    location_key: str | None = None
+    provider_filters: dict[str, Any] = Field(default_factory=dict)
+    boolean_template: str
+    rendered_provider_query: str
+    provider_name: str
+    source_plan_version: str
 
     @property
     def title_anchor_term(self) -> str:
