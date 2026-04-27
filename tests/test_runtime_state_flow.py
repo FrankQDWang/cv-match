@@ -1252,8 +1252,14 @@ def test_run_rounds_delegates_controller_stage_to_runtime_host(
     _install_runtime_stubs(runtime, controller=FailingController(), resume_scorer=StubScorer())
     tracer = RunTracer(tmp_path / "trace-runs")
     job_title, jd, notes = _sample_inputs()
-    expected_decision = StopControllerDecision(
+    raw_decision = StopControllerDecision(
         thought_summary="Stop.",
+        action="stop",
+        decision_rationale="Raw controller decision before round resolution.",
+        stop_reason="raw_controller_stop",
+    )
+    resolved_decision = StopControllerDecision(
+        thought_summary="Stop after resolution.",
         action="stop",
         decision_rationale="Delegated controller stage decided to stop.",
         stop_reason="controller_stop",
@@ -1266,12 +1272,12 @@ def test_run_rounds_delegates_controller_stage_to_runtime_host(
         recorded["controller"] = kwargs["controller"]
         recorded["progress_callback"] = kwargs["progress_callback"]
         assert "resolve_round_decision" not in kwargs
-        return expected_decision, {"stage_state": "controller-state"}
+        return raw_decision, {"stage_state": "controller-state"}
 
     async def fake_resolve_round_decision(**kwargs):
         recorded["resolved_input"] = kwargs["controller_decision"]
-        assert kwargs["controller_decision"] is expected_decision
-        return expected_decision, None
+        assert kwargs["controller_decision"] is raw_decision
+        return resolved_decision, None
 
     def fake_finalize_controller_stage(**kwargs):
         recorded["finalized_state"] = kwargs["controller_stage_state"]
@@ -1300,9 +1306,9 @@ def test_run_rounds_delegates_controller_stage_to_runtime_host(
     assert recorded["controller_context_round_no"] == 1
     assert recorded["controller"] is runtime.controller
     assert recorded["progress_callback"] is None
-    assert recorded["resolved_input"] is expected_decision
+    assert recorded["resolved_input"] is raw_decision
     assert recorded["finalized_state"] == {"stage_state": "controller-state"}
-    assert recorded["completed_decision"] is expected_decision
+    assert recorded["completed_decision"] is resolved_decision
     assert stop_reason == "controller_stop"
     assert rounds_executed == 0
     assert terminal_controller_round is not None
