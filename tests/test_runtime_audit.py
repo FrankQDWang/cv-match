@@ -1709,7 +1709,12 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert controller_event["status"] == "succeeded"
     assert "rounds/round_01/controller_call.json" in controller_event["artifact_paths"]
     assert finalizer_event["status"] == "succeeded"
-    assert "judge_packet.json" in finalizer_event["artifact_paths"]
+    assert finalizer_event["artifact_paths"] == [
+        "finalizer_context.json",
+        "finalizer_call.json",
+        "final_candidates.json",
+        "final_answer.md",
+    ]
     assert run_finished_event["summary"] == "Run completed after 1 retrieval rounds."
 
 
@@ -2120,7 +2125,12 @@ def test_runtime_skips_eval_artifacts_when_eval_is_disabled(tmp_path: Path, monk
     assert "evaluation_completed" not in {item["event_type"] for item in events}
     assert "evaluation_skipped" in {item["event_type"] for item in events}
     finalizer_event = next(item for item in events if item["event_type"] == "finalizer_completed")
-    assert "judge_packet.json" not in finalizer_event["artifact_paths"]
+    assert finalizer_event["artifact_paths"] == [
+        "finalizer_context.json",
+        "finalizer_call.json",
+        "final_candidates.json",
+        "final_answer.md",
+    ]
     assert run_config["settings"]["enable_eval"] is False
     audit_terms = {item["term"]: item for item in term_surface_audit["terms"]}
     audit_surfaces = {item["original_term"]: item for item in term_surface_audit["surfaces"]}

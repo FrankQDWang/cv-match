@@ -289,16 +289,36 @@ class WorkflowRuntime:
                 emit_progress=self._emit_progress,
                 slim_finalize_context=self._slim_finalize_context,
                 render_final_markdown=self._render_final_markdown,
-                write_post_finalize_artifacts=lambda *, final_result, final_markdown: self._write_post_finalize_artifacts(
+                run_stage_error=RunStageError,
+            )
+            if self.settings.enable_eval:
+                tracer.write_json(
+                    "judge_packet.json",
+                    self._build_judge_packet(
+                        tracer=tracer,
+                        run_state=run_state,
+                        final_result=final_result,
+                        rounds_executed=rounds_executed,
+                        stop_reason=stop_reason,
+                        terminal_controller_round=terminal_controller_round,
+                    ),
+                )
+            tracer.write_text(
+                "run_summary.md",
+                self._render_run_summary(
+                    run_state=run_state,
+                    final_result=final_result,
+                    terminal_controller_round=terminal_controller_round,
+                ),
+            )
+            tracer.write_json(
+                "search_diagnostics.json",
+                self._build_search_diagnostics(
                     tracer=tracer,
                     run_state=run_state,
                     final_result=final_result,
-                    final_markdown=final_markdown,
-                    rounds_executed=rounds_executed,
-                    stop_reason=stop_reason,
                     terminal_controller_round=terminal_controller_round,
                 ),
-                run_stage_error=RunStageError,
             )
             evaluation_result: EvaluationResult | None = None
             if self.settings.enable_eval:
@@ -1570,52 +1590,6 @@ class WorkflowRuntime:
             build_round_search_diagnostics=self._build_round_search_diagnostics,
             reflection_advice_application_for_decision=self._reflection_advice_application_for_decision,
         )
-
-    def _write_post_finalize_artifacts(
-        self,
-        *,
-        tracer: RunTracer,
-        run_state: RunState,
-        final_result: FinalResult,
-        final_markdown: str,
-        rounds_executed: int,
-        stop_reason: str,
-        terminal_controller_round: TerminalControllerRound | None,
-    ) -> list[str]:
-        del final_markdown
-        artifact_paths: list[str] = []
-        if self.settings.enable_eval:
-            tracer.write_json(
-                "judge_packet.json",
-                self._build_judge_packet(
-                    tracer=tracer,
-                    run_state=run_state,
-                    final_result=final_result,
-                    rounds_executed=rounds_executed,
-                    stop_reason=stop_reason,
-                    terminal_controller_round=terminal_controller_round,
-                ),
-            )
-            artifact_paths.append("judge_packet.json")
-        tracer.write_json(
-            "search_diagnostics.json",
-            self._build_search_diagnostics(
-                tracer=tracer,
-                run_state=run_state,
-                final_result=final_result,
-                terminal_controller_round=terminal_controller_round,
-            ),
-        )
-        tracer.write_text(
-            "run_summary.md",
-            self._render_run_summary(
-                run_state=run_state,
-                final_result=final_result,
-                terminal_controller_round=terminal_controller_round,
-            ),
-        )
-        artifact_paths.extend(["search_diagnostics.json", "run_summary.md"])
-        return artifact_paths
 
     def _build_term_surface_audit(
         self,

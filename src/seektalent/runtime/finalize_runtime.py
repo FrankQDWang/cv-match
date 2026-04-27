@@ -18,7 +18,6 @@ type EmitProgress = Callable[..., None]
 type RenderFinalMarkdown = Callable[[FinalResult], str]
 type RunStageErrorBuilder = Callable[[str, str], Exception]
 type SlimFinalizeContext = Callable[[FinalizeContext], dict[str, object]]
-type WritePostFinalizeArtifacts = Callable[..., list[str]]
 
 
 async def run_finalizer_stage(
@@ -33,7 +32,6 @@ async def run_finalizer_stage(
     emit_progress: EmitProgress,
     slim_finalize_context: SlimFinalizeContext,
     render_final_markdown: RenderFinalMarkdown,
-    write_post_finalize_artifacts: WritePostFinalizeArtifacts,
     run_stage_error: RunStageErrorBuilder,
 ) -> tuple[FinalResult, str]:
     tracer.write_json("finalizer_context.json", slim_finalize_context(finalize_context))
@@ -157,10 +155,6 @@ async def run_finalizer_stage(
     final_markdown = render_final_markdown(final_result)
     tracer.write_json("final_candidates.json", final_result.model_dump(mode="json"))
     tracer.write_text("final_answer.md", final_markdown)
-    post_finalize_artifacts = write_post_finalize_artifacts(
-        final_result=final_result,
-        final_markdown=final_markdown,
-    )
     emit_llm_event(
         tracer=tracer,
         event_type="finalizer_completed",
@@ -168,7 +162,7 @@ async def run_finalizer_stage(
         model_id=settings.finalize_model,
         status="succeeded",
         summary=final_result.summary,
-        artifact_paths=finalizer_artifacts + post_finalize_artifacts,
+        artifact_paths=finalizer_artifacts,
         latency_ms=latency_ms,
     )
     emit_progress(

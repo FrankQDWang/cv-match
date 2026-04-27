@@ -1435,7 +1435,11 @@ def test_run_async_delegates_finalizer_stage_to_runtime_host(
         recorded["finalize_context"] = kwargs["finalize_context"]
         recorded["finalizer"] = kwargs["finalizer"]
         recorded["progress_callback"] = kwargs["progress_callback"]
-        recorded["write_post_finalize_artifacts"] = kwargs["write_post_finalize_artifacts"]
+        assert "write_post_finalize_artifacts" not in kwargs
+        kwargs["tracer"].write_json(
+            "finalizer_context.json",
+            kwargs["slim_finalize_context"](kwargs["finalize_context"]),
+        )
         final_result = FinalResult(
             run_id=kwargs["finalize_context"].run_id,
             run_dir=kwargs["finalize_context"].run_dir,
@@ -1461,6 +1465,12 @@ def test_run_async_delegates_finalizer_stage_to_runtime_host(
             ],
         )
         final_markdown = "# Delegated final markdown\n"
+        kwargs["tracer"].write_json(
+            "finalizer_call.json",
+            {"stage": "finalize", "call_id": "finalizer", "output_retries": 2},
+        )
+        kwargs["tracer"].write_json("final_candidates.json", final_result.model_dump(mode="json"))
+        kwargs["tracer"].write_text("final_answer.md", final_markdown)
         return final_result, final_markdown
 
     monkeypatch.setattr(
@@ -1477,7 +1487,6 @@ def test_run_async_delegates_finalizer_stage_to_runtime_host(
     assert recorded["finalize_context"].rounds_executed == 1
     assert recorded["finalize_context"].stop_reason == "max_rounds_reached"
     assert len(recorded["finalize_context"].top_candidates) > 0
-    assert callable(recorded["write_post_finalize_artifacts"])
     assert artifacts.final_result.summary == "Delegated finalizer summary."
     assert artifacts.final_markdown == "# Delegated final markdown\n"
 
