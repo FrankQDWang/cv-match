@@ -144,6 +144,10 @@ class RequirementExtractionDraft(BaseModel):
             data["title_anchor_rationale"] = "Primary title anchor carried forward from the legacy title_anchor_term field."
         return data
 
+    @property
+    def title_anchor_term(self) -> str:
+        return self.title_anchor_terms[0]
+
 
 class CanonicalQuerySpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -162,10 +166,6 @@ class CanonicalQuerySpec(BaseModel):
     rendered_provider_query: str
     provider_name: str
     source_plan_version: str
-
-    @property
-    def title_anchor_term(self) -> str:
-        return self.title_anchor_terms[0]
 
 
 class DegreeRequirement(BaseModel):
