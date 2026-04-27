@@ -57,7 +57,7 @@ from seektalent.providers import get_provider_adapter
 from seektalent.providers.cts.filter_projection import (
     project_constraints_to_cts,
 )
-from seektalent.reflection.critic import ReflectionCritic, render_reflection_prompt
+from seektalent.reflection.critic import ReflectionCritic
 from seektalent.requirements import (
     RequirementExtractor,
     build_requirement_digest,
@@ -72,11 +72,11 @@ from seektalent.resume_quality import ResumeQualityCommenter
 from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime import company_discovery_runtime
 from seektalent.runtime import controller_runtime
+from seektalent.runtime import reflection_runtime
 from seektalent.runtime import round_decision_runtime
 from seektalent.runtime import rescue_execution_runtime
 from seektalent.runtime.controller_context import build_controller_context
 from seektalent.runtime.finalize_context import build_finalize_context
-from seektalent.runtime.reflection_context import build_reflection_context
 from seektalent.runtime.requirements_runtime import build_run_state as build_requirements_run_state
 from seektalent.runtime.runtime_diagnostics import (
     build_judge_packet as build_judge_packet_direct,
@@ -925,218 +925,26 @@ class WorkflowRuntime:
                 dropped_candidate_ids=[candidate.resume_id for candidate in dropped_candidates],
             )
             run_state.round_history.append(round_state)
-            reflection_context = build_reflection_context(run_state=run_state, round_state=round_state)
-            tracer.write_json(
-                f"rounds/round_{round_no:02d}/reflection_context.json",
-                self._slim_reflection_context(reflection_context),
-            )
-            reflection_call_id = f"reflection-r{round_no:02d}"
-            reflection_call_payload = {"REFLECTION_CONTEXT": reflection_context.model_dump(mode="json")}
-            reflection_prompt = render_reflection_prompt(reflection_context)
-            reflection_prompt_cache_key = self._prompt_cache_key(
-                stage="reflection",
-                model_id=self.settings.reflection_model,
-                input_hash=json_sha256(reflection_context.model_dump(mode="json")),
-            )
-            reflection_prompt_cache_retention = (
-                self.settings.openai_prompt_cache_retention if reflection_prompt_cache_key is not None else None
-            )
-            reflection_artifacts = [
-                f"rounds/round_{round_no:02d}/reflection_context.json",
-                f"rounds/round_{round_no:02d}/reflection_call.json",
-                f"rounds/round_{round_no:02d}/reflection_advice.json",
-            ]
-            reflection_started_at = datetime.now().astimezone().isoformat(timespec="seconds")
-            reflection_started_clock = perf_counter()
-            self._emit_llm_event(
+            reflection_advice = await reflection_runtime.run_reflection_stage(
+                settings=self.settings,
+                reflection_critic=self.reflection_critic,
+                run_state=run_state,
+                round_state=round_state,
+                round_no=round_no,
                 tracer=tracer,
-                event_type="reflection_started",
-                round_no=round_no,
-                call_id=reflection_call_id,
-                model_id=self.settings.reflection_model,
-                status="started",
-                summary="Starting round reflection.",
-                artifact_paths=reflection_artifacts,
-            )
-            self._emit_progress(
-                progress_callback,
-                "reflection_started",
-                f"正在复盘第 {round_no} 轮关键词、候选人质量和下一步。",
-                round_no=round_no,
-                payload={"stage": "reflection"},
-            )
-            try:
-                reflection_advice = await self._reflect_round(
-                    context=reflection_context,
-                    run_state=run_state,
-                    prompt_cache_key=reflection_prompt_cache_key,
-                    source_user_prompt=reflection_prompt,
-                )
-            except Exception as exc:  # noqa: BLE001
-                latency_ms = max(1, int((perf_counter() - reflection_started_clock) * 1000))
-                reflection_repair_attempt_count = int(getattr(self.reflection_critic, "last_repair_attempt_count", 0))
-                reflection_repair_model = (
-                    self.settings.structured_repair_model if reflection_repair_attempt_count > 0 else None
-                )
-                reflection_provider_usage = getattr(self.reflection_critic, "last_provider_usage", None)
-                tracer.write_json(
-                    f"rounds/round_{round_no:02d}/reflection_call.json",
-                    self._build_llm_call_snapshot(
-                        stage="reflection",
-                        call_id=reflection_call_id,
-                        model_id=self.settings.reflection_model,
-                        prompt_name="reflection",
-                        user_payload=reflection_call_payload,
-                        user_prompt_text=reflection_prompt,
-                        input_artifact_refs=[
-                            f"rounds/round_{round_no:02d}/reflection_context.json",
-                            "requirement_sheet.json",
-                            "sent_query_history.json",
-                        ],
-                        output_artifact_refs=[],
-                        started_at=reflection_started_at,
-                        latency_ms=latency_ms,
-                        status="failed",
-                        retries=0,
-                        output_retries=2,
-                        error_message=str(exc),
-                        round_no=round_no,
-                        validator_retry_count=int(getattr(self.reflection_critic, "last_validator_retry_count", 0)),
-                        validator_retry_reasons=list(getattr(self.reflection_critic, "last_validator_retry_reasons", [])),
-                        prompt_cache_key=reflection_prompt_cache_key,
-                        prompt_cache_retention=reflection_prompt_cache_retention,
-                        repair_attempt_count=reflection_repair_attempt_count,
-                        repair_succeeded=bool(getattr(self.reflection_critic, "last_repair_succeeded", False)),
-                        repair_model=reflection_repair_model,
-                        repair_reason=getattr(self.reflection_critic, "last_repair_reason", None),
-                        full_retry_count=int(getattr(self.reflection_critic, "last_full_retry_count", 0)),
-                        provider_usage=reflection_provider_usage,
-                    ).model_dump(mode="json"),
-                )
-                self._write_aux_llm_call_artifact(
-                    tracer=tracer,
-                    path=f"rounds/round_{round_no:02d}/repair_reflection_call.json",
-                    call_artifact=getattr(self.reflection_critic, "last_repair_call_artifact", None),
-                    input_artifact_refs=[
-                        f"rounds/round_{round_no:02d}/reflection_context.json",
-                        f"rounds/round_{round_no:02d}/reflection_call.json",
-                    ],
-                    output_artifact_refs=[],
-                    round_no=round_no,
-                )
-                self._emit_llm_event(
-                    tracer=tracer,
-                    event_type="reflection_failed",
-                    round_no=round_no,
-                    call_id=reflection_call_id,
-                    model_id=self.settings.reflection_model,
-                    status="failed",
-                    summary=str(exc),
-                    artifact_paths=reflection_artifacts[:2],
-                    latency_ms=latency_ms,
-                    error_message=str(exc),
-                )
-                self._emit_progress(
-                    progress_callback,
-                    "reflection_failed",
-                    str(exc),
-                    round_no=round_no,
-                    payload={"stage": "reflection", "error_type": type(exc).__name__},
-                )
-                raise
-            round_state.reflection_advice = reflection_advice
-            tracer.write_json(
-                f"rounds/round_{round_no:02d}/reflection_advice.json",
-                reflection_advice.model_dump(mode="json"),
-            )
-            latency_ms = max(1, int((perf_counter() - reflection_started_clock) * 1000))
-            reflection_repair_attempt_count = int(getattr(self.reflection_critic, "last_repair_attempt_count", 0))
-            reflection_provider_usage = getattr(self.reflection_critic, "last_provider_usage", None)
-            tracer.write_json(
-                f"rounds/round_{round_no:02d}/reflection_call.json",
-                self._build_llm_call_snapshot(
-                    stage="reflection",
-                    call_id=reflection_call_id,
-                    model_id=self.settings.reflection_model,
-                    prompt_name="reflection",
-                    user_payload=reflection_call_payload,
-                    user_prompt_text=reflection_prompt,
-                    input_artifact_refs=[
-                        f"rounds/round_{round_no:02d}/reflection_context.json",
-                        "requirement_sheet.json",
-                        "sent_query_history.json",
-                    ],
-                    output_artifact_refs=[f"rounds/round_{round_no:02d}/reflection_advice.json"],
-                    started_at=reflection_started_at,
-                    latency_ms=latency_ms,
-                    status="succeeded",
-                    retries=0,
-                    output_retries=2,
-                    structured_output=reflection_advice.model_dump(mode="json"),
-                    round_no=round_no,
-                    validator_retry_count=int(getattr(self.reflection_critic, "last_validator_retry_count", 0)),
-                    validator_retry_reasons=list(getattr(self.reflection_critic, "last_validator_retry_reasons", [])),
-                    prompt_cache_key=reflection_prompt_cache_key,
-                    prompt_cache_retention=reflection_prompt_cache_retention,
-                    repair_attempt_count=reflection_repair_attempt_count,
-                    repair_succeeded=bool(getattr(self.reflection_critic, "last_repair_succeeded", False)),
-                    repair_model=(
-                        self.settings.structured_repair_model if reflection_repair_attempt_count > 0 else None
-                    ),
-                    repair_reason=getattr(self.reflection_critic, "last_repair_reason", None),
-                    full_retry_count=int(getattr(self.reflection_critic, "last_full_retry_count", 0)),
-                    provider_usage=reflection_provider_usage,
-                ).model_dump(mode="json"),
-            )
-            self._write_aux_llm_call_artifact(
-                tracer=tracer,
-                path=f"rounds/round_{round_no:02d}/repair_reflection_call.json",
-                call_artifact=getattr(self.reflection_critic, "last_repair_call_artifact", None),
-                input_artifact_refs=[
-                    f"rounds/round_{round_no:02d}/reflection_context.json",
-                    f"rounds/round_{round_no:02d}/reflection_call.json",
-                ],
-                output_artifact_refs=[f"rounds/round_{round_no:02d}/reflection_advice.json"],
-                round_no=round_no,
-            )
-            self._emit_llm_event(
-                tracer=tracer,
-                event_type="reflection_completed",
-                round_no=round_no,
-                call_id=reflection_call_id,
-                model_id=self.settings.reflection_model,
-                status="succeeded",
-                summary=reflection_advice.reflection_summary,
-                artifact_paths=reflection_artifacts,
-                latency_ms=latency_ms,
-            )
-            self._emit_progress(
-                progress_callback,
-                "reflection_completed",
-                reflection_advice.reflection_rationale or reflection_advice.reflection_summary,
-                round_no=round_no,
-                payload={
-                    "stage": "reflection",
-                    "reflection_summary": reflection_advice.reflection_summary,
-                    "reflection_rationale": reflection_advice.reflection_rationale,
-                    "suggest_stop": reflection_advice.suggest_stop,
-                    "suggested_stop_reason": reflection_advice.suggested_stop_reason,
-                },
-            )
-            tracer.write_text(
-                f"rounds/round_{round_no:02d}/round_review.md",
-                self._render_round_review(
-                    round_no=round_no,
-                    controller_decision=controller_decision,
-                    retrieval_plan=retrieval_plan,
-                    observation=search_observation,
-                    newly_scored_count=newly_scored_count,
-                    pool_decisions=pool_decisions,
-                    top_candidates=current_top_candidates,
-                    dropped_candidates=dropped_candidates,
-                    reflection=reflection_advice,
-                    next_step=self._next_step_after_round(round_no=round_no),
-                ),
+                progress_callback=progress_callback,
+                reflect_round=self._reflect_round,
+                slim_reflection_context=self._slim_reflection_context,
+                build_llm_call_snapshot=self._build_llm_call_snapshot,
+                write_aux_llm_call_artifact=self._write_aux_llm_call_artifact,
+                emit_llm_event=self._emit_llm_event,
+                emit_progress=self._emit_progress,
+                prompt_cache_key=self._prompt_cache_key,
+                render_round_review=self._render_round_review,
+                next_step=self._next_step_after_round(round_no=round_no),
+                newly_scored_count=newly_scored_count,
+                pool_decisions=pool_decisions,
+                run_stage_error=RunStageError,
             )
             self._emit_progress(
                 progress_callback,

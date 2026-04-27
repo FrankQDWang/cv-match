@@ -1348,6 +1348,67 @@ def test_runtime_reflection_does_not_mutate_query_term_pool(tmp_path: Path) -> N
     assert advice.suggested_deprioritize_terms == ["resume matching"]
 
 
+def test_run_rounds_delegates_reflection_stage_to_runtime_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=1,
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=StubScorer())
+
+    class FailingReflection:
+        async def reflect(self, *, context):
+            del context
+            raise AssertionError("reflection_critic.reflect should not be called directly from _run_rounds")
+
+    cast(Any, runtime).reflection_critic = FailingReflection()
+    tracer = RunTracer(tmp_path / "trace-runs")
+    job_title, jd, notes = _sample_inputs()
+    expected_advice = ReflectionAdvice(
+        keyword_advice=ReflectionKeywordAdvice(),
+        filter_advice=ReflectionFilterAdvice(suggested_keep_filter_fields=["position"]),
+        suggest_stop=False,
+        reflection_summary="Delegated reflection advice.",
+    )
+    recorded: dict[str, Any] = {}
+
+    async def fake_run_reflection_stage(**kwargs):
+        recorded["round_no"] = kwargs["round_no"]
+        recorded["run_state"] = kwargs["run_state"]
+        recorded["round_state"] = kwargs["round_state"]
+        recorded["progress_callback"] = kwargs["progress_callback"]
+        kwargs["round_state"].reflection_advice = expected_advice
+        return expected_advice
+
+    monkeypatch.setattr(
+        orchestrator_module,
+        "reflection_runtime",
+        SimpleNamespace(run_reflection_stage=fake_run_reflection_stage),
+        raising=False,
+    )
+
+    try:
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        _, stop_reason, rounds_executed, terminal_controller_round = asyncio.run(
+            runtime._run_rounds(run_state=run_state, tracer=tracer)
+        )
+    finally:
+        tracer.close()
+
+    assert recorded["round_no"] == 1
+    assert recorded["run_state"] is run_state
+    assert recorded["round_state"] is run_state.round_history[0]
+    assert recorded["progress_callback"] is None
+    assert run_state.round_history[0].reflection_advice == expected_advice
+    assert stop_reason == "max_rounds_reached"
+    assert rounds_executed == 1
+    assert terminal_controller_round is None
+
+
 def test_runtime_builds_plan_for_reflection_backed_inactive_term(tmp_path: Path) -> None:
     settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
