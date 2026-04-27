@@ -56,8 +56,6 @@ from seektalent.prompting import PromptRegistry
 from seektalent.progress import ProgressCallback, ProgressEvent
 from seektalent.providers import get_provider_adapter
 from seektalent.providers.cts.filter_projection import (
-    build_default_filter_plan,
-    canonicalize_filter_plan,
     project_constraints_to_cts,
 )
 from seektalent.reflection.critic import ReflectionCritic, render_reflection_prompt
@@ -68,15 +66,13 @@ from seektalent.requirements import (
 from seektalent.retrieval import (
     build_location_execution_plan,
     build_round_retrieval_plan,
-    canonicalize_controller_query_terms,
     derive_explore_query_terms,
     serialize_keyword_query,
-    select_query_terms,
 )
-from seektalent.retrieval.query_plan import normalize_term
 from seektalent.resume_quality import ResumeQualityCommenter
 from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime import company_discovery_runtime
+from seektalent.runtime import round_decision_runtime
 from seektalent.runtime import rescue_execution_runtime
 from seektalent.runtime.controller_context import build_controller_context
 from seektalent.runtime.finalize_context import build_finalize_context
@@ -767,101 +763,23 @@ class WorkflowRuntime:
                     payload={"stage": "controller", "error_type": type(exc).__name__},
                 )
                 raise RunStageError("controller", str(exc)) from exc
-            rescue_decision: RescueDecision | None = None
-            if controller_context.stop_guidance.quality_gate_status in {"broaden_required", "low_quality_exhausted"}:
-                rescue_decision = self._choose_rescue_decision(
-                    run_state=run_state,
-                    controller_context=controller_context,
-                    round_no=round_no,
-                )
-                if rescue_decision.selected_lane == "reserve_broaden":
-                    controller_decision = self._force_broaden_decision(
-                        run_state=run_state,
-                        round_no=round_no,
-                        reason=controller_context.stop_guidance.reason,
-                    )
-                elif rescue_decision.selected_lane == "candidate_feedback":
-                    feedback_decision = self._force_candidate_feedback_decision(
-                        run_state=run_state,
-                        round_no=round_no,
-                        reason=controller_context.stop_guidance.reason,
-                        tracer=tracer,
-                        progress_callback=progress_callback,
-                    )
-                    if feedback_decision is None:
-                        rescue_decision, controller_decision = await self._continue_after_empty_feedback(
-                            run_state=run_state,
-                            controller_context=controller_context,
-                            round_no=round_no,
-                            tracer=tracer,
-                            rescue_decision=rescue_decision,
-                            progress_callback=progress_callback,
-                        )
-                    else:
-                        controller_decision = feedback_decision
-                elif rescue_decision.selected_lane == "web_company_discovery":
-                    company_decision = await self._force_company_discovery_decision(
-                        run_state=run_state,
-                        round_no=round_no,
-                        reason=controller_context.stop_guidance.reason,
-                        tracer=tracer,
-                        progress_callback=progress_callback,
-                    )
-                    if company_decision is None:
-                        rescue_decision = self._select_anchor_only_after_failed_company_discovery(
-                            run_state=run_state,
-                            rescue_decision=rescue_decision,
-                        )
-                        controller_decision = self._force_anchor_only_decision(
-                            run_state=run_state,
-                            round_no=round_no,
-                            reason=controller_context.stop_guidance.reason,
-                        )
-                    else:
-                        controller_decision = company_decision
-                elif rescue_decision.selected_lane == "anchor_only":
-                    run_state.retrieval_state.anchor_only_broaden_attempted = True
-                    controller_decision = self._force_anchor_only_decision(
-                        run_state=run_state,
-                        round_no=round_no,
-                        reason=controller_context.stop_guidance.reason,
-                    )
-                else:
-                    controller_decision = self._sanitize_controller_decision(
-                        decision=controller_decision,
-                        run_state=run_state,
-                        round_no=round_no,
-                    )
-                    if isinstance(controller_decision, StopControllerDecision) and not controller_context.stop_guidance.can_stop:
-                        controller_decision = self._force_continue_decision(
-                            run_state=run_state,
-                            round_no=round_no,
-                            reason=controller_context.stop_guidance.reason,
-                        )
-            else:
-                controller_decision = self._sanitize_controller_decision(
-                    decision=controller_decision,
-                    run_state=run_state,
-                    round_no=round_no,
-                )
-                if isinstance(controller_decision, StopControllerDecision) and not controller_context.stop_guidance.can_stop:
-                    controller_decision = self._force_continue_decision(
-                        run_state=run_state,
-                        round_no=round_no,
-                        reason=controller_context.stop_guidance.reason,
-                    )
-            if (
-                rescue_decision is not None
-                and rescue_decision.selected_lane not in {"allow_stop", "continue_controller"}
-                and isinstance(controller_decision, SearchControllerDecision)
-            ):
-                self._write_rescue_decision(
-                    tracer=tracer,
-                    round_no=round_no,
-                    controller_context=controller_context,
-                    decision=rescue_decision,
-                    forced_query_terms=controller_decision.proposed_query_terms,
-                )
+            controller_decision, rescue_decision = await round_decision_runtime.resolve_round_decision(
+                run_state=run_state,
+                round_no=round_no,
+                max_rounds=self.settings.max_rounds,
+                controller_context=controller_context,
+                controller_decision=controller_decision,
+                tracer=tracer,
+                progress_callback=progress_callback,
+                choose_rescue_decision=self._choose_rescue_decision,
+                force_broaden_decision=self._force_broaden_decision,
+                force_candidate_feedback_decision=self._force_candidate_feedback_decision,
+                continue_after_empty_feedback=self._continue_after_empty_feedback,
+                force_company_discovery_decision=self._force_company_discovery_decision,
+                select_anchor_only_after_failed_company_discovery=self._select_anchor_only_after_failed_company_discovery,
+                force_anchor_only_decision=self._force_anchor_only_decision,
+                write_rescue_decision=self._write_rescue_decision,
+            )
             tracer.write_json(
                 f"rounds/round_{round_no:02d}/controller_decision.json",
                 controller_decision.model_dump(mode="json"),
@@ -1516,90 +1434,28 @@ class WorkflowRuntime:
         run_state: RunState,
         round_no: int,
     ) -> ControllerDecision:
-        previous_reflection = run_state.round_history[-1].reflection_advice if run_state.round_history else None
-        allowed_inactive_terms = self._reflection_backed_inactive_terms(previous_reflection)
-        if previous_reflection is not None and not (decision.response_to_reflection or "").strip():
-            raise ValueError("response_to_reflection is required after a reflection round")
-        if isinstance(decision, StopControllerDecision):
-            return decision.model_copy(
-                update={
-                    "decision_rationale": self._sanitize_premature_max_round_claim(
-                        decision.decision_rationale,
-                        round_no=round_no,
-                    ),
-                    "stop_reason": self._sanitize_premature_max_round_claim(
-                        decision.stop_reason,
-                        round_no=round_no,
-                    ),
-                }
-            )
-        assert isinstance(decision, SearchControllerDecision)
-        query_terms = canonicalize_controller_query_terms(
-            decision.proposed_query_terms,
+        return round_decision_runtime.sanitize_controller_decision(
+            decision=decision,
+            run_state=run_state,
             round_no=round_no,
-            title_anchor_terms=run_state.requirement_sheet.title_anchor_terms,
-            query_term_pool=run_state.retrieval_state.query_term_pool,
-            allowed_inactive_non_anchor_terms=allowed_inactive_terms,
-        )
-        filter_plan = canonicalize_filter_plan(
-            requirement_sheet=run_state.requirement_sheet,
-            filter_plan=decision.proposed_filter_plan,
-        )
-        return decision.model_copy(
-            update={
-                "proposed_query_terms": query_terms,
-                "proposed_filter_plan": filter_plan,
-                "stop_reason": None,
-            }
+            max_rounds=self.settings.max_rounds,
         )
 
     def _reflection_backed_inactive_terms(self, reflection_advice: ReflectionAdvice | None) -> set[str]:
-        if reflection_advice is None:
-            return set()
-        advice = reflection_advice.keyword_advice
-        return {
-            normalize_term(term).casefold()
-            for term in [
-                *advice.suggested_activate_terms,
-                *advice.suggested_keep_terms,
-            ]
-        }
+        return round_decision_runtime.reflection_backed_inactive_terms(reflection_advice)
 
     def _sanitize_premature_max_round_claim(self, text: str, *, round_no: int) -> str:
-        if round_no >= self.settings.max_rounds:
-            return text
-        lowered = text.casefold()
-        if "max rounds" not in lowered and "maximum rounds" not in lowered:
-            return text
-        cleaned = re.sub(
-            r"(?i)the search has reached the maximum rounds \(\d+\),\s*",
-            "The search appears exhausted with diminishing returns, ",
+        return round_decision_runtime.sanitize_premature_max_round_claim(
             text,
+            round_no=round_no,
+            max_rounds=self.settings.max_rounds,
         )
-        cleaned = re.sub(
-            r"(?i)search is exhausted:\s*max(?:imum)? rounds? reached,\s*",
-            "Search is exhausted with diminishing returns; ",
-            cleaned,
-        )
-        cleaned = re.sub(
-            r"(?i)\bmax(?:imum)? rounds? reached\b[:,]?\s*",
-            "diminishing returns, ",
-            cleaned,
-        )
-        return " ".join(cleaned.split())
 
     def _force_continue_decision(self, *, run_state: RunState, round_no: int, reason: str) -> SearchControllerDecision:
-        return SearchControllerDecision(
-            thought_summary="Runtime override: stop guidance requires continuing.",
-            action="search_cts",
-            decision_rationale=f"Runtime stop guidance requires continuing: {reason}",
-            proposed_query_terms=select_query_terms(
-                run_state.retrieval_state.query_term_pool,
-                round_no=round_no,
-                title_anchor_terms=run_state.requirement_sheet.title_anchor_terms,
-            ),
-            proposed_filter_plan=build_default_filter_plan(run_state.requirement_sheet),
-            response_to_reflection=f"Runtime override: {reason}",
+        return round_decision_runtime.force_continue_decision(
+            run_state=run_state,
+            round_no=round_no,
+            reason=reason,
         )
 
     def _choose_rescue_decision(self, *, run_state: RunState, controller_context: ControllerContext, round_no: int) -> RescueDecision:
