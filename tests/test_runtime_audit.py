@@ -2,6 +2,7 @@ import asyncio
 import json
 from pathlib import Path
 from tempfile import mkdtemp
+from types import SimpleNamespace
 from typing import Any, cast
 
 from seektalent.core.retrieval.provider_contract import SearchResult
@@ -1719,6 +1720,74 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
         "run_summary.md",
     ]
     assert run_finished_event["summary"] == "Run completed after 1 retrieval rounds."
+
+
+def test_runtime_delegates_post_finalize_shell(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=1,
+        enable_eval=True,
+        cts_tenant_key="tenant-key",
+        cts_tenant_secret="tenant-secret",
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+    job_title, jd, notes = _sample_inputs()
+    calls: list[str] = []
+    completed_artifact_paths: list[str] | None = None
+
+    def fake_write_post_finalize_artifacts(**kwargs) -> list[str]:  # noqa: ANN003
+        nonlocal completed_artifact_paths
+        del kwargs
+        calls.append("write")
+        completed_artifact_paths = [
+            "judge_packet.json",
+            "search_diagnostics.json",
+            "run_summary.md",
+        ]
+        return completed_artifact_paths
+
+    async def fake_run_post_finalize_stage(**kwargs) -> SimpleNamespace:  # noqa: ANN003
+        del kwargs
+        calls.append("run")
+        return SimpleNamespace(evaluation_result=None)
+
+    def fake_finalize_finalizer_stage(*, completed_artifact_paths: list[str], **kwargs) -> None:  # noqa: ANN003
+        del kwargs
+        calls.append("finalize")
+        assert completed_artifact_paths == [
+            "judge_packet.json",
+            "search_diagnostics.json",
+            "run_summary.md",
+        ]
+
+    monkeypatch.setattr(
+        "seektalent.runtime.orchestrator.post_finalize_runtime.write_post_finalize_artifacts",
+        fake_write_post_finalize_artifacts,
+    )
+    monkeypatch.setattr(
+        "seektalent.runtime.orchestrator.post_finalize_runtime.run_post_finalize_stage",
+        fake_run_post_finalize_stage,
+    )
+    monkeypatch.setattr(
+        "seektalent.runtime.orchestrator.finalize_runtime.finalize_finalizer_stage",
+        fake_finalize_finalizer_stage,
+    )
+
+    artifacts = runtime.run(job_title=job_title, jd=jd, notes=notes)
+
+    assert completed_artifact_paths == [
+        "judge_packet.json",
+        "search_diagnostics.json",
+        "run_summary.md",
+    ]
+    assert calls == ["write", "finalize", "run"]
+    assert artifacts.evaluation_result is None
+    assert artifacts.final_result.summary
+    assert artifacts.final_markdown
 
 
 def test_runtime_emits_tui_progress_events(tmp_path: Path, monkeypatch) -> None:

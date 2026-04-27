@@ -71,6 +71,7 @@ from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime import company_discovery_runtime
 from seektalent.runtime import controller_runtime
 from seektalent.runtime import finalize_runtime
+from seektalent.runtime import post_finalize_runtime
 from seektalent.runtime import reflection_runtime
 from seektalent.runtime import round_decision_runtime
 from seektalent.runtime import rescue_execution_runtime
@@ -291,39 +292,18 @@ class WorkflowRuntime:
                 render_final_markdown=self._render_final_markdown,
                 run_stage_error=RunStageError,
             )
-            finalizer_completed_artifacts: list[str] = []
-            if self.settings.enable_eval:
-                tracer.write_json(
-                    "judge_packet.json",
-                    self._build_judge_packet(
-                        tracer=tracer,
-                        run_state=run_state,
-                        final_result=final_result,
-                        rounds_executed=rounds_executed,
-                        stop_reason=stop_reason,
-                        terminal_controller_round=terminal_controller_round,
-                    ),
-                )
-                finalizer_completed_artifacts.append("judge_packet.json")
-            tracer.write_text(
-                "run_summary.md",
-                self._render_run_summary(
-                    run_state=run_state,
-                    final_result=final_result,
-                    terminal_controller_round=terminal_controller_round,
-                ),
+            finalizer_completed_artifacts = post_finalize_runtime.write_post_finalize_artifacts(
+                settings=self.settings,
+                tracer=tracer,
+                run_state=run_state,
+                final_result=final_result,
+                rounds_executed=rounds_executed,
+                stop_reason=stop_reason,
+                terminal_controller_round=terminal_controller_round,
+                build_judge_packet=self._build_judge_packet,
+                render_run_summary=self._render_run_summary,
+                build_search_diagnostics=self._build_search_diagnostics,
             )
-            tracer.write_json(
-                "search_diagnostics.json",
-                self._build_search_diagnostics(
-                    tracer=tracer,
-                    run_state=run_state,
-                    final_result=final_result,
-                    terminal_controller_round=terminal_controller_round,
-                ),
-            )
-            finalizer_completed_artifacts.append("search_diagnostics.json")
-            finalizer_completed_artifacts.append("run_summary.md")
             finalize_runtime.finalize_finalizer_stage(
                 settings=self.settings,
                 finalize_context=finalize_context,
@@ -335,78 +315,24 @@ class WorkflowRuntime:
                 emit_llm_event=self._emit_llm_event,
                 emit_progress=self._emit_progress,
             )
-            evaluation_result: EvaluationResult | None = None
-            if self.settings.enable_eval:
-                round_01_candidates = self._materialize_candidates(
-                    scored_candidates=run_state.round_history[0].top_candidates if run_state.round_history else [],
-                    candidate_store=run_state.candidate_store,
-                )
-                final_candidates = self._materialize_candidates(
-                    scored_candidates=top_scored,
-                    candidate_store=run_state.candidate_store,
-                )
-                evaluation_artifacts = await self.evaluation_runner(
-                    settings=self.settings,
-                    prompt=self.judge_prompt,
-                    run_id=tracer.run_id,
-                    run_dir=tracer.run_dir,
-                    jd=run_state.input_truth.jd,
-                    notes=run_state.input_truth.notes,
-                    round_01_candidates=round_01_candidates,
-                    final_candidates=final_candidates,
-                    rounds_executed=rounds_executed,
-                    terminal_stop_guidance=(
-                        terminal_controller_round.stop_guidance if terminal_controller_round is not None else None
-                    ),
-                    judge_limiter=self.judge_limiter,
-                    log_remote=self.eval_remote_logging,
-                )
-                evaluation_result = evaluation_artifacts.result
-                tracer.emit(
-                    "evaluation_completed",
-                    model=self.settings.effective_judge_model,
-                    status="succeeded",
-                    summary=(
-                        f"round_01 total={evaluation_result.round_01.total_score:.4f}; "
-                        f"final total={evaluation_result.final.total_score:.4f}"
-                    ),
-                    artifact_paths=[str(evaluation_artifacts.path.relative_to(tracer.run_dir))],
-                )
-            else:
-                tracer.emit(
-                    "evaluation_skipped",
-                    status="skipped",
-                    summary="Eval disabled for this run.",
-                )
-            tracer.write_json(
-                "term_surface_audit.json",
-                self._build_term_surface_audit(
-                    tracer=tracer,
-                    run_state=run_state,
-                    final_result=final_result,
-                    evaluation_result=evaluation_result,
-                ),
-            )
-            tracer.emit(
-                "run_finished",
+            post_finalize_result = await post_finalize_runtime.run_post_finalize_stage(
+                settings=self.settings,
+                tracer=tracer,
+                progress_callback=progress_callback,
+                emit_progress=self._emit_progress,
+                run_state=run_state,
+                final_result=final_result,
+                top_scored=top_scored,
+                rounds_executed=rounds_executed,
                 stop_reason=stop_reason,
-                summary=self._render_run_finished_summary(
-                    rounds_executed=rounds_executed,
-                    terminal_controller_round=terminal_controller_round,
-                ),
-            )
-            self._emit_progress(
-                progress_callback,
-                "run_completed",
-                self._render_run_finished_summary(
-                    rounds_executed=rounds_executed,
-                    terminal_controller_round=terminal_controller_round,
-                ),
-                payload={
-                    "stage": "runtime",
-                    "rounds_executed": rounds_executed,
-                    "stop_reason": stop_reason,
-                },
+                terminal_controller_round=terminal_controller_round,
+                judge_prompt=self.judge_prompt,
+                evaluation_runner=self.evaluation_runner,
+                judge_limiter=self.judge_limiter,
+                eval_remote_logging=self.eval_remote_logging,
+                materialize_candidates=self._materialize_candidates,
+                build_term_surface_audit=self._build_term_surface_audit,
+                render_run_finished_summary=self._render_run_finished_summary,
             )
             return RunArtifacts(
                 final_result=final_result,
@@ -416,7 +342,7 @@ class WorkflowRuntime:
                 trace_log_path=tracer.trace_log_path,
                 candidate_store=run_state.candidate_store,
                 normalized_store=run_state.normalized_store,
-                evaluation_result=evaluation_result,
+                evaluation_result=post_finalize_result.evaluation_result,
                 terminal_stop_guidance=(
                     terminal_controller_round.stop_guidance if terminal_controller_round is not None else None
                 ),
