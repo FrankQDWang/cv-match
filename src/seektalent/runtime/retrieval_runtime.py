@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Literal, TypedDict
 
@@ -8,9 +9,11 @@ from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.core.retrieval.service import RetrievalService
 from seektalent.models import (
     CanonicalQuerySpec,
+    ConstraintValue,
     CTSQuery,
     CitySearchSummary,
     LaneType,
+    LocationExecutionPlan,
     LocationExecutionPhase,
     QueryRole,
     RoundRetrievalPlan,
@@ -69,6 +72,21 @@ class LogicalQueryState:
     city_states: dict[str, CityExecutionState] = field(default_factory=dict)
 
 
+def _location_execution_key(location_execution_plan: LocationExecutionPlan) -> str:
+    return json.dumps(
+        {
+            "mode": location_execution_plan.mode,
+            "allowed_locations": location_execution_plan.allowed_locations,
+            "preferred_locations": location_execution_plan.preferred_locations,
+            "priority_order": location_execution_plan.priority_order,
+            "balanced_order": location_execution_plan.balanced_order,
+            "rotation_offset": location_execution_plan.rotation_offset,
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+
+
 def build_logical_query_state(
     *,
     run_id: str,
@@ -77,6 +95,8 @@ def build_logical_query_state(
     query_terms: list[str],
     job_intent_fingerprint: str,
     source_plan_version: str,
+    provider_filters: dict[str, ConstraintValue],
+    location_execution_plan: LocationExecutionPlan,
 ) -> LogicalQueryState:
     keyword_query = serialize_keyword_query(query_terms)
     spec = CanonicalQuerySpec(
@@ -88,8 +108,8 @@ def build_logical_query_state(
         required_terms=query_terms[:1],
         optional_terms=query_terms[1:],
         excluded_terms=[],
-        location_key=None,
-        provider_filters={},
+        location_key=_location_execution_key(location_execution_plan),
+        provider_filters=provider_filters,
         boolean_template="required_plus_optional",
         rendered_provider_query=keyword_query,
         provider_name="cts",

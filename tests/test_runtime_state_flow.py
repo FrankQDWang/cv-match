@@ -1256,14 +1256,26 @@ def test_round_two_serializes_exploit_and_generic_lane_types(tmp_path: Path) -> 
         tracer.close()
 
     queries = json.loads((tracer.run_dir / "rounds" / "round_02" / "cts_queries.json").read_text())
+    sent_query_records = json.loads((tracer.run_dir / "rounds" / "round_02" / "sent_query_records.json").read_text())
     decision = json.loads((tracer.run_dir / "rounds" / "round_02" / "second_lane_decision.json").read_text())
     assert [item["lane_type"] for item in queries] == ["exploit", "generic_explore"]
+    assert [item["lane_type"] for item in sent_query_records] == ["exploit", "generic_explore"]
+    assert all(item["query_instance_id"] for item in queries)
+    assert all(item["query_fingerprint"] for item in queries)
+    assert all(item["query_instance_id"] for item in sent_query_records)
+    assert all(item["query_fingerprint"] for item in sent_query_records)
     assert decision["attempted_prf"] is True
     assert decision["prf_gate_passed"] is False
     assert decision["selected_lane_type"] == "generic_explore"
     assert decision["fallback_lane_type"] == "generic_explore"
     assert decision["fallback_query_fingerprint"] == decision["selected_query_fingerprint"]
     assert decision["reject_reasons"] == ["prf_policy_not_available"]
+    generic_query = queries[1]
+    generic_sent_query = sent_query_records[1]
+    assert generic_query["query_instance_id"] == decision["selected_query_instance_id"]
+    assert generic_query["query_fingerprint"] == decision["selected_query_fingerprint"]
+    assert generic_sent_query["query_instance_id"] == decision["selected_query_instance_id"]
+    assert generic_sent_query["query_fingerprint"] == decision["selected_query_fingerprint"]
 
 
 def test_run_rounds_delegates_controller_stage_to_runtime_host(

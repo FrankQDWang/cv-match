@@ -77,6 +77,8 @@ def build_second_lane_decision(
         query_terms=explore_terms,
         job_intent_fingerprint=job_intent_fingerprint,
         source_plan_version=source_plan_version,
+        provider_filters=retrieval_plan.projected_provider_filters,
+        location_execution_plan=retrieval_plan.location_execution_plan,
     )
     return (
         SecondLaneDecision(

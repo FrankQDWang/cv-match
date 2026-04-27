@@ -1795,6 +1795,8 @@ class WorkflowRuntime:
             query_terms=list(retrieval_plan.query_terms),
             job_intent_fingerprint=job_intent_fingerprint,
             source_plan_version=source_plan_version,
+            provider_filters=retrieval_plan.projected_provider_filters,
+            location_execution_plan=retrieval_plan.location_execution_plan,
         )
         query_states = [exploit_query_state]
         if self._contains_target_company_term(retrieval_plan.query_terms, query_term_pool):
