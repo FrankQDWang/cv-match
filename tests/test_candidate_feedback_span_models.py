@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from seektalent.candidate_feedback.models import PRFProposalArtifactRefs, PRFProposalVersionVector
 from seektalent.candidate_feedback.span_models import CandidateSpan, PhraseFamily, ProposalMetadata
 
@@ -30,6 +33,67 @@ def test_candidate_span_build_preserves_exact_source_coordinates() -> None:
     assert len(span.span_id) > 8
 
 
+def test_candidate_span_build_is_deterministic_for_identical_inputs() -> None:
+    kwargs = dict(
+        source_resume_id="resume-1",
+        source_field="evidence",
+        start_char=12,
+        end_char=29,
+        raw_surface="LangGraph tool calling",
+        normalized_surface="langgraph tool calling",
+        model_label="technical_phrase",
+        model_score=0.93,
+        extractor_schema_version="span-extractor-v1",
+    )
+
+    first = CandidateSpan.build(**kwargs)
+    second = CandidateSpan.build(**kwargs)
+
+    assert first.span_id == second.span_id
+
+
+def test_candidate_span_build_avoids_pipe_collision_regressions() -> None:
+    first = CandidateSpan.build(
+        source_resume_id="resume-a|evidence|1|2|b",
+        source_field="evidence",
+        start_char=1,
+        end_char=2,
+        raw_surface="c",
+        normalized_surface="c",
+        model_label="technical_phrase",
+        model_score=0.5,
+        extractor_schema_version="schema-v1",
+    )
+    second = CandidateSpan.build(
+        source_resume_id="resume-a",
+        source_field="evidence",
+        start_char=1,
+        end_char=2,
+        raw_surface="b|evidence|1|2|c",
+        normalized_surface="b|evidence|1|2|c",
+        model_label="technical_phrase",
+        model_score=0.5,
+        extractor_schema_version="schema-v1",
+    )
+
+    assert first.span_id != second.span_id
+
+
+def test_candidate_span_rejects_reversed_coordinates() -> None:
+    with pytest.raises(ValidationError):
+        CandidateSpan.build(
+            source_resume_id="resume-1",
+            source_field="evidence",
+            start_char=29,
+            end_char=12,
+            raw_surface="LangGraph",
+            normalized_surface="langgraph",
+            model_label="technical_phrase",
+            model_score=0.93,
+            extractor_schema_version="span-extractor-v1",
+        )
+
+
 def test_phrase_family_keeps_guard_metadata() -> None:
     family = PhraseFamily(
         family_id="family-1",
@@ -54,6 +118,7 @@ def test_phrase_family_keeps_guard_metadata() -> None:
     assert family.familying_rule == "surface-normalization"
     assert family.familying_score == 0.87
     assert family.reject_reasons == ["company_entity_rejected"]
+    assert family.term_family_id == "family-1"
 
 
 def test_proposal_metadata_carries_model_and_familying_versions() -> None:

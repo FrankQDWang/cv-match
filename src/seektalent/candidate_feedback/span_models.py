@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from hashlib import sha256
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 CandidateTermType = Literal[
@@ -40,6 +41,12 @@ class CandidateSpan(BaseModel):
     model_score: float = Field(ge=0.0, le=1.0)
     extractor_schema_version: str
     reject_reasons: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_coordinate_order(self) -> CandidateSpan:
+        if self.end_char <= self.start_char:
+            raise ValueError("end_char must be greater than start_char")
+        return self
 
     @classmethod
     def build(
@@ -82,8 +89,6 @@ class CandidateSpan(BaseModel):
 class PhraseFamily(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # `family_id` is the persisted family artifact identity and should match
-    # the expression/policy family id used later in the PRF gate.
     family_id: str
     canonical_surface: str
     candidate_term_type: CandidateTermType
@@ -94,6 +99,10 @@ class PhraseFamily(BaseModel):
     familying_rule: str
     familying_score: float = Field(ge=0.0, le=1.0)
     reject_reasons: list[str] = Field(default_factory=list)
+
+    @property
+    def term_family_id(self) -> str:
+        return self.family_id
 
 
 class ProposalMetadata(BaseModel):
@@ -123,15 +132,17 @@ def _build_span_id(
     raw_surface: str,
     extractor_schema_version: str,
 ) -> str:
-    payload = "|".join(
+    payload = json.dumps(
         [
             source_resume_id,
             source_field,
-            str(start_char),
-            str(end_char),
+            start_char,
+            end_char,
             raw_surface,
             extractor_schema_version,
-        ]
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
     digest = sha256(payload.encode("utf-8")).hexdigest()
     return f"span.{digest[:12]}"
