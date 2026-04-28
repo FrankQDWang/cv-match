@@ -186,6 +186,37 @@ def test_legacy_regex_span_extractor_keeps_grounded_framework_terms() -> None:
         assert expected in surfaces
 
 
+def test_legacy_regex_span_extractor_preserves_slash_compound_surface_and_children() -> None:
+    text = "精通Python及主流Web框架（FastAPI/Flask/Django）"
+    extractor = LegacyRegexSpanExtractor()
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    surfaces = {span.raw_surface for span in spans}
+
+    assert "FastAPI/Flask/Django" in surfaces
+    for expected in {"FastAPI", "Flask", "Django"}:
+        assert expected in surfaces
+
+
+def test_legacy_regex_span_extractor_keeps_distinct_list_items_separate() -> None:
+    extractor = LegacyRegexSpanExtractor()
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=["ClickHouse", "ClickHouse"],
+    )
+
+    assert len(spans) == 2
+    assert [span.source_text_index for span in spans] == [0, 1]
+    assert len({span.span_id for span in spans}) == 2
+
+
 def test_fake_span_model_backend_surfaces_are_aligned_back_to_exact_offsets() -> None:
     text = "精通Python及主流Web框架（FastAPI/Flask/Django）"
     backend = FakeSpanModelBackend(outputs=[{"label": "tool_or_framework", "surface": "FastAPI"}])
@@ -199,6 +230,7 @@ def test_fake_span_model_backend_surfaces_are_aligned_back_to_exact_offsets() ->
 
     assert len(spans) == 1
     assert spans[0].raw_surface == "FastAPI"
+    assert spans[0].source_text_index == 0
     assert text[spans[0].start_char : spans[0].end_char] == "FastAPI"
 
 

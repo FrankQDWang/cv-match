@@ -33,6 +33,7 @@ class CandidateSpan(BaseModel):
     span_id: str
     source_resume_id: str
     source_field: SourceField
+    source_text_index: int = Field(ge=0)
     start_char: int = Field(ge=0)
     end_char: int = Field(gt=0)
     raw_surface: str = Field(min_length=1)
@@ -54,6 +55,7 @@ class CandidateSpan(BaseModel):
         *,
         source_resume_id: str,
         source_field: SourceField,
+        source_text_index: int,
         start_char: int,
         end_char: int,
         raw_surface: str,
@@ -66,6 +68,7 @@ class CandidateSpan(BaseModel):
         span_id = _build_span_id(
             source_resume_id=source_resume_id,
             source_field=source_field,
+            source_text_index=source_text_index,
             start_char=start_char,
             end_char=end_char,
             raw_surface=raw_surface,
@@ -75,6 +78,7 @@ class CandidateSpan(BaseModel):
             span_id=span_id,
             source_resume_id=source_resume_id,
             source_field=source_field,
+            source_text_index=source_text_index,
             start_char=start_char,
             end_char=end_char,
             raw_surface=raw_surface,
@@ -128,6 +132,7 @@ def _build_span_id(
     *,
     source_resume_id: str,
     source_field: SourceField,
+    source_text_index: int,
     start_char: int,
     end_char: int,
     raw_surface: str,
@@ -137,6 +142,7 @@ def _build_span_id(
         [
             source_resume_id,
             source_field,
+            source_text_index,
             start_char,
             end_char,
             raw_surface,

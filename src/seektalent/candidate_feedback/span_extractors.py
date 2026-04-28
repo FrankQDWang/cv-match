@@ -18,7 +18,10 @@ def validate_candidate_span(source_text: str, span: CandidateSpan) -> str | None
         return "non_extractively_generated_span"
 
     raw_surface = source_text[span.start_char : span.end_char]
-    if normalize_source_text(raw_surface) != normalize_source_text(span.raw_surface):
+    normalized_raw_surface = normalize_source_text(raw_surface)
+    if normalized_raw_surface != normalize_source_text(span.raw_surface):
+        return "non_extractively_generated_span"
+    if span.normalized_surface != normalized_raw_surface:
         return "non_extractively_generated_span"
 
     return None
@@ -36,19 +39,20 @@ class LegacyRegexSpanExtractor:
         texts: list[str],
     ) -> list[CandidateSpan]:
         spans: list[CandidateSpan] = []
-        seen: set[tuple[str, int, int]] = set()
+        seen: set[tuple[int, str, int, int]] = set()
 
-        for text in texts:
+        for source_text_index, text in enumerate(texts):
             for surface, start_char, end_char in extract_surface_term_occurrences(text):
                 if not _is_legacy_eligible_surface(surface):
                     continue
-                key = (surface, start_char, end_char)
+                key = (source_text_index, surface, start_char, end_char)
                 if key in seen:
                     continue
                 seen.add(key)
                 span = CandidateSpan.build(
                     source_resume_id=resume_id,
                     source_field=source_field,
+                    source_text_index=source_text_index,
                     start_char=start_char,
                     end_char=end_char,
                     raw_surface=surface,
@@ -97,7 +101,7 @@ class GLiNER2SpanExtractor:
     ) -> list[CandidateSpan]:
         spans: list[CandidateSpan] = []
 
-        for text in texts:
+        for source_text_index, text in enumerate(texts):
             used_offsets: set[tuple[int, int]] = set()
             outputs = self.backend.extract(text=text, labels=self.labels)
             for row in outputs:
@@ -112,6 +116,7 @@ class GLiNER2SpanExtractor:
                 span = CandidateSpan.build(
                     source_resume_id=resume_id,
                     source_field=source_field,
+                    source_text_index=source_text_index,
                     start_char=start_char,
                     end_char=end_char,
                     raw_surface=surface,

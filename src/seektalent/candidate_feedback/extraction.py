@@ -144,7 +144,8 @@ def extract_surface_term_occurrences(text: str) -> list[tuple[str, int, int]]:
     seen: set[tuple[str, int, int]] = set()
 
     for surface in extract_surface_terms([text]):
-        for exact_surface in _expand_surface_term(surface):
+        exact_surfaces = [surface, *_expand_surface_term(surface)]
+        for exact_surface in exact_surfaces:
             for start_char, end_char in _find_exact_surface_occurrences(text, exact_surface):
                 key = (exact_surface, start_char, end_char)
                 if key in seen:

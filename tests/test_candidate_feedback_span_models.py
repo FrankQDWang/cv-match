@@ -12,6 +12,7 @@ def test_candidate_span_build_preserves_exact_source_coordinates() -> None:
     span = CandidateSpan.build(
         source_resume_id="resume-1",
         source_field="evidence",
+        source_text_index=0,
         start_char=12,
         end_char=29,
         raw_surface="LangGraph tool calling",
@@ -23,6 +24,7 @@ def test_candidate_span_build_preserves_exact_source_coordinates() -> None:
 
     assert span.source_resume_id == "resume-1"
     assert span.source_field == "evidence"
+    assert span.source_text_index == 0
     assert span.start_char == 12
     assert span.end_char == 29
     assert span.raw_surface == "LangGraph tool calling"
@@ -38,6 +40,7 @@ def test_candidate_span_build_is_deterministic_for_identical_inputs() -> None:
     kwargs = dict(
         source_resume_id="resume-1",
         source_field="evidence",
+        source_text_index=0,
         start_char=12,
         end_char=29,
         raw_surface="LangGraph tool calling",
@@ -57,6 +60,7 @@ def test_candidate_span_build_avoids_pipe_collision_regressions() -> None:
     first = CandidateSpan.build(
         source_resume_id="resume-a|evidence|1|2|b",
         source_field="evidence",
+        source_text_index=0,
         start_char=1,
         end_char=2,
         raw_surface="c",
@@ -68,6 +72,7 @@ def test_candidate_span_build_avoids_pipe_collision_regressions() -> None:
     second = CandidateSpan.build(
         source_resume_id="resume-a",
         source_field="evidence",
+        source_text_index=0,
         start_char=1,
         end_char=2,
         raw_surface="b|evidence|1|2|c",
@@ -80,11 +85,41 @@ def test_candidate_span_build_avoids_pipe_collision_regressions() -> None:
     assert first.span_id != second.span_id
 
 
+def test_candidate_span_build_distinguishes_source_text_index() -> None:
+    first = CandidateSpan.build(
+        source_resume_id="resume-1",
+        source_field="evidence",
+        source_text_index=0,
+        start_char=1,
+        end_char=8,
+        raw_surface="FastAPI",
+        normalized_surface="FastAPI",
+        model_label="tool_or_framework",
+        model_score=0.9,
+        extractor_schema_version="schema-v1",
+    )
+    second = CandidateSpan.build(
+        source_resume_id="resume-1",
+        source_field="evidence",
+        source_text_index=1,
+        start_char=1,
+        end_char=8,
+        raw_surface="FastAPI",
+        normalized_surface="FastAPI",
+        model_label="tool_or_framework",
+        model_score=0.9,
+        extractor_schema_version="schema-v1",
+    )
+
+    assert first.span_id != second.span_id
+
+
 def test_candidate_span_rejects_reversed_coordinates() -> None:
     with pytest.raises(ValidationError):
         CandidateSpan.build(
             source_resume_id="resume-1",
             source_field="evidence",
+            source_text_index=0,
             start_char=29,
             end_char=12,
             raw_surface="LangGraph",
@@ -102,6 +137,7 @@ def test_validate_candidate_span_accepts_exact_normalized_substring() -> None:
     span = CandidateSpan.build(
         source_resume_id="resume-1",
         source_field="matched_must_haves",
+        source_text_index=0,
         start_char=start_char,
         end_char=start_char + len(raw_surface),
         raw_surface=raw_surface,
@@ -119,12 +155,33 @@ def test_validate_candidate_span_rejects_non_extractively_generated_surface() ->
     span = CandidateSpan.build(
         source_resume_id="resume-1",
         source_field="matched_must_haves",
+        source_text_index=0,
         start_char=0,
         end_char=4,
         raw_surface="Doris OLAP",
         normalized_surface=normalize_source_text("Doris OLAP"),
         model_label="technical_phrase",
         model_score=0.71,
+        extractor_schema_version="schema-v1",
+    )
+
+    assert validate_candidate_span(text, span) == "non_extractively_generated_span"
+
+
+def test_validate_candidate_span_rejects_mismatched_normalized_surface() -> None:
+    text = "精通Python及主流Web框架（FastAPI）"
+    raw_surface = "FastAPI"
+    start_char = text.index(raw_surface)
+    span = CandidateSpan.build(
+        source_resume_id="resume-1",
+        source_field="matched_must_haves",
+        source_text_index=0,
+        start_char=start_char,
+        end_char=start_char + len(raw_surface),
+        raw_surface=raw_surface,
+        normalized_surface="fastapi",
+        model_label="tool_or_framework",
+        model_score=0.88,
         extractor_schema_version="schema-v1",
     )
 
