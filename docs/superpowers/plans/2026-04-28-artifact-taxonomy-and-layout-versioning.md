@@ -88,6 +88,9 @@
 - Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/api.py`
   Purpose: Expose the new artifact root through `MatchRunResult` without changing its stable `run_dir` contract.
 
+- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/pyproject.toml`
+  Purpose: Pin the ULID dependency used by `ArtifactStore` so the artifact-id API is explicit and reproducible.
+
 - Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/experiments/baseline_evaluation.py`
   Purpose: Export replay rows from resolver-backed locations.
 
@@ -140,6 +143,7 @@
 - Create: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/artifacts/models.py`
 - Create: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/artifacts/registry.py`
 - Create: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/artifacts/store.py`
+- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/pyproject.toml`
 - Test: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_artifact_store.py`
 
 - [ ] **Step 1: Write the failing artifact-store tests**
@@ -148,6 +152,7 @@
 from pathlib import Path
 
 import pytest
+import re
 
 from seektalent.artifacts.store import ArtifactStore
 
@@ -169,6 +174,30 @@ def test_create_run_root_writes_running_manifest_and_runtime_files(tmp_path: Pat
     assert manifest.logical_artifacts["runtime.events"].path == "runtime/events.jsonl"
 
 
+@pytest.mark.parametrize(
+    ("kind", "collection_root", "manifest_name"),
+    [
+        ("run", "runs", "run_manifest.json"),
+        ("benchmark", "benchmark-executions", "benchmark_manifest.json"),
+        ("replay", "replays", "replay_manifest.json"),
+        ("debug", "debug", "debug_manifest.json"),
+        ("import", "imports", "import_manifest.json"),
+    ],
+)
+def test_create_root_uses_kind_specific_manifest_names(
+    tmp_path: Path,
+    kind: str,
+    collection_root: str,
+    manifest_name: str,
+) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind=kind, display_name=f"{kind} artifact", producer="ArtifactTests")
+
+    assert collection_root in session.root.parts
+    assert (session.root / "manifests" / manifest_name).exists()
+    assert re.match(rf"^{kind}_[0-9A-HJKMNP-TV-Z]{{26}}$", session.manifest.artifact_id)
+
+
 def test_write_json_updates_manifest_and_resolve_many_round_artifacts(tmp_path: Path) -> None:
     store = ArtifactStore(tmp_path / "artifacts")
     session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
@@ -184,12 +213,44 @@ def test_write_json_updates_manifest_and_resolve_many_round_artifacts(tmp_path: 
     assert replay_paths == [session.root / "rounds/02/retrieval/replay_snapshot.json"]
 
 
+def test_benchmark_child_artifacts_are_schema_fields(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="benchmark", display_name="benchmark execution", producer="BenchmarkCLI")
+    session.set_child_artifacts(
+        [
+            {
+                "artifact_kind": "run",
+                "artifact_id": "run_01JV1W4P9Q6ZP3Q1Q6Q6WQ5N8B",
+                "role": "case_run",
+                "case_id": "agent_jd_001",
+            }
+        ]
+    )
+
+    manifest = session.load_manifest()
+    assert manifest.child_artifacts[0].artifact_kind == "run"
+    assert manifest.child_artifacts[0].case_id == "agent_jd_001"
+
+
 def test_manifest_rejects_escape_paths(tmp_path: Path) -> None:
     store = ArtifactStore(tmp_path / "artifacts")
     session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
 
     with pytest.raises(ValueError, match="relative"):
         session.register_path("bad.entry", "../outside.json", content_type="application/json")
+
+
+def test_resolver_rejects_escape_paths_from_manifest_entries(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    session.manifest.logical_artifacts["bad.entry"] = {
+        "path": "../outside.json",
+        "content_type": "application/json",
+    }
+    session._write_manifest()
+
+    with pytest.raises(ValueError, match="escapes artifact root"):
+        session.resolver().resolve("bad.entry")
 ```
 
 - [ ] **Step 2: Run the tests to verify the new boundary is missing**
@@ -207,6 +268,8 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'seektalent.artifacts'
 ```python
 # src/seektalent/artifacts/models.py
 from __future__ import annotations
+
+from typing import Literal
 
 from enum import StrEnum
 
@@ -228,6 +291,16 @@ class LogicalArtifactEntry(BaseModel):
     collection: bool = False
 
 
+ArtifactStatus = Literal["running", "completed", "failed"]
+
+
+class ChildArtifactRef(BaseModel):
+    artifact_kind: ArtifactKind
+    artifact_id: str
+    role: str
+    case_id: str | None = None
+
+
 class ArtifactManifest(BaseModel):
     manifest_schema_version: str = "v1"
     artifact_kind: ArtifactKind
@@ -240,7 +313,9 @@ class ArtifactManifest(BaseModel):
     producer: str
     producer_version: str
     git_sha: str | None = None
-    status: str
+    status: ArtifactStatus
+    failure_summary: str | None = None
+    child_artifacts: list[ChildArtifactRef] = Field(default_factory=list)
     logical_artifacts: dict[str, LogicalArtifactEntry] = Field(default_factory=dict)
 ```
 
@@ -251,23 +326,74 @@ from __future__ import annotations
 from seektalent.artifacts.models import LogicalArtifactEntry
 
 
-def top_level_entry(name: str) -> LogicalArtifactEntry:
-    mapping = {
+STATIC_ENTRIES = {
         "runtime.trace_log": LogicalArtifactEntry(path="runtime/trace.log", content_type="text/plain"),
         "runtime.events": LogicalArtifactEntry(path="runtime/events.jsonl", content_type="application/jsonl"),
+        "runtime.run_config": LogicalArtifactEntry(path="runtime/run_config.json", content_type="application/json", schema_version="v1"),
+        "runtime.sent_query_history": LogicalArtifactEntry(path="runtime/sent_query_history.json", content_type="application/json", schema_version="v1"),
+        "runtime.search_diagnostics": LogicalArtifactEntry(path="runtime/search_diagnostics.json", content_type="application/json", schema_version="v1"),
+        "runtime.term_surface_audit": LogicalArtifactEntry(path="runtime/term_surface_audit.json", content_type="application/json", schema_version="v1"),
+        "input.input_snapshot": LogicalArtifactEntry(path="input/input_snapshot.json", content_type="application/json", schema_version="v1"),
+        "input.input_truth": LogicalArtifactEntry(path="input/input_truth.json", content_type="application/json", schema_version="v1"),
         "output.final_candidates": LogicalArtifactEntry(path="output/final_candidates.json", content_type="application/json", schema_version="v1"),
+        "output.run_summary": LogicalArtifactEntry(path="output/run_summary.md", content_type="text/markdown"),
+        "output.judge_packet": LogicalArtifactEntry(path="output/judge_packet.json", content_type="application/json", schema_version="v1"),
+        "output.summary": LogicalArtifactEntry(path="output/summary.json", content_type="application/json", schema_version="v1"),
         "evaluation.evaluation": LogicalArtifactEntry(path="evaluation/evaluation.json", content_type="application/json", schema_version="v1"),
+        "evaluation.replay_rows": LogicalArtifactEntry(path="evaluation/replay_rows.jsonl", content_type="application/jsonl", schema_version="v1"),
     }
-    return mapping[name]
+
+
+def top_level_entry(name: str) -> LogicalArtifactEntry:
+    return STATIC_ENTRIES[name]
+
+
+def asset_prompt_entry(prompt_name: str) -> LogicalArtifactEntry:
+    return LogicalArtifactEntry(path=f"assets/prompts/{prompt_name}", content_type="text/plain")
 
 
 def round_entry(*, round_no: int, stage: str, filename: str, content_type: str) -> tuple[str, LogicalArtifactEntry]:
-    logical_name = f"round.{round_no:02d}.{stage}.{filename.removesuffix('.json').removesuffix('.jsonl')}"
+    logical_name = f"round.{round_no:02d}.{stage}.{filename.removesuffix('.json').removesuffix('.jsonl').removesuffix('.md')}"
     return logical_name, LogicalArtifactEntry(
         path=f"rounds/{round_no:02d}/{stage}/{filename}",
         content_type=content_type,
         schema_version="v1",
     )
+
+
+ROUND_CONTENT_TYPES = {
+    "query_resume_hits": "application/json",
+    "replay_snapshot": "application/json",
+    "second_lane_decision": "application/json",
+    "prf_policy_decision": "application/json",
+    "controller_decision": "application/json",
+    "controller_context": "application/json",
+    "reflection_advice": "application/json",
+    "reflection_call": "application/json",
+    "scorecards": "application/jsonl",
+    "scoring_calls": "application/jsonl",
+    "scoring_input_refs": "application/jsonl",
+}
+
+
+def resolve_descriptor(logical_name: str) -> LogicalArtifactEntry:
+    if logical_name in STATIC_ENTRIES:
+        return STATIC_ENTRIES[logical_name]
+    if logical_name.startswith("assets.prompts."):
+        return asset_prompt_entry(logical_name.removeprefix("assets.prompts."))
+    if logical_name.startswith("round."):
+        _, round_text, stage, leaf = logical_name.split(".", 3)
+        filename = f"{leaf}.jsonl" if ROUND_CONTENT_TYPES.get(leaf) == "application/jsonl" else f"{leaf}.json"
+        if leaf == "round_review":
+            filename = "round_review.md"
+        _, entry = round_entry(
+            round_no=int(round_text),
+            stage=stage,
+            filename=filename,
+            content_type=ROUND_CONTENT_TYPES.get(leaf, "application/json"),
+        )
+        return entry
+    raise KeyError(logical_name)
 ```
 
 ```python
@@ -275,6 +401,8 @@ def round_entry(*, round_no: int, stage: str, filename: str, content_type: str) 
 from __future__ import annotations
 
 import json
+import os
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from fnmatch import fnmatch
 from pathlib import Path
@@ -282,8 +410,9 @@ from typing import TextIO
 
 from ulid import ULID
 
-from seektalent.artifacts.models import ArtifactKind, ArtifactManifest, LogicalArtifactEntry
-from seektalent.artifacts.registry import round_entry, top_level_entry
+from seektalent import __version__
+from seektalent.artifacts.models import ArtifactKind, ArtifactManifest, ChildArtifactRef, LogicalArtifactEntry
+from seektalent.artifacts.registry import resolve_descriptor, top_level_entry
 
 
 def utc_now() -> str:
@@ -298,6 +427,34 @@ def collection_root_for_kind(kind: ArtifactKind) -> str:
         ArtifactKind.DEBUG: "debug",
         ArtifactKind.IMPORT: "imports",
     }[kind]
+
+
+MANIFEST_FILENAME_BY_KIND = {
+    ArtifactKind.RUN: "run_manifest.json",
+    ArtifactKind.BENCHMARK: "benchmark_manifest.json",
+    ArtifactKind.REPLAY: "replay_manifest.json",
+    ArtifactKind.DEBUG: "debug_manifest.json",
+    ArtifactKind.IMPORT: "import_manifest.json",
+}
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(text, encoding="utf-8")
+    os.replace(tmp_path, path)
+
+
+def safe_artifact_path(root: Path, relative_path: str) -> Path:
+    raw = Path(relative_path)
+    if raw.is_absolute() or ".." in raw.parts:
+        raise ValueError("manifest path escapes artifact root")
+    candidate = root / raw
+    root_resolved = root.resolve()
+    candidate_resolved = candidate.resolve(strict=False)
+    if root_resolved not in [candidate_resolved, *candidate_resolved.parents]:
+        raise ValueError("manifest path escapes artifact root through symlink")
+    return candidate
 
 
 class ArtifactStore:
@@ -321,7 +478,7 @@ class ArtifactStore:
                 updated_at=created_at,
                 display_name=display_name,
                 producer=producer,
-                producer_version="0.6.1",
+                producer_version=__version__,
                 status="running",
             ),
         )
@@ -336,25 +493,46 @@ class ArtifactResolver:
 
     @classmethod
     def for_root(cls, root: Path) -> "ArtifactResolver":
-        manifest_path = root / "manifests" / "run_manifest.json"
-        manifest = ArtifactManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        manifests_dir = root / "manifests"
+        candidates = sorted(manifests_dir.glob("*_manifest.json"))
+        if len(candidates) != 1:
+            raise ValueError(f"Expected exactly one manifest under {manifests_dir}")
+        manifest = ArtifactManifest.model_validate_json(candidates[0].read_text(encoding="utf-8"))
         return cls(root, manifest)
 
     def resolve(self, logical_name: str) -> Path:
-        return self.root / self.manifest.logical_artifacts[logical_name].path
+        return safe_artifact_path(self.root, self.manifest.logical_artifacts[logical_name].path)
+
+    def resolve_optional(self, logical_name: str) -> Path | None:
+        entry = self.manifest.logical_artifacts.get(logical_name)
+        if entry is None:
+            return None
+        return safe_artifact_path(self.root, entry.path)
+
+    def resolve_for_write(self, logical_name: str) -> Path:
+        entry = self.manifest.logical_artifacts.get(logical_name) or resolve_descriptor(logical_name)
+        return safe_artifact_path(self.root, entry.path)
 
     def resolve_many(self, prefix: str) -> list[Path]:
         return [
-            self.root / entry.path
+            safe_artifact_path(self.root, entry.path)
             for name, entry in self.manifest.logical_artifacts.items()
             if fnmatch(name, prefix)
         ]
 
 
+@dataclass
 class ArtifactSession:
+    root: Path
+    manifest: ArtifactManifest
+
+    @property
+    def manifest_path(self) -> Path:
+        filename = MANIFEST_FILENAME_BY_KIND[self.manifest.artifact_kind]
+        return self.root / "manifests" / filename
+
     def load_manifest(self) -> ArtifactManifest:
-        manifest_path = self.root / "manifests" / "run_manifest.json"
-        return ArtifactManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        return ArtifactManifest.model_validate_json(self.manifest_path.read_text(encoding="utf-8"))
 
     def initialize(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -371,32 +549,48 @@ class ArtifactSession:
         self._register_entry(logical_name, LogicalArtifactEntry(path=relative_path, content_type=content_type))
 
     def _descriptor_for(self, logical_name: str) -> LogicalArtifactEntry:
-        if logical_name in {"runtime.trace_log", "runtime.events", "output.final_candidates", "evaluation.evaluation"}:
-            return top_level_entry(logical_name)
-        if logical_name.startswith("round."):
-            _, round_text, stage, leaf = logical_name.split(".", 3)
-            filename = f"{leaf}.jsonl" if leaf in {"scorecards", "scoring_calls"} else f"{leaf}.json"
-            _, entry = round_entry(round_no=int(round_text), stage=stage, filename=filename, content_type="application/json")
-            return entry
-        raise KeyError(logical_name)
+        return resolve_descriptor(logical_name)
 
     def write_json(self, logical_name: str, payload: object) -> Path:
         entry = self._descriptor_for(logical_name)
-        path = self.root / entry.path
+        path = safe_artifact_path(self.root, entry.path)
+        atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
+        self._register_entry(logical_name, entry)
+        return path
+
+    def write_jsonl(self, logical_name: str, rows: list[object]) -> Path:
+        entry = self._descriptor_for(logical_name)
+        path = safe_artifact_path(self.root, entry.path)
+        lines = [json.dumps(row, ensure_ascii=False) for row in rows]
+        atomic_write_text(path, "\n".join(lines) + ("\n" if lines else ""))
+        self._register_entry(logical_name, entry)
+        return path
+
+    def append_jsonl(self, logical_name: str, row: object) -> Path:
+        entry = self._descriptor_for(logical_name)
+        path = safe_artifact_path(self.root, entry.path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        self._register_entry(logical_name, entry)
+        return path
+
+    def write_text(self, logical_name: str, content: str) -> Path:
+        entry = self._descriptor_for(logical_name)
+        path = safe_artifact_path(self.root, entry.path)
+        atomic_write_text(path, content)
         self._register_entry(logical_name, entry)
         return path
 
     def open_text_stream(self, logical_name: str) -> tuple[Path, TextIO]:
         entry = self._descriptor_for(logical_name)
-        path = self.root / entry.path
+        path = safe_artifact_path(self.root, entry.path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self._register_entry(logical_name, entry)
         return path, path.open("a", encoding="utf-8")
 
     def set_child_artifacts(self, rows: list[dict[str, object]]) -> None:
-        self.manifest.model_extra = {"child_artifacts": rows}
+        self.manifest.child_artifacts = [ChildArtifactRef.model_validate(row) for row in rows]
         self._write_manifest()
 
     def finalize(self, *, status: str, failure_summary: str | None = None) -> None:
@@ -404,7 +598,7 @@ class ArtifactSession:
         self.manifest.updated_at = utc_now()
         self.manifest.completed_at = self.manifest.updated_at
         if failure_summary:
-            self.manifest.model_extra = {"failure_summary": failure_summary}
+            self.manifest.failure_summary = failure_summary
         self._write_manifest()
         self._write_partition_index()
 
@@ -414,9 +608,21 @@ class ArtifactSession:
         self._write_manifest()
 
     def _write_manifest(self) -> None:
-        manifest_path = self.root / "manifests" / "run_manifest.json"
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(self.manifest.model_dump_json(indent=2), encoding="utf-8")
+        atomic_write_text(self.manifest_path, self.manifest.model_dump_json(indent=2))
+```
+
+```toml
+# pyproject.toml
+dependencies = [
+    "httpx>=0.28.1",
+    "prompt-toolkit>=3.0.52",
+    "pydantic>=2.12.0",
+    "pydantic-ai-slim[openai]>=1.76.0",
+    "pydantic-settings>=2.13.1",
+    "python-ulid>=3.1.0",
+    "pyyaml>=6.0.3",
+    "rich>=14.2.0",
+]
 ```
 
 - [ ] **Step 4: Run the primitive tests to verify the boundary exists**
@@ -435,6 +641,8 @@ Expected: PASS for manifest lifecycle, resolver lookup, and path-safety coverage
 git add src/seektalent/artifacts tests/test_artifact_store.py
 git commit -m "feat: add artifact store primitives"
 ```
+
+Task 1 intentionally covers `replay`, `debug`, and `import` at the store level only. The current repo does not have active writer flows for those kinds yet, so this task locks the root layout and manifest contract before any future runtime starts using them.
 
 ### Task 2: Switch Active Single Runs To `artifacts/` Through `RunTracer`
 
@@ -621,6 +829,7 @@ def test_round_artifacts_move_into_subsystem_directories(tmp_path: Path) -> None
     run_dir = _single_run_dir(settings.artifacts_path)
     assert (run_dir / "rounds" / "02" / "retrieval" / "query_resume_hits.json").exists()
     assert (run_dir / "rounds" / "02" / "retrieval" / "replay_snapshot.json").exists()
+    assert (run_dir / "rounds" / "02" / "retrieval" / "second_lane_decision.json").exists()
     assert (run_dir / "rounds" / "02" / "controller" / "controller_decision.json").exists()
     assert (run_dir / "rounds" / "02" / "reflection" / "reflection_advice.json").exists()
 
@@ -638,10 +847,10 @@ def test_llm_call_snapshots_store_logical_refs(tmp_path: Path) -> None:
 
 
 def test_export_replay_rows_uses_round_retrieval_layout(tmp_path: Path) -> None:
-    run_dir = tmp_path / "artifacts" / "runs" / "2026" / "04" / "28" / "run_01TEST"
-    snapshot_path = run_dir / "rounds" / "02" / "retrieval" / "replay_snapshot.json"
-    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_path.write_text(json.dumps(_snapshot_payload()), encoding="utf-8")
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    session.write_json("round.02.retrieval.replay_snapshot", _snapshot_payload())
+    run_dir = session.root
 
     path = export_replay_rows(run_dir=run_dir)
 
@@ -664,7 +873,11 @@ Expected: FAIL on old `rounds/round_XX/...` assumptions and `evaluation.export_r
 # src/seektalent/runtime/orchestrator.py
 tracer.write_json("runtime.run_config", self._build_public_run_config())
 tracer.write_json("input.input_snapshot", input_snapshot)
+tracer.write_json("runtime.sent_query_history", sent_query_history)
+tracer.write_json("runtime.search_diagnostics", search_diagnostics)
+tracer.write_json("runtime.term_surface_audit", term_surface_audit)
 tracer.write_json(f"round.{round_no:02d}.controller.controller_context", slim_context)
+tracer.write_json(f"round.{round_no:02d}.retrieval.second_lane_decision", second_lane_decision.model_dump(mode="json"))
 tracer.write_json(f"round.{round_no:02d}.retrieval.replay_snapshot", replay_snapshot.model_dump(mode="json"))
 tracer.write_text(f"assets.prompts.{prompt.name}", prompt.content)
 ```
@@ -694,7 +907,7 @@ def export_replay_rows(*, run_dir: Path, output_dir: Path | None = None) -> Path
     ]
     if not snapshots:
         return None
-    replay_rows_path = (output_dir or resolver.resolve("evaluation.evaluation").parent) / "replay_rows.jsonl"
+    replay_rows_path = output_dir or resolver.resolve_for_write("evaluation.replay_rows")
     replay_rows_path.write_text(
         "\n".join(json.dumps(row, ensure_ascii=False) for row in build_replay_rows(snapshots)) + "\n",
         encoding="utf-8",
@@ -736,34 +949,24 @@ git commit -m "feat: migrate runtime artifacts to logical names"
 
 ```python
 import json
-from io import StringIO
 from pathlib import Path
 
-from seektalent.cli import main as cli_main
+from seektalent.cli import main
 
 
-def _run_benchmark_command(tmp_path: Path, *, settings: AppSettings) -> dict[str, object]:
+def test_benchmark_command_writes_summary_under_benchmark_execution_root(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
     benchmark_file = tmp_path / "artifacts" / "benchmarks" / "agent_jds.jsonl"
     benchmark_file.parent.mkdir(parents=True, exist_ok=True)
-    benchmark_file.write_text('{"jd_id":"agent_jd_001","job_title":"Python Engineer","jd":"JD"}\n', encoding="utf-8")
-    stdout = StringIO()
-    exit_code = cli_main(
-        [
-            "benchmark",
-            "--jds-file",
-            str(benchmark_file),
-            "--json",
-        ],
-        settings=settings,
-        stdout=stdout,
-    )
-    assert exit_code == 0
-    return json.loads(stdout.getvalue())
+    benchmark_file.write_text('{"jd_id":"agent_jd_001","job_title":"Python Engineer","job_description":"JD"}\n', encoding="utf-8")
+    monkeypatch.setattr("seektalent.cli.run_match", lambda **_: _result(tmp_path / "run-1", include_evaluation=False))
 
-
-def test_benchmark_command_writes_summary_under_benchmark_execution_root(tmp_path: Path) -> None:
-    settings = make_settings(artifacts_dir=str(tmp_path / "artifacts"), mock_cts=True)
-    payload = _run_benchmark_command(tmp_path, settings=settings)
+    assert main(["benchmark", "--jds-file", str(benchmark_file), "--output-dir", str(tmp_path / "artifacts"), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
 
     summary_path = Path(payload["summary_path"])
     assert "benchmark-executions" in str(summary_path)
@@ -772,9 +975,19 @@ def test_benchmark_command_writes_summary_under_benchmark_execution_root(tmp_pat
     assert manifest["artifact_kind"] == "benchmark"
 
 
-def test_benchmark_manifest_references_child_runs(tmp_path: Path) -> None:
-    settings = make_settings(artifacts_dir=str(tmp_path / "artifacts"), mock_cts=True)
-    payload = _run_benchmark_command(tmp_path, settings=settings)
+def test_benchmark_manifest_references_child_runs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_env(monkeypatch)
+    benchmark_file = tmp_path / "artifacts" / "benchmarks" / "agent_jds.jsonl"
+    benchmark_file.parent.mkdir(parents=True, exist_ok=True)
+    benchmark_file.write_text('{"jd_id":"agent_jd_001","job_title":"Python Engineer","job_description":"JD"}\n', encoding="utf-8")
+    monkeypatch.setattr("seektalent.cli.run_match", lambda **_: _result(tmp_path / "run-1", include_evaluation=False))
+
+    assert main(["benchmark", "--jds-file", str(benchmark_file), "--output-dir", str(tmp_path / "artifacts"), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
 
     summary_path = Path(payload["summary_path"])
     manifest = json.loads((summary_path.parents[1] / "manifests" / "benchmark_manifest.json").read_text())
@@ -820,14 +1033,6 @@ benchmark_session.set_child_artifacts(
         for row in results
         if row.get("status") == "ok"
     ]
-)
-benchmark_session.write_json(
-    "output.summary",
-    {
-        **benchmark_metadata,
-        "count": len(results),
-        "runs": results,
-    },
 )
 benchmark_session.finalize(status="completed")
 ```
@@ -911,6 +1116,16 @@ def test_archive_migration_is_idempotent_and_leaves_decommissioned_runs_root(tmp
     assert (legacy_runs / "README.md").exists()
 
 
+def test_archive_migration_fails_on_destination_collision(tmp_path: Path) -> None:
+    legacy_runs = tmp_path / "runs"
+    (legacy_runs / "20260422_192141_deadbeef").mkdir(parents=True)
+    collision = tmp_path / "artifacts" / "archive" / "legacy-runs" / "20260422_192141_deadbeef"
+    collision.mkdir(parents=True)
+
+    with pytest.raises(ArchiveCollisionError):
+        execute_archive_migration(project_root=tmp_path, legacy_runs_root=legacy_runs, artifacts_root=tmp_path / "artifacts")
+
+
 def test_runtime_rejects_legacy_runs_root_as_active_output(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="decommissioned"):
         make_settings(artifacts_dir=str(tmp_path / "runs"), mock_cts=True).artifacts_path
@@ -931,10 +1146,14 @@ Expected: FAIL because no archive planner exists, `runs/` has no sentinel behavi
 ```python
 # src/seektalent/artifacts/legacy.py
 def dry_run_archive_migration(*, project_root: Path, legacy_runs_root: Path, artifacts_root: Path) -> ArchiveMigrationReport:
-    rows = classify_legacy_entries(legacy_runs_root)
+    rows = [
+        row
+        for row in classify_legacy_entries(legacy_runs_root)
+        if row.source_path not in {"runs/.decommissioned", "runs/README.md"}
+    ]
     plan_path = artifacts_root / "archive" / "archive_migration_plan.json"
     plan_path.parent.mkdir(parents=True, exist_ok=True)
-    plan_path.write_text(json.dumps([row.model_dump(mode="json") for row in rows], ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(plan_path, json.dumps([row.model_dump(mode="json") for row in rows], ensure_ascii=False, indent=2))
     return ArchiveMigrationReport(plan_path=plan_path, rows=rows)
 
 
@@ -945,11 +1164,13 @@ def execute_archive_migration(*, project_root: Path, legacy_runs_root: Path, art
         destination = project_root / row.destination_path
         if source == destination or not source.exists():
             continue
+        if destination.exists():
+            raise ArchiveCollisionError(f"Archive destination already exists: {destination}")
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(destination))
     _write_decommission_markers(legacy_runs_root)
     result_path = artifacts_root / "archive" / "archive_migration_result.json"
-    result_path.write_text(json.dumps([row.model_dump(mode="json") for row in plan.rows], ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(result_path, json.dumps([row.model_dump(mode="json") for row in plan.rows], ensure_ascii=False, indent=2))
     return ArchiveMigrationReport(plan_path=plan.plan_path, result_path=result_path, rows=plan.rows)
 ```
 
@@ -1021,10 +1242,11 @@ def test_partition_index_lists_new_run_metadata(tmp_path: Path) -> None:
 
 
 def test_core_modules_do_not_stitch_legacy_round_paths() -> None:
-    disallowed = ['"rounds/round_', '"evaluation/evaluation.json"', '"trace.log"']
+    disallowed = ['"rounds/"', '"evaluation/"', '"trace.log"', '"events.jsonl"', '"run_manifest.json"', '"benchmark_manifest.json"']
     allowed_files = {
         "src/seektalent/artifacts/legacy.py",
         "src/seektalent/artifacts/store.py",
+        "src/seektalent/artifacts/registry.py",
     }
     offenders = scan_for_disallowed_path_literals(disallowed=disallowed, allowed_files=allowed_files)
     assert offenders == []
@@ -1046,6 +1268,13 @@ Expected: FAIL because `_index.jsonl` is not maintained yet and direct literal p
 # src/seektalent/artifacts/store.py
 def _write_partition_index(self) -> None:
     index_path = self.root.parent / "_index.jsonl"
+    rows_by_id: dict[str, dict[str, object]] = {}
+    if index_path.exists():
+        for line in index_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            rows_by_id[row["artifact_id"]] = row
     row = {
         "artifact_id": self.manifest.artifact_id,
         "created_at": self.manifest.created_at,
@@ -1054,8 +1283,11 @@ def _write_partition_index(self) -> None:
         "producer": self.manifest.producer,
         "summary_logical_artifact": "output.run_summary",
     }
-    with index_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    rows_by_id[self.manifest.artifact_id] = row
+    atomic_write_text(
+        index_path,
+        "\n".join(json.dumps(item, ensure_ascii=False) for item in rows_by_id.values()) + "\n",
+    )
 ```
 
 ```markdown
@@ -1076,9 +1308,16 @@ CHECKED_FILES = [
     ROOT / "src/seektalent/runtime/controller_runtime.py",
     ROOT / "src/seektalent/runtime/retrieval_runtime.py",
     ROOT / "src/seektalent/runtime/reflection_runtime.py",
+    ROOT / "src/seektalent/runtime/finalize_runtime.py",
+    ROOT / "src/seektalent/runtime/post_finalize_runtime.py",
     ROOT / "src/seektalent/runtime/rescue_execution_runtime.py",
+    ROOT / "src/seektalent/runtime/company_discovery_runtime.py",
     ROOT / "src/seektalent/scoring/scorer.py",
     ROOT / "src/seektalent/evaluation.py",
+    ROOT / "src/seektalent/cli.py",
+    ROOT / "experiments/claude_code_baseline/harness.py",
+    ROOT / "experiments/jd_text_baseline/harness.py",
+    ROOT / "experiments/openclaw_baseline/harness.py",
 ]
 
 
@@ -1117,8 +1356,9 @@ git commit -m "docs: finalize artifact taxonomy boundary"
 ### Spec coverage
 
 - `ArtifactStore / ArtifactResolver` is front-loaded in Task 1, before any layout switch.
+- Task 1 now covers kind-specific manifests for `run / benchmark / replay / debug / import`, path-safe resolver reads, atomic manifest writes, explicit child-artifact schema, and enough writer methods for Tasks 2-4.
 - New active `artifacts/` roots and partitioned single-run creation land in Task 2.
-- Retrieval flywheel artifacts, logical-name mapping, and resolver-based replay export land in Task 3.
+- Retrieval flywheel artifacts, logical-name mapping, and resolver-based replay export land in Task 3, including `query_resume_hits`, `second_lane_decision`, `replay_snapshot`, `sent_query_history`, `search_diagnostics`, and `term_surface_audit`.
 - Benchmark execution roots, benchmark input/output separation, and child-run references land in Task 4.
 - Dry-run archive migration, migration plan/result files, idempotency, decommission sentinels, and fail-fast rules land in Task 5.
 - `_index.jsonl`, path-safety enforcement, and documentation land in Task 6.
