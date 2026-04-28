@@ -49,7 +49,7 @@ This design makes eight decisions:
 
 1. Run one shared local `PRF model sidecar` per host.
 2. Deploy it as a Docker container in CPU-only mode.
-3. Let sandboxes access it only through localhost HTTP.
+3. Let sandboxes access it only through a configured local endpoint contract.
 4. Let the sidecar serve both span proposal and embedding inference.
 5. Cache model weights in a host-mounted volume keyed by `model + revision`.
 6. Keep deterministic alignment, familying guardrails, gating, artifacts, and replay assembly in the main app.
@@ -188,21 +188,31 @@ At minimum:
 
 These backends plug into the existing proposal runtime boundary rather than bypassing it.
 
-## Service Boundary
+## Deployment Network Contract
 
-The sandbox and sidecar communicate only over localhost HTTP.
+The sidecar endpoint is configuration-driven. It must not be hard-coded to `127.0.0.1:8741`.
 
-Examples:
+Phase 1 allows the following deployment shapes:
 
-- `http://127.0.0.1:8741/healthz`
-- `http://127.0.0.1:8741/v1/span-extract`
-- `http://127.0.0.1:8741/v1/embed`
+1. non-container sandbox on the same host as the sidecar
+2. Docker sandbox plus Docker sidecar on the same user-defined Docker network
+3. explicitly reviewed Linux host-network deployments
 
-The sandbox must not mount the model cache volume directly.
+Supported examples:
 
-The sandbox must not call external Hugging Face endpoints.
+- non-container sandbox: `http://127.0.0.1:8741`
+- Docker network service discovery: `http://prf-model-sidecar:8741`
 
-The sidecar may access the model cache volume, but only during startup or explicit warmup.
+Rules:
+
+- `127.0.0.1` is allowed only when sandbox and sidecar actually share the same host or network namespace
+- production sidecar must not bind `0.0.0.0` unless a non-default deployment profile explicitly allows it
+- request sandboxes must call a configured sidecar endpoint, not infer one
+- the sandbox must not mount the model cache volume directly
+- the sandbox must not call external Hugging Face endpoints
+- the sidecar may access the model cache volume only during startup, warmup, or explicit cache management
+
+Optional future hardening such as Unix domain sockets is out of scope for Phase 1.
 
 ## Model Choices
 
@@ -217,18 +227,26 @@ The deployment system must support revision pinning for both models and must not
 
 ## HTTP API
 
-The sidecar exposes three endpoints.
+The sidecar exposes four endpoints.
 
-### `GET /healthz`
+### `GET /livez`
 
 Purpose:
 
-- liveness and readiness
+- simple liveness probe
+
+### `GET /readyz`
+
+Purpose:
+
+- readiness
 - model/revision visibility
 
 Response fields must include:
 
 - `status`
+- `dependency_manifest_hash`
+- `endpoint_contract_version`
 - `span_model_loaded`
 - `embedding_model_loaded`
 - `span_model_name`
@@ -250,12 +268,24 @@ Request must include:
 - `schema_version`
 - `model_name`
 - `model_revision`
+- `request_id`
 
-Response rows must include:
+Response must include:
 
+- `schema_version`
+- `model_name`
+- `model_revision`
+- `rows`
+
+Each response row must include:
+
+- `request_text_index`
 - `surface`
 - `label`
 - `score`
+- `model_start_char`
+- `model_end_char`
+- `alignment_hint_only`
 
 Important rule:
 
@@ -272,18 +302,38 @@ Request must include:
 - `phrases`
 - `model_name`
 - `model_revision`
+- `request_id`
 
-Response returns embedding vectors.
+Response must include:
+
+- `schema_version`
+- `model_name`
+- `model_revision`
+- `embedding_dimension`
+- `normalized`
+- `pooling`
+- `dtype`
+- `max_input_tokens`
+- `truncation`
+- `vectors`
 
 Phase 1 keeps similarity calculation in the main app so that familying rules, thresholds, and replay artifacts stay transparent and versioned inside the PRF proposal contract.
 
-## Startup And Warmup
+All inference endpoints must also define:
+
+- maximum batch size
+- payload byte limit
+- timeout budget
+- deterministic response ordering
+- structured error schema
+
+## Startup, Warmup, And Offline Mode
 
 The sidecar startup sequence is:
 
 1. read configured model names and pinned revisions
 2. verify local cache presence
-3. download missing revisions to the cache volume
+3. optionally prefetch missing revisions in development bootstrap mode
 4. load span model
 5. load embedding model
 6. expose `ready` health state
@@ -295,6 +345,27 @@ The request path must never perform:
 - remote code retrieval
 
 If startup cannot satisfy the pinned dependency contract, the sidecar must fail readiness rather than starting in a partially defined state.
+
+Phase 1 distinguishes two execution profiles:
+
+### Development Bootstrap Mode
+
+Allowed behavior:
+
+- may download pinned model snapshots into the host cache
+- may be used for first-time local setup and cache warmup
+
+### Production Serve Mode
+
+Required behavior:
+
+- `HF_HUB_OFFLINE=1`
+- `local_files_only=True` where supported
+- no external model download on startup
+- no external network egress required for model resolution
+- readiness must fail if the pinned cache is absent or incomplete
+
+Phase 1 therefore requires a separate prefetch or warmup command or job that can populate the host cache before production serving begins.
 
 ## Revision And Dependency Gate
 
@@ -314,6 +385,33 @@ Phase 1 keeps these rules:
 - `mainline` must be pinned
 
 No sidecar configuration may silently float to an unpinned model revision.
+
+## Sidecar Dependency Manifest
+
+The sidecar must expose and persist a dependency manifest that is stronger than "model revision only".
+
+At minimum the manifest must capture:
+
+- `sidecar_image_digest`
+- `python_lockfile_hash`
+- `torch_version`
+- `transformers_version`
+- `sentence_transformers_version` if used
+- `gliner_runtime_version`
+- `span_model_name`
+- `span_model_commit`
+- `span_tokenizer_commit`
+- `embedding_model_name`
+- `embedding_model_commit`
+- `remote_code_policy`
+- `remote_code_commit` when applicable
+- `license_status`
+- `embedding_normalization`
+- `embedding_dimension`
+- `dtype`
+- `max_input_tokens`
+
+The manifest itself may be stored as a separate artifact, but `readyz` and replay metadata must include at least a stable `dependency_manifest_hash`.
 
 ## Remote Code Policy
 
@@ -351,6 +449,9 @@ In shadow mode:
 - span proposals and familying artifacts are written
 - replay snapshot carries sidecar-backed version info
 - `SecondLaneDecision.selected_lane_type` must not change because of the new extractor
+- shadow sidecar calls must use an independent small timeout budget
+- shadow timeout or sidecar failure must not block retrieval
+- shadow timeout or sidecar failure must record fallback metadata and continue
 
 ### Mainline Mode
 
@@ -365,6 +466,8 @@ Mainline is allowed only when:
 - revisions are pinned
 
 Then and only then may sidecar-backed proposal outputs drive `prf_probe`.
+
+Mainline timeout is independently configurable from shadow timeout.
 
 ## Failure Behavior
 
@@ -384,10 +487,16 @@ then the runtime must:
 
 1. record the failure reason
 2. mark proposal metadata as legacy fallback
-3. use the legacy extractor path
+3. use the legacy regex span extractor plus the existing deterministic PRF gate
 4. continue the retrieval workflow
 
 This is a fallback to the current known behavior, not a retry storm or alternate model chain.
+
+Important clarification:
+
+- sidecar failure does not imply `generic_explore`
+- fallback preserves the legacy PRF path
+- the selected lane may still be `prf_probe` if the legacy extractor and existing PRF gate accept a candidate
 
 ## Docker Deployment Shape
 
@@ -398,12 +507,12 @@ Recommended runtime characteristics:
 - CPU-only
 - one container per host
 - host-mounted cache volume
-- host-local port binding only
+- local endpoint binding only under the configured deployment shape
 
 Example logical mounts:
 
 - `/var/lib/seektalent-model-cache` -> sidecar model cache
-- host-local loopback port for HTTP only
+- configured local endpoint for HTTP only
 
 The sidecar container should be independently restartable from request sandboxes.
 
@@ -420,15 +529,43 @@ Sidecar observability:
 - error counts
 - request latency buckets
 
+Privacy rules:
+
+- sidecar logs must not include raw request texts by default
+- sidecar logs must not include raw resume evidence by default
+- sidecar logs must not include raw phrase inputs or embedding payloads by default
+- raw-text debug logging requires an explicit local-development flag
+
 Main-app observability and replay:
 
 - proposal artifact refs
+- `prf_model_backend`
+- `prf_sidecar_endpoint_contract_version`
+- `prf_sidecar_dependency_manifest_hash`
+- `prf_sidecar_image_digest`
 - span model name and revision
 - tokenizer revision
 - embedding model name and revision
+- embedding dimension
+- embedding normalization mode
+- remote code policy
 - familying version and thresholds
 - runtime mode
 - fallback reason when applicable
+
+## Artifact And Replay Alignment
+
+No sidecar-backed output may bypass `ArtifactStore` or `ArtifactResolver`.
+
+Existing logical artifact names remain the active boundary:
+
+- `round.XX.retrieval.prf_span_candidates`
+- `round.XX.retrieval.prf_expression_families`
+- `round.XX.retrieval.prf_policy_decision`
+- `round.XX.retrieval.second_lane_decision`
+- `round.XX.retrieval.replay_snapshot`
+
+New sidecar-related metadata must be attached through the existing typed artifact and replay contract, not by ad hoc files or sidecar-local logs.
 
 ## Why Similarity Stays In The Main App
 
@@ -445,26 +582,31 @@ That is PRF policy input, not just vector math. The sidecar should supply embedd
 
 Phase 1 implementation must cover:
 
-1. sidecar health and readiness behavior
+1. sidecar liveness and readiness behavior
 2. host-cache reuse across restarts
 3. no request-path model downloads
-4. sandbox HTTP-only access pattern
+4. sandbox uses configured HTTP endpoint only
 5. shadow mode writes sidecar-backed artifacts but does not change lane routing
-6. mainline mode requires pinned revisions and ready sidecar
+6. mainline mode requires pinned revisions, dependency manifest, and ready sidecar
 7. unreachable sidecar triggers legacy fallback
-8. replay snapshot includes sidecar model metadata
+8. replay snapshot includes sidecar model metadata and manifest hash
+9. runtime modules do not directly import model-loading libraries when using sidecar mode
+10. request path does not call `from_pretrained`, `snapshot_download`, or equivalent download helpers
+11. shadow timeout does not change `SecondLaneDecision.selected_lane_type`
+12. sidecar-backed outputs still resolve through logical artifact names
 
 ## Acceptance Criteria
 
 The design is considered successfully implemented when all of the following are true:
 
 1. A CPU-only Docker sidecar can load a pinned span model and a pinned embedding model from a host-mounted cache.
-2. Request sandboxes can obtain span proposals and embeddings only through localhost HTTP.
+2. Request sandboxes can obtain span proposals and embeddings only through the configured local endpoint contract.
 3. No request path downloads model artifacts.
-4. The current PRF v1.5 artifact and replay contract remains intact.
-5. Shadow mode produces sidecar-backed proposal artifacts without changing second-lane behavior.
-6. Mainline mode can use the sidecar-backed extractor only when dependency gates and promotion gates pass.
-7. Any sidecar failure cleanly falls back to the legacy extractor.
+4. Production serve mode starts from cache-only or offline state and fails readiness if pinned snapshots are absent.
+5. The current PRF v1.5 artifact and replay contract remains intact.
+6. Shadow mode produces sidecar-backed proposal artifacts without changing second-lane behavior and stays within the configured shadow latency budget.
+7. Mainline mode can use the sidecar-backed extractor only when dependency gates and promotion gates pass.
+8. Any sidecar failure cleanly falls back to the legacy extractor path and existing PRF gate.
 
 ## Future Follow-Up
 
