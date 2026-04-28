@@ -10,6 +10,11 @@ from seektalent.candidate_feedback import (
     extract_feedback_candidate_expressions,
     select_feedback_seed_resumes,
 )
+from seektalent.candidate_feedback.span_extractors import (
+    FakeSpanModelBackend,
+    GLiNER2SpanExtractor,
+    LegacyRegexSpanExtractor,
+)
 from seektalent.candidate_feedback.model_steps import CandidateFeedbackModelSteps
 from seektalent.candidate_feedback.models import (
     CandidateFeedbackModelRanking,
@@ -147,6 +152,68 @@ def test_extract_surface_terms_preserves_technical_and_mixed_shapes() -> None:
         assert term in terms
     for term in ["平台", "系统", "开发"]:
         assert term not in terms
+
+
+def test_legacy_regex_span_extractor_rejects_generic_chinese_fragments() -> None:
+    text = "掌握至少一种OLAP引擎（如Doris/ClickHouse），精通Python及主流Web框架（FastAPI/Flask/Django）"
+    extractor = LegacyRegexSpanExtractor()
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    surfaces = {span.raw_surface for span in spans}
+
+    for rejected in {"掌握至少一种", "引擎", "精通", "及主流", "框架"}:
+        assert rejected not in surfaces
+
+
+def test_legacy_regex_span_extractor_keeps_grounded_framework_terms() -> None:
+    text = "掌握至少一种OLAP引擎（如Doris/ClickHouse），精通Python及主流Web框架（FastAPI/Flask/Django）"
+    extractor = LegacyRegexSpanExtractor()
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    surfaces = {span.raw_surface for span in spans}
+
+    for expected in {"ClickHouse", "FastAPI", "Flask", "Django"}:
+        assert expected in surfaces
+
+
+def test_fake_span_model_backend_surfaces_are_aligned_back_to_exact_offsets() -> None:
+    text = "精通Python及主流Web框架（FastAPI/Flask/Django）"
+    backend = FakeSpanModelBackend(outputs=[{"label": "tool_or_framework", "surface": "FastAPI"}])
+    extractor = GLiNER2SpanExtractor(backend=backend, schema_version="gliner2-schema-v1")
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    assert len(spans) == 1
+    assert spans[0].raw_surface == "FastAPI"
+    assert text[spans[0].start_char : spans[0].end_char] == "FastAPI"
+
+
+def test_model_surface_without_exact_match_rejects_as_non_extractive() -> None:
+    text = "掌握至少一种OLAP引擎（如Doris/ClickHouse）"
+    backend = FakeSpanModelBackend(outputs=[{"label": "technical_phrase", "surface": "Doris OLAP"}])
+    extractor = GLiNER2SpanExtractor(backend=backend, schema_version="gliner2-schema-v1")
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    assert spans == []
 
 
 def test_extract_feedback_candidate_expressions_keeps_short_phrase_as_single_family() -> None:

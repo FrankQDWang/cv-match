@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from seektalent.candidate_feedback.span_extractors import normalize_source_text, validate_candidate_span
 from seektalent.candidate_feedback.models import PRFProposalArtifactRefs, PRFProposalVersionVector
 from seektalent.candidate_feedback.span_models import CandidateSpan, PhraseFamily, ProposalMetadata
 
@@ -92,6 +93,42 @@ def test_candidate_span_rejects_reversed_coordinates() -> None:
             model_score=0.93,
             extractor_schema_version="span-extractor-v1",
         )
+
+
+def test_validate_candidate_span_accepts_exact_normalized_substring() -> None:
+    text = "精通Python及主流Web框架（FastAPI/Flask/Django）"
+    raw_surface = "FastAPI/Flask/Django"
+    start_char = text.index(raw_surface)
+    span = CandidateSpan.build(
+        source_resume_id="resume-1",
+        source_field="matched_must_haves",
+        start_char=start_char,
+        end_char=start_char + len(raw_surface),
+        raw_surface=raw_surface,
+        normalized_surface=normalize_source_text(raw_surface),
+        model_label="tool_or_framework",
+        model_score=0.88,
+        extractor_schema_version="schema-v1",
+    )
+
+    assert validate_candidate_span(text, span) is None
+
+
+def test_validate_candidate_span_rejects_non_extractively_generated_surface() -> None:
+    text = "掌握至少一种OLAP引擎（如Doris/ClickHouse）"
+    span = CandidateSpan.build(
+        source_resume_id="resume-1",
+        source_field="matched_must_haves",
+        start_char=0,
+        end_char=4,
+        raw_surface="Doris OLAP",
+        normalized_surface=normalize_source_text("Doris OLAP"),
+        model_label="technical_phrase",
+        model_score=0.71,
+        extractor_schema_version="schema-v1",
+    )
+
+    assert validate_candidate_span(text, span) == "non_extractively_generated_span"
 
 
 def test_phrase_family_keeps_guard_metadata() -> None:
