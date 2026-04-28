@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import seektalent.artifacts.store as artifact_store_module
-from seektalent.artifacts.registry import resolve_descriptor
+from seektalent.artifacts.registry import ROUND_CONTENT_TYPES, resolve_descriptor
 from seektalent.artifacts.store import ArtifactResolver, ArtifactStore
 
 FIXED_NOW = datetime(2026, 4, 28, 5, 6, 7, tzinfo=UTC)
@@ -117,6 +117,34 @@ def test_write_json_updates_manifest_and_resolve_many_round_artifacts(
 
     assert hits_path.read_text(encoding="utf-8").strip().startswith("[")
     assert replay_paths == [session.root / "rounds/02/retrieval/replay_snapshot.json"]
+
+
+@pytest.mark.parametrize(
+    ("logical_name", "expected_path"),
+    [
+        ("round.02.retrieval.prf_span_candidates", "rounds/02/retrieval/prf_span_candidates.json"),
+        ("round.02.retrieval.prf_expression_families", "rounds/02/retrieval/prf_expression_families.json"),
+        ("round.02.retrieval.prf_policy_decision", "rounds/02/retrieval/prf_policy_decision.json"),
+    ],
+)
+def test_prf_v1_5_retrieval_artifacts_are_registered_and_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    logical_name: str,
+    expected_path: str,
+) -> None:
+    _freeze_time(monkeypatch)
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+
+    assert logical_name.split(".")[-1] in ROUND_CONTENT_TYPES
+    entry = resolve_descriptor(logical_name)
+    path = session.write_json(logical_name, {"round_no": 2})
+
+    assert entry.path == expected_path
+    assert path == session.root / expected_path
+    assert session.resolver().resolve(logical_name) == session.root / expected_path
+    assert session.load_manifest().logical_artifacts[logical_name].path == expected_path
 
 
 def test_benchmark_child_artifacts_are_schema_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
