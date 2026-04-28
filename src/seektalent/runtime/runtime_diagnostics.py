@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from seektalent.artifacts import ArtifactResolver
+from seektalent.candidate_feedback.proposal_runtime import PRFProposalOutput
 from seektalent.evaluation import EvaluationResult
 from seektalent.models import (
     ControllerContext,
@@ -120,9 +121,10 @@ def build_replay_snapshot(
     search_observation: SearchObservation,
     scoring_model_version: str,
     query_plan_version: str,
+    prf_proposal: PRFProposalOutput | None = None,
 ) -> ReplaySnapshot:
     ordered_resume_ids = [hit.resume_id for hit in query_resume_hits]
-    return ReplaySnapshot(
+    snapshot = ReplaySnapshot(
         run_id=run_id,
         round_no=round_no,
         retrieval_snapshot_id=f"{run_id}:round:{round_no}",
@@ -139,6 +141,21 @@ def build_replay_snapshot(
         query_plan_version=query_plan_version,
         prf_gate_version=second_lane_decision.prf_policy_version,
         generic_explore_version=second_lane_decision.generic_explore_version,
+    )
+    if prf_proposal is None:
+        return snapshot
+    return snapshot.model_copy(
+        update={
+            "prf_span_model_name": prf_proposal.version_vector.span_model_name,
+            "prf_span_model_revision": prf_proposal.version_vector.span_model_revision,
+            "prf_span_schema_version": prf_proposal.version_vector.span_schema_version,
+            "prf_embedding_model_name": prf_proposal.version_vector.embedding_model_name,
+            "prf_embedding_model_revision": prf_proposal.version_vector.embedding_model_revision,
+            "prf_familying_version": prf_proposal.version_vector.familying_version,
+            "prf_candidate_span_artifact_ref": prf_proposal.artifact_refs.candidate_span_artifact_ref,
+            "prf_expression_family_artifact_ref": prf_proposal.artifact_refs.expression_family_artifact_ref,
+            "prf_policy_decision_artifact_ref": prf_proposal.artifact_refs.policy_decision_artifact_ref,
+        }
     )
 
 

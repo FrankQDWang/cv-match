@@ -139,6 +139,23 @@ def extract_surface_terms(texts: list[str]) -> list[str]:
     return terms
 
 
+def extract_surface_term_occurrences(text: str) -> list[tuple[str, int, int]]:
+    occurrences: list[tuple[str, int, int]] = []
+    seen: set[tuple[str, int, int]] = set()
+
+    for surface in extract_surface_terms([text]):
+        exact_surfaces = [surface, *_expand_surface_term(surface)]
+        for exact_surface in exact_surfaces:
+            for start_char, end_char in _find_exact_surface_occurrences(text, exact_surface):
+                key = (exact_surface, start_char, end_char)
+                if key in seen:
+                    continue
+                seen.add(key)
+                occurrences.append(key)
+
+    return occurrences
+
+
 def normalize_expression(expression: str | None) -> str:
     return _clean_term(expression)
 
@@ -435,6 +452,22 @@ def _clean_term(value: str | None) -> str:
     if value is None:
         return ""
     return " ".join(value.split()).strip(" \t\r\n,.;:，。；：!?")
+
+
+def _expand_surface_term(surface: str) -> list[str]:
+    if "/" not in surface:
+        return [surface]
+    parts = [part.strip() for part in surface.split("/") if part.strip()]
+    return parts or [surface]
+
+
+def _find_exact_surface_occurrences(text: str, surface: str) -> list[tuple[int, int]]:
+    occurrences: list[tuple[int, int]] = []
+    start_char = text.find(surface)
+    while start_char != -1:
+        occurrences.append((start_char, start_char + len(surface)))
+        start_char = text.find(surface, start_char + len(surface))
+    return occurrences
 
 
 def _is_allowed_surface_term(term: str) -> bool:

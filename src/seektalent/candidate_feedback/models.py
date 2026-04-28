@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field
 
+from seektalent.candidate_feedback.span_models import CandidateTermType
 from seektalent.models import QueryTermCandidate
 
 
@@ -27,7 +26,7 @@ class FeedbackCandidateExpression(BaseModel):
     term_family_id: str
     canonical_expression: str
     surface_forms: list[str] = Field(default_factory=list)
-    candidate_term_type: Literal["company_entity", "product_or_platform", "technical_phrase", "skill"]
+    candidate_term_type: CandidateTermType
     source_seed_resume_ids: list[str] = Field(default_factory=list)
     linked_requirements: list[str] = Field(default_factory=list)
     field_hits: dict[str, int] = Field(default_factory=dict)
@@ -78,3 +77,30 @@ class CandidateFeedbackModelRanking(BaseModel):
             if term in allowed and term not in output:
                 output.append(term)
         return output
+
+
+class PRFProposalArtifactRefs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # These refs point at the same proposal family identity across spans,
+    # expression families, and the downstream policy decision.
+    candidate_span_artifact_ref: str
+    expression_family_artifact_ref: str
+    policy_decision_artifact_ref: str
+
+
+class PRFProposalVersionVector(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    span_extractor_version: str
+    span_model_name: str
+    span_model_revision: str
+    span_tokenizer_revision: str
+    span_schema_version: str
+    span_thresholds_version: str
+    embedding_model_name: str
+    embedding_model_revision: str
+    familying_version: str
+    familying_thresholds: dict[str, object] = Field(default_factory=dict)
+    runtime_mode: str
+    top_n_candidate_cap: int = Field(ge=0)

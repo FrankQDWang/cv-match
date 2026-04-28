@@ -10,6 +10,11 @@ from seektalent.candidate_feedback import (
     extract_feedback_candidate_expressions,
     select_feedback_seed_resumes,
 )
+from seektalent.candidate_feedback.span_extractors import (
+    FakeSpanModelBackend,
+    GLiNER2SpanExtractor,
+    LegacyRegexSpanExtractor,
+)
 from seektalent.candidate_feedback.model_steps import CandidateFeedbackModelSteps
 from seektalent.candidate_feedback.models import (
     CandidateFeedbackModelRanking,
@@ -17,6 +22,11 @@ from seektalent.candidate_feedback.models import (
     FeedbackCandidateTerm,
 )
 from seektalent.candidate_feedback.policy import PRFGateInput, build_prf_policy_decision
+from seektalent.candidate_feedback.proposal_runtime import (
+    build_prf_span_extractor,
+    build_prf_proposal_bundle,
+    model_dependency_gate_allows_mainline,
+)
 from seektalent.models import (
     FitBucket,
     QueryRetrievalRole,
@@ -39,6 +49,8 @@ def _scored_candidate(
     risk_score: int = 20,
     reasoning_summary: str = "Seed summary.",
     evidence: list[str] | None = None,
+    matched_must_haves: list[str] | None = None,
+    matched_preferences: list[str] | None = None,
     strengths: list[str] | None = None,
     weaknesses: list[str] | None = None,
     negative_signals: list[str] | None = None,
@@ -54,9 +66,9 @@ def _scored_candidate(
         reasoning_summary=reasoning_summary,
         evidence=evidence or [],
         confidence="high",
-        matched_must_haves=[],
+        matched_must_haves=matched_must_haves or [],
         missing_must_haves=[],
-        matched_preferences=[],
+        matched_preferences=matched_preferences or [],
         negative_signals=negative_signals or [],
         strengths=strengths or [],
         weaknesses=weaknesses or [],
@@ -96,6 +108,7 @@ def _expression(
     negative_support_count: int = 0,
     not_fit_support_rate: float = 0.0,
     reject_reasons: list[str] | None = None,
+    field_hits: dict[str, int] | None = None,
 ) -> FeedbackCandidateExpression:
     return FeedbackCandidateExpression(
         term_family_id=f"feedback.{expression.casefold().replace(' ', '-')}",
@@ -107,6 +120,7 @@ def _expression(
         negative_support_count=negative_support_count,
         not_fit_support_rate=not_fit_support_rate,
         reject_reasons=reject_reasons or [],
+        field_hits=field_hits or {},
     )
 
 
@@ -149,6 +163,286 @@ def test_extract_surface_terms_preserves_technical_and_mixed_shapes() -> None:
         assert term not in terms
 
 
+def test_legacy_regex_span_extractor_rejects_generic_chinese_fragments() -> None:
+    text = "掌握至少一种OLAP引擎（如Doris/ClickHouse），精通Python及主流Web框架（FastAPI/Flask/Django）"
+    extractor = LegacyRegexSpanExtractor()
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    surfaces = {span.raw_surface for span in spans}
+
+    for rejected in {"掌握至少一种", "引擎", "精通", "及主流", "框架"}:
+        assert rejected not in surfaces
+
+
+def test_legacy_regex_span_extractor_keeps_grounded_framework_terms() -> None:
+    text = "掌握至少一种OLAP引擎（如Doris/ClickHouse），精通Python及主流Web框架（FastAPI/Flask/Django）"
+    extractor = LegacyRegexSpanExtractor()
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    surfaces = {span.raw_surface for span in spans}
+
+    for expected in {"ClickHouse", "FastAPI", "Flask", "Django"}:
+        assert expected in surfaces
+
+
+def test_legacy_regex_span_extractor_preserves_slash_compound_surface_and_children() -> None:
+    text = "精通Python及主流Web框架（FastAPI/Flask/Django）"
+    extractor = LegacyRegexSpanExtractor()
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    surfaces = {span.raw_surface for span in spans}
+
+    assert "FastAPI/Flask/Django" in surfaces
+    for expected in {"FastAPI", "Flask", "Django"}:
+        assert expected in surfaces
+
+
+def test_legacy_regex_span_extractor_keeps_distinct_list_items_separate() -> None:
+    extractor = LegacyRegexSpanExtractor()
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=["ClickHouse", "ClickHouse"],
+    )
+
+    assert len(spans) == 2
+    assert [span.source_text_index for span in spans] == [0, 1]
+    assert len({span.span_id for span in spans}) == 2
+
+
+def test_fake_span_model_backend_surfaces_are_aligned_back_to_exact_offsets() -> None:
+    text = "精通Python及主流Web框架（FastAPI/Flask/Django）"
+    backend = FakeSpanModelBackend(outputs=[{"label": "tool_or_framework", "surface": "FastAPI"}])
+    extractor = GLiNER2SpanExtractor(backend=backend, schema_version="gliner2-schema-v1")
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    assert len(spans) == 1
+    assert spans[0].raw_surface == "FastAPI"
+    assert spans[0].source_text_index == 0
+    assert text[spans[0].start_char : spans[0].end_char] == "FastAPI"
+
+
+def test_model_surface_without_exact_match_rejects_as_non_extractive() -> None:
+    text = "掌握至少一种OLAP引擎（如Doris/ClickHouse）"
+    backend = FakeSpanModelBackend(outputs=[{"label": "technical_phrase", "surface": "Doris OLAP"}])
+    extractor = GLiNER2SpanExtractor(backend=backend, schema_version="gliner2-schema-v1")
+
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+
+    assert spans == []
+
+
+def test_support_counts_distinct_seed_resumes_not_span_occurrences() -> None:
+    proposal = build_prf_proposal_bundle(
+        positive_seed_resumes=[
+            _scored_candidate(
+                "seed-1",
+                evidence=["Flink CDC"],
+                strengths=["Flink CDC"],
+                must_have_match_score=80,
+            ),
+            _scored_candidate(
+                "seed-2",
+                matched_must_haves=["Flink CDC"],
+                must_have_match_score=80,
+            ),
+        ],
+        negative_seed_resumes=[],
+        extractor=LegacyRegexSpanExtractor(),
+        metadata=_proposal_metadata(),
+        round_no=2,
+    )
+
+    family = _family_by_surface(proposal.phrase_families, "Flink CDC")
+    assert family.positive_seed_support_count == 2
+
+
+def test_negative_support_counts_distinct_negative_resumes() -> None:
+    proposal = build_prf_proposal_bundle(
+        positive_seed_resumes=[
+            _scored_candidate(
+                "seed-1",
+                evidence=["Flink CDC"],
+                must_have_match_score=80,
+            )
+        ],
+        negative_seed_resumes=[
+            _scored_candidate(
+                "neg-1",
+                fit_bucket="not_fit",
+                evidence=["Flink CDC"],
+                matched_preferences=["Flink CDC"],
+            ),
+            _scored_candidate(
+                "neg-2",
+                fit_bucket="not_fit",
+                evidence=["Flink CDC"],
+            ),
+        ],
+        extractor=LegacyRegexSpanExtractor(),
+        metadata=_proposal_metadata(),
+        round_no=2,
+    )
+
+    family = _family_by_surface(proposal.phrase_families, "Flink CDC")
+    assert family.negative_support_count == 2
+
+
+def test_prf_v1_5_proposal_runtime_exposes_typed_artifact_refs_and_versions() -> None:
+    proposal = build_prf_proposal_bundle(
+        positive_seed_resumes=[
+            _scored_candidate(
+                "seed-1",
+                evidence=["Flink CDC"],
+                must_have_match_score=80,
+            )
+        ],
+        negative_seed_resumes=[],
+        extractor=LegacyRegexSpanExtractor(),
+        metadata=_proposal_metadata(),
+        round_no=2,
+    )
+
+    assert proposal.artifact_refs.candidate_span_artifact_ref == "round.02.retrieval.prf_span_candidates"
+    assert proposal.artifact_refs.expression_family_artifact_ref == "round.02.retrieval.prf_expression_families"
+    assert proposal.artifact_refs.policy_decision_artifact_ref == "round.02.retrieval.prf_policy_decision"
+    assert proposal.version_vector.span_model_name == "span-model"
+    assert proposal.version_vector.span_model_revision == "span-rev"
+    assert proposal.version_vector.familying_version == "familying-v1"
+    assert proposal.metadata.runtime_mode == "shadow"
+
+
+def test_responsibility_phrase_is_shadow_only_in_phase_1_5() -> None:
+    decision = build_prf_policy_decision(
+        PRFGateInput(
+            round_no=2,
+            seed_resume_ids=["seed-1", "seed-2", "seed-3"],
+            seed_count=3,
+            negative_resume_ids=[],
+            candidate_expressions=[
+                _expression(
+                    "负责系统设计",
+                    candidate_term_type="responsibility_phrase",
+                    positive_seed_support_count=3,
+                )
+            ],
+            candidate_expression_count=1,
+            tried_term_family_ids=[],
+            tried_query_fingerprints=[],
+            policy_version="prf-policy-v1",
+        )
+    )
+
+    assert decision.gate_passed is False
+    assert decision.reject_reasons == ["no_safe_prf_expression"]
+    assert "shadow_only_responsibility_phrase" in decision.candidate_expressions[0].reject_reasons
+
+
+def test_ambiguous_company_or_product_entity_is_rejected_by_default() -> None:
+    decision = build_prf_policy_decision(
+        PRFGateInput(
+            round_no=2,
+            seed_resume_ids=["seed-1", "seed-2", "seed-3"],
+            seed_count=3,
+            negative_resume_ids=[],
+            candidate_expressions=[
+                _expression(
+                    "Databricks",
+                    candidate_term_type="product_or_platform",
+                    positive_seed_support_count=3,
+                    reject_reasons=["ambiguous_company_or_product_entity"],
+                )
+            ],
+            candidate_expression_count=1,
+            tried_term_family_ids=[],
+            tried_query_fingerprints=[],
+            policy_version="prf-policy-v1",
+        )
+    )
+
+    assert decision.gate_passed is False
+    assert "ambiguous_company_or_product_entity" in decision.candidate_expressions[0].reject_reasons
+
+
+def test_strengths_only_span_is_shadow_hint_not_promotable() -> None:
+    decision = build_prf_policy_decision(
+        PRFGateInput(
+            round_no=2,
+            seed_resume_ids=["seed-1", "seed-2"],
+            seed_count=2,
+            negative_resume_ids=[],
+            candidate_expressions=[
+                _expression(
+                    "Flink CDC",
+                    candidate_term_type="technical_phrase",
+                    positive_seed_support_count=2,
+                    field_hits={"strengths": 2},
+                )
+            ],
+            candidate_expression_count=1,
+            tried_term_family_ids=[],
+            tried_query_fingerprints=[],
+            policy_version="prf-policy-v1",
+        )
+    )
+
+    assert decision.gate_passed is False
+    assert "derived_summary_only_grounding" in decision.candidate_expressions[0].reject_reasons
+
+
+def test_policy_gate_does_not_mutate_persisted_phrase_family_objects() -> None:
+    original = _expression("Databricks", reject_reasons=["ambiguous_company_or_product_entity"])
+    frozen = original.model_copy(deep=True)
+
+    build_prf_policy_decision(
+        PRFGateInput(
+            round_no=2,
+            seed_resume_ids=["seed-1", "seed-2"],
+            seed_count=2,
+            negative_resume_ids=[],
+            candidate_expressions=[original],
+            candidate_expression_count=1,
+            tried_term_family_ids=[],
+            tried_query_fingerprints=[],
+            policy_version="prf-policy-v1",
+        )
+    )
+
+    assert original.model_dump(mode="json") == frozen.model_dump(mode="json")
+
+
+def test_shadow_mode_falls_back_to_legacy_when_model_dependency_gate_fails() -> None:
+    settings = make_settings(prf_v1_5_mode="shadow", prf_span_model_revision="")
+
+    assert model_dependency_gate_allows_mainline(settings) is False
+    assert build_prf_span_extractor(settings, backend=None).__class__.__name__ == "LegacyRegexSpanExtractor"
+
+
 def test_extract_feedback_candidate_expressions_keeps_short_phrase_as_single_family() -> None:
     expressions = extract_feedback_candidate_expressions(
         seed_resumes=[
@@ -164,6 +458,33 @@ def test_extract_feedback_candidate_expressions_keeps_short_phrase_as_single_fam
     assert expressions[0].term_family_id == "feedback.tool-calling"
     assert expressions[0].positive_seed_support_count == 2
     assert expressions[0].candidate_term_type == "technical_phrase"
+
+
+def _proposal_metadata():
+    from seektalent.candidate_feedback.span_models import ProposalMetadata
+
+    return ProposalMetadata(
+        extractor_version="proposal-runtime-v1",
+        span_model_name="span-model",
+        span_model_revision="span-rev",
+        tokenizer_revision="tokenizer-rev",
+        schema_version="schema-v1",
+        schema_payload={"labels": ["technical_phrase"]},
+        thresholds_version="thresholds-v1",
+        embedding_model_name="embed-model",
+        embedding_model_revision="embed-rev",
+        familying_version="familying-v1",
+        familying_thresholds={"embedding_similarity": 0.92},
+        runtime_mode="shadow",
+        top_n_candidate_cap=16,
+    )
+
+
+def _family_by_surface(families, canonical_surface: str):
+    for family in families:
+        if family.canonical_surface == canonical_surface:
+            return family
+    raise AssertionError(f"missing family for {canonical_surface}")
 
 
 def test_classify_feedback_expressions_rejects_known_company_entity_but_keeps_product() -> None:

@@ -35,6 +35,8 @@ def build_second_lane_decision(
     run_id: str,
     job_intent_fingerprint: str,
     source_plan_version: str,
+    prf_v1_5_mode: str = "disabled",
+    shadow_prf_v1_5_artifact_ref: str | None = None,
 ) -> tuple[SecondLaneDecision, LogicalQueryState | None]:
     if round_no == 1 or len(retrieval_plan.query_terms) <= 1:
         return (
@@ -45,6 +47,8 @@ def build_second_lane_decision(
                 reject_reasons=["round_one_or_anchor_only"],
                 no_fetch_reason="single_lane_round",
                 prf_policy_version="unavailable",
+                prf_v1_5_mode=prf_v1_5_mode,
+                shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
             ),
             None,
         )
@@ -75,6 +79,8 @@ def build_second_lane_decision(
                 prf_seed_resume_ids=list(prf_decision.gate_input.seed_resume_ids),
                 prf_candidate_expression_count=prf_decision.gate_input.candidate_expression_count,
                 prf_policy_version=prf_decision.gate_input.policy_version,
+                prf_v1_5_mode=prf_v1_5_mode,
+                shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
             ),
             query_state,
         )
@@ -100,6 +106,8 @@ def build_second_lane_decision(
                 no_fetch_reason="no_generic_explore_query",
                 prf_policy_version=prf_policy_version,
                 generic_explore_version="v1",
+                prf_v1_5_mode=prf_v1_5_mode,
+                shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
             ),
             None,
         )
@@ -129,6 +137,8 @@ def build_second_lane_decision(
             fallback_query_fingerprint=query_state.query_fingerprint,
             prf_policy_version=prf_policy_version,
             generic_explore_version="v1",
+            prf_v1_5_mode=prf_v1_5_mode,
+            shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
         ),
         query_state,
     )

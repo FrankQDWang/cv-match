@@ -532,6 +532,15 @@ class ReplaySnapshot(BaseModel):
     query_plan_version: str
     prf_gate_version: str
     generic_explore_version: str | None = None
+    prf_span_model_name: str | None = None
+    prf_span_model_revision: str | None = None
+    prf_span_schema_version: str | None = None
+    prf_embedding_model_name: str | None = None
+    prf_embedding_model_revision: str | None = None
+    prf_familying_version: str | None = None
+    prf_candidate_span_artifact_ref: str | None = None
+    prf_expression_family_artifact_ref: str | None = None
+    prf_policy_decision_artifact_ref: str | None = None
 
 
 class SecondLaneDecision(BaseModel):
@@ -553,6 +562,8 @@ class SecondLaneDecision(BaseModel):
     no_fetch_reason: str | None = None
     prf_policy_version: str
     generic_explore_version: str | None = None
+    prf_v1_5_mode: Literal["disabled", "shadow", "mainline"] | None = None
+    shadow_prf_v1_5_artifact_ref: str | None = None
 
 
 class RetrievalState(BaseModel):

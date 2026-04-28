@@ -11,10 +11,18 @@ from pathlib import Path
 from typing import Any, Literal
 
 from seektalent.candidate_feedback import (
+    FeedbackCandidateExpression,
     build_term_family_id,
     extract_feedback_candidate_expressions,
     select_feedback_seed_resumes,
 )
+from seektalent.candidate_feedback.proposal_runtime import (
+    PRFProposalOutput,
+    build_prf_proposal_bundle,
+    build_prf_span_extractor,
+)
+from seektalent.candidate_feedback.span_extractors import LegacyRegexSpanExtractor
+from seektalent.candidate_feedback.span_models import PhraseFamily, ProposalMetadata
 from seektalent.candidate_feedback.policy import (
     MAX_NEGATIVE_SUPPORT_RATE,
     MIN_PRF_SEED_COUNT,
@@ -621,16 +629,37 @@ class WorkflowRuntime:
                 projection_result.model_dump(mode="json"),
             )
             job_intent_fingerprint = self._build_job_intent_fingerprint(run_state=run_state)
-            prf_decision = self._build_prf_policy_decision(run_state=run_state, retrieval_plan=retrieval_plan)
-            tracer.write_json(
-                _round_artifact(
-                    tracer,
-                    round_no=round_no,
-                    subsystem="retrieval",
-                    name="prf_policy_decision",
-                ),
-                prf_decision.model_dump(mode="json"),
-            )
+            prf_v1_5_mode = self.settings.prf_v1_5_mode
+            legacy_prf_decision = self._build_prf_policy_decision(run_state=run_state, retrieval_plan=retrieval_plan)
+            prf_proposal: PRFProposalOutput | None = None
+            prf_decision = legacy_prf_decision
+            shadow_prf_v1_5_artifact_ref: str | None = None
+            if prf_v1_5_mode != "disabled":
+                prf_proposal, proposal_prf_decision = self._build_prf_v1_5_proposal_and_decision(
+                    run_state=run_state,
+                    retrieval_plan=retrieval_plan,
+                )
+                tracer.write_json(
+                    f"round.{round_no:02d}.retrieval.prf_span_candidates",
+                    [item.model_dump(mode="json") for item in prf_proposal.candidate_spans],
+                )
+                tracer.write_json(
+                    f"round.{round_no:02d}.retrieval.prf_expression_families",
+                    [item.model_dump(mode="json") for item in prf_proposal.phrase_families],
+                )
+                tracer.write_json(
+                    f"round.{round_no:02d}.retrieval.prf_policy_decision",
+                    proposal_prf_decision.model_dump(mode="json"),
+                )
+                if prf_v1_5_mode == "mainline":
+                    prf_decision = proposal_prf_decision
+                else:
+                    shadow_prf_v1_5_artifact_ref = prf_proposal.artifact_refs.policy_decision_artifact_ref
+            else:
+                tracer.write_json(
+                    f"round.{round_no:02d}.retrieval.prf_policy_decision",
+                    legacy_prf_decision.model_dump(mode="json"),
+                )
             query_states, second_lane_decision = self._build_round_query_bundle(
                 round_no=round_no,
                 retrieval_plan=retrieval_plan,
@@ -641,6 +670,8 @@ class WorkflowRuntime:
                 run_id=tracer.run_id,
                 job_intent_fingerprint=job_intent_fingerprint,
                 source_plan_version=str(retrieval_plan.plan_version),
+                prf_v1_5_mode=prf_v1_5_mode,
+                shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
             )
             tracer.write_json(
                 f"round.{round_no:02d}.retrieval.second_lane_decision",
@@ -769,6 +800,7 @@ class WorkflowRuntime:
                     search_observation=search_observation,
                     scoring_model_version=self.settings.scoring_model,
                     query_plan_version=str(retrieval_plan.plan_version),
+                    prf_proposal=prf_proposal,
                 )
                 tracer.write_json(
                     f"round.{round_no:02d}.retrieval.replay_snapshot",
@@ -1991,6 +2023,8 @@ class WorkflowRuntime:
         run_id: str,
         job_intent_fingerprint: str,
         source_plan_version: str,
+        prf_v1_5_mode: str = "disabled",
+        shadow_prf_v1_5_artifact_ref: str | None = None,
     ) -> tuple[list[LogicalQueryState], SecondLaneDecision]:
         del title_anchor_terms
         exploit_query_state = build_logical_query_state(
@@ -2025,6 +2059,8 @@ class WorkflowRuntime:
             run_id=run_id,
             job_intent_fingerprint=job_intent_fingerprint,
             source_plan_version=source_plan_version,
+            prf_v1_5_mode=prf_v1_5_mode,
+            shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
         )
         if second_lane_query_state is not None:
             query_states.append(second_lane_query_state)
@@ -2036,17 +2072,7 @@ class WorkflowRuntime:
         run_state: RunState,
         retrieval_plan,
     ) -> PRFPolicyDecision:
-        seed_candidates = [
-            run_state.scorecards_by_resume_id[resume_id]
-            for resume_id in run_state.top_pool_ids
-            if resume_id in run_state.scorecards_by_resume_id
-        ]
-        seeds = select_feedback_seed_resumes(seed_candidates)
-        negatives = [
-            item
-            for item in run_state.scorecards_by_resume_id.values()
-            if item.fit_bucket == "not_fit" or item.risk_score > 60
-        ]
+        seeds, negatives = self._feedback_seed_sets(run_state=run_state)
         expressions = extract_feedback_candidate_expressions(
             seed_resumes=seeds,
             negative_resumes=negatives,
@@ -2084,6 +2110,136 @@ class WorkflowRuntime:
                 max_negative_support_rate=MAX_NEGATIVE_SUPPORT_RATE,
                 policy_version=PRF_POLICY_VERSION,
             )
+        )
+
+    def _feedback_seed_sets(self, *, run_state: RunState) -> tuple[list[ScoredCandidate], list[ScoredCandidate]]:
+        seed_candidates = [
+            run_state.scorecards_by_resume_id[resume_id]
+            for resume_id in run_state.top_pool_ids
+            if resume_id in run_state.scorecards_by_resume_id
+        ]
+        seeds = select_feedback_seed_resumes(seed_candidates)
+        negatives = [
+            item
+            for item in run_state.scorecards_by_resume_id.values()
+            if item.fit_bucket == "not_fit" or item.risk_score > 60
+        ]
+        return seeds, negatives
+
+    def _build_prf_v1_5_proposal_and_decision(
+        self,
+        *,
+        run_state: RunState,
+        retrieval_plan,
+    ) -> tuple[PRFProposalOutput, PRFPolicyDecision]:
+        seeds, negatives = self._feedback_seed_sets(run_state=run_state)
+        extractor = build_prf_span_extractor(self.settings, backend=None)
+        proposal = build_prf_proposal_bundle(
+            positive_seed_resumes=seeds,
+            negative_seed_resumes=negatives,
+            extractor=extractor,
+            metadata=self._build_prf_v1_5_metadata(extractor=extractor),
+            round_no=retrieval_plan.round_no,
+        )
+        seed_resume_ids = unique_strings([item.resume_id for item in seeds])
+        negative_resume_ids = unique_strings([item.resume_id for item in negatives])
+        expressions = [
+            self._family_to_feedback_expression(
+                family=family,
+                proposal=proposal,
+                positive_seed_ids=set(seed_resume_ids),
+                negative_seed_ids=set(negative_resume_ids),
+            )
+            for family in proposal.phrase_families
+        ]
+        tried_term_family_ids = unique_strings(
+            [
+                build_term_family_id(term)
+                for record in run_state.retrieval_state.sent_query_history
+                for term in record.query_terms
+            ]
+            + [build_term_family_id(term) for term in retrieval_plan.query_terms]
+        )
+        tried_query_fingerprints = unique_strings(
+            [
+                record.query_fingerprint
+                for record in run_state.retrieval_state.sent_query_history
+                if record.query_fingerprint is not None
+            ]
+        )
+        decision = build_prf_policy_decision(
+            PRFGateInput(
+                round_no=retrieval_plan.round_no,
+                seed_resume_ids=seed_resume_ids,
+                seed_count=len(seed_resume_ids),
+                negative_resume_ids=negative_resume_ids,
+                candidate_expressions=expressions,
+                candidate_expression_count=len(expressions),
+                tried_term_family_ids=tried_term_family_ids,
+                tried_query_fingerprints=tried_query_fingerprints,
+                min_seed_count=MIN_PRF_SEED_COUNT,
+                max_negative_support_rate=MAX_NEGATIVE_SUPPORT_RATE,
+                policy_version=PRF_POLICY_VERSION,
+            )
+        )
+        return proposal, decision
+
+    def _build_prf_v1_5_metadata(
+        self,
+        *,
+        extractor: LegacyRegexSpanExtractor | object,
+    ) -> ProposalMetadata:
+        using_legacy = isinstance(extractor, LegacyRegexSpanExtractor)
+        return ProposalMetadata(
+            extractor_version="legacy-regex-v1" if using_legacy else "prf-v1.5-model-v1",
+            span_model_name="legacy-regex" if using_legacy else self.settings.prf_span_model_name,
+            span_model_revision="local" if using_legacy else self.settings.prf_span_model_revision,
+            tokenizer_revision="local" if using_legacy else self.settings.prf_span_tokenizer_revision,
+            schema_version="legacy-regex-v1" if using_legacy else self.settings.prf_span_schema_version,
+            schema_payload={"labels": ["technical_phrase"]},
+            thresholds_version="prf-v1.5-thresholds-v1",
+            embedding_model_name="none" if using_legacy else self.settings.prf_embedding_model_name,
+            embedding_model_revision="none" if using_legacy else self.settings.prf_embedding_model_revision,
+            familying_version="familying-v1",
+            familying_thresholds={"embedding_similarity": self.settings.prf_familying_embedding_threshold},
+            runtime_mode=self.settings.prf_v1_5_mode,
+            top_n_candidate_cap=32,
+        )
+
+    def _family_to_feedback_expression(
+        self,
+        *,
+        family: PhraseFamily,
+        proposal: PRFProposalOutput,
+        positive_seed_ids: set[str],
+        negative_seed_ids: set[str],
+    ) -> FeedbackCandidateExpression:
+        spans_by_id = {span.span_id: span for span in proposal.candidate_spans}
+        source_spans = [
+            spans_by_id[span_id]
+            for span_id in family.source_span_ids
+            if span_id in spans_by_id
+        ]
+        source_seed_resume_ids = unique_strings(
+            [span.source_resume_id for span in source_spans if span.source_resume_id in positive_seed_ids]
+        )
+        negative_support_count = len({span.source_resume_id for span in source_spans if span.source_resume_id in negative_seed_ids})
+        field_hits: dict[str, int] = {}
+        for span in source_spans:
+            field_hits[span.source_field] = field_hits.get(span.source_field, 0) + 1
+        candidate_term_type = family.candidate_term_type
+        if candidate_term_type not in {"company_entity", "product_or_platform", "technical_phrase", "skill"}:
+            candidate_term_type = "technical_phrase"
+        return FeedbackCandidateExpression(
+            term_family_id=family.family_id,
+            canonical_expression=family.canonical_surface,
+            surface_forms=list(family.surfaces),
+            candidate_term_type=candidate_term_type,
+            source_seed_resume_ids=source_seed_resume_ids,
+            field_hits=field_hits,
+            positive_seed_support_count=family.positive_seed_support_count,
+            negative_support_count=negative_support_count,
+            reject_reasons=list(family.reject_reasons),
         )
 
     def _known_company_entities(self, *, run_state: RunState) -> set[str]:
