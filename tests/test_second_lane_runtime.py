@@ -53,9 +53,33 @@ def test_build_second_lane_decision_falls_back_to_generic_when_prf_policy_is_una
         fallback_query_fingerprint=decision.selected_query_fingerprint,
         prf_policy_version="unavailable",
         generic_explore_version="v1",
+        prf_v1_5_mode="disabled",
     )
     assert lane is not None
     assert lane.lane_type == "generic_explore"
+
+
+def test_build_second_lane_decision_shadow_mode_keeps_generic_selection() -> None:
+    retrieval_plan = _retrieval_plan(query_terms=["python", "ranking"])
+
+    decision, lane = build_second_lane_decision(
+        round_no=2,
+        retrieval_plan=retrieval_plan,
+        query_term_pool=[],
+        sent_query_history=[],
+        prf_decision=None,
+        run_id="run-a",
+        job_intent_fingerprint="job-1",
+        source_plan_version="2",
+        prf_v1_5_mode="shadow",
+        shadow_prf_v1_5_artifact_ref="round.02.retrieval.prf_policy_decision",
+    )
+
+    assert lane is not None
+    assert lane.lane_type == "generic_explore"
+    assert decision.selected_lane_type == "generic_explore"
+    assert decision.prf_v1_5_mode == "shadow"
+    assert decision.shadow_prf_v1_5_artifact_ref == "round.02.retrieval.prf_policy_decision"
 
 
 def test_build_second_lane_decision_selects_prf_probe_when_gate_passes() -> None:
@@ -95,12 +119,14 @@ def test_build_second_lane_decision_selects_prf_probe_when_gate_passes() -> None
         run_id="run-a",
         job_intent_fingerprint="job-1",
         source_plan_version="2",
+        prf_v1_5_mode="mainline",
     )
 
     assert lane is not None
     assert lane.lane_type == "prf_probe"
     assert lane.query_terms == ["python", "LangGraph"]
     assert decision.selected_lane_type == "prf_probe"
+    assert decision.prf_v1_5_mode == "mainline"
     assert decision.prf_gate_passed is True
     assert decision.accepted_prf_expression == "LangGraph"
     assert decision.accepted_prf_term_family_id == "feedback.langgraph"

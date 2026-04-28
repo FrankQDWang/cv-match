@@ -1695,6 +1695,44 @@ def test_round_two_serializes_exploit_and_generic_lane_types(tmp_path: Path) -> 
     assert generic_sent_query["query_fingerprint"] == decision["selected_query_fingerprint"]
 
 
+def test_prf_shadow_runtime_writes_span_and_family_artifacts(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=2,
+        prf_v1_5_mode="shadow",
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=GenericFallbackScorer())
+    tracer = RunTracer(tmp_path / "trace")
+
+    try:
+        job_title, jd, notes = _sample_inputs()
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        asyncio.run(runtime._run_rounds(run_state=run_state, tracer=tracer, progress_callback=None))
+    finally:
+        tracer.close()
+
+    assert _round_artifact(tracer.run_dir, 2, "retrieval", "prf_span_candidates").exists()
+    assert _round_artifact(tracer.run_dir, 2, "retrieval", "prf_expression_families").exists()
+    assert _round_artifact(tracer.run_dir, 2, "retrieval", "prf_policy_decision").exists()
+
+    decision = json.loads(_round_artifact(tracer.run_dir, 2, "retrieval", "second_lane_decision").read_text())
+    snapshot = json.loads(_round_artifact(tracer.run_dir, 2, "retrieval", "replay_snapshot").read_text())
+    queries = json.loads(_round_artifact(tracer.run_dir, 2, "retrieval", "cts_queries").read_text())
+
+    assert decision["prf_v1_5_mode"] == "shadow"
+    assert decision["selected_lane_type"] == "generic_explore"
+    assert decision["shadow_prf_v1_5_artifact_ref"] == "round.02.retrieval.prf_policy_decision"
+    assert [item["lane_type"] for item in queries] == ["exploit", "generic_explore"]
+    assert snapshot["prf_span_model_name"] == "legacy-regex"
+    assert snapshot["prf_span_model_revision"] == "local"
+    assert snapshot["prf_candidate_span_artifact_ref"] == "round.02.retrieval.prf_span_candidates"
+    assert snapshot["prf_expression_family_artifact_ref"] == "round.02.retrieval.prf_expression_families"
+    assert snapshot["prf_policy_decision_artifact_ref"] == "round.02.retrieval.prf_policy_decision"
+
+
 def test_round_two_uses_prf_probe_when_gate_passes(tmp_path: Path) -> None:
     settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True, min_rounds=1, max_rounds=2)
     runtime = WorkflowRuntime(settings)
@@ -1744,6 +1782,35 @@ def test_round_two_uses_prf_probe_when_gate_passes(tmp_path: Path) -> None:
     assert prf_policy["gate_input"]["max_negative_support_rate"] == 0.4
     assert prf_policy["gate_input"]["policy_version"] == "prf-policy-v1"
     assert prf_policy["accepted_expression"]["canonical_expression"] == "LangGraph"
+
+
+def test_prf_v1_5_mainline_can_drive_prf_probe_only_when_enabled(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=2,
+        prf_v1_5_mode="mainline",
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SequenceController(), resume_scorer=PRFProbeScorer())
+    runtime.retrieval_service = PRFProbeCTS()
+    tracer = RunTracer(tmp_path / "trace")
+
+    try:
+        job_title, jd, notes = _sample_inputs()
+        run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
+        asyncio.run(runtime._run_rounds(run_state=run_state, tracer=tracer, progress_callback=None))
+    finally:
+        tracer.close()
+
+    decision = json.loads(_round_artifact(tracer.run_dir, 2, "retrieval", "second_lane_decision").read_text())
+    queries = json.loads(_round_artifact(tracer.run_dir, 2, "retrieval", "cts_queries").read_text())
+
+    assert decision["prf_v1_5_mode"] == "mainline"
+    assert decision["selected_lane_type"] == "prf_probe"
+    assert decision["accepted_prf_expression"] == "LangGraph"
+    assert [item["lane_type"] for item in queries] == ["exploit", "prf_probe"]
 
 
 def test_duplicate_hit_does_not_overwrite_first_hit_attribution(tmp_path: Path) -> None:

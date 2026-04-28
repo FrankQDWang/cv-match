@@ -112,6 +112,7 @@ class AppSettings(BaseSettings):
     candidate_feedback_enabled: bool = True
     candidate_feedback_model: str = "openai-chat:qwen3.5-flash"
     candidate_feedback_reasoning_effort: ReasoningEffort = "off"
+    prf_v1_5_mode: Literal["disabled", "shadow", "mainline"] = "shadow"
     target_company_enabled: bool = False
     company_discovery_enabled: bool = True
     company_discovery_provider: str = "bocha"
