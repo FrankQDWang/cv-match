@@ -17,7 +17,7 @@
 - Create: `src/seektalent/candidate_feedback/span_models.py`
   - Pydantic models for candidate spans, phrase families, proposal metadata, and bakeoff metrics.
 - Create: `src/seektalent/candidate_feedback/span_extractors.py`
-  - Exact-span proposal interfaces, current-regex adapter, and placeholder model-backed extractor entrypoints.
+  - Exact-span proposal interfaces, current-regex adapter, model-backed extractor seam, and fake backend test adapters.
 - Create: `src/seektalent/candidate_feedback/familying.py`
   - Normalization, familying guardrails, confusable checks, and surface-merge helpers.
 - Create: `src/seektalent/candidate_feedback/proposal_runtime.py`
@@ -30,6 +30,12 @@
 
 ### Existing modules to modify
 
+- Modify: `src/seektalent/artifacts/registry.py`
+  - Register PRF v1.5 logical artifacts under the active artifact taxonomy.
+- Modify: `tests/test_artifact_store.py`
+  - Verify resolver and manifest support for PRF v1.5 logical artifacts.
+- Modify: `tests/test_artifact_path_contract.py`
+  - Verify new PRF artifacts do not bypass the artifact boundary.
 - Modify: `src/seektalent/candidate_feedback/models.py`
   - Extend PRF-side models for versioned proposal metadata and artifact refs.
 - Modify: `src/seektalent/candidate_feedback/policy.py`
@@ -37,7 +43,9 @@
 - Modify: `src/seektalent/candidate_feedback/extraction.py`
   - Keep seed selection, retire direct regex-only proposal logic behind adapter seams, and preserve legacy fallback extractor.
 - Modify: `src/seektalent/runtime/orchestrator.py`
-  - Shadow proposal artifacts first, then optional mainline switch hook later.
+  - Shadow proposal artifacts first, then mode-gated mainline switch once promotion criteria are satisfied.
+- Modify: `src/seektalent/runtime/second_lane_runtime.py`
+  - Keep second-lane routing mode-aware so shadow proposal cannot silently change selected query behavior.
 - Modify: `src/seektalent/runtime/rescue_execution_runtime.py`
   - Keep rescue-side expression evidence aligned with new proposal models where needed.
 - Modify: `src/seektalent/models.py`
@@ -48,6 +56,8 @@
   - Preserve legacy behavior where explicitly intended and add integration coverage.
 - Modify: `tests/test_runtime_state_flow.py`
   - Verify new logical artifacts and proposal metadata in round artifacts.
+- Modify: `tests/test_second_lane_runtime.py`
+  - Verify `disabled | shadow | mainline` rollout behavior.
 - Modify: `tests/test_evaluation.py`
   - Verify replay export includes proposal versioning and refs.
 
@@ -138,6 +148,7 @@ Expected: FAIL with `ModuleNotFoundError` or missing model definitions.
 ```python
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -150,24 +161,79 @@ CandidateTermType = Literal[
     "technical_phrase",
     "responsibility_phrase",
     "company_entity",
+    "location",
+    "degree",
+    "compensation",
+    "administrative",
+    "process",
+    "generic",
+    "unknown_high_risk",
     "unknown",
+]
+
+SourceField = Literal[
+    "evidence",
+    "matched_must_haves",
+    "matched_preferences",
+    "strengths",
 ]
 
 
 class CandidateSpan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    span_id: str | None = None
+    span_id: str
     source_resume_id: str
-    source_field: str
-    start_char: int
-    end_char: int
-    raw_surface: str
-    normalized_surface: str
+    source_field: SourceField
+    start_char: int = Field(ge=0)
+    end_char: int = Field(gt=0)
+    raw_surface: str = Field(min_length=1)
+    normalized_surface: str = Field(min_length=1)
     model_label: str
-    model_score: float
+    model_score: float = Field(ge=0.0, le=1.0)
     extractor_schema_version: str
     reject_reasons: list[str] = Field(default_factory=list)
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        source_resume_id: str,
+        source_field: SourceField,
+        start_char: int,
+        end_char: int,
+        raw_surface: str,
+        normalized_surface: str,
+        model_label: str,
+        model_score: float,
+        extractor_schema_version: str,
+        reject_reasons: list[str] | None = None,
+    ) -> "CandidateSpan":
+        span_id = sha256(
+            "|".join(
+                [
+                    source_resume_id,
+                    source_field,
+                    str(start_char),
+                    str(end_char),
+                    raw_surface,
+                    extractor_schema_version,
+                ]
+            ).encode("utf-8")
+        ).hexdigest()[:24]
+        return cls(
+            span_id=f"span_{span_id}",
+            source_resume_id=source_resume_id,
+            source_field=source_field,
+            start_char=start_char,
+            end_char=end_char,
+            raw_surface=raw_surface,
+            normalized_surface=normalized_surface,
+            model_label=model_label,
+            model_score=model_score,
+            extractor_schema_version=extractor_schema_version,
+            reject_reasons=reject_reasons or [],
+        )
 
 
 class PhraseFamily(BaseModel):
@@ -232,6 +298,17 @@ class PRFProposalVersionVector(BaseModel):
 ```
 
 Add these to the existing PRF-side models in `src/seektalent/candidate_feedback/models.py` rather than creating parallel ad hoc dicts later.
+
+- [ ] **Step 4.5: Unify phrase families with the PRF gate input model**
+
+Do not let `PhraseFamily`, `FeedbackCandidateExpression`, and `PRFPolicyDecision` drift into separate family identities.
+
+Pick one implementation direction and make it explicit:
+
+- either `PhraseFamily` becomes the direct PRF gate input model
+- or define a required adapter from `PhraseFamily` to the existing PRF gate input model
+
+The accepted family id must match the persisted family artifact row.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -337,7 +414,24 @@ class LegacyRegexSpanExtractor:
     """Adapter that converts current regex-only phrase proposal into CandidateSpan rows."""
 
     def extract(self, *, resume_id: str, source_field: str, texts: list[str]) -> list[CandidateSpan]:
-        ...
+        spans: list[CandidateSpan] = []
+        for text in texts:
+            for surface in extract_surface_terms([text]):
+                for start_char, end_char in find_exact_surface_occurrences(text, surface):
+                    spans.append(
+                        CandidateSpan.build(
+                            source_resume_id=resume_id,
+                            source_field=source_field,
+                            start_char=start_char,
+                            end_char=end_char,
+                            raw_surface=surface,
+                            normalized_surface=surface,
+                            model_label="legacy_regex_surface",
+                            model_score=1.0,
+                            extractor_schema_version="legacy-regex-v1",
+                        )
+                    )
+        return spans
 ```
 
 The adapter should reuse the current regex surface extraction from `extraction.py` so the bakeoff can compare:
@@ -346,6 +440,15 @@ The adapter should reuse the current regex surface extraction from `extraction.p
 - model-backed proposal
 
 without duplicating heuristics in test fixtures.
+
+Add tests that lock the original Chinese failures:
+
+- `掌握至少一种` rejects
+- `引擎` rejects
+- `精通` rejects
+- `及主流` rejects
+- `框架` rejects
+- `ClickHouse`, `FastAPI`, `Flask`, and `Django` remain eligible when grounded
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -361,6 +464,95 @@ git add src/seektalent/candidate_feedback/span_extractors.py \
   tests/test_candidate_feedback_span_models.py \
   tests/test_candidate_feedback.py
 git commit -m "feat: add extractive span validation and legacy adapter"
+```
+
+## Task 2.5: Implement Model-Backed Span Extractor Seam
+
+**Files:**
+- Modify: `src/seektalent/candidate_feedback/span_extractors.py`
+- Modify: `tests/test_candidate_feedback.py`
+
+- [ ] **Step 1: Write the failing model-backend seam tests**
+
+```python
+def test_fake_model_backend_surfaces_are_aligned_back_to_exact_offsets():
+    text = "精通Python及主流Web框架（FastAPI/Flask/Django）"
+    backend = FakeSpanModelBackend(
+        outputs=[{"label": "tool_or_framework", "surface": "FastAPI"}]
+    )
+    extractor = GLiNER2SpanExtractor(backend=backend, schema_version="gliner2-schema-v1")
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+    assert spans[0].raw_surface == "FastAPI"
+    assert text[spans[0].start_char : spans[0].end_char] == "FastAPI"
+
+
+def test_model_surface_without_exact_match_rejects_as_non_extractive():
+    text = "掌握至少一种OLAP引擎（如Doris/ClickHouse）"
+    backend = FakeSpanModelBackend(
+        outputs=[{"label": "technical_phrase", "surface": "Doris OLAP"}]
+    )
+    extractor = GLiNER2SpanExtractor(backend=backend, schema_version="gliner2-schema-v1")
+    spans = extractor.extract(
+        resume_id="resume-1",
+        source_field="matched_must_haves",
+        texts=[text],
+    )
+    assert spans == []
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `uv run pytest -q tests/test_candidate_feedback.py -k 'FakeSpanModelBackend or GLiNER2SpanExtractor'`
+
+Expected: FAIL with missing backend seam.
+
+- [ ] **Step 3: Implement an injectable model-backed extractor**
+
+```python
+class SpanModelBackend(Protocol):
+    def extract(self, *, text: str, labels: list[str]) -> list[dict[str, object]]:
+        raise NotImplementedError
+
+
+class FakeSpanModelBackend:
+    def __init__(self, outputs: list[dict[str, object]]) -> None:
+        self.outputs = outputs
+
+    def extract(self, *, text: str, labels: list[str]) -> list[dict[str, object]]:
+        return list(self.outputs)
+
+
+class GLiNER2SpanExtractor:
+    def __init__(self, *, backend: SpanModelBackend, schema_version: str) -> None:
+        self.backend = backend
+        self.schema_version = schema_version
+```
+
+Required behavior:
+
+- model may return raw surfaces only
+- extractor deterministically aligns each surface back to exact source offsets
+- if multiple exact matches exist, use one documented deterministic rule
+- if no exact match exists, emit no accepted span
+- no network download inside request/runtime path
+- tests use fake backend only
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `uv run pytest -q tests/test_candidate_feedback.py -k 'FakeSpanModelBackend or GLiNER2SpanExtractor'`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/seektalent/candidate_feedback/span_extractors.py \
+  tests/test_candidate_feedback.py
+git commit -m "feat: add prf model-backed span extractor seam"
 ```
 
 ## Task 3: Implement Guarded Familying Without Lexicons
@@ -382,6 +574,32 @@ from seektalent.candidate_feedback.span_models import CandidateSpan
 def test_canonicalize_surface_collapses_separator_variants():
     assert canonicalize_surface("Flink CDC") == canonicalize_surface("flink-cdc")
     assert canonicalize_surface("FlinkCDC") != ""
+
+
+def test_should_merge_camel_case_variant_flink_cdc():
+    left = CandidateSpan.build(
+        source_resume_id="resume-1",
+        source_field="evidence",
+        start_char=0,
+        end_char=9,
+        raw_surface="Flink CDC",
+        normalized_surface="Flink CDC",
+        model_label="technical_phrase",
+        model_score=0.9,
+        extractor_schema_version="schema-v1",
+    )
+    right = CandidateSpan.build(
+        source_resume_id="resume-2",
+        source_field="evidence",
+        start_char=0,
+        end_char=8,
+        raw_surface="FlinkCDC",
+        normalized_surface="FlinkCDC",
+        model_label="technical_phrase",
+        model_score=0.89,
+        extractor_schema_version="schema-v1",
+    )
+    assert should_merge_spans(left, right, embedding_similarity=0.95) == (True, "camel_case_variant")
 
 
 def test_should_merge_spans_accepts_separator_or_case_variants():
@@ -434,6 +652,58 @@ def test_should_merge_spans_rejects_confusable_neighbors():
         extractor_schema_version="schema-v1",
     )
     assert should_merge_spans(left, right, embedding_similarity=0.96) == (False, "confusable_neighbor")
+
+
+def test_should_merge_spans_rejects_react_vs_react_native():
+    left = CandidateSpan.build(
+        source_resume_id="resume-1",
+        source_field="evidence",
+        start_char=0,
+        end_char=5,
+        raw_surface="React",
+        normalized_surface="React",
+        model_label="skill",
+        model_score=0.9,
+        extractor_schema_version="schema-v1",
+    )
+    right = CandidateSpan.build(
+        source_resume_id="resume-2",
+        source_field="evidence",
+        start_char=0,
+        end_char=12,
+        raw_surface="React Native",
+        normalized_surface="React Native",
+        model_label="skill",
+        model_score=0.88,
+        extractor_schema_version="schema-v1",
+    )
+    assert should_merge_spans(left, right, embedding_similarity=0.96) == (False, "confusable_neighbor")
+
+
+def test_should_merge_spans_rejects_chinese_confusable_neighbors():
+    left = CandidateSpan.build(
+        source_resume_id="resume-1",
+        source_field="evidence",
+        start_char=0,
+        end_char=4,
+        raw_surface="数据仓库",
+        normalized_surface="数据仓库",
+        model_label="technical_phrase",
+        model_score=0.9,
+        extractor_schema_version="schema-v1",
+    )
+    right = CandidateSpan.build(
+        source_resume_id="resume-2",
+        source_field="evidence",
+        start_char=0,
+        end_char=4,
+        raw_surface="数据平台",
+        normalized_surface="数据平台",
+        model_label="technical_phrase",
+        model_score=0.88,
+        extractor_schema_version="schema-v1",
+    )
+    assert should_merge_spans(left, right, embedding_similarity=0.95) == (False, "confusable_neighbor")
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -480,6 +750,7 @@ def should_merge_spans(
 Implement `_is_confusable_neighbor()` conservatively. Start with explicit guards for:
 
 - prefix-only containment like `java` vs `javascript`
+- `react` vs `react native`
 - short-platform overlaps
 - Chinese short phrases with low character-overlap ratio
 
@@ -499,13 +770,73 @@ git add src/seektalent/candidate_feedback/familying.py \
 git commit -m "feat: add guarded phrase familying"
 ```
 
+## Task 3.5: Register PRF v1.5 Logical Artifacts
+
+**Files:**
+- Modify: `src/seektalent/artifacts/registry.py`
+- Modify: `tests/test_artifact_store.py`
+- Modify: `tests/test_artifact_path_contract.py`
+
+- [ ] **Step 1: Write the failing registry tests**
+
+```python
+def test_prf_v1_5_logical_artifacts_are_registered():
+    session = store.create_root(
+        kind="run",
+        display_name="seek talent workflow run",
+        producer="WorkflowRuntime",
+    )
+    session.write_json("round.02.retrieval.prf_span_candidates", [{"span_id": "span-1"}])
+    session.write_json("round.02.retrieval.prf_expression_families", [{"family_id": "feedback.flink-cdc"}])
+    session.write_json("round.02.retrieval.prf_policy_decision", {"gate_passed": False})
+
+    manifest = session.load_manifest()
+    assert "round.02.retrieval.prf_span_candidates" in manifest.logical_artifacts
+    assert "round.02.retrieval.prf_expression_families" in manifest.logical_artifacts
+    assert "round.02.retrieval.prf_policy_decision" in manifest.logical_artifacts
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `uv run pytest -q tests/test_artifact_store.py tests/test_artifact_path_contract.py -k prf_v1_5`
+
+Expected: FAIL because mappings do not exist yet.
+
+- [ ] **Step 3: Register the three logical artifacts**
+
+Add mappings:
+
+- `round.XX.retrieval.prf_span_candidates`
+  - `rounds/XX/retrieval/prf_span_candidates.json`
+- `round.XX.retrieval.prf_expression_families`
+  - `rounds/XX/retrieval/prf_expression_families.json`
+- `round.XX.retrieval.prf_policy_decision`
+  - `rounds/XX/retrieval/prf_policy_decision.json`
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `uv run pytest -q tests/test_artifact_store.py tests/test_artifact_path_contract.py -k prf_v1_5`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/seektalent/artifacts/registry.py \
+  tests/test_artifact_store.py \
+  tests/test_artifact_path_contract.py
+git commit -m "feat: register prf v1.5 logical artifacts"
+```
+
 ## Task 4: Add Proposal Runtime And Typed Artifacts
 
 **Files:**
 - Create: `src/seektalent/candidate_feedback/proposal_runtime.py`
 - Modify: `src/seektalent/runtime/orchestrator.py`
+- Modify: `src/seektalent/runtime/second_lane_runtime.py`
 - Modify: `src/seektalent/models.py`
 - Modify: `tests/test_runtime_state_flow.py`
+- Modify: `tests/test_second_lane_runtime.py`
 - Modify: `tests/test_candidate_feedback.py`
 
 - [ ] **Step 1: Write the failing runtime-artifact tests**
@@ -515,7 +846,7 @@ def test_prf_shadow_runtime_writes_span_and_family_artifacts(tmp_path):
     run = build_test_run(tmp_path)
     runtime = build_runtime_for_test(run)
 
-    runtime._run_rounds(...)
+    runtime._run_rounds(max_rounds=2)
 
     round_dir = run.round_dir(2)
     assert resolver.resolve("round.02.retrieval.prf_span_candidates").exists()
@@ -527,13 +858,95 @@ def test_replay_snapshot_includes_prf_version_vector_and_artifact_refs(tmp_path)
     run = build_test_run(tmp_path)
     runtime = build_runtime_for_test(run)
 
-    runtime._run_rounds(...)
+    runtime._run_rounds(max_rounds=2)
 
     snapshot = json.loads(resolver.resolve("round.02.retrieval.replay_snapshot").read_text())
     assert snapshot["prf_span_model_name"]
     assert snapshot["prf_span_model_revision"]
     assert snapshot["prf_candidate_span_artifact_ref"]
     assert snapshot["prf_expression_family_artifact_ref"]
+
+
+def test_support_counts_distinct_seed_resumes_not_span_occurrences():
+    families = build_phrase_families(
+        positive_spans=[
+            make_span("resume-1", "evidence", "Flink CDC"),
+            make_span("resume-1", "matched_must_haves", "Flink CDC"),
+            make_span("resume-2", "evidence", "Flink CDC"),
+        ],
+        negative_spans=[],
+    )
+    family = families["feedback.flink-cdc"]
+    assert family.positive_seed_support_count == 2
+
+
+def test_negative_support_counts_distinct_negative_resumes():
+    families = build_phrase_families(
+        positive_spans=[make_span("resume-1", "evidence", "Flink CDC")],
+        negative_spans=[
+            make_span("resume-n1", "evidence", "Flink CDC"),
+            make_span("resume-n1", "matched_preferences", "Flink CDC"),
+            make_span("resume-n2", "evidence", "Flink CDC"),
+        ],
+    )
+    family = families["feedback.flink-cdc"]
+    assert family.negative_support_count == 2
+
+
+def test_prf_v1_5_shadow_does_not_change_second_lane_selection():
+    settings.prf_v1_5_mode = "shadow"
+    retrieval_plan = _retrieval_plan(query_terms=["flink", "clickhouse"])
+    decision, _lane = build_second_lane_decision(
+        round_no=2,
+        retrieval_plan=retrieval_plan,
+        query_term_pool=[],
+        sent_query_history=[],
+        prf_decision=None,
+        run_id="run-a",
+        job_intent_fingerprint="job-1",
+        source_plan_version="2",
+    )
+    assert decision.selected_lane_type == "generic_explore"
+    assert decision.shadow_prf_v1_5_artifact_ref is not None
+
+
+def test_prf_v1_5_mainline_can_drive_prf_probe_only_when_enabled():
+    settings.prf_v1_5_mode = "mainline"
+    retrieval_plan = _retrieval_plan(query_terms=["flink", "clickhouse"])
+    prf_decision = build_prf_policy_decision(
+        PRFGateInput(
+            round_no=2,
+            seed_resume_ids=["seed-1", "seed-2"],
+            seed_count=2,
+            negative_resume_ids=[],
+            candidate_expressions=[
+                FeedbackCandidateExpression(
+                    term_family_id="feedback.flink-cdc",
+                    canonical_expression="Flink CDC",
+                    surface_forms=["Flink CDC"],
+                    candidate_term_type="technical_phrase",
+                    source_seed_resume_ids=["seed-1", "seed-2"],
+                    positive_seed_support_count=2,
+                    negative_support_count=0,
+                )
+            ],
+            candidate_expression_count=1,
+            tried_term_family_ids=[],
+            tried_query_fingerprints=[],
+            policy_version="prf-policy-v1",
+        )
+    )
+    decision, _lane = build_second_lane_decision(
+        round_no=2,
+        retrieval_plan=retrieval_plan,
+        query_term_pool=[],
+        sent_query_history=[],
+        prf_decision=prf_decision,
+        run_id="run-a",
+        job_intent_fingerprint="job-1",
+        source_plan_version="2",
+    )
+    assert decision.selected_lane_type == "prf_probe"
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -545,10 +958,10 @@ Expected: FAIL with missing artifacts or snapshot fields.
 - [ ] **Step 3: Implement proposal runtime output contract**
 
 ```python
-def build_prf_proposal_artifacts(...):
+def build_prf_proposal_artifacts(*, seed_resumes, negative_resumes, metadata, mode):
     return {
-        "candidate_spans": [...],
-        "phrase_families": [...],
+        "candidate_spans": candidate_spans,
+        "phrase_families": phrase_families,
         "proposal_metadata": metadata,
         "artifact_refs": refs,
     }
@@ -561,6 +974,10 @@ The runtime must:
 - persist candidate spans under `round.XX.retrieval.prf_span_candidates`
 - persist phrase families under `round.XX.retrieval.prf_expression_families`
 - persist the final PRF policy decision under `round.XX.retrieval.prf_policy_decision`
+- honor rollout mode:
+  - `disabled`: no v1.5 artifacts
+  - `shadow`: artifacts only, no change to selected provider query
+  - `mainline`: v1.5 may feed second-lane selection
 
 - [ ] **Step 4: Extend replay snapshot and second-lane metadata**
 
@@ -593,8 +1010,10 @@ Expected: PASS
 ```bash
 git add src/seektalent/candidate_feedback/proposal_runtime.py \
   src/seektalent/runtime/orchestrator.py \
+  src/seektalent/runtime/second_lane_runtime.py \
   src/seektalent/models.py \
   tests/test_runtime_state_flow.py \
+  tests/test_second_lane_runtime.py \
   tests/test_candidate_feedback.py
 git commit -m "feat: add prf proposal runtime artifacts"
 ```
@@ -632,6 +1051,25 @@ def test_ambiguous_company_or_product_entity_is_rejected_by_default():
     )
     decision = build_prf_policy_decision(make_policy_input([family]))
     assert decision.gate_passed is False
+
+
+def test_strengths_only_span_is_shadow_hint_not_promotable():
+    family = make_phrase_family(
+        canonical_surface="Flink CDC",
+        candidate_term_type="technical_phrase",
+        positive_seed_support_count=2,
+        negative_support_count=0,
+        source_fields=["strengths"],
+    )
+    decision = build_prf_policy_decision(make_policy_input([family]))
+    assert "derived_summary_only_grounding" in decision.candidate_expressions[0].reject_reasons
+
+
+def test_policy_gate_does_not_mutate_persisted_phrase_family_objects():
+    original = make_phrase_family(canonical_surface="Databricks", reject_reasons=[])
+    frozen = original.model_copy(deep=True)
+    build_prf_policy_decision(make_policy_input([original]))
+    assert original.model_dump(mode="json") == frozen.model_dump(mode="json")
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -646,14 +1084,16 @@ Expected: FAIL because these reject reasons are not enforced yet.
 if expression.candidate_term_type == "responsibility_phrase":
     reject_reasons.append("shadow_only_responsibility_phrase")
 
-if "ambiguous_company_or_product_entity" in reject_reasons:
-    ...
+if "ambiguous_company_or_product_entity" in expression.reject_reasons:
+    reject_reasons.append("ambiguous_company_or_product_entity")
 ```
 
 Keep the logic simple:
 
 - `responsibility_phrase` always rejects in Phase 1.5
 - ambiguity reject reason blocks promotion
+- `strengths`-only grounding blocks promotion
+- gate evaluates copies, not persisted proposal objects in place
 - no attempt to rescue ambiguity with extra model calls
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -684,23 +1124,40 @@ git commit -m "feat: enforce prf responsibility and ambiguity guards"
 ```python
 from seektalent.candidate_feedback.bakeoff import (
     PhraseQualityLabel,
+    evaluate_promotion_criteria,
     score_phrase_quality_rows,
 )
+from seektalent.evaluation import export_replay_rows
 
 
 def test_phrase_quality_rows_track_denominators_and_blockers():
     rows = [
-        PhraseQualityLabel(extractor="regex", label="template_fragment", accepted=False),
-        PhraseQualityLabel(extractor="model", label="query_material", accepted=True),
-        PhraseQualityLabel(extractor="model", label="company_leakage", accepted=True),
+        PhraseQualityLabel(extractor="regex", slice_id="slice-1", language_bucket="chinese", unit_type="span", label="template_fragment", accepted=False),
+        PhraseQualityLabel(extractor="model", slice_id="slice-1", language_bucket="chinese", unit_type="accepted_family", label="query_material", accepted=True),
+        PhraseQualityLabel(extractor="model", slice_id="slice-1", language_bucket="chinese", unit_type="accepted_family", label="company_leakage", accepted=True, blocker=True),
     ]
     metrics = score_phrase_quality_rows(rows)
-    assert metrics["model"]["accepted_count"] == 2
+    assert metrics["model"]["accepted_family_count"] == 2
     assert metrics["model"]["blocker_count"] == 1
 
 
+def test_promotion_criteria_require_better_template_fragment_rate_and_no_blockers():
+    current = {
+        "template_fragment_rate": 0.30,
+        "query_material_precision": 0.70,
+        "blocker_count": 0,
+    }
+    candidate = {
+        "template_fragment_rate": 0.10,
+        "query_material_precision": 0.72,
+        "blocker_count": 0,
+    }
+    decision = evaluate_promotion_criteria(current, candidate)
+    assert decision.allowed is True
+
+
 def test_replay_export_includes_prf_proposal_refs(tmp_path):
-    exported = export_replay_rows(...)
+    exported = export_replay_rows(run_dirs=[tmp_path / "artifacts" / "runs" / "2026" / "04" / "28" / "run_01TEST00000000000000000000"])
     row = exported[0]
     assert row["prf_span_model_name"]
     assert row["prf_candidate_span_artifact_ref"]
@@ -718,6 +1175,9 @@ Expected: FAIL with missing bakeoff helpers and replay fields.
 ```python
 class PhraseQualityLabel(BaseModel):
     extractor: str
+    slice_id: str
+    language_bucket: Literal["english", "chinese", "mixed"]
+    unit_type: Literal["span", "family", "accepted_family"]
     label: Literal[
         "query_material",
         "template_fragment",
@@ -726,10 +1186,45 @@ class PhraseQualityLabel(BaseModel):
         "non_extractive",
     ]
     accepted: bool
+    span_id: str | None = None
+    family_id: str | None = None
+    blocker: bool = False
 
 
-def score_phrase_quality_rows(rows: list[PhraseQualityLabel]) -> dict[str, dict[str, int]]:
-    ...
+def score_phrase_quality_rows(rows: list[PhraseQualityLabel]) -> dict[str, dict[str, float]]:
+    grouped: dict[str, list[PhraseQualityLabel]] = {}
+    for row in rows:
+        grouped.setdefault(row.extractor, []).append(row)
+
+    metrics: dict[str, dict[str, float]] = {}
+    for extractor, extractor_rows in grouped.items():
+        candidate_span_count = sum(1 for row in extractor_rows if row.unit_type == "span")
+        family_count = sum(1 for row in extractor_rows if row.unit_type == "family")
+        accepted_family_rows = [row for row in extractor_rows if row.unit_type == "accepted_family"]
+        metrics[extractor] = {
+            "candidate_span_count": candidate_span_count,
+            "family_count": family_count,
+            "accepted_family_count": len(accepted_family_rows),
+            "query_material_precision": _safe_rate(
+                numerator=sum(1 for row in accepted_family_rows if row.label == "query_material"),
+                denominator=len(accepted_family_rows),
+            ),
+            "template_fragment_rate": _safe_rate(
+                numerator=sum(1 for row in extractor_rows if row.label == "template_fragment"),
+                denominator=candidate_span_count,
+            ),
+            "generic_boilerplate_rate": _safe_rate(
+                numerator=sum(1 for row in extractor_rows if row.label == "generic_boilerplate"),
+                denominator=candidate_span_count,
+            ),
+            "blocker_count": sum(1 for row in extractor_rows if row.blocker),
+        }
+    return metrics
+
+
+class PromotionDecision(BaseModel):
+    allowed: bool
+    reject_reasons: list[str]
 ```
 
 Bakeoff output must make denominators explicit:
@@ -738,6 +1233,10 @@ Bakeoff output must make denominators explicit:
 - total families
 - accepted families
 - blocker counts
+- per-language-bucket slice counts
+- query-material precision
+- template-fragment rate
+- generic-boilerplate rate
 
 - [ ] **Step 4: Extend replay export with proposal refs**
 
@@ -783,15 +1282,23 @@ git commit -m "feat: add prf extractor bakeoff rubric and replay export"
 def test_prf_model_dependency_settings_are_explicit():
     settings = AppSettings()
     assert settings.prf_span_model_name
-    assert settings.prf_span_model_revision
     assert settings.prf_embedding_model_name
-    assert settings.prf_embedding_model_revision
     assert settings.prf_allow_remote_code is False
+
+
+def test_mainline_mode_requires_pinned_model_revisions():
+    settings = AppSettings(prf_v1_5_mode="mainline")
+    assert model_dependency_gate_allows_mainline(settings) is False
+
+
+def test_shadow_mode_falls_back_to_legacy_when_model_dependency_gate_fails():
+    settings = AppSettings(prf_v1_5_mode="shadow", prf_span_model_revision="")
+    assert model_dependency_gate_allows_mainline(settings) is False
 
 
 def test_model_unavailable_falls_back_to_legacy_regex_extractor():
     runtime = build_runtime_for_test(prf_span_model_available=False)
-    proposal = runtime._build_prf_proposal(...)
+    proposal = runtime._build_prf_proposal(seed_resumes=[], negative_resumes=[], round_no=2)
     assert proposal.metadata.extractor_version == "legacy-regex-v1"
 ```
 
@@ -804,25 +1311,38 @@ Expected: FAIL with missing settings or fallback behavior.
 - [ ] **Step 3: Add explicit PRF model settings**
 
 ```python
+prf_v1_5_mode: Literal["disabled", "shadow", "mainline"] = "shadow"
 prf_span_model_name: str = "fastino/gliner2-multi-v1"
 prf_span_model_revision: str = ""
 prf_span_tokenizer_revision: str = ""
 prf_embedding_model_name: str = "Alibaba-NLP/gte-multilingual-base"
 prf_embedding_model_revision: str = ""
 prf_allow_remote_code: bool = False
+prf_require_pinned_models_for_mainline: bool = True
+prf_remote_code_audit_revision: str | None = None
 prf_familying_embedding_threshold: float = 0.92
 ```
 
 Keep the settings narrow. Do not add speculative knobs beyond what the spec requires.
 
+Empty revisions are acceptable only in `shadow` mode because shadow mode is allowed to fall back to `legacy-regex-v1`. `mainline` mode must not pass the dependency gate with empty revisions.
+
 - [ ] **Step 4: Wire fallback to legacy extractor when model dependency gate fails**
 
 ```python
 if not proposal_backend_available(settings):
-    return build_legacy_regex_proposal(...)
+    return build_legacy_regex_proposal(seed_resumes=seed_resumes, negative_resumes=negative_resumes)
 ```
 
 Do not add broad retry logic. A single explicit fallback is enough.
+
+Mainline mode must fail the dependency gate unless:
+
+- span model revision is pinned
+- tokenizer revision is pinned
+- embedding model revision is pinned
+- schema version is pinned
+- remote code policy is satisfied
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -933,9 +1453,12 @@ git commit -m "test: verify prf v1.5 extractor integration"
 - Exact extractive enforcement and source grounding are implemented in Task 2.
 - Ambiguous company/product conservatism and responsibility shadow-only behavior are implemented in Task 5.
 - Familying guardrails are implemented in Task 3.
+- Model-backed extractor seam is implemented in Task 2.5.
+- Typed logical artifact registry and resolver integration are implemented in Task 3.5.
+- Shadow/mainline rollout isolation is implemented in Tasks 4 and 7.
 - Model dependency gate and fallback behavior are implemented in Task 7.
-- Offline bakeoff rubric and promotion criteria hooks are implemented in Task 6.
-- Typed logical artifact integration is implemented in Tasks 4 and 8.
+- Offline bakeoff rubric, distinct-support semantics, and promotion criteria hooks are implemented in Tasks 4 and 6.
+- Typed logical artifact documentation is implemented in Task 8.
 
 ## Placeholder Scan
 
