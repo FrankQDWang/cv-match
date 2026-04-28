@@ -61,6 +61,8 @@ def round_entry(*, round_no: int, stage: str, filename: str, content_type: str) 
 ROUND_CONTENT_TYPES = {
     "query_resume_hits": "application/json",
     "replay_snapshot": "application/json",
+    "prf_span_candidates": "application/json",
+    "prf_expression_families": "application/json",
     "second_lane_decision": "application/json",
     "prf_policy_decision": "application/json",
     "controller_decision": "application/json",
