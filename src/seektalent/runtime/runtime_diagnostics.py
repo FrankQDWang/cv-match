@@ -545,9 +545,6 @@ def collect_llm_schema_pressure(run_dir: Path) -> list[dict[str, object]]:
         "round.*.scoring.tui_summary_call",
         "round.*.controller.repair_controller_call",
         "round.*.reflection.repair_reflection_call",
-        "round.*.retrieval.company_discovery_plan_call",
-        "round.*.retrieval.company_discovery_extract_call",
-        "round.*.retrieval.company_discovery_reduce_call",
         "round.*.reflection.reflection_call",
     ]:
         for path in resolver.resolve_many(logical_name):
