@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from pydantic import ValidationError
 
 from seektalent.evaluation import (
     AsyncJudgeLimiter,
@@ -263,6 +264,19 @@ def test_export_replay_rows_tolerates_legacy_company_rescue_metadata(tmp_path: P
     store = ArtifactStore(tmp_path / "artifacts")
     session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
     session.write_json(
+        "runtime.run_config",
+        {
+            "prompt_hashes": {
+                "requirements": "requirements-hash",
+                "company_discovery_plan": "legacy-plan-hash",
+            },
+            "settings": {
+                "candidate_feedback_enabled": True,
+                "company_discovery_enabled": True,
+            },
+        },
+    )
+    session.write_json(
         "round.02.retrieval.replay_snapshot",
         {
             "run_id": "run-legacy",
@@ -329,6 +343,141 @@ def test_export_replay_rows_tolerates_legacy_company_rescue_metadata(tmp_path: P
             "prf_policy_decision_artifact_ref": "round.02.retrieval.prf_policy_decision",
         }
     ]
+
+
+def test_export_replay_rows_rejects_legacy_company_metadata_in_active_run(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    session.write_json(
+        "round.02.retrieval.replay_snapshot",
+        {
+            "run_id": "run-active-regression",
+            "round_no": 2,
+            "retrieval_snapshot_id": "run-active-regression:round:2",
+            "second_lane_query_fingerprint": "lane-active",
+            "provider_request": {"search_attempts": [{"page": 1, "query": "python"}]},
+            "provider_response_resume_ids": ["resume-1"],
+            "provider_response_raw_rank": ["resume-1"],
+            "dedupe_version": "v1",
+            "scoring_model_version": "judge-model",
+            "query_plan_version": "2",
+            "prf_gate_version": "prf-v1",
+            "generic_explore_version": "v1",
+            "prf_model_backend": "legacy",
+            "prf_span_model_name": "legacy-regex",
+            "prf_span_model_revision": "local",
+            "prf_span_tokenizer_revision": "local",
+            "prf_embedding_model_name": "none",
+            "prf_embedding_model_revision": "none",
+            "prf_candidate_span_artifact_ref": "round.02.retrieval.prf_span_candidates",
+            "prf_expression_family_artifact_ref": "round.02.retrieval.prf_expression_families",
+            "prf_policy_decision_artifact_ref": "round.02.retrieval.prf_policy_decision",
+            "lane_type": "company_rescue",
+            "company_rescue_policy_version": "company-rescue-v1",
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        export_replay_rows(run_dir=session.root)
+
+
+def test_export_replay_rows_rejects_unrelated_extra_fields_even_for_legacy_company_runs(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    session.write_json(
+        "runtime.run_config",
+        {
+            "prompt_hashes": {
+                "requirements": "requirements-hash",
+                "company_discovery_plan": "legacy-plan-hash",
+            },
+            "settings": {
+                "candidate_feedback_enabled": True,
+                "company_discovery_enabled": True,
+            },
+        },
+    )
+    session.write_json(
+        "round.02.retrieval.replay_snapshot",
+        {
+            "run_id": "run-legacy-bad-extra",
+            "round_no": 2,
+            "retrieval_snapshot_id": "run-legacy-bad-extra:round:2",
+            "second_lane_query_fingerprint": "lane-legacy",
+            "provider_request": {"search_attempts": [{"page": 1, "query": "python"}]},
+            "provider_response_resume_ids": ["resume-1"],
+            "provider_response_raw_rank": ["resume-1"],
+            "dedupe_version": "v1",
+            "scoring_model_version": "judge-model",
+            "query_plan_version": "2",
+            "prf_gate_version": "prf-v1",
+            "generic_explore_version": "v1",
+            "prf_model_backend": "legacy",
+            "prf_span_model_name": "legacy-regex",
+            "prf_span_model_revision": "local",
+            "prf_span_tokenizer_revision": "local",
+            "prf_embedding_model_name": "none",
+            "prf_embedding_model_revision": "none",
+            "prf_candidate_span_artifact_ref": "round.02.retrieval.prf_span_candidates",
+            "prf_expression_family_artifact_ref": "round.02.retrieval.prf_expression_families",
+            "prf_policy_decision_artifact_ref": "round.02.retrieval.prf_policy_decision",
+            "lane_type": "company_rescue",
+            "company_rescue_policy_version": "company-rescue-v1",
+            "unknown_future_field": "should-fail",
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        export_replay_rows(run_dir=session.root)
+
+
+def test_export_replay_rows_does_not_treat_disabled_company_flags_as_legacy_marker(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    session.write_json(
+        "runtime.run_config",
+        {
+            "prompt_hashes": {
+                "requirements": "requirements-hash",
+            },
+            "settings": {
+                "candidate_feedback_enabled": True,
+                "company_discovery_enabled": False,
+                "target_company_enabled": False,
+            },
+        },
+    )
+    session.write_json(
+        "round.02.retrieval.replay_snapshot",
+        {
+            "run_id": "run-disabled-flags",
+            "round_no": 2,
+            "retrieval_snapshot_id": "run-disabled-flags:round:2",
+            "second_lane_query_fingerprint": "lane-disabled",
+            "provider_request": {"search_attempts": [{"page": 1, "query": "python"}]},
+            "provider_response_resume_ids": ["resume-1"],
+            "provider_response_raw_rank": ["resume-1"],
+            "dedupe_version": "v1",
+            "scoring_model_version": "judge-model",
+            "query_plan_version": "2",
+            "prf_gate_version": "prf-v1",
+            "generic_explore_version": "v1",
+            "prf_model_backend": "legacy",
+            "prf_span_model_name": "legacy-regex",
+            "prf_span_model_revision": "local",
+            "prf_span_tokenizer_revision": "local",
+            "prf_embedding_model_name": "none",
+            "prf_embedding_model_revision": "none",
+            "prf_candidate_span_artifact_ref": "round.02.retrieval.prf_span_candidates",
+            "prf_expression_family_artifact_ref": "round.02.retrieval.prf_expression_families",
+            "prf_policy_decision_artifact_ref": "round.02.retrieval.prf_policy_decision",
+            "lane_type": "company_rescue",
+            "company_rescue_policy_version": "company-rescue-v1",
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        export_replay_rows(run_dir=session.root)
 
 
 def test_evaluate_run_registers_evaluation_outputs_in_run_manifest(
