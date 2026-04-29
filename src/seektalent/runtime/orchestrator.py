@@ -1298,7 +1298,14 @@ class WorkflowRuntime:
         if not candidates:
             return []
 
+        class _NoOpSession:
+            def register_path(self, *args: object, **kwargs: object) -> None:
+                del args, kwargs
+
         class _NoOpTracer:
+            def __init__(self) -> None:
+                self.session = _NoOpSession()
+
             def emit(self, *args: object, **kwargs: object) -> None:
                 del args, kwargs
 

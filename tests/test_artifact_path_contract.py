@@ -9,11 +9,39 @@ from seektalent.tracing import RunTracer
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ACTIVE_SOURCE_ROOT = ROOT / "src" / "seektalent"
-ACTIVE_SOURCE_TOLERANCE_FILES = {
-    "src/seektalent/artifacts/registry.py",
-    "src/seektalent/evaluation.py",
-    "src/seektalent/runtime/runtime_diagnostics.py",
+ACTIVE_SCAN_ROOTS = [
+    ROOT / "src" / "seektalent",
+    ROOT / "tools",
+    ROOT / "experiments",
+]
+ACTIVE_TEXT_PATHS = [
+    ROOT / "src/seektalent/prompts/requirements.md",
+]
+ALLOWED_COMPANY_SNIPPETS_BY_FILE = {
+    "src/seektalent/artifacts/registry.py": [
+        "company_discovery_plan_call",
+        "company_discovery_extract_call",
+        "company_discovery_reduce_call",
+    ],
+    "src/seektalent/evaluation.py": [
+        "company_rescue_policy_version",
+        '"company_rescue_policy_version" in payload',
+        'payload.get("lane_type") == "company_rescue"',
+        'if any("company_discovery" in logical_name for logical_name in resolver.manifest.logical_artifacts):',
+        'if any("company_discovery" in key for key in prompt_hashes):',
+        'return settings.get("company_discovery_enabled") is True or settings.get("target_company_enabled") is True',
+    ],
+    "src/seektalent/runtime/runtime_diagnostics.py": [
+        "round.*.retrieval.company_discovery_plan_call",
+        "round.*.retrieval.company_discovery_extract_call",
+        "round.*.retrieval.company_discovery_reduce_call",
+        "_LEGACY_COMPANY_DISCOVERY_SCHEMA_PRESSURE_PATTERNS",
+        "_historical_company_discovery_call_paths",
+        "_historical_company_discovery_call_paths",
+    ],
+    "src/seektalent/prompts/requirements.md": [
+        "target-company lists",
+    ],
 }
 REMOVED_COMPANY_DISCOVERY_LOGICAL_NAMES = [
     "round.01.retrieval.company_discovery_input",
@@ -29,20 +57,33 @@ REMOVED_COMPANY_DISCOVERY_LOGICAL_NAMES = [
 ]
 
 
-def _active_source_files() -> list[Path]:
-    return sorted(ACTIVE_SOURCE_ROOT.rglob("*.py"))
+def _active_python_files() -> list[Path]:
+    files: list[Path] = []
+    for root in ACTIVE_SCAN_ROOTS:
+        files.extend(sorted(root.rglob("*.py")))
+    return files
+
+
+def _scan_text(
+    *,
+    text: str,
+    repo_relative: str,
+    disallowed: list[str],
+) -> list[tuple[str, str]]:
+    cleaned = text
+    for snippet in ALLOWED_COMPANY_SNIPPETS_BY_FILE.get(repo_relative, []):
+        cleaned = cleaned.replace(snippet, "", 1)
+    return [(repo_relative, needle) for needle in disallowed if needle in cleaned]
 
 
 def scan_for_disallowed_path_literals(*, disallowed: list[str], allowed_files: set[str]) -> list[tuple[str, str]]:
     offenders: list[tuple[str, str]] = []
-    for path in _active_source_files():
+    for path in _active_python_files():
         repo_relative = str(path.relative_to(ROOT))
         if repo_relative in allowed_files:
             continue
         text = path.read_text(encoding="utf-8")
-        for needle in disallowed:
-            if needle in text:
-                offenders.append((repo_relative, needle))
+        offenders.extend(_scan_text(text=text, repo_relative=repo_relative, disallowed=disallowed))
     return offenders
 
 
@@ -52,7 +93,7 @@ def test_core_modules_do_not_stitch_legacy_round_paths() -> None:
         "src/seektalent/artifacts/legacy.py",
         "src/seektalent/artifacts/store.py",
         "src/seektalent/artifacts/registry.py",
-        *ACTIVE_SOURCE_TOLERANCE_FILES,
+        "tools/audit_run_latency.py",
     }
     offenders = scan_for_disallowed_path_literals(disallowed=disallowed, allowed_files=allowed_files)
     assert offenders == []
@@ -69,13 +110,12 @@ def test_core_modules_do_not_stitch_prf_sidecar_artifact_paths() -> None:
         "src/seektalent/artifacts/legacy.py",
         "src/seektalent/artifacts/store.py",
         "src/seektalent/artifacts/registry.py",
-        *ACTIVE_SOURCE_TOLERANCE_FILES,
     }
     offenders = scan_for_disallowed_path_literals(disallowed=disallowed, allowed_files=allowed_files)
     assert offenders == []
 
 
-def test_active_source_tree_has_no_removed_company_discovery_literals_outside_legacy_tolerance_paths() -> None:
+def test_active_source_tree_has_no_removed_company_discovery_literals_outside_explicit_legacy_tolerance() -> None:
     disallowed = [
         "company_discovery",
         "company-discovery",
@@ -84,10 +124,16 @@ def test_active_source_tree_has_no_removed_company_discovery_literals_outside_le
         "web_company_discovery",
         "company_rescue",
     ]
-    offenders = scan_for_disallowed_path_literals(
-        disallowed=disallowed,
-        allowed_files=ACTIVE_SOURCE_TOLERANCE_FILES,
-    )
+    offenders = scan_for_disallowed_path_literals(disallowed=disallowed, allowed_files=set())
+    for path in ACTIVE_TEXT_PATHS:
+        repo_relative = str(path.relative_to(ROOT))
+        offenders.extend(
+            _scan_text(
+                text=path.read_text(encoding="utf-8"),
+                repo_relative=repo_relative,
+                disallowed=disallowed,
+            )
+        )
     assert offenders == []
 
 

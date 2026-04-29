@@ -13,7 +13,11 @@ from seektalent.runtime import WorkflowRuntime
 from seektalent.tracing import RunTracer
 from tests.settings_factory import make_settings
 from tests.test_runtime_state_flow import _install_broaden_stubs, _python_feedback_seed_scorecards, _sample_inputs
-from tools.run_global_benchmark import build_policy_comparison_env, build_policy_comparison_settings
+from tools.run_global_benchmark import (
+    build_policy_comparison_env,
+    build_policy_comparison_settings,
+    effective_policy_comparison_mode,
+)
 
 
 @pytest.mark.parametrize(
@@ -46,11 +50,22 @@ def test_experiment_run_module_help_smoke(module: str, specific_option: str) -> 
         assert option in result.stdout
 
 
-def test_build_policy_comparison_env_primary_disables_company_isolation_flags() -> None:
+def test_build_policy_comparison_env_primary_no_longer_emits_removed_company_flags() -> None:
     env = build_policy_comparison_env(mode="primary")
 
-    assert env["SEEKTALENT_TARGET_COMPANY_ENABLED"] == "false"
-    assert env["SEEKTALENT_COMPANY_DISCOVERY_ENABLED"] == "false"
+    assert env == {}
+
+
+def test_build_policy_comparison_settings_primary_preserves_current_defaults() -> None:
+    settings = make_settings()
+    compared = build_policy_comparison_settings(base_settings=settings, mode="primary")
+
+    assert compared.model_dump() == settings.model_dump()
+
+
+def test_effective_policy_comparison_mode_normalizes_removed_primary_behavior() -> None:
+    assert effective_policy_comparison_mode(mode="none") == "none"
+    assert effective_policy_comparison_mode(mode="primary") == "none"
 
 
 def test_active_runtime_source_has_no_company_discovery_references() -> None:
