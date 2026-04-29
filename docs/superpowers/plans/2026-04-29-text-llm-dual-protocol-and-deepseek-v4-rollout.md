@@ -14,53 +14,60 @@
 
 ### Modify
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/config.py`
+- Modify: `src/seektalent/config.py`
   Purpose: Replace the old stage-model config keys with canonical protocol-family / endpoint / `*_model_id` settings, add raw env/config migration scanning, and remove judge-specific endpoint overrides.
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/default.env`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/.env.example`
+- Modify: `pyproject.toml`
+- Modify: `uv.lock`
+  Purpose: Add the Anthropic provider dependency needed by the canonical dual-protocol boundary and keep the lockfile aligned with the new runtime imports.
+
+- Modify: `src/seektalent/default.env`
+- Modify: `.env.example`
   Purpose: Make checked-in defaults use the new canonical keys and DeepSeek V4 model defaults.
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/llm.py`
+- Modify: `src/seektalent/llm.py`
   Purpose: Turn the existing LLM adapter into an explicit dual-protocol boundary that supports OpenAI Chat Completions-compatible and Anthropic Messages-compatible calls, stage policy resolution, reasoning policy resolution, capability preflight, and structured-output mode selection.
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/requirements/extractor.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/controller/react_controller.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/reflection/critic.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/scoring/scorer.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/finalize/finalizer.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/repair.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/candidate_feedback/model_steps.py`
+- Modify: `src/seektalent/requirements/extractor.py`
+- Modify: `src/seektalent/controller/react_controller.py`
+- Modify: `src/seektalent/reflection/critic.py`
+- Modify: `src/seektalent/scoring/scorer.py`
+- Modify: `src/seektalent/finalize/finalizer.py`
+- Modify: `src/seektalent/repair.py`
+- Modify: `src/seektalent/candidate_feedback/model_steps.py`
   Purpose: Route every active text-LLM stage through the new canonical stage/policy resolution helpers without changing business behavior.
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/evaluation.py`
+- Modify: `src/seektalent/evaluation.py`
   Purpose: Move judge onto the same Bailian text-provider surface, remove `judge_openai_*` handling, and record judge lineage using the new canonical runtime metadata.
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/orchestrator.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/runtime_diagnostics.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/runtime_reports.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/tracing.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/models.py`
+- Modify: `src/seektalent/runtime/orchestrator.py`
+- Modify: `src/seektalent/runtime/runtime_diagnostics.py`
+- Modify: `src/seektalent/runtime/runtime_reports.py`
+- Modify: `src/seektalent/tracing.py`
+- Modify: `src/seektalent/models.py`
   Purpose: Record canonical stage metadata, protocol family, reasoning mode, structured-output mode, and finer-grained failure taxonomy in run config, call artifacts, replay/export rows, and trace events.
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/api.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/cli.py`
+- Modify: `src/seektalent/api.py`
+- Modify: `src/seektalent/cli.py`
   Purpose: Precreate benchmark child runs before per-case settings/provider preflight, ensure failed rows always get run linkage, and surface migration/capability failures with explicit benchmark-facing metadata.
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/settings_factory.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_candidate_feedback.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_runtime_audit.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_evaluation.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_api.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_resume_quality.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_jd_text_baseline.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_openclaw_baseline.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_claude_code_baseline.py`
+- Modify: `src/seektalent/artifacts/store.py`
+  Purpose: Add the minimal child-session helper needed to attach benchmark case runs to the benchmark artifact root without creating dummy standalone roots.
+
+- Modify: `tests/settings_factory.py`
+- Modify: `tests/test_llm_provider_config.py`
+- Modify: `tests/test_candidate_feedback.py`
+- Modify: `tests/test_runtime_audit.py`
+- Modify: `tests/test_evaluation.py`
+- Modify: `tests/test_cli.py`
+- Modify: `tests/test_api.py`
+- Modify: `tests/test_resume_quality.py`
+- Modify: `tests/test_jd_text_baseline.py`
+- Modify: `tests/test_openclaw_baseline.py`
+- Modify: `tests/test_claude_code_baseline.py`
   Purpose: Rewrite config and provider-boundary expectations around the canonical surface and update benchmark/evaluation assertions.
 
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/docs/outputs.md`
+- Modify: `docs/outputs.md`
   Purpose: Document the new runtime metadata, benchmark failure linkage, and dual-protocol runtime surface.
 
 ### Notes
@@ -68,7 +75,7 @@
 - Do **not** change candidate-feedback phrase extraction behavior or PRF rollout defaults.
 - Do **not** change stopping/exhaustion behavior.
 - Do **not** preserve old prefixed model strings as a compatibility path.
-- Do **not** mix in the current local benchmark-debug edits in `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/orchestrator.py` and `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_runtime_state_flow.py` until the implementation starts from a fresh worktree.
+- Do **not** mix in the current local benchmark-debug edits in `src/seektalent/runtime/orchestrator.py` and `tests/test_runtime_state_flow.py` until the implementation starts from a fresh worktree.
 
 ## Task 0: Clean Baseline And Fresh Worktree
 
@@ -120,26 +127,40 @@ Expected:
 - the new worktree starts from a clean `main`;
 - implementation happens in `.worktrees/text-llm-dual-protocol`, not in the dirty main worktree.
 
+- [ ] **Step 4: Change into the fresh worktree and keep every later command scoped there**
+
+Run:
+
+```bash
+cd .worktrees/text-llm-dual-protocol
+pwd
+git status --short
+```
+
+Expected:
+
+- every later file path in this plan is interpreted relative to `.worktrees/text-llm-dual-protocol`;
+- no later `pytest`, `git add`, or file edit in this plan touches the dirty main worktree.
+
 ## Task 1: Hard-Cut Config Surface And Raw Migration Scanner
 
 **Files:**
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/config.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/default.env`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/.env.example`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/settings_factory.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py`
+- Modify: `src/seektalent/config.py`
+- Modify: `src/seektalent/default.env`
+- Modify: `.env.example`
+- Modify: `tests/settings_factory.py`
+- Modify: `tests/test_llm_provider_config.py`
+- Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write failing tests for the canonical settings surface and raw migration scanner**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py
+# tests/test_llm_provider_config.py
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
-from seektalent.config import AppSettings
+from seektalent.config import AppSettings, TextLLMConfigMigrationError
 from tests.settings_factory import make_settings
 
 
@@ -166,7 +187,7 @@ def test_legacy_stage_key_in_dotenv_fails_with_migration_error(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError, match="legacy text-llm config"):
+    with pytest.raises(TextLLMConfigMigrationError, match="legacy text-llm config"):
         AppSettings(_env_file=env_file)
 
 
@@ -177,7 +198,7 @@ def test_prefixed_value_on_new_model_id_key_fails_with_migration_error(tmp_path:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError, match="provider-prefixed model string"):
+    with pytest.raises(TextLLMConfigMigrationError, match="provider-prefixed model string"):
         AppSettings(_env_file=env_file)
 
 
@@ -188,8 +209,13 @@ def test_candidate_feedback_model_key_is_hard_cut_if_present(tmp_path: Path) -> 
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError, match="legacy text-llm config"):
+    with pytest.raises(TextLLMConfigMigrationError, match="legacy text-llm config"):
         AppSettings(_env_file=env_file)
+
+
+def test_stage_model_id_init_kwarg_with_prefixed_value_fails_fast() -> None:
+    with pytest.raises(TextLLMConfigMigrationError, match="provider-prefixed model string"):
+        AppSettings(requirements_model_id="openai-chat:deepseek-v3.2")
 
 
 def test_checked_in_env_templates_use_new_keys() -> None:
@@ -206,7 +232,7 @@ def test_checked_in_env_templates_use_new_keys() -> None:
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py
+# tests/test_cli.py
 from seektalent.cli import OPTIONAL_RUNTIME_ENV_VARS
 
 
@@ -224,8 +250,8 @@ Run:
 
 ```bash
 uv run pytest -q \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py
+  tests/test_llm_provider_config.py \
+  tests/test_cli.py
 ```
 
 Expected: FAIL because `AppSettings` still exposes `requirements_model`, `judge_openai_base_url`, `candidate_feedback_model`, and the checked-in env templates still use prefixed model strings.
@@ -233,7 +259,7 @@ Expected: FAIL because `AppSettings` still exposes `requirements_model`, `judge_
 - [ ] **Step 3: Replace the old settings with the new canonical surface and raw scanner**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/config.py
+# src/seektalent/config.py
 TextLLMProtocolFamily = Literal[
     "openai_chat_completions_compatible",
     "anthropic_messages_compatible",
@@ -242,7 +268,11 @@ TextLLMEndpointKind = Literal[
     "bailian_openai_chat_completions",
     "bailian_anthropic_messages",
 ]
-TextLLMEndpointRegion = Literal["beijing", "singapore", "virginia"]
+TextLLMEndpointRegion = Literal["beijing", "singapore"]
+
+
+class TextLLMConfigMigrationError(ValueError):
+    """Raised when removed text-LLM keys or prefixed values are still present."""
 
 LEGACY_TEXT_LLM_KEYS = {
     "SEEKTALENT_REQUIREMENTS_MODEL",
@@ -287,11 +317,19 @@ def _legacy_text_llm_error(reasons: list[str]) -> ValueError:
     )
 
 
-def _scan_legacy_text_llm_inputs(*, env_file: str | Path | None) -> None:
+def _scan_legacy_text_llm_inputs(
+    *,
+    env_file: str | Path | None,
+    init_data: Mapping[str, object],
+    include_default_env_file: bool,
+) -> None:
     reasons: list[str] = []
     raw_sources: list[dict[str, str]] = [dict(os.environ)]
+    if include_default_env_file:
+        raw_sources.append(_read_env_kv_pairs(Path(".env")))
     if env_file is not None:
         raw_sources.append(_read_env_kv_pairs(Path(env_file)))
+    raw_sources.append({str(key): str(value) for key, value in init_data.items() if value is not None})
     for source in raw_sources:
         for key in sorted(LEGACY_TEXT_LLM_KEYS):
             if key in source:
@@ -300,7 +338,7 @@ def _scan_legacy_text_llm_inputs(*, env_file: str | Path | None) -> None:
             if key.endswith("_MODEL_ID") and value.startswith(LEGACY_TEXT_LLM_PREFIXES):
                 reasons.append(f"{key} uses provider-prefixed model string {value!r}")
     if reasons:
-        raise _legacy_text_llm_error(reasons)
+        raise TextLLMConfigMigrationError(str(_legacy_text_llm_error(reasons)))
 
 
 class AppSettings(BaseSettings):
@@ -311,11 +349,20 @@ class AppSettings(BaseSettings):
         extra="ignore",
     )
 
+    def __init__(self, **data: Any) -> None:
+        env_file = data.get("_env_file", self.model_config.get("env_file"))
+        _scan_legacy_text_llm_inputs(
+            env_file=env_file,
+            init_data=data,
+            include_default_env_file=True,
+        )
+        super().__init__(**data)
+
     text_llm_protocol_family: TextLLMProtocolFamily = "anthropic_messages_compatible"
     text_llm_provider_label: str = "bailian"
     text_llm_endpoint_kind: TextLLMEndpointKind = "bailian_anthropic_messages"
     text_llm_endpoint_region: TextLLMEndpointRegion = "beijing"
-    text_llm_base_url: str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+    text_llm_base_url_override: str | None = None
     text_llm_api_key: str | None = None
 
     requirements_model_id: str = "deepseek-v4-pro"
@@ -330,7 +377,7 @@ class AppSettings(BaseSettings):
 ```
 
 ```dotenv
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/default.env
+# src/seektalent/default.env
 SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=anthropic_messages_compatible
 SEEKTALENT_TEXT_LLM_PROVIDER_LABEL=bailian
 SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_anthropic_messages
@@ -350,8 +397,8 @@ Run:
 
 ```bash
 uv run pytest -q \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py
+  tests/test_llm_provider_config.py \
+  tests/test_cli.py
 ```
 
 Expected: PASS, with failures now reporting a clear migration error when old keys or prefixed values are present.
@@ -360,31 +407,38 @@ Expected: PASS, with failures now reporting a clear migration error when old key
 
 ```bash
 git add \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/config.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/default.env \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/.env.example \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/settings_factory.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py
+  pyproject.toml \
+  uv.lock \
+  src/seektalent/config.py \
+  src/seektalent/default.env \
+  .env.example \
+  tests/settings_factory.py \
+  tests/test_llm_provider_config.py \
+  tests/test_cli.py
 git commit -m "feat: hard-cut canonical text llm config surface"
 ```
 
-## Task 2: Dual-Protocol Provider Boundary, Capability Preflight, And Structured Output Policy
+## Task 2: Dual-Protocol Provider Boundary, Endpoint Resolution, Capability Matrix, And Structured Output Policy
 
 **Files:**
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/llm.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py`
+- Modify: `pyproject.toml`
+- Modify: `uv.lock`
+- Modify: `src/seektalent/llm.py`
+- Modify: `tests/test_llm_provider_config.py`
 
 - [ ] **Step 1: Write failing tests for protocol-family precision, region-gated preflight, and structured-output policy**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py
+# tests/test_llm_provider_config.py
 import pytest
+from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
 from seektalent.llm import (
     build_model,
     build_model_settings,
+    build_provider_request_policy,
     preflight_models,
+    resolve_text_llm_base_url,
     resolve_stage_model_config,
     resolve_structured_output_mode,
 )
@@ -416,6 +470,26 @@ def test_bailian_anthropic_deepseek_v4_requires_beijing_region() -> None:
         preflight_models(settings)
 
 
+def test_bailian_openai_chat_base_url_resolves_for_beijing() -> None:
+    settings = make_settings(
+        text_llm_protocol_family="openai_chat_completions_compatible",
+        text_llm_endpoint_kind="bailian_openai_chat_completions",
+        text_llm_endpoint_region="beijing",
+    )
+
+    assert resolve_text_llm_base_url(settings) == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+
+def test_bailian_anthropic_base_url_resolves_for_beijing() -> None:
+    settings = make_settings(
+        text_llm_protocol_family="anthropic_messages_compatible",
+        text_llm_endpoint_kind="bailian_anthropic_messages",
+        text_llm_endpoint_region="beijing",
+    )
+
+    assert resolve_text_llm_base_url(settings) == "https://dashscope.aliyuncs.com/apps/anthropic"
+
+
 def test_bailian_deepseek_v4_defaults_to_prompted_json_mode() -> None:
     settings = make_settings()
 
@@ -437,6 +511,44 @@ def test_stage_reasoning_policy_defaults_are_explicit() -> None:
     assert scoring_stage.thinking_mode is False
     assert judge_stage.reasoning_effort == "high"
     assert judge_stage.model_id == "deepseek-v4-pro"
+
+
+def test_openai_path_builds_chat_model_not_responses_model() -> None:
+    stage = resolve_stage_model_config(
+        make_settings(
+            text_llm_protocol_family="openai_chat_completions_compatible",
+            text_llm_endpoint_kind="bailian_openai_chat_completions",
+            text_llm_endpoint_region="beijing",
+        ),
+        stage="requirements",
+    )
+
+    model = build_model(stage)
+
+    assert isinstance(model, OpenAIChatModel)
+    assert not isinstance(model, OpenAIResponsesModel)
+
+
+def test_anthropic_path_preserves_bare_model_id() -> None:
+    stage = resolve_stage_model_config(make_settings(), stage="requirements")
+    model = build_model(stage)
+
+    assert getattr(model, "model_name", None) == "deepseek-v4-pro"
+
+
+def test_openai_scoring_policy_disables_thinking_in_provider_request_controls() -> None:
+    stage = resolve_stage_model_config(
+        make_settings(
+            text_llm_protocol_family="openai_chat_completions_compatible",
+            text_llm_endpoint_kind="bailian_openai_chat_completions",
+            text_llm_endpoint_region="beijing",
+        ),
+        stage="scoring",
+    )
+
+    policy = build_provider_request_policy(stage)
+
+    assert policy.extra_body == {"enable_thinking": False}
 ```
 
 - [ ] **Step 2: Run the provider-boundary tests and confirm they fail under the old `llm.py`**
@@ -444,17 +556,19 @@ def test_stage_reasoning_policy_defaults_are_explicit() -> None:
 Run:
 
 ```bash
-uv run pytest -q /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py
+uv run pytest -q tests/test_llm_provider_config.py
 ```
 
-Expected: FAIL because `llm.py` still keys off `openai-chat:` / `openai-responses:` prefixes, still assumes native structured output for several paths, and has no endpoint-region preflight.
+Expected: FAIL because `llm.py` still keys off `openai-chat:` / `openai-responses:` prefixes, still assumes native structured output for several paths, has no endpoint-region preflight, and cannot yet build an Anthropic-backed canonical model without reintroducing prefixed IDs.
 
 - [ ] **Step 3: Rebuild the existing LLM boundary around explicit stage resolution**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/llm.py
+# src/seektalent/llm.py
 from dataclasses import dataclass
 
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -498,6 +612,58 @@ STAGE_REASONING_POLICY = {
 }
 
 
+@dataclass(frozen=True)
+class TextLLMCapability:
+    structured_output_mode: str
+    supports_thinking: bool
+    supports_reasoning_effort: bool
+    allowed_reasoning_efforts: frozenset[str]
+
+
+TEXT_LLM_CAPABILITIES = {
+    (
+        "bailian",
+        "openai_chat_completions_compatible",
+        "bailian_openai_chat_completions",
+        "beijing",
+        "deepseek-v4-pro",
+    ): TextLLMCapability(
+        structured_output_mode="prompted_json",
+        supports_thinking=True,
+        supports_reasoning_effort=True,
+        allowed_reasoning_efforts=frozenset({"high", "max"}),
+    ),
+    (
+        "bailian",
+        "anthropic_messages_compatible",
+        "bailian_anthropic_messages",
+        "beijing",
+        "deepseek-v4-pro",
+    ): TextLLMCapability(
+        structured_output_mode="prompted_json",
+        supports_thinking=True,
+        supports_reasoning_effort=True,
+        allowed_reasoning_efforts=frozenset({"high", "max"}),
+    ),
+    # Mirror deepseek-v4-flash the same way.
+}
+
+
+def resolve_text_llm_base_url(settings: AppSettings) -> str:
+    if settings.text_llm_base_url_override:
+        return settings.text_llm_base_url_override
+    mapping = {
+        ("openai_chat_completions_compatible", "bailian_openai_chat_completions", "beijing"): "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        ("anthropic_messages_compatible", "bailian_anthropic_messages", "beijing"): "https://dashscope.aliyuncs.com/apps/anthropic",
+        ("anthropic_messages_compatible", "bailian_anthropic_messages", "singapore"): "https://dashscope-intl.aliyuncs.com/apps/anthropic",
+    }
+    return mapping[(settings.text_llm_protocol_family, settings.text_llm_endpoint_kind, settings.text_llm_endpoint_region)]
+
+
+def resolve_text_llm_api_key(settings: AppSettings) -> str | None:
+    return settings.text_llm_api_key
+
+
 def resolve_stage_model_config(settings: AppSettings, *, stage: str) -> ResolvedTextModelConfig:
     model_id = getattr(settings, STAGE_MODEL_ATTR[stage])
     thinking_mode, reasoning_effort = STAGE_REASONING_POLICY[stage]
@@ -507,18 +673,18 @@ def resolve_stage_model_config(settings: AppSettings, *, stage: str) -> Resolved
         provider_label=settings.text_llm_provider_label,
         endpoint_kind=settings.text_llm_endpoint_kind,
         endpoint_region=settings.text_llm_endpoint_region,
-        base_url=settings.text_llm_base_url,
-        api_key=settings.text_llm_api_key,
+        base_url=resolve_text_llm_base_url(settings),
+        api_key=resolve_text_llm_api_key(settings),
         model_id=model_id,
         structured_output_mode="prompted_json",
         thinking_mode=thinking_mode,
         reasoning_effort=reasoning_effort,
     )
-    validate_endpoint_capability(config)
+    validate_protocol_endpoint_region_model_matrix(config)
     return config
 
 
-def validate_endpoint_capability(config: ResolvedTextModelConfig) -> None:
+def validate_protocol_endpoint_region_model_matrix(config: ResolvedTextModelConfig) -> None:
     if (
         config.protocol_family == "anthropic_messages_compatible"
         and config.provider_label == "bailian"
@@ -531,23 +697,40 @@ def validate_endpoint_capability(config: ResolvedTextModelConfig) -> None:
 
 
 def resolve_structured_output_mode(config: ResolvedTextModelConfig) -> str:
-    if config.provider_label == "bailian" and config.model_id.startswith("deepseek-v4"):
+    capability = TEXT_LLM_CAPABILITIES.get(
+        (
+            config.provider_label,
+            config.protocol_family,
+            config.endpoint_kind,
+            config.endpoint_region,
+            config.model_id,
+        )
+    )
+    if capability is None and config.provider_label == "bailian":
         return "prompted_json"
-    return "native_json_schema"
+    return capability.structured_output_mode if capability is not None else "native_json_schema"
 
 
 def build_model(config: ResolvedTextModelConfig) -> Model:
-    provider = (
-        OpenAIProvider(base_url=config.base_url, api_key=config.api_key, http_client=_http_client())
-        if config.protocol_family == "openai_chat_completions_compatible"
-        else AnthropicProvider(base_url=config.base_url, api_key=config.api_key, http_client=_http_client())
+    if config.protocol_family == "openai_chat_completions_compatible":
+        return OpenAIChatModel(
+            config.model_id,
+            provider=OpenAIProvider(
+                base_url=config.base_url,
+                api_key=config.api_key,
+                http_client=_http_client(),
+            ),
+            settings=build_model_settings(config),
+        )
+    return AnthropicModel(
+        config.model_id,
+        provider=AnthropicProvider(
+            base_url=config.base_url,
+            api_key=config.api_key,
+            http_client=_http_client(),
+        ),
+        settings=build_model_settings(config),
     )
-    model_id = (
-        config.model_id
-        if config.protocol_family == "openai_chat_completions_compatible"
-        else f"anthropic:{config.model_id}"
-    )
-    return infer_model(model_id, provider=provider)
 
 
 def build_output_spec(config: ResolvedTextModelConfig, model: Model, output_type: Any) -> Any:
@@ -557,11 +740,34 @@ def build_output_spec(config: ResolvedTextModelConfig, model: Model, output_type
     return PromptedOutput(output_type)
 
 
+def build_provider_request_policy(config: ResolvedTextModelConfig) -> ProviderRequestPolicy:
+    if config.protocol_family == "openai_chat_completions_compatible":
+        return ProviderRequestPolicy(
+            extra_body={"enable_thinking": config.thinking_mode} | (
+                {} if config.reasoning_effort == "off" else {"reasoning_effort": config.reasoning_effort}
+            )
+        )
+    return ProviderRequestPolicy(
+        extra_body={
+            "thinking": {"type": "enabled" if config.thinking_mode else "disabled"},
+            "reasoning_effort": None if config.reasoning_effort == "off" else config.reasoning_effort,
+        }
+    )
+
+
 def build_model_settings(config: ResolvedTextModelConfig, *, prompt_cache_key: str | None = None) -> ModelSettings:
-    payload: dict[str, object] = {"thinking": config.reasoning_effort if config.thinking_mode else False}
+    policy = build_provider_request_policy(config)
+    payload: dict[str, object] = {"extra_body": policy.extra_body}
     if prompt_cache_key is not None and config.protocol_family == "openai_chat_completions_compatible":
         payload["openai_prompt_cache_key"] = prompt_cache_key
     return cast(ModelSettings, payload)
+```
+
+```toml
+# pyproject.toml
+dependencies = [
+  "pydantic-ai-slim[openai,anthropic]>=1.76.0",
+]
 ```
 
 - [ ] **Step 4: Re-run the provider-boundary tests**
@@ -569,7 +775,7 @@ def build_model_settings(config: ResolvedTextModelConfig, *, prompt_cache_key: s
 Run:
 
 ```bash
-uv run pytest -q /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py
+uv run pytest -q tests/test_llm_provider_config.py
 ```
 
 Expected: PASS, with the OpenAI path resolved as chat-completions-compatible, the Anthropic Bailian DeepSeek V4 path failing outside Beijing, and Bailian DeepSeek V4 defaulting to prompted JSON.
@@ -578,32 +784,34 @@ Expected: PASS, with the OpenAI path resolved as chat-completions-compatible, th
 
 ```bash
 git add \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/llm.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py
+  pyproject.toml \
+  uv.lock \
+  src/seektalent/llm.py \
+  tests/test_llm_provider_config.py
 git commit -m "feat: add canonical dual-protocol text llm boundary"
 ```
 
 ## Task 3: Migrate Stage Call Sites, Judge, And Candidate-Feedback Model Surface
 
 **Files:**
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/requirements/extractor.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/controller/react_controller.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/reflection/critic.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/scoring/scorer.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/finalize/finalizer.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/repair.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/candidate_feedback/model_steps.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/evaluation.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/runtime_reports.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_candidate_feedback.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_evaluation.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_resume_quality.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_api.py`
+- Modify: `src/seektalent/requirements/extractor.py`
+- Modify: `src/seektalent/controller/react_controller.py`
+- Modify: `src/seektalent/reflection/critic.py`
+- Modify: `src/seektalent/scoring/scorer.py`
+- Modify: `src/seektalent/finalize/finalizer.py`
+- Modify: `src/seektalent/repair.py`
+- Modify: `src/seektalent/candidate_feedback/model_steps.py`
+- Modify: `src/seektalent/evaluation.py`
+- Modify: `src/seektalent/runtime/runtime_reports.py`
+- Modify: `tests/test_candidate_feedback.py`
+- Modify: `tests/test_evaluation.py`
+- Modify: `tests/test_resume_quality.py`
+- Modify: `tests/test_api.py`
 
 - [ ] **Step 1: Write failing tests that lock the new stage routing and judge boundary**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_evaluation.py
+# tests/test_evaluation.py
 from tests.settings_factory import make_settings
 
 
@@ -617,14 +825,15 @@ def test_judge_uses_same_canonical_text_provider_surface_as_runtime() -> None:
 
 def test_evaluation_outputs_record_judge_lineage() -> None:
     evaluation = _evaluation_result()
+    payload = evaluation.model_dump(mode="json")
 
-    assert "judge_model" in evaluation.model_dump(mode="json")
-    assert "judge_protocol_family" in evaluation.model_dump(mode="json")
-    assert "judge_prompt_hash" in evaluation.model_dump(mode="json")
+    assert payload["judge_model"] == "deepseek-v4-pro"
+    assert payload["judge_protocol_family"] == "anthropic_messages_compatible"
+    assert payload["judge_prompt_hash"]
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_candidate_feedback.py
+# tests/test_candidate_feedback.py
 from tests.settings_factory import make_settings
 
 
@@ -633,10 +842,17 @@ def test_candidate_feedback_active_model_setting_uses_bare_model_id() -> None:
 
     assert settings.candidate_feedback_model_id == "qwen3.5-flash"
     assert not settings.candidate_feedback_model_id.startswith("openai-")
+
+
+def test_candidate_feedback_stubbed_ranking_contract_is_unchanged() -> None:
+    ranking = _candidate_feedback_result_with_stubbed_model()
+
+    assert ranking.ordered_resume_ids
+    assert ranking.reasoning_summary
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_resume_quality.py
+# tests/test_resume_quality.py
 from tests.settings_factory import make_settings
 
 
@@ -652,9 +868,9 @@ Run:
 
 ```bash
 uv run pytest -q \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_candidate_feedback.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_evaluation.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_resume_quality.py
+  tests/test_candidate_feedback.py \
+  tests/test_evaluation.py \
+  tests/test_resume_quality.py
 ```
 
 Expected: FAIL because stage call sites, evaluation, and candidate-feedback model settings still read the old `*_model` strings and judge still supports the special local endpoint surface.
@@ -662,7 +878,7 @@ Expected: FAIL because stage call sites, evaluation, and candidate-feedback mode
 - [ ] **Step 3: Replace per-stage string lookups with canonical stage resolution**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/requirements/extractor.py
+# src/seektalent/requirements/extractor.py
 stage_config = resolve_stage_model_config(self.settings, stage="requirements")
 model = build_model(stage_config)
 agent = Agent(
@@ -676,7 +892,7 @@ agent = Agent(
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/controller/react_controller.py
+# src/seektalent/controller/react_controller.py
 stage_config = resolve_stage_model_config(self.settings, stage="controller")
 model = build_model(stage_config)
 ...
@@ -684,7 +900,7 @@ model_settings=build_model_settings(stage_config, prompt_cache_key=prompt_cache_
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/repair.py
+# src/seektalent/repair.py
 stage_config = resolve_stage_model_config(settings, stage="structured_repair")
 model = build_model(stage_config)
 ...
@@ -692,7 +908,7 @@ model_settings=build_model_settings(stage_config)
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/candidate_feedback/model_steps.py
+# src/seektalent/candidate_feedback/model_steps.py
 stage_config = resolve_stage_model_config(self.settings, stage="candidate_feedback")
 model = build_model(stage_config)
 ...
@@ -700,7 +916,7 @@ build_output_spec(stage_config, model, CandidateFeedbackRanking)
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/evaluation.py
+# src/seektalent/evaluation.py
 judge_config = resolve_stage_model_config(self.settings, stage="judge")
 model = build_model(judge_config)
 agent = Agent(
@@ -714,7 +930,7 @@ agent = Agent(
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/runtime_reports.py
+# src/seektalent/runtime/runtime_reports.py
 return "\n".join(
     [
         f"- Protocol: `{settings.text_llm_protocol_family}`",
@@ -730,10 +946,10 @@ Run:
 
 ```bash
 uv run pytest -q \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_candidate_feedback.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_evaluation.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_resume_quality.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_api.py
+  tests/test_candidate_feedback.py \
+  tests/test_evaluation.py \
+  tests/test_resume_quality.py \
+  tests/test_api.py
 ```
 
 Expected: PASS, with judge now on the same canonical provider surface and candidate-feedback preserving behavior while using the canonical model-id surface.
@@ -742,35 +958,35 @@ Expected: PASS, with judge now on the same canonical provider surface and candid
 
 ```bash
 git add \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/requirements/extractor.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/controller/react_controller.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/reflection/critic.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/scoring/scorer.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/finalize/finalizer.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/repair.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/candidate_feedback/model_steps.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/evaluation.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/runtime_reports.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_candidate_feedback.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_evaluation.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_resume_quality.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_api.py
+  src/seektalent/requirements/extractor.py \
+  src/seektalent/controller/react_controller.py \
+  src/seektalent/reflection/critic.py \
+  src/seektalent/scoring/scorer.py \
+  src/seektalent/finalize/finalizer.py \
+  src/seektalent/repair.py \
+  src/seektalent/candidate_feedback/model_steps.py \
+  src/seektalent/evaluation.py \
+  src/seektalent/runtime/runtime_reports.py \
+  tests/test_candidate_feedback.py \
+  tests/test_evaluation.py \
+  tests/test_resume_quality.py \
+  tests/test_api.py
 git commit -m "feat: route text stages through canonical deepseek v4 surface"
 ```
 
 ## Task 4: Runtime Diagnostics, Failure Taxonomy, And Run Config Metadata
 
 **Files:**
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/models.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/tracing.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/runtime_diagnostics.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/orchestrator.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_runtime_audit.py`
+- Modify: `src/seektalent/models.py`
+- Modify: `src/seektalent/tracing.py`
+- Modify: `src/seektalent/runtime/runtime_diagnostics.py`
+- Modify: `src/seektalent/runtime/orchestrator.py`
+- Modify: `tests/test_runtime_audit.py`
 
 - [ ] **Step 1: Write failing tests for protocol metadata and failure taxonomy**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_runtime_audit.py
+# tests/test_runtime_audit.py
 from tests.settings_factory import make_settings
 
 
@@ -801,6 +1017,8 @@ def test_llm_call_snapshot_records_protocol_reasoning_and_failure_kinds() -> Non
         reasoning_effort="high",
         failure_kind="provider_error",
         provider_failure_kind="provider_invalid_request",
+        provider_status_code=400,
+        provider_error_type="invalid_parameter_error",
         prompt_hash="prompt",
         prompt_snapshot_path="assets/prompts/controller.md",
         retries=0,
@@ -818,6 +1036,8 @@ def test_llm_call_snapshot_records_protocol_reasoning_and_failure_kinds() -> Non
     payload = snapshot.model_dump(mode="json")
     assert payload["protocol_family"] == "anthropic_messages_compatible"
     assert payload["provider_failure_kind"] == "provider_invalid_request"
+    assert payload["provider_status_code"] == 400
+    assert payload["provider_error_type"] == "invalid_parameter_error"
     assert payload["structured_output_mode"] == "prompted_json"
 ```
 
@@ -826,7 +1046,7 @@ def test_llm_call_snapshot_records_protocol_reasoning_and_failure_kinds() -> Non
 Run:
 
 ```bash
-uv run pytest -q /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_runtime_audit.py
+uv run pytest -q tests/test_runtime_audit.py
 ```
 
 Expected: FAIL because `run_config` still exposes old keys, `LLMCallSnapshot` does not yet carry protocol/endpoint/reasoning fields, and failure kinds are still too coarse.
@@ -834,7 +1054,7 @@ Expected: FAIL because `run_config` still exposes old keys, `LLMCallSnapshot` do
 - [ ] **Step 3: Extend artifact models and runtime metadata**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/tracing.py
+# src/seektalent/tracing.py
 class LLMCallSnapshot(BaseModel):
     stage: str
     call_id: str
@@ -848,7 +1068,7 @@ class LLMCallSnapshot(BaseModel):
     endpoint_region: str
     structured_output_mode: Literal["native_json_schema", "prompted_json"]
     thinking_mode: bool
-    reasoning_effort: Literal["off", "low", "medium", "high"]
+    reasoning_effort: Literal["off", "low", "medium", "high", "xhigh", "max"]
     failure_kind: Literal[
         "timeout",
         "transport_error",
@@ -872,10 +1092,20 @@ class LLMCallSnapshot(BaseModel):
         "provider_timeout",
         "provider_unknown_error",
     ] | None = None
+    provider_status_code: int | None = None
+    provider_error_type: str | None = None
+    provider_error_code: str | None = None
+    provider_request_id: str | None = None
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/orchestrator.py
+# src/seektalent/runtime/runtime_diagnostics.py
+def classify_text_llm_failure(exc: Exception) -> ProviderFailureInfo:
+    ...
+```
+
+```python
+# src/seektalent/runtime/orchestrator.py
 def _build_public_run_config(self) -> dict[str, object]:
     return {
         "settings": {
@@ -897,7 +1127,7 @@ def _build_public_run_config(self) -> dict[str, object]:
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/models.py
+# src/seektalent/models.py
 class ReplaySnapshot(BaseModel):
     ...
     text_llm_protocol_family: str | None = None
@@ -913,34 +1143,38 @@ class ReplaySnapshot(BaseModel):
 Run:
 
 ```bash
-uv run pytest -q /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_runtime_audit.py
+uv run pytest -q tests/test_runtime_audit.py
 ```
 
-Expected: PASS, with the run config, call snapshots, and replay rows all reflecting the canonical protocol-family and failure taxonomy.
+Expected: PASS, with the run config, call snapshots, and replay rows all reflecting the canonical protocol-family and failure taxonomy, including `provider_status_code` / `provider_error_type` when the provider returns them.
 
 - [ ] **Step 5: Commit the diagnostics and artifact metadata changes**
 
 ```bash
 git add \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/models.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/tracing.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/runtime_diagnostics.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/runtime/orchestrator.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_runtime_audit.py
+  src/seektalent/models.py \
+  src/seektalent/tracing.py \
+  src/seektalent/runtime/runtime_diagnostics.py \
+  src/seektalent/runtime/orchestrator.py \
+  tests/test_runtime_audit.py
 git commit -m "feat: record canonical text llm diagnostics metadata"
 ```
 
 ## Task 5: Benchmark Child-Run Precreation And Failed-Row Linkage
 
 **Files:**
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/api.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/cli.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py`
+- Modify: `src/seektalent/api.py`
+- Modify: `src/seektalent/cli.py`
+- Modify: `src/seektalent/tracing.py`
+- Modify: `src/seektalent/runtime/orchestrator.py`
+- Modify: `src/seektalent/artifacts/store.py`
+- Modify: `tests/test_cli.py`
+- Modify: `tests/test_runtime_state_flow.py`
 
 - [ ] **Step 1: Write failing tests for benchmark failure linkage**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py
+# tests/test_cli.py
 import json
 from pathlib import Path
 
@@ -970,15 +1204,61 @@ def test_benchmark_failure_rows_keep_child_run_linkage(monkeypatch, tmp_path: Pa
 
     monkeypatch.setattr("seektalent.cli.run_match", _fail_run_match)
 
-    exit_code = main(["benchmark", "--jds-file", str(benchmark_file), "--json"])
+    exit_code = main(
+        [
+            "benchmark",
+            "--jds-file",
+            str(benchmark_file),
+            "--json",
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+        ]
+    )
 
     assert exit_code == 1
-    summary = json.loads(Path("artifacts").rglob("summary.json").__next__().read_text(encoding="utf-8"))
+    benchmark_root = next((tmp_path / "artifacts").glob("benchmark-executions/*/*/*/benchmark_*"))
+    summary_path = ArtifactResolver.for_root(benchmark_root).resolve("output.summary")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
     row = summary["runs"][0]
     assert row["status"] == "failed"
     assert row["run_id"]
     assert row["run_dir"]
     assert row["trace_log_path"]
+
+
+def test_benchmark_settings_migration_failure_still_creates_child_run(monkeypatch, tmp_path: Path) -> None:
+    benchmark_file = tmp_path / "bench.jsonl"
+    benchmark_file.write_text(
+        json.dumps(
+            {
+                "jd_id": "case-legacy",
+                "job_title": "Python Engineer",
+                "job_description": "JD",
+                "hiring_notes": "",
+                "input_index": 0,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SEEKTALENT_REQUIREMENTS_MODEL", "openai-chat:deepseek-v3.2")
+
+    exit_code = main(
+        [
+            "benchmark",
+            "--jds-file",
+            str(benchmark_file),
+            "--json",
+            "--artifacts-dir",
+            str(tmp_path / "artifacts"),
+        ]
+    )
+
+    assert exit_code == 1
+    benchmark_root = next((tmp_path / "artifacts").glob("benchmark-executions/*/*/*/benchmark_*"))
+    manifest = ArtifactResolver.for_root(benchmark_root).manifest
+    assert manifest.child_artifacts
 ```
 
 - [ ] **Step 2: Run benchmark CLI tests and confirm they fail**
@@ -986,29 +1266,81 @@ def test_benchmark_failure_rows_keep_child_run_linkage(monkeypatch, tmp_path: Pa
 Run:
 
 ```bash
-uv run pytest -q /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py
+uv run pytest -q tests/test_cli.py
 ```
 
-Expected: FAIL because benchmark failures currently happen before a child run is guaranteed and failed rows only carry `error`/`attempts`.
+Expected: FAIL because benchmark failures currently happen before a child run is guaranteed, failed rows only carry `error`/`attempts`, and there is no way to attach a precreated case-run session to the real runtime.
 
-- [ ] **Step 3: Precreate child runs before per-case preflight and persist failed linkage**
+- [ ] **Step 3: Create real benchmark child-run sessions and inject them into runtime/preflight**
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/cli.py
-from seektalent.artifacts import ArtifactStore
+# src/seektalent/artifacts/store.py
+def create_child_run(
+    self,
+    *,
+    parent: ArtifactSession,
+    display_name: str,
+    producer: str,
+    case_id: str,
+) -> ArtifactSession:
+    session = self.create_root(kind="run", display_name=display_name, producer=producer)
+    parent.set_child_artifacts(
+        [
+            *[entry.model_dump(mode="json") for entry in parent.manifest.child_artifacts],
+            {
+                "artifact_kind": "run",
+                "artifact_id": session.manifest.artifact_id,
+                "role": "case_run",
+                "case_id": case_id,
+            },
+        ]
+    )
+    return session
+```
 
+```python
+# src/seektalent/tracing.py
+@classmethod
+def from_session(cls, *, artifacts_root: Path, session: ArtifactSession) -> RunTracer:
+    tracer = cls.__new__(cls)
+    tracer.store = ArtifactStore(artifacts_root)
+    tracer.session = session
+    tracer.run_id = session.manifest.artifact_id
+    tracer.run_dir = session.root
+    tracer.trace_log_path, tracer._trace_handle = session.open_text_stream("runtime.trace_log")
+    tracer.events_path, tracer._events_handle = session.open_text_stream("runtime.events")
+    tracer._lock = threading.Lock()
+    return tracer
+```
 
-def _prepare_benchmark_case_run(*, settings: AppSettings, case_id: str) -> tuple[str, Path, Path]:
-    session = ArtifactStore(settings.artifacts_path).create_root(
-        kind="run",
+```python
+# src/seektalent/runtime/orchestrator.py
+async def run_async(..., artifact_session: ArtifactSession | None = None) -> RunArtifacts:
+    tracer = (
+        RunTracer.from_session(artifacts_root=self.settings.artifacts_path, session=artifact_session)
+        if artifact_session is not None
+        else RunTracer(self.settings.artifacts_path)
+    )
+```
+
+```python
+# src/seektalent/cli.py
+def _prepare_benchmark_case_run(
+    *,
+    benchmark_session: ArtifactSession,
+    settings: AppSettings,
+    case_id: str,
+) -> ArtifactSession:
+    session = ArtifactStore(settings.artifacts_path).create_child_run(
+        parent=benchmark_session,
         display_name=f"benchmark case {case_id}",
         producer="BenchmarkCLI",
+        case_id=case_id,
     )
     trace_log_path, handle = session.open_text_stream("runtime.trace_log")
     handle.write(f"[{_now_iso()}] benchmark_case_precreated | case_id={case_id}\n")
     handle.close()
-    session.finalize(status="running")
-    return session.manifest.artifact_id, session.root, trace_log_path
+    return session
 
 
 def _failed_benchmark_result_row(
@@ -1040,33 +1372,37 @@ def _failed_benchmark_result_row(
 Run:
 
 ```bash
-uv run pytest -q /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py
+uv run pytest -q tests/test_cli.py
 ```
 
-Expected: PASS, with failed rows and benchmark manifests now referencing a child run even when the case fails during settings/provider preflight.
+Expected: PASS, with failed rows and benchmark manifests now referencing the same real child run session that settings preflight, provider preflight, and runtime execution use.
 
 - [ ] **Step 5: Commit the benchmark linkage fix**
 
 ```bash
 git add \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/api.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/src/seektalent/cli.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py
+  src/seektalent/api.py \
+  src/seektalent/artifacts/store.py \
+  src/seektalent/cli.py \
+  src/seektalent/tracing.py \
+  src/seektalent/runtime/orchestrator.py \
+  tests/test_cli.py \
+  tests/test_runtime_state_flow.py
 git commit -m "feat: preserve benchmark failure run linkage"
 ```
 
 ## Task 6: Final Regression, Docs, And DeepSeek V4 Default Verification
 
 **Files:**
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/docs/outputs.md`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_jd_text_baseline.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_openclaw_baseline.py`
-- Modify: `/Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_claude_code_baseline.py`
+- Modify: `docs/outputs.md`
+- Modify: `tests/test_jd_text_baseline.py`
+- Modify: `tests/test_openclaw_baseline.py`
+- Modify: `tests/test_claude_code_baseline.py`
 
 - [ ] **Step 1: Update docs and baseline tests to the new canonical runtime vocabulary**
 
 ```markdown
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/docs/outputs.md
+# docs/outputs.md
 - `runtime.run_config.json` now records:
   - `text_llm_protocol_family`
   - `text_llm_endpoint_kind`
@@ -1085,11 +1421,20 @@ git commit -m "feat: preserve benchmark failure run linkage"
 ```
 
 ```python
-# /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_jd_text_baseline.py
+# tests/test_jd_text_baseline.py
 def test_jd_text_baseline_uses_deepseek_v4_pro_for_judge() -> None:
     settings = make_settings()
     assert settings.judge_model_id == "deepseek-v4-pro"
     assert settings.text_llm_protocol_family == "anthropic_messages_compatible"
+
+
+def test_judge_lineage_fields_are_concrete() -> None:
+    evaluation = _evaluation_result()
+    payload = evaluation.model_dump(mode="json")
+    assert payload["judge_model"] == "deepseek-v4-pro"
+    assert payload["judge_protocol_family"] == "anthropic_messages_compatible"
+    assert payload["judge_prompt_hash"]
+    assert payload["judge_policy_version"]
 ```
 
 - [ ] **Step 2: Run the focused regression suite**
@@ -1098,21 +1443,22 @@ Run:
 
 ```bash
 uv run pytest -q \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_llm_provider_config.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_candidate_feedback.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_runtime_audit.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_evaluation.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_cli.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_api.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_resume_quality.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_jd_text_baseline.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_openclaw_baseline.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_claude_code_baseline.py
+  tests/test_llm_provider_config.py \
+  tests/test_candidate_feedback.py \
+  tests/test_runtime_audit.py \
+  tests/test_runtime_state_flow.py \
+  tests/test_evaluation.py \
+  tests/test_cli.py \
+  tests/test_api.py \
+  tests/test_resume_quality.py \
+  tests/test_jd_text_baseline.py \
+  tests/test_openclaw_baseline.py \
+  tests/test_claude_code_baseline.py
 ```
 
 Expected: PASS, with no remaining references to `openai-responses:` or `judge_openai_*` in active settings/tests.
 
-- [ ] **Step 3: Run one benchmark smoke case under each benchmark family**
+- [ ] **Step 3: Run one real smoke under each supported protocol family and then the three benchmark-family smokes on the default protocol**
 
 Run:
 
@@ -1133,6 +1479,14 @@ for name, path in mapping.items():
     first = path.read_text(encoding="utf-8").splitlines()[0]
     (out / f"{name}.jsonl").write_text(first + "\n", encoding="utf-8")
 PY
+SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=openai_chat_completions_compatible \
+SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_openai_chat_completions \
+SEEKTALENT_TEXT_LLM_ENDPOINT_REGION=beijing \
+uv run seektalent benchmark --jds-file /tmp/seektalent-text-llm-smoke/agent.jsonl
+SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=anthropic_messages_compatible \
+SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_anthropic_messages \
+SEEKTALENT_TEXT_LLM_ENDPOINT_REGION=beijing \
+uv run seektalent benchmark --jds-file /tmp/seektalent-text-llm-smoke/agent.jsonl
 uv run seektalent benchmark --jds-file /tmp/seektalent-text-llm-smoke/agent.jsonl
 uv run seektalent benchmark --jds-file /tmp/seektalent-text-llm-smoke/bigdata.jsonl
 uv run seektalent benchmark --jds-file /tmp/seektalent-text-llm-smoke/llm_training.jsonl
@@ -1140,6 +1494,7 @@ uv run seektalent benchmark --jds-file /tmp/seektalent-text-llm-smoke/llm_traini
 
 Expected:
 
+- both supported protocol families can execute at least one provider-backed smoke on Bailian;
 - no run fails because of missing `run_id/run_dir/trace_log_path`;
 - any provider/config failure is classified into the new failure taxonomy;
 - benchmark summaries show the canonical protocol/model surface rather than old prefixed model strings.
@@ -1148,15 +1503,15 @@ Expected:
 
 ```bash
 git add \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/docs/outputs.md \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_jd_text_baseline.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_openclaw_baseline.py \
-  /Users/frankqdwang/Agents/SeekTalent-0.2.4/tests/test_claude_code_baseline.py
+  docs/outputs.md \
+  tests/test_jd_text_baseline.py \
+  tests/test_openclaw_baseline.py \
+  tests/test_claude_code_baseline.py
 git commit -m "docs: document canonical text llm runtime surface"
 ```
 
 ## Self-Review
 
 - **Spec coverage:** The tasks cover the hard-cut config surface, region/capability preflight, judge migration, candidate-feedback config boundary, reasoning policy, runtime diagnostics, and benchmark child-run linkage. Candidate-feedback phrase quality and stopping/exhaustion remain untouched by design.
-- **Placeholder scan:** This plan contains no `TODO`, `TBD`, `implement later`, or “write tests for the above” placeholders; every task lists exact files, code snippets, commands, and expected outcomes.
+- **Execution fidelity:** The snippets are illustrative, but the blocking seams are now explicit: fresh-worktree-only execution, resolved endpoint URLs, explicit OpenAIChatModel/AnthropicModel construction, real child-run injection into runtime, and failure classification rather than empty metadata shells.
 - **Type consistency:** The plan consistently uses `text_llm_protocol_family`, `text_llm_endpoint_kind`, `text_llm_endpoint_region`, bare `*_model_id` fields, `ResolvedTextModelConfig`, `failure_kind`, and `provider_failure_kind`. No later task reverts to the old prefixed model-string surface.
