@@ -8,7 +8,7 @@ from typing import cast
 from pydantic_ai import Agent
 
 from seektalent.config import AppSettings
-from seektalent.llm import build_model, build_model_settings, build_output_spec, model_provider
+from seektalent.llm import build_model, build_model_settings, build_output_spec, resolve_stage_model_config
 from seektalent.models import (
     ScoredCandidate,
     ScoredCandidateDraft,
@@ -88,11 +88,15 @@ def scoring_cache_key(
     context: ScoringContext,
     user_prompt: str,
 ) -> str:
+    model_config = resolve_stage_model_config(settings, stage="scoring")
     return stable_cache_key(
         [
             SCORING_CACHE_SCHEMA_VERSION,
-            settings.scoring_model,
-            settings.reasoning_effort,
+            model_config.protocol_family,
+            model_config.endpoint_kind,
+            model_config.endpoint_region,
+            model_config.model_id,
+            model_config.reasoning_effort,
             prompt.sha256,
             json_sha256(context.scoring_policy.model_dump(mode="json")),
             context.requirement_sheet_sha256,
@@ -106,18 +110,15 @@ class ResumeScorer:
     def __init__(self, settings: AppSettings, prompt: LoadedPrompt) -> None:
         self.settings = settings
         self.prompt = prompt
+        self._model_config = resolve_stage_model_config(settings, stage="scoring")
 
     def _build_agent(self, prompt_cache_key: str | None = None) -> Agent[None, ScoredCandidateDraft]:
-        model = build_model(self.settings.scoring_model)
+        model = build_model(self._model_config)
         return cast(Agent[None, ScoredCandidateDraft], Agent(
             model=model,
-            output_type=build_output_spec(self.settings.scoring_model, model, ScoredCandidateDraft),
+            output_type=build_output_spec(self._model_config, model, ScoredCandidateDraft),
             system_prompt=self.prompt.content,
-            model_settings=build_model_settings(
-                self.settings,
-                self.settings.scoring_model,
-                prompt_cache_key=prompt_cache_key,
-            ),
+            model_settings=build_model_settings(self._model_config, prompt_cache_key=prompt_cache_key),
             retries=0,
             output_retries=2,
         ))
@@ -126,7 +127,10 @@ class ResumeScorer:
         return render_scoring_prompt(context)
 
     def _batch_prompt_cache_key(self, *, contexts: list[ScoringContext]) -> str | None:
-        if not self.settings.openai_prompt_cache_enabled:
+        if not (
+            self._model_config.protocol_family == "openai_chat_completions_compatible"
+            and self._model_config.openai_prompt_cache_enabled
+        ):
             return None
         policy_hashes = sorted(
             {
@@ -137,7 +141,10 @@ class ResumeScorer:
         requirement_hashes = sorted(
             {context.requirement_sheet_sha256 for context in contexts}
         )
-        return f"scoring:{self.settings.scoring_model}:{stable_cache_key([self.settings.scoring_model, self.prompt.sha256, policy_hashes, requirement_hashes])}"
+        return (
+            f"scoring:{self._model_config.model_id}:"
+            f"{stable_cache_key([self._model_config.protocol_family, self._model_config.model_id, self.prompt.sha256, policy_hashes, requirement_hashes])}"
+        )
 
     async def score_candidates_parallel(
         self,
@@ -180,7 +187,7 @@ class ResumeScorer:
                 round_no=context.round_no,
                 resume_id=candidate.resume_id,
                 branch_id=branch_id,
-                model=self.settings.scoring_model,
+                model=self._model_config.model_id,
                 call_id=call_id,
                 status="started",
                 summary=candidate.compact_summary(),
@@ -245,8 +252,8 @@ class ResumeScorer:
                     round_no=context.round_no,
                     resume_id=candidate.resume_id,
                     branch_id=branch_id,
-                    model_id=self.settings.scoring_model,
-                    provider=model_provider(self.settings.scoring_model),
+                    model_id=self._model_config.model_id,
+                    provider=self._model_config.provider_label,
                     prompt_hash=self.prompt.sha256,
                     prompt_snapshot_path="assets/prompts/scoring.md",
                     retries=0,
@@ -289,7 +296,7 @@ class ResumeScorer:
                     round_no=context.round_no,
                     resume_id=candidate.resume_id,
                     branch_id=branch_id,
-                    model=self.settings.scoring_model,
+                    model=self._model_config.model_id,
                     call_id=call_id,
                     status="succeeded",
                     latency_ms=latency_ms,
@@ -323,8 +330,8 @@ class ResumeScorer:
                     round_no=context.round_no,
                     resume_id=candidate.resume_id,
                     branch_id=branch_id,
-                    model_id=self.settings.scoring_model,
-                    provider=model_provider(self.settings.scoring_model),
+                    model_id=self._model_config.model_id,
+                    provider=self._model_config.provider_label,
                     prompt_hash=self.prompt.sha256,
                     prompt_snapshot_path="assets/prompts/scoring.md",
                     retries=0,
@@ -365,7 +372,7 @@ class ResumeScorer:
                 round_no=context.round_no,
                 resume_id=candidate.resume_id,
                 branch_id=branch_id,
-                model=self.settings.scoring_model,
+                model=self._model_config.model_id,
                 call_id=call_id,
                 status="succeeded",
                 latency_ms=latency_ms,
@@ -392,8 +399,8 @@ class ResumeScorer:
                     round_no=context.round_no,
                     resume_id=candidate.resume_id,
                     branch_id=branch_id,
-                    model_id=self.settings.scoring_model,
-                    provider=model_provider(self.settings.scoring_model),
+                    model_id=self._model_config.model_id,
+                    provider=self._model_config.provider_label,
                     prompt_hash=self.prompt.sha256,
                     prompt_snapshot_path="assets/prompts/scoring.md",
                     retries=0,
@@ -430,7 +437,7 @@ class ResumeScorer:
                 round_no=context.round_no,
                 resume_id=candidate.resume_id,
                 branch_id=branch_id,
-                model=self.settings.scoring_model,
+                model=self._model_config.model_id,
                 call_id=call_id,
                 status="failed",
                 latency_ms=latency_ms,
