@@ -154,7 +154,7 @@ def export_replay_rows(*, run_dir: Path, output_dir: Path | None = None) -> Path
     except ValueError:
         return None
     snapshots = [
-        ReplaySnapshot.model_validate_json(path.read_text(encoding="utf-8"))
+        _load_replay_snapshot(path)
         for path in resolver.resolve_many("round.*.retrieval.replay_snapshot")
         if path.exists()
     ]
@@ -171,6 +171,13 @@ def export_replay_rows(*, run_dir: Path, output_dir: Path | None = None) -> Path
         encoding="utf-8",
     )
     return replay_rows_path
+
+
+def _load_replay_snapshot(path: Path) -> ReplaySnapshot:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict):
+        payload = {key: value for key, value in payload.items() if key in ReplaySnapshot.model_fields}
+    return ReplaySnapshot.model_validate(payload)
 
 
 def render_judge_prompt(

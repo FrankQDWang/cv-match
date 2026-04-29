@@ -259,6 +259,78 @@ def test_export_replay_rows_collects_round_snapshots(tmp_path: Path) -> None:
     assert rows[0]["prf_candidate_span_artifact_ref"] == "round.02.retrieval.prf_span_candidates"
 
 
+def test_export_replay_rows_tolerates_legacy_company_rescue_metadata(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    session.write_json(
+        "round.02.retrieval.replay_snapshot",
+        {
+            "run_id": "run-legacy",
+            "round_no": 2,
+            "retrieval_snapshot_id": "run-legacy:round:2",
+            "second_lane_query_fingerprint": "lane-legacy",
+            "provider_request": {"search_attempts": [{"page": 1, "query": "python"}]},
+            "provider_response_resume_ids": ["resume-1"],
+            "provider_response_raw_rank": ["resume-1"],
+            "dedupe_version": "v1",
+            "scoring_model_version": "judge-model",
+            "query_plan_version": "2",
+            "prf_gate_version": "prf-v1",
+            "generic_explore_version": "v1",
+            "prf_model_backend": "legacy",
+            "prf_span_model_name": "legacy-regex",
+            "prf_span_model_revision": "local",
+            "prf_span_tokenizer_revision": "local",
+            "prf_embedding_model_name": "none",
+            "prf_embedding_model_revision": "none",
+            "prf_candidate_span_artifact_ref": "round.02.retrieval.prf_span_candidates",
+            "prf_expression_family_artifact_ref": "round.02.retrieval.prf_expression_families",
+            "prf_policy_decision_artifact_ref": "round.02.retrieval.prf_policy_decision",
+            "lane_type": "company_rescue",
+            "company_rescue_policy_version": "company-rescue-v1",
+        },
+    )
+
+    path = export_replay_rows(run_dir=session.root)
+
+    assert path == session.root / "evaluation" / "replay_rows.jsonl"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert rows == [
+        {
+            "run_id": "run-legacy",
+            "round_no": 2,
+            "retrieval_snapshot_id": "run-legacy:round:2",
+            "second_lane_query_fingerprint": "lane-legacy",
+            "provider_request": {"search_attempts": [{"page": 1, "query": "python"}]},
+            "provider_response_resume_ids": ["resume-1"],
+            "provider_response_raw_rank": ["resume-1"],
+            "dedupe_version": "v1",
+            "scoring_model_version": "judge-model",
+            "query_plan_version": "2",
+            "prf_gate_version": "prf-v1",
+            "generic_explore_version": "v1",
+            "prf_model_backend": "legacy",
+            "prf_sidecar_endpoint_contract_version": None,
+            "prf_sidecar_dependency_manifest_hash": None,
+            "prf_sidecar_image_digest": None,
+            "prf_span_model_name": "legacy-regex",
+            "prf_span_model_revision": "local",
+            "prf_span_tokenizer_revision": "local",
+            "prf_embedding_model_name": "none",
+            "prf_embedding_model_revision": "none",
+            "prf_embedding_dimension": None,
+            "prf_embedding_normalized": None,
+            "prf_embedding_dtype": None,
+            "prf_embedding_pooling": None,
+            "prf_embedding_truncation": None,
+            "prf_fallback_reason": None,
+            "prf_candidate_span_artifact_ref": "round.02.retrieval.prf_span_candidates",
+            "prf_expression_family_artifact_ref": "round.02.retrieval.prf_expression_families",
+            "prf_policy_decision_artifact_ref": "round.02.retrieval.prf_policy_decision",
+        }
+    ]
+
+
 def test_evaluate_run_registers_evaluation_outputs_in_run_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

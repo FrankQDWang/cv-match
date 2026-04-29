@@ -34,8 +34,10 @@ from seektalent.normalization import normalize_resume
 from seektalent.prompting import LoadedPrompt
 from seektalent.runtime.context_builder import build_controller_context, build_finalize_context, build_reflection_context
 from seektalent.runtime.scoring_context import build_scoring_context
+from seektalent.artifacts import ArtifactStore
 from seektalent.runtime.runtime_diagnostics import (
     build_search_diagnostics as build_search_diagnostics_direct,
+    collect_llm_schema_pressure,
     slim_controller_context as slim_controller_context_direct,
     slim_finalize_context as slim_finalize_context_direct,
     slim_reflection_context as slim_reflection_context_direct,
@@ -279,6 +281,7 @@ def _aux_call_artifact(
 ) -> dict[str, Any]:
     return {
         "stage": stage,
+        "call_id": f"{stage}-call",
         "prompt_name": prompt_name,
         "model_id": model_id,
         "user_payload": user_payload or {"stub": True},
@@ -292,6 +295,15 @@ def _aux_call_artifact(
         "error_message": error_message,
         "provider_usage": _provider_usage_snapshot().model_dump(mode="json"),
     }
+
+
+def _register_runtime_call_artifact(session: Any, logical_name: str) -> None:
+    session.register_path(
+        logical_name,
+        f"{logical_name.replace('.', '/')}.json",
+        content_type="application/json",
+        schema_version="v1",
+    )
 
 
 def _single_run_dir(root: Path) -> Path:
@@ -748,6 +760,81 @@ def test_llm_schema_pressure_includes_cache_repair_and_full_retry() -> None:
     assert pressure_item["prompt_cache_retention"] == "24h"
     assert pressure_item["cached_input_tokens"] == 17
     assert pressure_item["provider_usage"] == {"cache_read_tokens": 8}
+
+
+def test_collect_llm_schema_pressure_tolerates_historical_company_discovery_artifacts(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    _register_runtime_call_artifact(session, "runtime.requirements_call")
+    _register_runtime_call_artifact(session, "runtime.finalizer_call")
+    session.write_json("runtime.requirements_call", _aux_call_artifact(stage="requirements", prompt_name="requirements"))
+    session.write_json("round.01.controller.controller_call", _aux_call_artifact(stage="controller", prompt_name="controller"))
+    session.write_json(
+        "round.01.retrieval.company_discovery_plan_call",
+        _aux_call_artifact(stage="company_discovery_plan", prompt_name="company_discovery_plan"),
+    )
+    session.write_json(
+        "round.01.retrieval.company_discovery_extract_call",
+        _aux_call_artifact(stage="company_discovery_extract", prompt_name="company_discovery_extract"),
+    )
+    session.write_json(
+        "round.01.retrieval.company_discovery_reduce_call",
+        _aux_call_artifact(stage="company_discovery_reduce", prompt_name="company_discovery_reduce"),
+    )
+    session.write_json("round.01.reflection.reflection_call", _aux_call_artifact(stage="reflection", prompt_name="reflection"))
+    session.write_json("runtime.finalizer_call", _aux_call_artifact(stage="finalize", prompt_name="finalize"))
+
+    pressure = collect_llm_schema_pressure(session.root)
+    stages = [item["stage"] for item in pressure]
+
+    assert stages[0] == "requirements"
+    assert stages[-1] == "finalize"
+    assert set(stages) == {
+        "requirements",
+        "controller",
+        "company_discovery_plan",
+        "company_discovery_extract",
+        "company_discovery_reduce",
+        "reflection",
+        "finalize",
+    }
+
+
+def test_collect_llm_schema_pressure_ignores_legacy_company_discovery_run_config_fields(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    _register_runtime_call_artifact(session, "runtime.requirements_call")
+    _register_runtime_call_artifact(session, "runtime.finalizer_call")
+    session.write_json(
+        "runtime.run_config",
+        {
+            "prompt_hashes": {
+                "requirements": "requirements-hash",
+                "company_discovery_plan": "legacy-plan-hash",
+                "company_discovery_extract": "legacy-extract-hash",
+                "company_discovery_reduce": "legacy-reduce-hash",
+            },
+            "settings": {
+                "candidate_feedback_enabled": True,
+                "company_discovery_enabled": True,
+                "company_discovery_provider": "bocha",
+                "company_discovery_model": "openai-chat:qwen3.5-flash",
+            },
+        },
+    )
+    session.write_json("runtime.requirements_call", _aux_call_artifact(stage="requirements", prompt_name="requirements"))
+    session.write_json("round.01.controller.controller_call", _aux_call_artifact(stage="controller", prompt_name="controller"))
+    session.write_json("round.01.reflection.reflection_call", _aux_call_artifact(stage="reflection", prompt_name="reflection"))
+    session.write_json("runtime.finalizer_call", _aux_call_artifact(stage="finalize", prompt_name="finalize"))
+
+    pressure = collect_llm_schema_pressure(session.root)
+
+    assert [item["stage"] for item in pressure] == [
+        "requirements",
+        "controller",
+        "reflection",
+        "finalize",
+    ]
 def test_runtime_preflight_passes_rescue_models_from_top_level_settings(monkeypatch) -> None:
     captured_extra_specs: list[tuple[str, str | None, str | None]] | None = None
 
