@@ -288,6 +288,10 @@ def build_provider_request_policy(config: ResolvedTextModelConfig) -> ProviderRe
 
 
 def _build_resolved_model(config: ResolvedTextModelConfig) -> Model:
+    if not config.api_key:
+        raise ValueError(
+            "SEEKTALENT_TEXT_LLM_API_KEY is required for canonical text LLM configuration."
+        )
     if config.protocol_family == "openai_chat_completions_compatible":
         return OpenAIChatModel(
             config.model_id,
@@ -414,12 +418,16 @@ def build_model_settings(
 def preflight_models(
     settings: AppSettings,
     *,
-    extra_model_specs: list[tuple[str, str | None, str | None]] | None = None,
+    extra_stage_names: list[str] | None = None,
 ) -> None:
     seen: set[tuple[str, str, str, str]] = set()
-    stage_names = ["requirements", "controller", "scoring", "reflection", "finalize"]
+    stage_names = ["requirements", "controller", "scoring", "reflection", "finalize", "structured_repair", "tui_summary"]
     if settings.enable_eval:
         stage_names.append("judge")
+    if extra_stage_names:
+        for stage_name in extra_stage_names:
+            if stage_name not in stage_names:
+                stage_names.append(stage_name)
     for stage_name in stage_names:
         config = resolve_stage_model_config(settings, stage=stage_name)
         key = (
@@ -434,12 +442,3 @@ def preflight_models(
         if resolve_structured_output_mode(config) == "native_json_schema":
             ensure_native_structured_output(config.model_id, model)
         seen.add(key)
-    if extra_model_specs:
-        for model_id, openai_base_url, openai_api_key in extra_model_specs:
-            model = build_model(
-                model_id,
-                openai_base_url=openai_base_url,
-                openai_api_key=openai_api_key,
-            )
-            if model_id in NATIVE_OPENAI_CHAT_MODELS or not model_id.startswith("openai-chat:"):
-                ensure_native_structured_output(model_id, model)

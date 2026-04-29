@@ -294,6 +294,7 @@ def test_judge_reasoning_off_disables_provider_side_thinking() -> None:
 def test_openai_path_builds_chat_model_not_responses_model() -> None:
     stage = resolve_stage_model_config(
         make_settings(
+            text_llm_api_key="test-key",
             text_llm_protocol_family="openai_chat_completions_compatible",
             text_llm_endpoint_kind="bailian_openai_chat_completions",
             text_llm_endpoint_region="beijing",
