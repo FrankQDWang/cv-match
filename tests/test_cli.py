@@ -21,7 +21,9 @@ from tests.settings_factory import make_settings
 
 
 def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEEKTALENT_TEXT_LLM_API_KEY", "test-key")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setenv("SEEKTALENT_CTS_TENANT_KEY", "cts-key")
     monkeypatch.setenv("SEEKTALENT_CTS_TENANT_SECRET", "cts-secret")
 
@@ -77,7 +79,7 @@ def test_main_shows_root_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "seektalent" in help_text
     assert "update" in help_text
     assert "inspect" in help_text
-    assert "OPENAI_API_KEY" in help_text
+    assert "SEEKTALENT_TEXT_LLM_API_KEY" in help_text
     assert "seektalent doctor" in help_text
     assert "seektalent inspect --json" in help_text
 
@@ -181,7 +183,7 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     assert "prf-sidecar-prefetch" in payload["commands"]
     assert "inspect" in payload["commands"]
     assert payload["environment"]["required_for_default_run"] == [
-        "OPENAI_API_KEY",
+        "SEEKTALENT_TEXT_LLM_API_KEY",
         "SEEKTALENT_CTS_TENANT_KEY",
         "SEEKTALENT_CTS_TENANT_SECRET",
     ]
@@ -370,12 +372,14 @@ def test_init_writes_env_template(tmp_path: Path, capsys: pytest.CaptureFixture[
     text = env_file.read_text(encoding="utf-8")
     assert text == Path(".env.example").read_text(encoding="utf-8")
     assert text == read_env_example_template()
-    assert "OPENAI_API_KEY=" in text
-    assert "OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1" in text
-    assert "SEEKTALENT_REQUIREMENTS_MODEL=openai-chat:deepseek-v3.2" in text
-    assert "SEEKTALENT_JUDGE_MODEL=openai-responses:gpt-5.4" in text
-    assert "SEEKTALENT_JUDGE_OPENAI_BASE_URL=http://127.0.0.1:8317/v1/responses" in text
-    assert "SEEKTALENT_JUDGE_OPENAI_API_KEY=" in text
+    assert "SEEKTALENT_TEXT_LLM_API_KEY=" in text
+    assert "SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=anthropic_messages_compatible" in text
+    assert "SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_anthropic_messages" in text
+    assert "SEEKTALENT_TEXT_LLM_ENDPOINT_REGION=beijing" in text
+    assert "SEEKTALENT_REQUIREMENTS_MODEL_ID=deepseek-v4-pro" in text
+    assert "SEEKTALENT_JUDGE_MODEL_ID=deepseek-v4-pro" in text
+    assert "SEEKTALENT_REQUIREMENTS_MODEL=" not in text
+    assert "SEEKTALENT_JUDGE_OPENAI_BASE_URL=" not in text
     assert "SEEKTALENT_REASONING_EFFORT=off" in text
     assert "SEEKTALENT_JUDGE_REASONING_EFFORT=high" in text
     assert "SEEKTALENT_PRF_SPAN_MODEL_NAME=fastino/gliner2-multi-v1" in text
@@ -387,6 +391,16 @@ def test_init_writes_env_template(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "SEEKTALENT_WEAVE_ENTITY=frankqdwang1-personal-creations" in text
     assert "SEEKTALENT_WEAVE_PROJECT=seektalent" in text
     assert str(env_file) in capsys.readouterr().out
+
+
+def test_optional_runtime_env_vars_use_new_text_llm_keys() -> None:
+    from seektalent.cli import OPTIONAL_RUNTIME_ENV_VARS
+
+    assert "SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY" in OPTIONAL_RUNTIME_ENV_VARS
+    assert "SEEKTALENT_REQUIREMENTS_MODEL_ID" in OPTIONAL_RUNTIME_ENV_VARS
+    assert "SEEKTALENT_JUDGE_MODEL_ID" in OPTIONAL_RUNTIME_ENV_VARS
+    assert "SEEKTALENT_REQUIREMENTS_MODEL" not in OPTIONAL_RUNTIME_ENV_VARS
+    assert "SEEKTALENT_JUDGE_OPENAI_BASE_URL" not in OPTIONAL_RUNTIME_ENV_VARS
 
 
 def test_init_refuses_to_overwrite_without_force(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -478,6 +492,24 @@ def test_doctor_requires_wandb_auth_when_eval_enabled(
     assert main(["doctor", "--env-file", str(env_file)]) == 1
 
     assert "FAIL remote_eval_logging" in capsys.readouterr().out
+
+
+def test_doctor_json_reports_legacy_text_llm_migration_errors(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "SEEKTALENT_REQUIREMENTS_MODEL=openai-chat:deepseek-v3.2\n",
+        encoding="utf-8",
+    )
+
+    assert main(["doctor", "--env-file", str(env_file), "--json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    settings_check = next(item for item in payload["checks"] if item["name"] == "settings")
+    assert settings_check["ok"] is False
+    assert "legacy text-llm config detected" in settings_check["message"]
 
 
 def test_run_json_errors_emit_single_object(
@@ -1518,7 +1550,9 @@ def test_run_fails_fast_with_missing_environment_variables(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
+    monkeypatch.delenv("SEEKTALENT_TEXT_LLM_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("SEEKTALENT_CTS_TENANT_KEY", raising=False)
     monkeypatch.delenv("SEEKTALENT_CTS_TENANT_SECRET", raising=False)
 
@@ -1526,7 +1560,7 @@ def test_run_fails_fast_with_missing_environment_variables(
 
     error = capsys.readouterr().err
     assert "Missing required environment variables" in error
-    assert "OPENAI_API_KEY" in error
+    assert "SEEKTALENT_TEXT_LLM_API_KEY" in error
     assert "SEEKTALENT_CTS_TENANT_KEY" in error
     assert "SEEKTALENT_CTS_TENANT_SECRET" in error
 

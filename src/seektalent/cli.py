@@ -19,7 +19,7 @@ from seektalent import __version__
 from seektalent.api import MatchRunResult, run_match
 from seektalent.artifacts import ArtifactStore
 from seektalent.artifacts.legacy import execute_archive_migration
-from seektalent.config import AppSettings, load_process_env
+from seektalent.config import AppSettings, TextLLMConfigMigrationError, load_process_env
 from seektalent.evaluation import AsyncJudgeLimiter, _upsert_wandb_report, log_evaluation_remotely, migrate_judge_assets
 from seektalent.resources import (
     REQUIRED_PROMPTS,
@@ -30,25 +30,28 @@ from seektalent.resources import (
 )
 from seektalent.runtime.lifecycle import cleanup_runtime_artifacts
 
-PROVIDER_ENV_VAR_BY_PREFIX = {
-    "openai": "OPENAI_API_KEY",
-    "openai-chat": "OPENAI_API_KEY",
-    "openai-responses": "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "google-gla": "GOOGLE_API_KEY",
+PROVIDER_ENV_VAR_BY_PROTOCOL_FAMILY = {
+    "openai_chat_completions_compatible": "SEEKTALENT_TEXT_LLM_API_KEY",
+    "anthropic_messages_compatible": "SEEKTALENT_TEXT_LLM_API_KEY",
 }
 OPTIONAL_RUNTIME_ENV_VARS = [
     "SEEKTALENT_CTS_BASE_URL",
     "SEEKTALENT_CTS_TIMEOUT_SECONDS",
     "SEEKTALENT_CTS_SPEC_PATH",
-    "SEEKTALENT_REQUIREMENTS_MODEL",
-    "SEEKTALENT_CONTROLLER_MODEL",
-    "SEEKTALENT_SCORING_MODEL",
-    "SEEKTALENT_FINALIZE_MODEL",
-    "SEEKTALENT_REFLECTION_MODEL",
-    "SEEKTALENT_JUDGE_MODEL",
-    "SEEKTALENT_JUDGE_OPENAI_BASE_URL",
-    "SEEKTALENT_JUDGE_OPENAI_API_KEY",
+    "SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY",
+    "SEEKTALENT_TEXT_LLM_PROVIDER_LABEL",
+    "SEEKTALENT_TEXT_LLM_ENDPOINT_KIND",
+    "SEEKTALENT_TEXT_LLM_ENDPOINT_REGION",
+    "SEEKTALENT_TEXT_LLM_BASE_URL_OVERRIDE",
+    "SEEKTALENT_REQUIREMENTS_MODEL_ID",
+    "SEEKTALENT_CONTROLLER_MODEL_ID",
+    "SEEKTALENT_SCORING_MODEL_ID",
+    "SEEKTALENT_FINALIZE_MODEL_ID",
+    "SEEKTALENT_REFLECTION_MODEL_ID",
+    "SEEKTALENT_STRUCTURED_REPAIR_MODEL_ID",
+    "SEEKTALENT_JUDGE_MODEL_ID",
+    "SEEKTALENT_TUI_SUMMARY_MODEL_ID",
+    "SEEKTALENT_CANDIDATE_FEEDBACK_MODEL_ID",
     "SEEKTALENT_REASONING_EFFORT",
     "SEEKTALENT_JUDGE_REASONING_EFFORT",
     "SEEKTALENT_MIN_ROUNDS",
@@ -109,7 +112,7 @@ ROOT_HELP_EPILOG = """Primary workflow:
   4. seektalent exec benchmark
 
 Required environment variables:
-  OPENAI_API_KEY
+  SEEKTALENT_TEXT_LLM_API_KEY
   SEEKTALENT_CTS_TENANT_KEY
   SEEKTALENT_CTS_TENANT_SECRET
 
@@ -321,11 +324,6 @@ def _error_payload(exc: Exception) -> dict[str, str]:
     }
 
 
-def _provider_env_var(model_id: str) -> str | None:
-    provider = model_id.split(":", 1)[0]
-    return PROVIDER_ENV_VAR_BY_PREFIX.get(provider)
-
-
 def _emit_json(stream, payload: object) -> None:
     stream.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
@@ -338,22 +336,12 @@ def _emit_error(exc: Exception, *, json_output: bool) -> None:
 
 
 def _required_provider_env_vars(settings: AppSettings) -> list[str]:
-    model_ids = [
-        settings.requirements_model,
-        settings.controller_model,
-        settings.scoring_model,
-        settings.reflection_model,
-        settings.finalize_model,
-    ]
-    if settings.enable_eval:
-        model_ids.append(settings.effective_judge_model)
-    return sorted(
-        {
-            env_var
-            for model_id in model_ids
-            if (env_var := _provider_env_var(model_id)) is not None
-        }
-    )
+    if settings.text_llm_api_key:
+        return []
+    env_var = PROVIDER_ENV_VAR_BY_PROTOCOL_FAMILY.get(settings.text_llm_protocol_family)
+    if env_var is None:
+        return []
+    return [env_var]
 
 
 def _missing_provider_env_vars(settings: AppSettings) -> list[str]:
@@ -665,15 +653,11 @@ def _inspect_payload() -> dict[str, object]:
         "commands": commands,
         "environment": {
             "required_for_default_run": [
-                "OPENAI_API_KEY",
+                "SEEKTALENT_TEXT_LLM_API_KEY",
                 "SEEKTALENT_CTS_TENANT_KEY",
                 "SEEKTALENT_CTS_TENANT_SECRET",
             ],
-            "optional_provider_vars": [
-                "OPENAI_BASE_URL",
-                "ANTHROPIC_API_KEY",
-                "GOOGLE_API_KEY",
-            ],
+            "optional_provider_vars": [],
             "optional_runtime_vars": OPTIONAL_RUNTIME_ENV_VARS,
             "env_file_support": "run and doctor accept --env-file to load values from a file; shell environment variables remain first-class.",
         },
@@ -1037,9 +1021,15 @@ def _package_resource_checks() -> list[DoctorCheck]:
     return checks
 
 
-def _settings_check(settings: AppSettings | None, error: ValidationError | None) -> DoctorCheck:
+def _settings_check(
+    settings: AppSettings | None,
+    error: ValidationError | TextLLMConfigMigrationError | None,
+) -> DoctorCheck:
     if error is not None:
-        message = "; ".join(item["msg"] for item in error.errors())
+        if isinstance(error, ValidationError):
+            message = "; ".join(item["msg"] for item in error.errors())
+        else:
+            message = str(error)
         return DoctorCheck("settings", False, message)
     assert settings is not None
     return DoctorCheck("settings", True, "Configuration schema is valid.")
@@ -1114,10 +1104,10 @@ def _doctor_command(args: argparse.Namespace) -> int:
     load_process_env(args.env_file)
     checks = _package_resource_checks()
     settings: AppSettings | None = None
-    settings_error: ValidationError | None = None
+    settings_error: ValidationError | TextLLMConfigMigrationError | None = None
     try:
         settings = _build_settings(args)
-    except ValidationError as exc:
+    except (ValidationError, TextLLMConfigMigrationError) as exc:
         settings_error = exc
 
     checks.append(_settings_check(settings, settings_error))

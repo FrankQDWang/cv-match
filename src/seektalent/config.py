@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, Mapping
 
 from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,13 +20,42 @@ from seektalent.resources import (
 
 ReasoningEffort = Literal["off", "low", "medium", "high"]
 RuntimeMode = Literal["dev", "prod"]
+TextLLMProtocolFamily = Literal[
+    "openai_chat_completions_compatible",
+    "anthropic_messages_compatible",
+]
+TextLLMProviderLabel = Literal["bailian"]
+TextLLMEndpointKind = Literal[
+    "bailian_openai_chat_completions",
+    "bailian_anthropic_messages",
+]
+TextLLMEndpointRegion = Literal["beijing", "singapore"]
 DEV_ARTIFACTS_DIR = "artifacts"
 DEV_RUNS_DIR = "runs"
 DEV_LLM_CACHE_DIR = ".seektalent/cache"
 PROD_ARTIFACTS_DIR = "~/.seektalent/artifacts"
 PROD_RUNS_DIR = "~/.seektalent/runs"
 PROD_LLM_CACHE_DIR = "~/.seektalent/cache"
-MODEL_FIELDS = (
+PROVIDER_ENV_VARS = {
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "GOOGLE_API_KEY",
+}
+LEGACY_TEXT_LLM_ENV_KEYS = {
+    "SEEKTALENT_REQUIREMENTS_MODEL",
+    "SEEKTALENT_CONTROLLER_MODEL",
+    "SEEKTALENT_SCORING_MODEL",
+    "SEEKTALENT_FINALIZE_MODEL",
+    "SEEKTALENT_REFLECTION_MODEL",
+    "SEEKTALENT_STRUCTURED_REPAIR_MODEL",
+    "SEEKTALENT_JUDGE_MODEL",
+    "SEEKTALENT_TUI_SUMMARY_MODEL",
+    "SEEKTALENT_CANDIDATE_FEEDBACK_MODEL",
+    "SEEKTALENT_JUDGE_OPENAI_BASE_URL",
+    "SEEKTALENT_JUDGE_OPENAI_API_KEY",
+}
+LEGACY_TEXT_LLM_INIT_KEYS = {
     "requirements_model",
     "controller_model",
     "scoring_model",
@@ -36,12 +65,24 @@ MODEL_FIELDS = (
     "judge_model",
     "tui_summary_model",
     "candidate_feedback_model",
-)
-PROVIDER_ENV_VARS = {
-    "OPENAI_API_KEY",
-    "OPENAI_BASE_URL",
-    "ANTHROPIC_API_KEY",
-    "GOOGLE_API_KEY",
+    "judge_openai_base_url",
+    "judge_openai_api_key",
+}
+TEXT_LLM_MODEL_ID_FIELDS = {
+    "requirements_model_id",
+    "controller_model_id",
+    "scoring_model_id",
+    "finalize_model_id",
+    "reflection_model_id",
+    "structured_repair_model_id",
+    "judge_model_id",
+    "tui_summary_model_id",
+    "candidate_feedback_model_id",
+}
+LEGACY_TEXT_LLM_PREFIXES = ("openai-chat:", "openai-responses:", "anthropic:")
+TEXT_LLM_ENDPOINT_KIND_BY_PROTOCOL_FAMILY = {
+    "openai_chat_completions_compatible": "bailian_openai_chat_completions",
+    "anthropic_messages_compatible": "bailian_anthropic_messages",
 }
 
 
@@ -67,11 +108,73 @@ def load_process_env(env_file: str | Path = ".env") -> None:
         os.environ[key] = value
 
 
-def _is_qualified_model_id(model_id: str) -> bool:
-    if ":" not in model_id:
-        return False
-    provider, name = model_id.split(":", 1)
-    return bool(provider and name)
+class TextLLMConfigMigrationError(ValueError):
+    """Raised when removed text-llm config surfaces are still present."""
+
+
+def _read_env_kv_pairs(path: str | Path) -> dict[str, str]:
+    env_path = Path(path)
+    data: dict[str, str] = {}
+    if not env_path.exists():
+        return data
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        data[key.strip()] = value.strip().strip("'").strip('"')
+    return data
+
+
+def _is_provider_prefixed_model_id(model_id: str) -> bool:
+    return model_id.startswith(LEGACY_TEXT_LLM_PREFIXES)
+
+
+def _legacy_text_llm_error(reasons: list[str]) -> TextLLMConfigMigrationError:
+    detail = "; ".join(dict.fromkeys(reasons))
+    return TextLLMConfigMigrationError(
+        "legacy text-llm config detected: "
+        f"{detail}. Replace removed provider-prefixed stage settings with "
+        "SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY, SEEKTALENT_TEXT_LLM_ENDPOINT_KIND, "
+        "SEEKTALENT_TEXT_LLM_ENDPOINT_REGION, and bare *_MODEL_ID values."
+    )
+
+
+def _scan_legacy_text_llm_inputs(
+    *,
+    env_file: str | Path | None,
+    init_data: Mapping[str, object],
+    include_default_env_file: bool,
+) -> None:
+    reasons: list[str] = []
+    sources: list[Mapping[str, str]] = [dict(os.environ)]
+    if include_default_env_file:
+        sources.append(_read_env_kv_pairs(".env"))
+    if env_file is not None:
+        sources.append(_read_env_kv_pairs(env_file))
+    init_values = {
+        str(key): str(value)
+        for key, value in init_data.items()
+        if value is not None and not str(key).startswith("_")
+    }
+    sources.append(init_values)
+    for source in sources:
+        for key in sorted(LEGACY_TEXT_LLM_ENV_KEYS):
+            if key in source:
+                reasons.append(f"deprecated key {key}")
+        for key in sorted(LEGACY_TEXT_LLM_INIT_KEYS):
+            if key in source:
+                reasons.append(f"deprecated init key {key}")
+        for key, value in source.items():
+            if key in TEXT_LLM_MODEL_ID_FIELDS or key.endswith("_MODEL_ID"):
+                if _is_provider_prefixed_model_id(value):
+                    reasons.append(f"provider-prefixed model string {value!r} on {key}")
+    if reasons:
+        raise _legacy_text_llm_error(reasons)
 
 
 def _packaged_runtime_forces_prod() -> bool:
@@ -86,30 +189,45 @@ class AppSettings(BaseSettings):
         extra="ignore",
     )
 
+    def __init__(self, **data: Any) -> None:
+        explicit_env_file = "_env_file" in data
+        env_file = data.get("_env_file", self.model_config.get("env_file"))
+        _scan_legacy_text_llm_inputs(
+            env_file=env_file,
+            init_data=data,
+            include_default_env_file=not explicit_env_file,
+        )
+        super().__init__(**data)
+
     cts_base_url: str = "https://link.hewa.cn"
     cts_tenant_key: str | None = None
     cts_tenant_secret: str | None = None
     cts_timeout_seconds: float = 20.0
     cts_spec_path: str = DEFAULT_CTS_SPEC_NAME
 
-    requirements_model: str = "openai-responses:gpt-5.4-mini"
-    controller_model: str = "openai-responses:gpt-5.4-mini"
-    scoring_model: str = "openai-responses:gpt-5.4-mini"
-    finalize_model: str = "openai-responses:gpt-5.4-mini"
-    reflection_model: str = "openai-responses:gpt-5.4"
+    text_llm_protocol_family: TextLLMProtocolFamily = "anthropic_messages_compatible"
+    text_llm_provider_label: TextLLMProviderLabel = "bailian"
+    text_llm_endpoint_kind: TextLLMEndpointKind = "bailian_anthropic_messages"
+    text_llm_endpoint_region: TextLLMEndpointRegion = "beijing"
+    text_llm_base_url_override: str | None = None
+    text_llm_api_key: str | None = None
+
+    requirements_model_id: str = "deepseek-v4-pro"
+    controller_model_id: str = "deepseek-v4-pro"
+    scoring_model_id: str = "deepseek-v4-flash"
+    finalize_model_id: str = "deepseek-v4-flash"
+    reflection_model_id: str = "deepseek-v4-pro"
     requirements_enable_thinking: bool = True
-    structured_repair_model: str = "openai-chat:qwen3.5-flash"
+    structured_repair_model_id: str = "deepseek-v4-flash"
     structured_repair_reasoning_effort: ReasoningEffort = "off"
-    judge_model: str | None = None
-    tui_summary_model: str | None = None
-    judge_openai_base_url: str | None = None
-    judge_openai_api_key: str | None = None
+    judge_model_id: str = "deepseek-v4-pro"
+    tui_summary_model_id: str | None = None
     reasoning_effort: ReasoningEffort = "medium"
     judge_reasoning_effort: ReasoningEffort | None = None
     controller_enable_thinking: bool = True
     reflection_enable_thinking: bool = True
     candidate_feedback_enabled: bool = True
-    candidate_feedback_model: str = "openai-chat:qwen3.5-flash"
+    candidate_feedback_model_id: str = "qwen3.5-flash"
     candidate_feedback_reasoning_effort: ReasoningEffort = "off"
     prf_v1_5_mode: Literal["disabled", "shadow", "mainline"] = "shadow"
     prf_span_model_name: str = "fastino/gliner2-multi-v1"
@@ -156,20 +274,18 @@ class AppSettings(BaseSettings):
 
     runs_dir: str | None = None
 
-    @field_validator(*MODEL_FIELDS)
+    @field_validator(*TEXT_LLM_MODEL_ID_FIELDS)
     @classmethod
     def validate_model_id(cls, value: str | None, info: ValidationInfo) -> str | None:
-        if value == "" and info.field_name in {"judge_model", "tui_summary_model"}:
-            return None
+        if value == "":
+            if info.field_name == "tui_summary_model_id":
+                return None
+            raise ValueError(f"{info.field_name} must not be empty")
         if value is None:
-            if info.field_name in {"judge_model", "tui_summary_model"}:
-                return value
-            raise ValueError(f"{info.field_name} must use the provider:model format, got {value!r}.")
-        if _is_qualified_model_id(value):
             return value
-        raise ValueError(
-            f"{info.field_name} must use the provider:model format, got {value!r}."
-        )
+        if _is_provider_prefixed_model_id(value):
+            raise ValueError(f"provider-prefixed model string {value!r} is decommissioned")
+        return value
 
     @field_validator("openai_prompt_cache_retention", mode="before")
     @classmethod
@@ -227,6 +343,16 @@ class AppSettings(BaseSettings):
             raise ValueError("prf_sidecar_max_payload_bytes must be >= 1")
         return self
 
+    @model_validator(mode="after")
+    def validate_text_llm_surface(self) -> "AppSettings":
+        expected_endpoint_kind = TEXT_LLM_ENDPOINT_KIND_BY_PROTOCOL_FAMILY[self.text_llm_protocol_family]
+        if self.text_llm_endpoint_kind != expected_endpoint_kind:
+            raise ValueError(
+                "text_llm_endpoint_kind must match text_llm_protocol_family "
+                f"({self.text_llm_protocol_family} -> {expected_endpoint_kind})"
+            )
+        return self
+
     @property
     def project_root(self) -> Path:
         return self.runtime_context.workspace_root
@@ -275,11 +401,11 @@ class AppSettings(BaseSettings):
 
     @property
     def effective_judge_model(self) -> str:
-        return self.judge_model or self.scoring_model
+        return self.judge_model_id
 
     @property
     def effective_tui_summary_model(self) -> str:
-        return self.tui_summary_model or self.scoring_model
+        return self.tui_summary_model_id or self.scoring_model_id
 
     @property
     def effective_judge_reasoning_effort(self) -> ReasoningEffort:
@@ -307,7 +433,7 @@ class AppSettings(BaseSettings):
             data["runs_dir"] = None
         if reset_llm_cache_dir:
             data["llm_cache_dir"] = None
-        settings = type(self).model_validate({**data, **filtered})
+        settings = type(self)(_env_file=None, **{**data, **filtered})  # ty: ignore[unknown-argument]
         if reset_artifacts_dir:
             settings.model_fields_set.discard("artifacts_dir")
         if reset_runs_dir:
