@@ -2382,6 +2382,85 @@ def test_score_round_keeps_existing_scorecards_and_only_scores_new_resumes(tmp_p
     assert dropped_candidates == []
 
 
+class QueryOutcomeScorerRequiringSession:
+    async def score_candidates_parallel(self, *, contexts, tracer):
+        tracer.session.register_path(
+            "round.01.scoring.scoring_calls",
+            "rounds/01/scoring/scoring_calls.jsonl",
+            content_type="application/jsonl",
+            schema_version="v1",
+        )
+        return (
+            [
+                ScoredCandidate(
+                    resume_id=context.normalized_resume.resume_id,
+                    fit_bucket="fit",
+                    overall_score=88,
+                    must_have_match_score=84,
+                    preferred_match_score=65,
+                    risk_score=10,
+                    risk_flags=[],
+                    reasoning_summary="Query outcome scorer completed.",
+                    evidence=["python"],
+                    confidence="high",
+                    matched_must_haves=["python"],
+                    missing_must_haves=[],
+                    matched_preferences=["resume matching"],
+                    negative_signals=[],
+                    strengths=["Query outcome score."],
+                    weaknesses=[],
+                    source_round=context.normalized_resume.source_round or context.round_no,
+                )
+                for context in contexts
+            ],
+            [],
+        )
+
+
+def test_query_outcome_scoring_noop_tracer_exposes_session_contract(tmp_path: Path) -> None:
+    settings = make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True)
+    runtime = WorkflowRuntime(settings)
+    cast(Any, runtime).resume_scorer = QueryOutcomeScorerRequiringSession()
+    _, requirement_sheet = asyncio.run(StubRequirementExtractor().extract_with_draft(input_truth=None))
+    run_state = RunState(
+        input_truth=InputTruth(
+            job_title="Senior Python Engineer",
+            jd="JD",
+            notes="Notes",
+            job_title_sha256="title-hash",
+            jd_sha256="jd-hash",
+            notes_sha256="notes-hash",
+        ),
+        requirement_sheet=requirement_sheet,
+        scoring_policy=ScoringPolicy(
+            role_title=requirement_sheet.role_title,
+            role_summary=requirement_sheet.role_summary,
+            must_have_capabilities=requirement_sheet.must_have_capabilities,
+            preferred_capabilities=requirement_sheet.preferred_capabilities,
+            exclusion_signals=requirement_sheet.exclusion_signals,
+            hard_constraints=requirement_sheet.hard_constraints,
+            preferences=requirement_sheet.preferences,
+            scoring_rationale=requirement_sheet.scoring_rationale,
+        ),
+        retrieval_state=RetrievalState(
+            current_plan_version=1,
+            query_term_pool=requirement_sheet.initial_query_term_pool,
+        ),
+        candidate_store={"query-outcome-1": _make_candidate("query-outcome-1", source_round=1)},
+    )
+
+    scored = asyncio.run(
+        runtime._score_candidates_for_query_outcome(
+            round_no=1,
+            candidates=[_make_candidate("query-outcome-1")],
+            run_state=run_state,
+            runtime_only_constraints=[],
+        )
+    )
+
+    assert [item.resume_id for item in scored] == ["query-outcome-1"]
+
+
 def test_materialize_candidates_requires_candidate_store_entry(tmp_path: Path) -> None:
     runtime = WorkflowRuntime(make_settings(runs_dir=str(tmp_path / "runs"), mock_cts=True))
     scored = ScoredCandidate(
