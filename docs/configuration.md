@@ -191,6 +191,17 @@ These settings control the mainline PRF probe proposal backend. The default back
 | `SEEKTALENT_PRF_PROBE_PHRASE_PROPOSAL_TIMEOUT_SECONDS` | `3` | Per-call timeout for phrase proposal extraction. |
 | `SEEKTALENT_PRF_PROBE_PHRASE_PROPOSAL_MAX_OUTPUT_TOKENS` | `2048` | Maximum output tokens for phrase proposal extraction. |
 
+Before using `llm_deepseek_v4_flash` as production-ready benchmark behavior, run the live LLM PRF bakeoff manually and require `blocker_count == 0`:
+
+```bash
+uv run python -m seektalent.candidate_feedback.llm_prf_bakeoff \
+  --live \
+  --cases tests/fixtures/llm_prf_bakeoff/cases.jsonl \
+  --output-dir artifacts/manual/llm-prf-bakeoff
+```
+
+The checked-in three-case fixture is only a harness smoke test. Production promotion requires an external private sanitized slice, preferably at least 30 cases across English, Chinese, and mixed-language roles. Inspect `generic_fallback_rate`, `structured_output_failure_rate`, and p50/p95 latency in addition to `blocker_count`.
+
 ## Runtime Variables
 
 | Variable | Starter value | Notes |
