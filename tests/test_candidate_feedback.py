@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 import httpx
+import pytest
 
 from seektalent.candidate_feedback import (
     build_feedback_decision,
@@ -450,7 +451,11 @@ def test_policy_gate_does_not_mutate_persisted_phrase_family_objects() -> None:
 
 
 def test_shadow_mode_falls_back_to_legacy_when_model_dependency_gate_fails() -> None:
-    settings = make_settings(prf_v1_5_mode="shadow", prf_span_model_revision="")
+    settings = make_settings(
+        prf_probe_proposal_backend="sidecar_span",
+        prf_v1_5_mode="shadow",
+        prf_span_model_revision="",
+    )
 
     assert model_dependency_gate_allows_mainline(settings) is False
     assert build_prf_span_extractor(settings, backend=None).__class__.__name__ == "LegacyRegexSpanExtractor"
@@ -586,12 +591,8 @@ def test_sidecar_embedding_backend_rejects_wrong_revision() -> None:
         http_client=client,
     )
 
-    try:
+    with pytest.raises(SidecarRevisionMismatch):
         backend.embed(["Flink CDC", "flink-cdc"])
-    except SidecarRevisionMismatch:
-        pass
-    else:
-        raise AssertionError("expected SidecarRevisionMismatch")
 
 
 def test_sidecar_embedding_backend_rejects_invalid_vector_shape() -> None:
@@ -621,12 +622,8 @@ def test_sidecar_embedding_backend_rejects_invalid_vector_shape() -> None:
         http_client=client,
     )
 
-    try:
+    with pytest.raises(SidecarSchemaMismatch):
         backend.embed(["Flink CDC", "flink-cdc"])
-    except SidecarSchemaMismatch:
-        pass
-    else:
-        raise AssertionError("expected SidecarSchemaMismatch")
 
 
 def test_fetch_sidecar_readyz_preserves_not_ready_payload_from_503() -> None:

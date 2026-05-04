@@ -3,19 +3,39 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
+from datetime import datetime
 from collections import Counter
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from time import perf_counter
+from typing import Any, Literal, cast
 
 from seektalent.candidate_feedback import (
     FeedbackCandidateExpression,
+    GROUNDING_VALIDATOR_VERSION,
+    LLMPRFExtraction,
+    LLMPRFGroundingResult,
+    LLMPRFInput,
+    LLM_PRF_EXTRACTOR_VERSION,
+    LLM_PRF_FAMILYING_VERSION,
+    LLM_PRF_OUTPUT_RETRIES,
     build_term_family_id,
+    build_llm_prf_artifact_refs,
+    build_llm_prf_input,
     extract_feedback_candidate_expressions,
+    feedback_expressions_from_llm_grounding,
+    ground_llm_prf_candidates,
+    select_llm_prf_negative_resumes,
     select_feedback_seed_resumes,
 )
 from seektalent.candidate_feedback.familying import build_embedding_similarity
+from seektalent.candidate_feedback.llm_prf import (
+    LLMPRFExtractor,
+    build_llm_prf_failure_call_artifact,
+    build_llm_prf_success_call_artifact,
+    render_llm_prf_prompt,
+)
 from seektalent.candidate_feedback.proposal_runtime import (
     PRFProposalOutput,
     build_prf_proposal_bundle,
@@ -113,6 +133,7 @@ from seektalent.runtime.runtime_diagnostics import (
     build_judge_packet as build_judge_packet_direct,
     build_search_diagnostics as build_search_diagnostics_direct,
     build_term_surface_audit as build_term_surface_audit_direct,
+    classify_text_llm_failure,
     collect_llm_schema_pressure as collect_llm_schema_pressure_direct,
     _build_round_search_diagnostics as build_round_search_diagnostics_direct,
     _candidate_surface_rule as candidate_surface_rule_direct,
@@ -262,6 +283,21 @@ class _TermSurfaceStats:
     duplicate_count: int = 0
 
 
+@dataclass
+class _PRFBackendSelection:
+    prf_decision: PRFPolicyDecision | None
+    prf_proposal: PRFProposalOutput | None = None
+    prf_v1_5_mode: str = "disabled"
+    shadow_prf_v1_5_artifact_ref: str | None = None
+    prf_probe_proposal_backend: str | None = None
+    llm_prf_failure_kind: str | None = None
+    llm_prf_input_artifact_ref: str | None = None
+    llm_prf_call_artifact_ref: str | None = None
+    llm_prf_candidates_artifact_ref: str | None = None
+    llm_prf_grounding_artifact_ref: str | None = None
+    llm_prf_snapshot_metadata: dict[str, object] | None = None
+
+
 class RunStageError(RuntimeError):
     def __init__(self, stage: str, message: str) -> None:
         super().__init__(message)
@@ -290,6 +326,7 @@ class WorkflowRuntime:
                 "finalize",
                 "judge",
                 "tui_summary",
+                "prf_probe_phrase_proposal",
                 "repair_requirements",
                 "repair_controller",
                 "repair_reflection",
@@ -313,6 +350,7 @@ class WorkflowRuntime:
             repair_prompt=prompt_map["repair_reflection"],
         )
         self.finalizer = Finalizer(settings, prompt_map["finalize"])
+        self.llm_prf_extractor = LLMPRFExtractor(settings, prompt_map["prf_probe_phrase_proposal"])
         self.judge_prompt = prompt_map["judge"]
         self.evaluation_runner = evaluate_run
         self.provider = get_provider_adapter(settings)
@@ -665,63 +703,29 @@ class WorkflowRuntime:
                 projection_result.model_dump(mode="json"),
             )
             job_intent_fingerprint = self._build_job_intent_fingerprint(run_state=run_state)
-            prf_v1_5_mode = self.settings.prf_v1_5_mode
-            legacy_prf_decision = self._build_prf_policy_decision(run_state=run_state, retrieval_plan=retrieval_plan)
-            prf_proposal: PRFProposalOutput | None = None
-            prf_decision = legacy_prf_decision
-            shadow_prf_v1_5_artifact_ref: str | None = None
-            if prf_v1_5_mode != "disabled":
-                prf_proposal, proposal_prf_decision = self._build_prf_v1_5_proposal_and_decision(
-                    run_state=run_state,
-                    retrieval_plan=retrieval_plan,
-                )
-                if prf_proposal.version_vector.sidecar_dependency_manifest_hash is not None:
-                    tracer.write_json(
-                        "runtime.prf_sidecar_dependency_manifest",
-                        {
-                            "dependency_manifest_hash": prf_proposal.version_vector.sidecar_dependency_manifest_hash,
-                            "sidecar_image_digest": prf_proposal.version_vector.sidecar_image_digest,
-                            "span_model_name": prf_proposal.version_vector.span_model_name,
-                            "span_model_revision": prf_proposal.version_vector.span_model_revision,
-                            "span_tokenizer_revision": prf_proposal.version_vector.span_tokenizer_revision,
-                            "embedding_model_name": prf_proposal.version_vector.embedding_model_name,
-                            "embedding_model_revision": prf_proposal.version_vector.embedding_model_revision,
-                            "model_backend": prf_proposal.version_vector.model_backend,
-                        },
-                    )
-                tracer.write_json(
-                    f"round.{round_no:02d}.retrieval.prf_span_candidates",
-                    [item.model_dump(mode="json") for item in prf_proposal.candidate_spans],
-                )
-                tracer.write_json(
-                    f"round.{round_no:02d}.retrieval.prf_expression_families",
-                    [item.model_dump(mode="json") for item in prf_proposal.phrase_families],
-                )
-                tracer.write_json(
-                    f"round.{round_no:02d}.retrieval.prf_policy_decision",
-                    proposal_prf_decision.model_dump(mode="json"),
-                )
-                if prf_v1_5_mode == "mainline":
-                    prf_decision = proposal_prf_decision
-                else:
-                    shadow_prf_v1_5_artifact_ref = prf_proposal.artifact_refs.policy_decision_artifact_ref
-            else:
-                tracer.write_json(
-                    f"round.{round_no:02d}.retrieval.prf_policy_decision",
-                    legacy_prf_decision.model_dump(mode="json"),
-                )
+            prf_selection = await self._select_prf_backend_decision(
+                run_state=run_state,
+                retrieval_plan=retrieval_plan,
+                tracer=tracer,
+            )
             query_states, second_lane_decision = self._build_round_query_bundle(
                 round_no=round_no,
                 retrieval_plan=retrieval_plan,
                 title_anchor_terms=run_state.requirement_sheet.title_anchor_terms,
                 query_term_pool=run_state.retrieval_state.query_term_pool,
                 sent_query_history=run_state.retrieval_state.sent_query_history,
-                prf_decision=prf_decision,
+                prf_decision=prf_selection.prf_decision,
                 run_id=tracer.run_id,
                 job_intent_fingerprint=job_intent_fingerprint,
                 source_plan_version=str(retrieval_plan.plan_version),
-                prf_v1_5_mode=prf_v1_5_mode,
-                shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
+                prf_v1_5_mode=prf_selection.prf_v1_5_mode,
+                shadow_prf_v1_5_artifact_ref=prf_selection.shadow_prf_v1_5_artifact_ref,
+                prf_probe_proposal_backend=prf_selection.prf_probe_proposal_backend,
+                llm_prf_failure_kind=prf_selection.llm_prf_failure_kind,
+                llm_prf_input_artifact_ref=prf_selection.llm_prf_input_artifact_ref,
+                llm_prf_call_artifact_ref=prf_selection.llm_prf_call_artifact_ref,
+                llm_prf_candidates_artifact_ref=prf_selection.llm_prf_candidates_artifact_ref,
+                llm_prf_grounding_artifact_ref=prf_selection.llm_prf_grounding_artifact_ref,
             )
             tracer.write_json(
                 f"round.{round_no:02d}.retrieval.second_lane_decision",
@@ -850,7 +854,8 @@ class WorkflowRuntime:
                     search_observation=search_observation,
                     scoring_model_version=self.settings.scoring_model_id,
                     query_plan_version=str(retrieval_plan.plan_version),
-                    prf_proposal=prf_proposal,
+                    prf_proposal=prf_selection.prf_proposal,
+                    llm_prf_snapshot_metadata=prf_selection.llm_prf_snapshot_metadata,
                 )
                 tracer.write_json(
                     f"round.{round_no:02d}.retrieval.replay_snapshot",
@@ -1951,7 +1956,11 @@ class WorkflowRuntime:
 
     def _require_live_llm_config(self) -> None:
         try:
-            extra_stage_names = ["candidate_feedback"] if self.settings.candidate_feedback_enabled else None
+            extra_stage_names = []
+            if self.settings.candidate_feedback_enabled:
+                extra_stage_names.append("candidate_feedback")
+            if self.settings.prf_probe_proposal_backend == "llm_deepseek_v4_flash":
+                extra_stage_names.append("prf_probe_phrase_proposal")
             preflight_models(self.settings, extra_stage_names=extra_stage_names)
         except Exception as exc:  # noqa: BLE001
             raise RunStageError("llm_preflight", str(exc)) from exc
@@ -2042,6 +2051,12 @@ class WorkflowRuntime:
         source_plan_version: str,
         prf_v1_5_mode: str = "disabled",
         shadow_prf_v1_5_artifact_ref: str | None = None,
+        prf_probe_proposal_backend: str | None = None,
+        llm_prf_failure_kind: str | None = None,
+        llm_prf_input_artifact_ref: str | None = None,
+        llm_prf_call_artifact_ref: str | None = None,
+        llm_prf_candidates_artifact_ref: str | None = None,
+        llm_prf_grounding_artifact_ref: str | None = None,
     ) -> tuple[list[LogicalQueryState], SecondLaneDecision]:
         del title_anchor_terms
         exploit_query_state = build_logical_query_state(
@@ -2066,10 +2081,399 @@ class WorkflowRuntime:
             source_plan_version=source_plan_version,
             prf_v1_5_mode=prf_v1_5_mode,
             shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
+            prf_probe_proposal_backend=prf_probe_proposal_backend,
+            llm_prf_failure_kind=llm_prf_failure_kind,
+            llm_prf_input_artifact_ref=llm_prf_input_artifact_ref,
+            llm_prf_call_artifact_ref=llm_prf_call_artifact_ref,
+            llm_prf_candidates_artifact_ref=llm_prf_candidates_artifact_ref,
+            llm_prf_grounding_artifact_ref=llm_prf_grounding_artifact_ref,
         )
         if second_lane_query_state is not None:
             query_states.append(second_lane_query_state)
         return query_states, second_lane_decision
+
+    async def _select_prf_backend_decision(
+        self,
+        *,
+        run_state: RunState,
+        retrieval_plan,
+        tracer: RunTracer,
+    ) -> _PRFBackendSelection:
+        backend = self.settings.prf_probe_proposal_backend
+        if not self._prf_second_lane_eligible(retrieval_plan):
+            return _PRFBackendSelection(
+                prf_decision=None,
+                prf_v1_5_mode=self.settings.prf_v1_5_mode if backend == "sidecar_span" else "disabled",
+                prf_probe_proposal_backend=backend,
+            )
+        if backend == "legacy_regex":
+            decision = self._build_prf_policy_decision(run_state=run_state, retrieval_plan=retrieval_plan)
+            tracer.write_json(
+                f"round.{retrieval_plan.round_no:02d}.retrieval.prf_policy_decision",
+                decision.model_dump(mode="json"),
+            )
+            return _PRFBackendSelection(
+                prf_decision=decision,
+                prf_probe_proposal_backend="legacy_regex",
+            )
+
+        if backend == "sidecar_span":
+            return self._build_sidecar_prf_backend_selection(
+                run_state=run_state,
+                retrieval_plan=retrieval_plan,
+                tracer=tracer,
+            )
+
+        return await self._build_llm_prf_policy_decision(
+            run_state=run_state,
+            retrieval_plan=retrieval_plan,
+            tracer=tracer,
+        )
+
+    def _prf_second_lane_eligible(self, retrieval_plan) -> bool:
+        return retrieval_plan.round_no != 1 and len(retrieval_plan.query_terms) > 1
+
+    def _build_sidecar_prf_backend_selection(
+        self,
+        *,
+        run_state: RunState,
+        retrieval_plan,
+        tracer: RunTracer,
+    ) -> _PRFBackendSelection:
+        prf_v1_5_mode = self.settings.prf_v1_5_mode
+        if prf_v1_5_mode == "disabled":
+            decision = self._build_prf_policy_decision(run_state=run_state, retrieval_plan=retrieval_plan)
+            tracer.write_json(
+                f"round.{retrieval_plan.round_no:02d}.retrieval.prf_policy_decision",
+                decision.model_dump(mode="json"),
+            )
+            return _PRFBackendSelection(
+                prf_decision=decision,
+                prf_v1_5_mode=prf_v1_5_mode,
+                prf_probe_proposal_backend="sidecar_span",
+            )
+
+        prf_proposal, proposal_prf_decision = self._build_prf_v1_5_proposal_and_decision(
+            run_state=run_state,
+            retrieval_plan=retrieval_plan,
+        )
+        if prf_proposal.version_vector.sidecar_dependency_manifest_hash is not None:
+            tracer.write_json(
+                "runtime.prf_sidecar_dependency_manifest",
+                {
+                    "dependency_manifest_hash": prf_proposal.version_vector.sidecar_dependency_manifest_hash,
+                    "sidecar_image_digest": prf_proposal.version_vector.sidecar_image_digest,
+                    "span_model_name": prf_proposal.version_vector.span_model_name,
+                    "span_model_revision": prf_proposal.version_vector.span_model_revision,
+                    "span_tokenizer_revision": prf_proposal.version_vector.span_tokenizer_revision,
+                    "embedding_model_name": prf_proposal.version_vector.embedding_model_name,
+                    "embedding_model_revision": prf_proposal.version_vector.embedding_model_revision,
+                    "model_backend": prf_proposal.version_vector.model_backend,
+                },
+            )
+        round_prefix = f"round.{retrieval_plan.round_no:02d}.retrieval"
+        tracer.write_json(
+            f"{round_prefix}.prf_span_candidates",
+            [item.model_dump(mode="json") for item in prf_proposal.candidate_spans],
+        )
+        tracer.write_json(
+            f"{round_prefix}.prf_expression_families",
+            [item.model_dump(mode="json") for item in prf_proposal.phrase_families],
+        )
+        tracer.write_json(
+            f"{round_prefix}.prf_policy_decision",
+            proposal_prf_decision.model_dump(mode="json"),
+        )
+        prf_decision = proposal_prf_decision if prf_v1_5_mode == "mainline" else self._build_prf_policy_decision(
+            run_state=run_state,
+            retrieval_plan=retrieval_plan,
+        )
+        shadow_prf_v1_5_artifact_ref = (
+            None if prf_v1_5_mode == "mainline" else prf_proposal.artifact_refs.policy_decision_artifact_ref
+        )
+        return _PRFBackendSelection(
+            prf_decision=prf_decision,
+            prf_proposal=prf_proposal,
+            prf_v1_5_mode=prf_v1_5_mode,
+            shadow_prf_v1_5_artifact_ref=shadow_prf_v1_5_artifact_ref,
+            prf_probe_proposal_backend="sidecar_span",
+        )
+
+    async def _build_llm_prf_policy_decision(
+        self,
+        *,
+        run_state: RunState,
+        retrieval_plan,
+        tracer: RunTracer,
+    ) -> _PRFBackendSelection:
+        round_no = retrieval_plan.round_no
+        artifact_refs = build_llm_prf_artifact_refs(round_no=round_no)
+        seeds, feedback_negatives = self._feedback_seed_sets(run_state=run_state)
+        negatives = select_llm_prf_negative_resumes(feedback_negatives)
+        tried_term_family_ids = self._tried_term_family_ids(run_state=run_state, retrieval_plan=retrieval_plan)
+        payload = build_llm_prf_input(
+            seed_resumes=seeds,
+            negative_resumes=negatives,
+            round_no=round_no,
+            role_title=run_state.requirement_sheet.role_title,
+            role_summary=run_state.requirement_sheet.role_summary,
+            must_have_capabilities=run_state.requirement_sheet.must_have_capabilities,
+            retrieval_query_terms=retrieval_plan.query_terms,
+            existing_query_terms=[item.term for item in run_state.retrieval_state.query_term_pool],
+            sent_query_terms=[
+                term
+                for record in run_state.retrieval_state.sent_query_history
+                for term in record.query_terms
+            ],
+            tried_term_family_ids=tried_term_family_ids,
+        )
+        if payload is None:
+            payload = LLMPRFInput(
+                round_no=round_no,
+                role_title=run_state.requirement_sheet.role_title,
+                role_summary=run_state.requirement_sheet.role_summary,
+                must_have_capabilities=list(run_state.requirement_sheet.must_have_capabilities),
+                retrieval_query_terms=list(retrieval_plan.query_terms),
+                existing_query_terms=[item.term for item in run_state.retrieval_state.query_term_pool],
+                sent_query_terms=[
+                    term
+                    for record in run_state.retrieval_state.sent_query_history
+                    for term in record.query_terms
+                ],
+                tried_term_family_ids=tried_term_family_ids,
+                seed_resume_ids=[item.resume_id for item in seeds],
+                negative_resume_ids=[item.resume_id for item in negatives],
+            )
+            decision = self._empty_llm_prf_decision(
+                payload=payload,
+                failure_kind="insufficient_prf_seed_support",
+            )
+            self._write_llm_prf_artifacts(
+                tracer=tracer,
+                artifact_refs=artifact_refs,
+                payload=payload,
+                extraction=LLMPRFExtraction(),
+                grounding=LLMPRFGroundingResult(),
+                decision=decision,
+                call_artifact=build_llm_prf_failure_call_artifact(
+                    settings=self.settings,
+                    payload=payload,
+                    user_prompt_text=render_llm_prf_prompt(payload),
+                    started_at=self._now_iso(),
+                    latency_ms=0,
+                    round_no=round_no,
+                    failure_kind="response_validation_error",
+                    error_message="insufficient_prf_seed_support",
+                ),
+            )
+            return self._llm_prf_backend_selection(
+                decision=decision,
+                artifact_refs=artifact_refs,
+                failure_kind="insufficient_prf_seed_support",
+            )
+
+        tracer.write_json(artifact_refs.input_artifact_ref, payload.model_dump(mode="json"))
+        started_at = self._now_iso()
+        start = perf_counter()
+        user_prompt_text = render_llm_prf_prompt(payload)
+        try:
+            extraction = await asyncio.wait_for(
+                self.llm_prf_extractor.propose(payload),
+                timeout=self.settings.prf_probe_phrase_proposal_timeout_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001
+            failure_info = classify_text_llm_failure(exc)
+            latency_ms = int((perf_counter() - start) * 1000)
+            failure_kind = self._llm_prf_failure_kind(failure_info.failure_kind)
+            decision = self._empty_llm_prf_decision(payload=payload, failure_kind=failure_kind)
+            call_artifact = build_llm_prf_failure_call_artifact(
+                settings=self.settings,
+                payload=payload,
+                user_prompt_text=user_prompt_text,
+                started_at=started_at,
+                latency_ms=latency_ms,
+                round_no=round_no,
+                failure_kind=cast(Any, failure_info.failure_kind),
+                error_message=str(exc),
+                provider_usage=getattr(self.llm_prf_extractor, "last_provider_usage", None),
+            )
+            call_artifact["provider_failure_kind"] = failure_info.provider_failure_kind
+            call_artifact["provider_status_code"] = failure_info.provider_status_code
+            call_artifact["provider_error_type"] = failure_info.provider_error_type
+            call_artifact["provider_error_code"] = failure_info.provider_error_code
+            call_artifact["provider_request_id"] = failure_info.provider_request_id
+            self._write_llm_prf_artifacts(
+                tracer=tracer,
+                artifact_refs=artifact_refs,
+                payload=payload,
+                extraction=LLMPRFExtraction(),
+                grounding=LLMPRFGroundingResult(),
+                decision=decision,
+                call_artifact=call_artifact,
+                input_already_written=True,
+            )
+            return self._llm_prf_backend_selection(
+                decision=decision,
+                artifact_refs=artifact_refs,
+                failure_kind=failure_kind,
+            )
+
+        latency_ms = int((perf_counter() - start) * 1000)
+        grounding = ground_llm_prf_candidates(payload, extraction)
+        expressions = feedback_expressions_from_llm_grounding(
+            payload,
+            grounding,
+            known_company_entities=self._known_company_entities(run_state=run_state),
+            tried_term_family_ids=set(tried_term_family_ids),
+        )
+        decision = self._llm_prf_decision_from_expressions(
+            payload=payload,
+            expressions=expressions,
+            run_state=run_state,
+            retrieval_plan=retrieval_plan,
+        )
+        failure_kind = None if decision.gate_passed else "no_safe_llm_prf_expression"
+        if failure_kind is not None:
+            decision = decision.model_copy(update={"reject_reasons": [failure_kind]})
+        call_artifact = build_llm_prf_success_call_artifact(
+            settings=self.settings,
+            payload=payload,
+            user_prompt_text=user_prompt_text,
+            extraction=extraction,
+            started_at=started_at,
+            latency_ms=latency_ms,
+            round_no=round_no,
+            provider_usage=getattr(self.llm_prf_extractor, "last_provider_usage", None),
+        )
+        self._write_llm_prf_artifacts(
+            tracer=tracer,
+            artifact_refs=artifact_refs,
+            payload=payload,
+            extraction=extraction,
+            grounding=grounding,
+            decision=decision,
+            call_artifact=call_artifact,
+            input_already_written=True,
+        )
+        return self._llm_prf_backend_selection(
+            decision=decision,
+            artifact_refs=artifact_refs,
+            failure_kind=failure_kind,
+        )
+
+    def _llm_prf_decision_from_expressions(
+        self,
+        *,
+        payload: LLMPRFInput,
+        expressions: list[FeedbackCandidateExpression],
+        run_state: RunState,
+        retrieval_plan,
+    ) -> PRFPolicyDecision:
+        return build_prf_policy_decision(
+            PRFGateInput(
+                round_no=retrieval_plan.round_no,
+                seed_resume_ids=payload.seed_resume_ids,
+                seed_count=len(payload.seed_resume_ids),
+                negative_resume_ids=payload.negative_resume_ids,
+                candidate_expressions=expressions,
+                candidate_expression_count=len(expressions),
+                tried_term_family_ids=payload.tried_term_family_ids,
+                tried_query_fingerprints=self._tried_query_fingerprints(run_state=run_state),
+                min_seed_count=MIN_PRF_SEED_COUNT,
+                max_negative_support_rate=MAX_NEGATIVE_SUPPORT_RATE,
+                policy_version=PRF_POLICY_VERSION,
+            )
+        )
+
+    def _empty_llm_prf_decision(self, *, payload: LLMPRFInput, failure_kind: str) -> PRFPolicyDecision:
+        decision = build_prf_policy_decision(
+            PRFGateInput(
+                round_no=payload.round_no,
+                seed_resume_ids=payload.seed_resume_ids,
+                seed_count=len(payload.seed_resume_ids),
+                negative_resume_ids=payload.negative_resume_ids,
+                candidate_expressions=[],
+                candidate_expression_count=0,
+                tried_term_family_ids=payload.tried_term_family_ids,
+                tried_query_fingerprints=[],
+                min_seed_count=MIN_PRF_SEED_COUNT,
+                max_negative_support_rate=MAX_NEGATIVE_SUPPORT_RATE,
+                policy_version=PRF_POLICY_VERSION,
+            )
+        )
+        return decision.model_copy(update={"reject_reasons": [failure_kind]})
+
+    def _write_llm_prf_artifacts(
+        self,
+        *,
+        tracer: RunTracer,
+        artifact_refs,
+        payload: LLMPRFInput,
+        extraction: LLMPRFExtraction,
+        grounding: LLMPRFGroundingResult,
+        decision: PRFPolicyDecision,
+        call_artifact: dict[str, Any],
+        input_already_written: bool = False,
+    ) -> None:
+        if not input_already_written:
+            tracer.write_json(artifact_refs.input_artifact_ref, payload.model_dump(mode="json"))
+        self._write_aux_llm_call_artifact(
+            tracer=tracer,
+            path=artifact_refs.call_artifact_ref,
+            call_artifact=call_artifact,
+            input_artifact_refs=[artifact_refs.input_artifact_ref],
+            output_artifact_refs=[
+                artifact_refs.candidates_artifact_ref,
+                artifact_refs.grounding_artifact_ref,
+                artifact_refs.policy_decision_artifact_ref,
+            ],
+            round_no=payload.round_no,
+        )
+        tracer.write_json(artifact_refs.candidates_artifact_ref, extraction.model_dump(mode="json"))
+        tracer.write_json(artifact_refs.grounding_artifact_ref, grounding.model_dump(mode="json"))
+        tracer.write_json(artifact_refs.policy_decision_artifact_ref, decision.model_dump(mode="json"))
+
+    def _llm_prf_backend_selection(
+        self,
+        *,
+        decision: PRFPolicyDecision,
+        artifact_refs,
+        failure_kind: str | None,
+    ) -> _PRFBackendSelection:
+        return _PRFBackendSelection(
+            prf_decision=decision,
+            prf_probe_proposal_backend="llm_deepseek_v4_flash",
+            llm_prf_failure_kind=failure_kind,
+            llm_prf_input_artifact_ref=artifact_refs.input_artifact_ref,
+            llm_prf_call_artifact_ref=artifact_refs.call_artifact_ref,
+            llm_prf_candidates_artifact_ref=artifact_refs.candidates_artifact_ref,
+            llm_prf_grounding_artifact_ref=artifact_refs.grounding_artifact_ref,
+            llm_prf_snapshot_metadata=self._llm_prf_snapshot_metadata(),
+        )
+
+    def _llm_prf_snapshot_metadata(self) -> dict[str, object]:
+        stage_config = resolve_stage_model_config(self.settings, stage="prf_probe_phrase_proposal")
+        prompt = self.prompts.load("prf_probe_phrase_proposal")
+        return {
+            "llm_prf_extractor_version": LLM_PRF_EXTRACTOR_VERSION,
+            "llm_prf_grounding_validator_version": GROUNDING_VALIDATOR_VERSION,
+            "llm_prf_familying_version": LLM_PRF_FAMILYING_VERSION,
+            "llm_prf_model_id": stage_config.model_id,
+            "llm_prf_protocol_family": stage_config.protocol_family,
+            "llm_prf_endpoint_kind": stage_config.endpoint_kind,
+            "llm_prf_endpoint_region": stage_config.endpoint_region,
+            "llm_prf_structured_output_mode": stage_config.structured_output_mode,
+            "llm_prf_prompt_hash": prompt.sha256,
+            "llm_prf_output_retry_count": LLM_PRF_OUTPUT_RETRIES,
+        }
+
+    def _llm_prf_failure_kind(self, failure_kind: str) -> str:
+        if failure_kind == "timeout":
+            return "llm_prf_timeout"
+        return f"llm_prf_{failure_kind}"
+
+    def _now_iso(self) -> str:
+        return datetime.now().astimezone().isoformat(timespec="seconds")
 
     def _build_prf_policy_decision(
         self,
@@ -2130,6 +2534,25 @@ class WorkflowRuntime:
             if item.fit_bucket == "not_fit" or item.risk_score > 60
         ]
         return seeds, negatives
+
+    def _tried_term_family_ids(self, *, run_state: RunState, retrieval_plan) -> list[str]:
+        return unique_strings(
+            [
+                build_term_family_id(term)
+                for record in run_state.retrieval_state.sent_query_history
+                for term in record.query_terms
+            ]
+            + [build_term_family_id(term) for term in retrieval_plan.query_terms]
+        )
+
+    def _tried_query_fingerprints(self, *, run_state: RunState) -> list[str]:
+        return unique_strings(
+            [
+                record.query_fingerprint
+                for record in run_state.retrieval_state.sent_query_history
+                if record.query_fingerprint is not None
+            ]
+        )
 
     def _build_prf_v1_5_proposal_and_decision(
         self,
