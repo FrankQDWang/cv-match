@@ -305,6 +305,29 @@ def test_openai_tui_summary_and_candidate_feedback_remain_prompted_output() -> N
         assert isinstance(output_spec, PromptedOutput)
 
 
+def test_openai_stage_policy_can_prompt_one_strict_capable_stage_while_another_stays_native() -> None:
+    settings = make_settings(
+        text_llm_protocol_family="openai_chat_completions_compatible",
+        text_llm_endpoint_kind="bailian_openai_chat_completions",
+        text_llm_endpoint_region="beijing",
+        scoring_model_id="deepseek-v4-flash",
+        candidate_feedback_model_id="deepseek-v4-flash",
+    )
+    model = _json_schema_capable_model()
+
+    scoring_stage = resolve_stage_model_config(settings, stage="scoring")
+    candidate_feedback_stage = resolve_stage_model_config(settings, stage="candidate_feedback")
+    scoring_output_spec = build_output_spec(scoring_stage, model, dict)
+    candidate_feedback_output_spec = build_output_spec(candidate_feedback_stage, model, dict)
+
+    assert scoring_stage.model_id == candidate_feedback_stage.model_id == "deepseek-v4-flash"
+    assert resolve_structured_output_mode(scoring_stage) == "native_json_schema"
+    assert isinstance(scoring_output_spec, NativeOutput)
+    assert scoring_output_spec.strict is True
+    assert resolve_structured_output_mode(candidate_feedback_stage) == "prompted_json"
+    assert isinstance(candidate_feedback_output_spec, PromptedOutput)
+
+
 def test_bailian_deepseek_v4_defaults_to_native_json_schema_mode() -> None:
     settings = make_settings()
     stage = resolve_stage_model_config(settings, stage="controller")
@@ -333,7 +356,7 @@ def test_stage_reasoning_policy_defaults_are_explicit() -> None:
 def test_structured_repair_and_candidate_feedback_respect_configured_effort() -> None:
     settings = make_settings(
         structured_repair_reasoning_effort="high",
-        candidate_feedback_reasoning_effort="medium",
+        candidate_feedback_reasoning_effort="high",
     )
 
     structured_repair_stage = resolve_stage_model_config(settings, stage="structured_repair")
@@ -342,7 +365,7 @@ def test_structured_repair_and_candidate_feedback_respect_configured_effort() ->
     assert structured_repair_stage.thinking_mode is True
     assert structured_repair_stage.reasoning_effort == "high"
     assert candidate_feedback_stage.thinking_mode is True
-    assert candidate_feedback_stage.reasoning_effort == "medium"
+    assert candidate_feedback_stage.reasoning_effort == "high"
 
 
 def test_judge_reasoning_off_disables_provider_side_thinking() -> None:
@@ -355,7 +378,7 @@ def test_judge_reasoning_off_disables_provider_side_thinking() -> None:
 
     assert stage.thinking_mode is False
     assert stage.reasoning_effort == "off"
-    assert policy.extra_body == {"thinking": {"type": "disabled"}}
+    assert policy.extra_body == {"enable_thinking": False}
 
 
 def test_openai_path_builds_chat_model_not_responses_model() -> None:
@@ -377,7 +400,12 @@ def test_openai_path_builds_chat_model_not_responses_model() -> None:
 
 def test_anthropic_path_preserves_bare_model_id() -> None:
     stage = resolve_stage_model_config(
-        make_settings(text_llm_api_key="test-key"),
+        make_settings(
+            text_llm_api_key="test-key",
+            text_llm_protocol_family="anthropic_messages_compatible",
+            text_llm_endpoint_kind="bailian_anthropic_messages",
+            text_llm_endpoint_region="beijing",
+        ),
         stage="requirements",
     )
     model = build_model(stage)
