@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
+from pydantic_ai import NativeOutput, PromptedOutput
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
 from seektalent.candidate_feedback.proposal_runtime import model_dependency_gate_allows_mainline
 from seektalent.config import AppSettings, TextLLMConfigMigrationError, load_process_env
 from seektalent.llm import (
+    build_output_spec,
     build_model,
     build_model_settings,
     build_provider_request_policy,
@@ -26,6 +29,19 @@ ENV_TEMPLATES = [
     ROOT / ".env.example",
     ROOT / "src" / "seektalent" / "default.env",
 ]
+STRICT_NATIVE_OPENAI_STAGES = (
+    "requirements",
+    "controller",
+    "reflection",
+    "scoring",
+    "finalize",
+    "judge",
+    "structured_repair",
+)
+
+
+def _json_schema_capable_model() -> object:
+    return SimpleNamespace(profile=SimpleNamespace(supports_json_schema_output=True))
 
 
 def test_canonical_text_llm_defaults_use_dual_protocol_surface() -> None:
@@ -240,12 +256,63 @@ def test_bailian_anthropic_base_url_resolves_for_beijing() -> None:
     assert resolve_text_llm_base_url(settings) == "https://dashscope.aliyuncs.com/apps/anthropic"
 
 
-def test_bailian_deepseek_v4_defaults_to_prompted_json_mode() -> None:
+def test_default_openai_structured_stages_use_native_strict_output() -> None:
+    settings = make_settings(
+        text_llm_protocol_family="openai_chat_completions_compatible",
+        text_llm_endpoint_kind="bailian_openai_chat_completions",
+        text_llm_endpoint_region="beijing",
+    )
+    model = _json_schema_capable_model()
+
+    for stage_name in STRICT_NATIVE_OPENAI_STAGES:
+        stage = resolve_stage_model_config(settings, stage=stage_name)
+        output_spec = build_output_spec(stage, model, dict)
+
+        assert resolve_structured_output_mode(stage) == "native_json_schema"
+        assert isinstance(output_spec, NativeOutput)
+        assert output_spec.strict is True
+
+
+def test_anthropic_structured_stages_remain_prompted_output() -> None:
+    settings = make_settings(
+        text_llm_protocol_family="anthropic_messages_compatible",
+        text_llm_endpoint_kind="bailian_anthropic_messages",
+        text_llm_endpoint_region="beijing",
+    )
+    model = _json_schema_capable_model()
+
+    for stage_name in STRICT_NATIVE_OPENAI_STAGES:
+        stage = resolve_stage_model_config(settings, stage=stage_name)
+        output_spec = build_output_spec(stage, model, dict)
+
+        assert resolve_structured_output_mode(stage) == "prompted_json"
+        assert isinstance(output_spec, PromptedOutput)
+
+
+def test_openai_tui_summary_and_candidate_feedback_remain_prompted_output() -> None:
+    settings = make_settings(
+        text_llm_protocol_family="openai_chat_completions_compatible",
+        text_llm_endpoint_kind="bailian_openai_chat_completions",
+        text_llm_endpoint_region="beijing",
+    )
+    model = _json_schema_capable_model()
+
+    for stage_name in ("tui_summary", "candidate_feedback"):
+        stage = resolve_stage_model_config(settings, stage=stage_name)
+        output_spec = build_output_spec(stage, model, dict)
+
+        assert resolve_structured_output_mode(stage) == "prompted_json"
+        assert isinstance(output_spec, PromptedOutput)
+
+
+def test_bailian_deepseek_v4_defaults_to_native_json_schema_mode() -> None:
     settings = make_settings()
-
     stage = resolve_stage_model_config(settings, stage="controller")
+    output_spec = build_output_spec(stage, _json_schema_capable_model(), dict)
 
-    assert resolve_structured_output_mode(stage) == "prompted_json"
+    assert resolve_structured_output_mode(stage) == "native_json_schema"
+    assert isinstance(output_spec, NativeOutput)
+    assert output_spec.strict is True
 
 
 def test_stage_reasoning_policy_defaults_are_explicit() -> None:
