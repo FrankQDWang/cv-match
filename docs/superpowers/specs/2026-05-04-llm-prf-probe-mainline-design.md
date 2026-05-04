@@ -28,11 +28,14 @@ The intended product behavior is general pseudo relevance feedback:
 
 1. Use DeepSeek V4 Flash for PRF phrase proposal.
 2. Make the LLM extractor the direct mainline source for `prf_probe` candidate expressions.
-3. Keep extraction strictly grounded in top-pool seed resume evidence.
-4. Keep deterministic grounding validation and `build_prf_policy_decision(...)` as the final acceptance boundary.
-5. If LLM extraction fails or no safe candidate survives, fall back to `generic_explore`.
-6. Use `output_retries=2` for structured-output parse/schema failures, matching the repository's structured-output retry discipline.
-7. Add both deterministic CI harness coverage and a non-CI live DeepSeek bakeoff harness.
+3. Supersede PRF v1.5 sidecar-backed span proposal as the default active `prf_probe` proposal backend.
+4. Keep extraction strictly grounded in top-pool seed resume evidence.
+5. Treat LLM candidate type labels and risk flags as advisory only.
+6. Keep deterministic grounding validation and `build_prf_policy_decision(...)` as the final acceptance boundary.
+7. If LLM extraction fails or no safe candidate survives, fall back to `generic_explore`.
+8. Use prompted JSON plus Pydantic validation; do not assume provider-native strict JSON Schema for Bailian-hosted DeepSeek V4.
+9. Use `output_retries=2` for structured-output parse/schema failures, matching the repository's structured-output retry discipline.
+10. Add both deterministic CI harness coverage and a non-CI live DeepSeek bakeoff harness.
 
 ## Current State
 
@@ -94,26 +97,86 @@ The LLM extractor only replaces candidate-expression proposal. It must not own:
 - second-lane fallback selection;
 - deterministic acceptance policy.
 
-### 2. LLM extractor
+### 2. Proposal backend precedence
+
+This design supersedes sidecar-backed PRF v1.5 span proposal as the default active `prf_probe` proposal path.
+
+Add an explicit proposal backend setting:
+
+```text
+prf_probe_proposal_backend = "llm_deepseek_v4_flash"
+```
+
+Supported backend values:
+
+- `llm_deepseek_v4_flash`
+- `legacy_regex`
+- `sidecar_span`
+
+Default for this rollout:
+
+```text
+llm_deepseek_v4_flash
+```
+
+Backend semantics:
+
+- `llm_deepseek_v4_flash` is the active mainline proposal backend for `prf_probe`.
+- `legacy_regex` remains available for deterministic tests, explicit rollback, and compatibility diagnostics.
+- `sidecar_span` remains available only when explicitly configured; it is not part of this rollout's active default path.
+- The low-quality rescue `candidate_feedback` lane does not use this backend and is unchanged.
+
+The implementation must not create a fourth independent PRF route. All proposal backends feed the same grounded `FeedbackCandidateExpression` and `PRFPolicyDecision` path.
+
+### 3. LLM extractor
 
 Add a focused PRF LLM extractor boundary under `seektalent.candidate_feedback`:
 
 - `llm_prf.py`
 - `llm_prf_bakeoff.py`
 
-The extractor uses canonical text-LLM stage resolution with `stage="candidate_feedback"`.
-
-The intended default model is:
+The extractor uses a dedicated canonical text-LLM stage:
 
 ```text
-candidate_feedback_model_id = deepseek-v4-flash
+stage = "prf_probe_phrase_proposal"
 ```
 
-This design assumes the OpenAI-default restoration work has made that the repository default. If this work lands before that branch, implementation must either merge that default first or explicitly set the same default as part of the PRF LLM change.
+Default model setting:
+
+```text
+prf_probe_phrase_proposal_model_id = deepseek-v4-flash
+prf_probe_phrase_proposal_reasoning_effort = off
+```
+
+This stage may share the same model id value as the low-quality rescue candidate-feedback configuration, but the invocation path must remain separate. The low-quality rescue `candidate_feedback` lane must not import, instantiate, or call `llm_prf.py` unless a separate design explicitly changes that lane.
+
+If the OpenAI-default restoration branch has not landed yet, this feature must still set the dedicated PRF proposal model default to:
+
+```text
+deepseek-v4-flash
+```
 
 The extractor should use a new schema for phrase proposals, not the current dormant `CandidateFeedbackModelRanking` shape. The current ranking helper ranks already-generated terms; this feature needs proposals from seed evidence.
 
-### 3. Input contract
+### 4. Structured-output policy
+
+The LLM extractor must not assume native strict JSON Schema support.
+
+Default behavior:
+
+- use the repository's resolved structured-output mode for `stage="prf_probe_phrase_proposal"`;
+- for Bailian-hosted DeepSeek V4, use prompted JSON and Pydantic validation;
+- optionally request `response_format={"type":"json_object"}` only when the resolved endpoint and protocol support it;
+- include the word `json` and a compact schema/example in the prompt when using JSON output mode;
+- parse JSON locally;
+- validate the parsed payload with Pydantic;
+- use `output_retries=2` for empty, invalid, truncated, or schema-invalid model output.
+
+Provider capability failure, network failure, timeout, and tool failure are not output-retry conditions.
+
+The acceptance boundary is local schema validation plus deterministic grounding and PRF gate behavior, not provider-native schema enforcement.
+
+### 5. Input contract
 
 The LLM input should be compact and replayable.
 
@@ -126,7 +189,9 @@ Include:
 - existing active/inactive query terms
 - sent query terms and tried term families
 - up to five high-quality seed resumes from `select_feedback_seed_resumes(...)`
-- negative resumes only as compact evidence used to avoid noisy shared phrases
+- deterministic negative evidence summaries used to avoid noisy shared phrases
+
+If fewer than two high-quality seed resumes are available, do not call the LLM. Record `insufficient_prf_seed_support` and let the second lane fall back to `generic_explore`.
 
 For each seed resume, include bounded structured fields:
 
@@ -135,11 +200,29 @@ For each seed resume, include bounded structured fields:
 - `matched_preferences`
 - `strengths`
 
+Each evidence item in the frozen input artifact must carry:
+
+- `resume_id`
+- `source_field`
+- `source_text_index`
+- `source_text_raw`
+- `source_text_hash`
+
 `strengths` may guide proposal, but it must not be the only grounding source for an accepted phrase because it is derived scoring prose.
 
 Raw full resumes are out of scope for this change.
 
-### 4. Output contract
+Negative examples must be selected deterministically from already-scored candidates using these fixed rules:
+
+- candidates with `fit_bucket != "fit"` or high risk score;
+- sorted by risk score descending, then overall score ascending, then resume id;
+- capped at five.
+
+The LLM may see negative evidence as context, but negative support counting remains deterministic in runtime.
+
+Model sampling must be deterministic for proposal calls. Use temperature `0` or the repository's equivalent deterministic model setting.
+
+### 6. Output contract
 
 The LLM returns candidate phrase proposals, not final search query terms.
 
@@ -153,6 +236,15 @@ Each candidate should include:
 - `linked_requirements`
 - `rationale`
 - `risk_flags`
+
+Each `source_evidence_ref` must identify:
+
+- `resume_id`
+- `source_field`
+- `source_text_index`
+- `source_text_hash`
+
+The LLM must not be allowed to invent source references. Runtime rejects references that do not map to the frozen LLM PRF input payload.
 
 `candidate_term_type` should support the current PRF policy vocabulary:
 
@@ -178,16 +270,32 @@ The extractor must be prompted to:
 - avoid rewriting the query;
 - avoid inventing implied capabilities that do not appear in seed evidence.
 
-### 5. Grounding validation
+`candidate_term_type`, `rationale`, and `risk_flags` are advisory fields for diagnostics and downstream deterministic classification. They must not be trusted as safety decisions.
+
+### 7. Grounding validation
 
 Runtime must not trust the LLM's candidate list directly.
 
 For each candidate:
 
-1. Find `surface` or `normalized_surface` in the referenced seed evidence text after deterministic whitespace and Unicode normalization.
-2. Align the accepted surface back to concrete source text.
-3. Record aligned source field, source text index, start/end offsets, raw surface, normalized surface, and resume id.
-4. Reject unaligned candidates with a clear reason such as `non_extractive_or_unmatched_surface`.
+1. Resolve every `source_evidence_ref` against the frozen `llm_prf_input` artifact.
+2. Verify the referenced `source_text_hash`.
+3. Try an exact raw substring match for `surface` in `source_text_raw`.
+4. If exact raw match fails, try NFKC-normalized matching only through an offset map that maps the normalized span back to raw source text offsets.
+5. When multiple matches exist, use deterministic tie-break order:
+   - referenced `source_field`;
+   - earliest `source_text_index`;
+   - earliest raw start offset.
+6. Reject matches that are only unsafe substrings inside a larger conflicting token or family.
+7. Record aligned source field, source text index, source text hash, raw start/end offsets, raw surface, normalized surface, and resume id.
+8. Reject unaligned candidates with `non_extractive_or_unmatched_surface`.
+
+Substring safety examples:
+
+- `Java` must not be accepted from `JavaScript`.
+- `React` must not be accepted from `React Native` unless the family and evidence explicitly support `React` itself.
+- `算法` must not be accepted from a title-only or generic phrase such as `推荐算法工程师`.
+- `阿里` must not be accepted from `阿里云` when deterministic classification marks it as company/entity or ambiguous company/product material.
 
 Acceptance eligibility requires:
 
@@ -199,7 +307,52 @@ Acceptance eligibility requires:
 
 Grounding failures do not trigger LLM retries. They are unsafe candidate outputs, not structured-output failures.
 
-### 6. PRF gate integration
+### 8. Classification and familying
+
+LLM candidate classification is advisory.
+
+Before constructing `FeedbackCandidateExpression`, runtime must reclassify or override high-risk types deterministically. The deterministic classifier and PRF gate are authoritative for:
+
+- company/entity risk;
+- location, degree, compensation, administrative, and title-only material;
+- generic boilerplate;
+- responsibility-only phrases;
+- unknown or ambiguous high-risk phrases.
+
+Grounded LLM candidates must be converted into the existing phrase-family path before support and conflict checks.
+
+Support and conflict checks are computed at phrase-family level, not raw string level:
+
+- positive seed support;
+- negative support;
+- existing query-term conflict;
+- sent query-term conflict;
+- tried-family conflict.
+
+This rollout should use conservative surface familying:
+
+- exact normalized match;
+- case variant;
+- separator variant;
+- slash variant;
+- hyphen/underscore/dot variant;
+- CamelCase variant.
+
+Do not use broad embedding merges in the LLM rollout. Embedding familying remains part of explicit sidecar configuration, not the default LLM PRF path.
+
+Examples that should be treated as one conservative family:
+
+- `Flink CDC`
+- `flink-cdc`
+- `FlinkCDC`
+
+Examples that should not merge by broad semantic similarity alone:
+
+- `React` and `React Native`
+- `推荐算法` and `搜索算法`
+- `云平台` and `阿里云`
+
+### 9. PRF gate integration
 
 Convert grounded LLM candidates into `FeedbackCandidateExpression` objects and pass them through `build_prf_policy_decision(...)`.
 
@@ -217,20 +370,40 @@ If one expression survives, `build_second_lane_decision(...)` produces `prf_prob
 
 If no expression survives, second lane falls back to `generic_explore` as today.
 
-### 7. Error handling
+### 10. Timeout and scheduling
+
+The exploit logical query must not depend on the LLM PRF result.
+
+Use the pragmatic scheduling model for this rollout:
+
+1. Build the exploit logical query immediately.
+2. Start LLM PRF proposal before final second-lane bundle selection.
+3. Apply an independent hard timeout:
+
+```text
+prf_probe_phrase_proposal_timeout_seconds
+```
+
+4. If timeout is reached, record `llm_prf_timeout` and build `generic_explore` for the second lane.
+5. Continue normal 70/30 retrieval execution.
+
+This keeps implementation smaller than fully concurrent lane execution while making the non-blocking promise operational.
+
+### 11. Error handling
 
 Use the same disciplined failure behavior as the rest of the codebase:
 
 - transport/network/provider failure: no retry chain; record failure and fall back to `generic_explore`;
 - structured-output parse/schema validation failure: allow `output_retries=2`;
 - exhausted structured-output retries: record `llm_prf_structured_output_failed` and fall back to `generic_explore`;
+- LLM timeout: record `llm_prf_timeout` and fall back to `generic_explore`;
 - grounding failure: reject the candidate, do not retry the model;
 - PRF gate rejection: reject the candidate, do not retry the model;
 - all candidates rejected: record `no_safe_llm_prf_expression` and fall back to `generic_explore`.
 
-The LLM path must never block the `exploit` lane or the current round's search.
+The LLM path must never prevent exploit-lane construction or fail the current round. Any PRF proposal delay is capped by `prf_probe_phrase_proposal_timeout_seconds`.
 
-### 8. Artifacts
+### 12. Artifacts
 
 Persist enough data to diagnose and replay the PRF decision.
 
@@ -243,6 +416,24 @@ Required artifacts:
 - `round.XX.retrieval.prf_policy_decision`
 - `round.XX.retrieval.second_lane_decision`
 
+All artifacts must be registered through the existing logical artifact registry/resolver. Do not write ad hoc paths outside the active typed artifact taxonomy.
+
+Each LLM PRF artifact must include or reference:
+
+- `schema_version`
+- `llm_prf_extractor_version`
+- `prompt_name`
+- `prompt_hash`
+- `grounding_validator_version`
+- `proposal_backend`
+- `model_id`
+- `protocol_family`
+- `endpoint_kind`
+- `endpoint_region`
+- `structured_output_mode`
+- `output_retry_count`
+- `failure_kind` when applicable
+
 `llm_prf_candidates` should preserve raw LLM candidates.
 
 `llm_prf_grounding` should preserve candidate-level validation status and reject reasons.
@@ -251,7 +442,9 @@ Required artifacts:
 
 `second_lane_decision` remains the routing artifact.
 
-### 9. Live bakeoff harness
+`llm_prf_call` must never store API keys or secrets. If raw request/response bodies are stored, headers and provider credentials must be redacted, and raw response content should be bounded to the structured output payload needed for replay.
+
+### 13. Live bakeoff harness
 
 Add a non-CI harness that can run real DeepSeek V4 Flash extraction on fixed slices.
 
@@ -281,9 +474,9 @@ Primary metrics:
 - blocker count;
 - per-language slice pass/fail counts.
 
-Because this rollout is direct mainline, the harness is not a gate that delays implementation. It is the operational tool for proving the behavior on real model calls and catching regressions before broader evaluation runs.
+The implementation path is mainline, not shadow. The live bakeoff does not block code implementation, but it must run before treating `llm_deepseek_v4_flash` as production-ready in benchmark or broader evaluation runs. Blocker count must be zero. High `generic_explore` fallback rate is not unsafe, but it is a product-quality failure signal because it means the LLM PRF path is not adding recall value.
 
-### 10. CI harness
+### 14. CI harness
 
 CI tests should use fake LLM outputs and deterministic fixtures.
 
@@ -300,6 +493,10 @@ Required fixture coverage:
 - existing/sent/tried term rejected;
 - company, location, degree, salary, and generic boilerplate rejected;
 - structured-output failure attempts two output retries before fallback;
+- LLM timeout falls back to `generic_explore`;
+- seed count below two skips the LLM call;
+- LLM candidate type labels are advisory and deterministic classifier overrides unsafe labels;
+- family-level support and tried-family conflicts are used;
 - artifacts contain input, call, candidates, grounding, PRF policy, and second-lane decision refs.
 
 ## Non-Goals
@@ -313,6 +510,7 @@ Do not change:
 - low-quality rescue `candidate_feedback` lane;
 - PRF sidecar deployment;
 - PRF embedding sidecar behavior;
+- low-quality rescue `candidate_feedback` text stage behavior;
 - top-pool scoring policy;
 - stopping policy.
 
@@ -330,12 +528,20 @@ Do not add:
 
 This design is complete when implementation can prove:
 
-1. round 2+ second-lane PRF candidate proposal uses DeepSeek V4 Flash LLM extraction;
+1. when round `>= 2`, enough high-quality seeds exist, and `prf_probe_proposal_backend == "llm_deepseek_v4_flash"`, second-lane PRF candidate proposal uses DeepSeek V4 Flash LLM extraction;
 2. accepted `prf_probe` expressions are grounded in seed resume evidence;
 3. LLM output never directly becomes a query term without deterministic validation and PRF gate acceptance;
 4. unsafe, ungrounded, or unsupported candidates fall back to `generic_explore`;
 5. structured-output/schema failures use two output retries before fallback;
-6. CI covers English, Chinese, and mixed-language deterministic fixtures;
-7. live bakeoff can call the real model and emit quality metrics;
-8. existing 70/30 lane allocation remains unchanged;
-9. low-quality rescue behavior remains unchanged.
+6. timeout, insufficient seed support, and provider failure record deterministic failure reasons and fall back to `generic_explore`;
+7. LLM candidate labels are advisory and runtime deterministic classification is authoritative;
+8. support and conflict checks happen at phrase-family level;
+9. CI covers English, Chinese, and mixed-language deterministic fixtures;
+10. live bakeoff can call the real model and emit quality metrics;
+11. existing 70/30 lane allocation remains unchanged;
+12. low-quality rescue behavior remains unchanged.
+
+## Sources
+
+- [DeepSeek JSON Output](https://api-docs.deepseek.com/guides/json_mode)
+- [Alibaba Cloud Model Studio text generation model capabilities](https://help.aliyun.com/zh/model-studio/text-generation-model/)
