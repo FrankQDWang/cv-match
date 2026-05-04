@@ -20,7 +20,7 @@ The current product shape is intentionally narrow:
 - Installable CLI with stable subcommands: `run`, `init`, `doctor`, `version`, `update`, `inspect`
 - Stable Python entrypoints: `run_match(...)` and `run_match_async(...)`
 - Structured run artifacts written under `runs/` by default
-- Explicit model configuration using `provider:model`
+- Explicit text-LLM configuration using `SEEKTALENT_TEXT_LLM_*` plus bare `*_MODEL_ID` values
 - Real CTS integration with explicit credential requirements
 
 ## Quick Start
@@ -46,7 +46,7 @@ If you prefer a plain Python environment:
 pip install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
-The default package install is OpenAI-only. It includes `pydantic-ai-slim[openai]`, so `openai:*`, `openai-chat:*`, and `openai-responses:*` model IDs work out of the box, including OpenAI-compatible `OPENAI_BASE_URL` endpoints.
+The current starter env defaults to the canonical text-LLM surface, with `SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=openai_chat_completions_compatible`, the matching `SEEKTALENT_TEXT_LLM_ENDPOINT_*` values, and bare stage `*_MODEL_ID` settings. Dual-protocol support still exists through the same `SEEKTALENT_TEXT_LLM_*` surface.
 
 ### Create a starter env file
 
@@ -61,14 +61,12 @@ In a source checkout, `.env.example` is the single editable env template. The pa
 At minimum:
 
 ```dotenv
-OPENAI_API_KEY=your-openai-key
+SEEKTALENT_TEXT_LLM_API_KEY=your-text-llm-key
 SEEKTALENT_CTS_TENANT_KEY=your-cts-tenant-key
 SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
-If you keep the default `openai-responses:*` models, `OPENAI_API_KEY` is the only provider key you need.
-
-If you want to run `anthropic:*` or `google-gla:*` models later, extend the install to include the matching `pydantic-ai-slim[...]` extras first.
+Active model configuration uses the `SEEKTALENT_TEXT_LLM_*` tuple plus bare `*_MODEL_ID` values. `SEEKTALENT_TEXT_LLM_API_KEY` is the canonical runtime credential.
 
 ### Validate the local setup
 
@@ -236,7 +234,8 @@ Use this path when you want to build your own API server, desktop shell, or work
 
 Environment variables are read from `.env` by default. You will usually configure:
 
-- provider credentials such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_API_KEY`
+- the canonical text-LLM runtime credential `SEEKTALENT_TEXT_LLM_API_KEY`
+- text-LLM protocol and endpoint settings under `SEEKTALENT_TEXT_LLM_*`, plus bare stage `*_MODEL_ID` values
 - CTS settings such as `SEEKTALENT_CTS_BASE_URL`, `SEEKTALENT_CTS_TENANT_KEY`, and `SEEKTALENT_CTS_TENANT_SECRET`
 - runtime settings such as round limits, concurrency, and output directory
 
@@ -246,10 +245,9 @@ Full configuration reference:
 
 Important rules:
 
-- model variables must use the `provider:model` format
-- OpenAI-family models require `OPENAI_API_KEY`
-- `anthropic:*` requires `ANTHROPIC_API_KEY`
-- `google-gla:*` requires `GOOGLE_API_KEY`
+- active model variables use bare `*_MODEL_ID` values, not provider-prefixed strings
+- the canonical runtime credential is `SEEKTALENT_TEXT_LLM_API_KEY`
+- protocol selection and endpoint routing are configured through `SEEKTALENT_TEXT_LLM_*`
 
 ## Web UI
 

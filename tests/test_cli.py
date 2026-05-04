@@ -452,9 +452,10 @@ def test_init_writes_env_template(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert text == Path(".env.example").read_text(encoding="utf-8")
     assert text == read_env_example_template()
     assert "SEEKTALENT_TEXT_LLM_API_KEY=" in text
-    assert "SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=anthropic_messages_compatible" in text
-    assert "SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_anthropic_messages" in text
+    assert "SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=openai_chat_completions_compatible" in text
+    assert "SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_openai_chat_completions" in text
     assert "SEEKTALENT_TEXT_LLM_ENDPOINT_REGION=beijing" in text
+    assert "SEEKTALENT_CANDIDATE_FEEDBACK_MODEL_ID=deepseek-v4-flash" in text
     assert "SEEKTALENT_REQUIREMENTS_MODEL_ID=deepseek-v4-pro" in text
     assert "SEEKTALENT_JUDGE_MODEL_ID=deepseek-v4-pro" in text
     assert "SEEKTALENT_REQUIREMENTS_MODEL=" not in text

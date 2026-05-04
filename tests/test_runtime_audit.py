@@ -511,8 +511,6 @@ def test_run_config_excludes_company_discovery_settings(tmp_path: Path) -> None:
         runs_dir=str(tmp_path / "runs"),
         bocha_api_key="bocha-secret",
         candidate_feedback_enabled=True,
-        candidate_feedback_model_id="qwen3.5-flash",
-        candidate_feedback_reasoning_effort="off",
         target_company_enabled=False,
     )
     runtime = WorkflowRuntime(settings)
@@ -528,7 +526,7 @@ def test_run_config_excludes_company_discovery_settings(tmp_path: Path) -> None:
     assert "bocha_api_key" not in serialized
     assert "bocha-secret" not in serialized
     assert run_config["settings"]["candidate_feedback_enabled"] is True
-    assert run_config["settings"]["candidate_feedback_model_id"] == "qwen3.5-flash"
+    assert run_config["settings"]["candidate_feedback_model_id"] == "deepseek-v4-flash"
     assert run_config["settings"]["candidate_feedback_reasoning_effort"] == "off"
     assert "target_company_enabled" not in run_config["settings"]
     assert "has_bocha_key" not in run_config["settings"]
@@ -1912,7 +1910,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert not (artifacts.run_dir / "round_summaries.json").exists()
     assert "cts_tenant_secret" not in json.dumps(run_config, ensure_ascii=False)
     assert "tenant-secret" not in json.dumps(run_config, ensure_ascii=False)
-    assert run_config["configured_providers"] == ["bailian_anthropic_messages"]
+    assert run_config["configured_providers"] == ["bailian_openai_chat_completions"]
     assert run_config["settings"]["enable_eval"] is True
     assert run_config["settings"]["requirements_model_id"] == "deepseek-v4-pro"
     assert run_config["settings"]["controller_model_id"] == "deepseek-v4-pro"

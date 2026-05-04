@@ -1113,13 +1113,13 @@ def test_candidate_feedback_model_steps_use_resolved_stage_config(monkeypatch) -
     captured: dict[str, object] = {}
     stage_config = ResolvedTextModelConfig(
         stage="candidate_feedback",
-        protocol_family="anthropic_messages_compatible",
+        protocol_family="openai_chat_completions_compatible",
         provider_label="bailian",
-        endpoint_kind="bailian_anthropic_messages",
+        endpoint_kind="bailian_openai_chat_completions",
         endpoint_region="beijing",
-        base_url="https://example.com",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key="test-key",
-        model_id="qwen3.5-flash",
+        model_id="deepseek-v4-flash",
         structured_output_mode="prompted_json",
         thinking_mode=False,
         reasoning_effort="off",

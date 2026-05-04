@@ -23,6 +23,18 @@ BAILIAN_THINKING_MODELS = {
     "openai-chat:deepseek-v3.2",
     "openai-chat:kimi/kimi-k2.5",
 }
+OPENAI_NATIVE_JSON_SCHEMA_STAGES = frozenset(
+    {
+        "requirements",
+        "controller",
+        "reflection",
+        "scoring",
+        "finalize",
+        "judge",
+        "structured_repair",
+    }
+)
+OPENAI_PROMPTED_JSON_STAGES = frozenset({"tui_summary", "candidate_feedback"})
 STAGE_MODEL_ATTR = {
     "requirements": "requirements_model_id",
     "controller": "controller_model_id",
@@ -79,7 +91,7 @@ TEXT_LLM_CAPABILITIES = {
         "beijing",
         "deepseek-v4-pro",
     ): TextLLMCapability(
-        structured_output_mode="prompted_json",
+        structured_output_mode="native_json_schema",
         supports_thinking=True,
         supports_reasoning_effort=True,
         allowed_reasoning_efforts=frozenset({"high", "max"}),
@@ -91,7 +103,7 @@ TEXT_LLM_CAPABILITIES = {
         "beijing",
         "deepseek-v4-flash",
     ): TextLLMCapability(
-        structured_output_mode="prompted_json",
+        structured_output_mode="native_json_schema",
         supports_thinking=True,
         supports_reasoning_effort=True,
         allowed_reasoning_efforts=frozenset({"high", "max"}),
@@ -202,6 +214,18 @@ def _resolve_stage_reasoning_policy(
 
 
 def resolve_structured_output_mode(config: ResolvedTextModelConfig) -> StructuredOutputMode:
+    if config.protocol_family == "openai_chat_completions_compatible":
+        if config.stage in OPENAI_NATIVE_JSON_SCHEMA_STAGES:
+            capability = _resolve_text_llm_capability(config)
+            if capability is not None:
+                return capability.structured_output_mode
+            if config.provider_label == "bailian":
+                return "prompted_json"
+            return "native_json_schema"
+        if config.stage in OPENAI_PROMPTED_JSON_STAGES:
+            return "prompted_json"
+        raise ValueError(f"Unsupported text-llm stage for OpenAI structured output policy: {config.stage}")
+
     capability = _resolve_text_llm_capability(config)
     if capability is not None:
         return capability.structured_output_mode
