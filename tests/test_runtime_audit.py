@@ -511,8 +511,6 @@ def test_run_config_excludes_company_discovery_settings(tmp_path: Path) -> None:
         runs_dir=str(tmp_path / "runs"),
         bocha_api_key="bocha-secret",
         candidate_feedback_enabled=True,
-        candidate_feedback_model_id="deepseek-v4-flash",
-        candidate_feedback_reasoning_effort="off",
         target_company_enabled=False,
     )
     runtime = WorkflowRuntime(settings)

@@ -7,6 +7,7 @@ from typing import Any, cast
 
 import pytest
 
+import seektalent.candidate_feedback.model_steps as candidate_feedback_model_steps
 from seektalent.prf_sidecar.models import EmbedResponse
 from seektalent.prf_sidecar.service import ReadyResponse
 from seektalent.core.retrieval.provider_contract import SearchResult
@@ -2598,7 +2599,10 @@ def test_runtime_falls_back_to_anchor_only_when_candidate_feedback_has_no_safe_t
     assert round_02_decision["proposed_query_terms"] == ["python"]
 
 
-def test_runtime_uses_candidate_feedback_before_anchor_only(tmp_path: Path) -> None:
+def test_candidate_feedback_lane_does_not_instantiate_model_steps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,
@@ -2611,6 +2615,12 @@ def test_runtime_uses_candidate_feedback_before_anchor_only(tmp_path: Path) -> N
     tracer = RunTracer(tmp_path / "trace-runs")
     job_title, jd, notes = _sample_inputs()
     progress_events = []
+
+    def fail_model_steps_init(self, settings, prompt) -> None:  # noqa: ANN001
+        del self, settings, prompt
+        raise AssertionError("active candidate feedback rescue lane should not instantiate CandidateFeedbackModelSteps")
+
+    monkeypatch.setattr(candidate_feedback_model_steps.CandidateFeedbackModelSteps, "__init__", fail_model_steps_init)
 
     try:
         run_state = asyncio.run(runtime._build_run_state(job_title=job_title, jd=jd, notes=notes, tracer=tracer))
