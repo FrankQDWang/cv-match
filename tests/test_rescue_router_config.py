@@ -12,7 +12,7 @@ def test_rescue_feature_defaults() -> None:
     settings = make_settings()
 
     assert settings.candidate_feedback_enabled is True
-    assert settings.candidate_feedback_model == "openai-chat:qwen3.5-flash"
+    assert settings.candidate_feedback_model_id == "deepseek-v4-flash"
     assert settings.candidate_feedback_reasoning_effort == "off"
     assert not hasattr(settings, "target_company_enabled")
     assert not hasattr(settings, "company_discovery_enabled")

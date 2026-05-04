@@ -511,7 +511,7 @@ def test_run_config_excludes_company_discovery_settings(tmp_path: Path) -> None:
         runs_dir=str(tmp_path / "runs"),
         bocha_api_key="bocha-secret",
         candidate_feedback_enabled=True,
-        candidate_feedback_model_id="qwen3.5-flash",
+        candidate_feedback_model_id="deepseek-v4-flash",
         candidate_feedback_reasoning_effort="off",
         target_company_enabled=False,
     )
@@ -528,7 +528,7 @@ def test_run_config_excludes_company_discovery_settings(tmp_path: Path) -> None:
     assert "bocha_api_key" not in serialized
     assert "bocha-secret" not in serialized
     assert run_config["settings"]["candidate_feedback_enabled"] is True
-    assert run_config["settings"]["candidate_feedback_model_id"] == "qwen3.5-flash"
+    assert run_config["settings"]["candidate_feedback_model_id"] == "deepseek-v4-flash"
     assert run_config["settings"]["candidate_feedback_reasoning_effort"] == "off"
     assert "target_company_enabled" not in run_config["settings"]
     assert "has_bocha_key" not in run_config["settings"]

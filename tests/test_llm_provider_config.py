@@ -31,9 +31,9 @@ ENV_TEMPLATES = [
 def test_canonical_text_llm_defaults_use_dual_protocol_surface() -> None:
     settings = make_settings()
 
-    assert settings.text_llm_protocol_family == "anthropic_messages_compatible"
+    assert settings.text_llm_protocol_family == "openai_chat_completions_compatible"
     assert settings.text_llm_provider_label == "bailian"
-    assert settings.text_llm_endpoint_kind == "bailian_anthropic_messages"
+    assert settings.text_llm_endpoint_kind == "bailian_openai_chat_completions"
     assert settings.text_llm_endpoint_region == "beijing"
     assert settings.requirements_model_id == "deepseek-v4-pro"
     assert settings.controller_model_id == "deepseek-v4-pro"
@@ -42,7 +42,7 @@ def test_canonical_text_llm_defaults_use_dual_protocol_surface() -> None:
     assert settings.scoring_model_id == "deepseek-v4-flash"
     assert settings.finalize_model_id == "deepseek-v4-flash"
     assert settings.structured_repair_model_id == "deepseek-v4-flash"
-    assert settings.candidate_feedback_model_id == "qwen3.5-flash"
+    assert settings.candidate_feedback_model_id == "deepseek-v4-flash"
 
 
 def test_legacy_stage_key_in_dotenv_fails_with_migration_error(tmp_path: Path) -> None:

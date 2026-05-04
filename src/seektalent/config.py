@@ -205,9 +205,9 @@ class AppSettings(BaseSettings):
     cts_timeout_seconds: float = 20.0
     cts_spec_path: str = DEFAULT_CTS_SPEC_NAME
 
-    text_llm_protocol_family: TextLLMProtocolFamily = "anthropic_messages_compatible"
+    text_llm_protocol_family: TextLLMProtocolFamily = "openai_chat_completions_compatible"
     text_llm_provider_label: TextLLMProviderLabel = "bailian"
-    text_llm_endpoint_kind: TextLLMEndpointKind = "bailian_anthropic_messages"
+    text_llm_endpoint_kind: TextLLMEndpointKind = "bailian_openai_chat_completions"
     text_llm_endpoint_region: TextLLMEndpointRegion = "beijing"
     text_llm_base_url_override: str | None = None
     text_llm_api_key: str | None = None
@@ -227,7 +227,7 @@ class AppSettings(BaseSettings):
     controller_enable_thinking: bool = True
     reflection_enable_thinking: bool = True
     candidate_feedback_enabled: bool = True
-    candidate_feedback_model_id: str = "qwen3.5-flash"
+    candidate_feedback_model_id: str = "deepseek-v4-flash"
     candidate_feedback_reasoning_effort: ReasoningEffort = "off"
     prf_v1_5_mode: Literal["disabled", "shadow", "mainline"] = "shadow"
     prf_span_model_name: str = "fastino/gliner2-multi-v1"
