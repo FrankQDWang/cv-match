@@ -20,7 +20,7 @@
 - 可安装 CLI，稳定命令为 `run`、`init`、`doctor`、`version`、`update`、`inspect`
 - 稳定 Python 入口：`run_match(...)` 和 `run_match_async(...)`
 - 默认把结构化运行产物写到 `runs/`
-- 所有模型配置统一使用 `provider:model`
+- 文本 LLM 统一通过 `SEEKTALENT_TEXT_LLM_*` 和裸 `*_MODEL_ID` 配置
 - 提供真实 CTS 接入，并明确要求凭证
 
 ## 快速开始
@@ -46,7 +46,7 @@ pipx install dist/seektalent-0.5.11-py3-none-any.whl
 pip install dist/seektalent-0.5.11-py3-none-any.whl
 ```
 
-默认安装形态是 OpenAI-only。它只包含 `pydantic-ai-slim[openai]`，因此开箱即用的只有 `openai:*`、`openai-chat:*`、`openai-responses:*` 这几类模型，以及兼容 `OPENAI_BASE_URL` 的 OpenAI-compatible 端点。
+当前启动模板默认走 canonical text-LLM 配置面：`SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=openai_chat_completions_compatible`，再配套对应的 `SEEKTALENT_TEXT_LLM_ENDPOINT_*` 和各阶段裸 `*_MODEL_ID`。双协议支持仍然保留，但也统一走这组 `SEEKTALENT_TEXT_LLM_*` 配置。
 
 ### 生成启动配置
 
@@ -61,14 +61,12 @@ seektalent init
 至少需要：
 
 ```dotenv
-OPENAI_API_KEY=your-openai-key
+SEEKTALENT_TEXT_LLM_API_KEY=your-text-llm-key
 SEEKTALENT_CTS_TENANT_KEY=your-cts-tenant-key
 SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
-如果保留默认的 `openai-responses:*` 模型，只需要 `OPENAI_API_KEY` 这一组 provider 凭证。
-
-如果后续要启用 `anthropic:*` 或 `google-gla:*`，需要先把安装扩展成包含对应的 `pydantic-ai-slim[...]` extras，不能依赖当前默认安装。
+运行时的有效模型配置统一使用 `SEEKTALENT_TEXT_LLM_*` 这一组协议/端点变量，加上各阶段裸 `*_MODEL_ID`；`SEEKTALENT_TEXT_LLM_API_KEY` 是 canonical runtime 凭证。
 
 ### 检查本地环境
 
@@ -236,7 +234,8 @@ payload = result.final_result.model_dump(mode="json")
 
 默认会从 `.env` 读取环境变量。通常需要配置：
 
-- provider 凭证，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GOOGLE_API_KEY`
+- canonical text-LLM runtime 凭证 `SEEKTALENT_TEXT_LLM_API_KEY`
+- `SEEKTALENT_TEXT_LLM_*` 下的协议与端点设置，以及各阶段裸 `*_MODEL_ID`
 - CTS 配置，例如 `SEEKTALENT_CTS_BASE_URL`、`SEEKTALENT_CTS_TENANT_KEY`、`SEEKTALENT_CTS_TENANT_SECRET`
 - runtime 配置，例如轮次上限、并发和输出目录
 
@@ -246,10 +245,9 @@ payload = result.final_result.model_dump(mode="json")
 
 几个重要规则：
 
-- 模型变量必须使用 `provider:model`
-- OpenAI 系列模型需要 `OPENAI_API_KEY`
-- `anthropic:*` 需要 `ANTHROPIC_API_KEY`
-- `google-gla:*` 需要 `GOOGLE_API_KEY`
+- 有效模型变量使用裸 `*_MODEL_ID`，不再使用带 provider 前缀的字符串
+- canonical runtime 凭证是 `SEEKTALENT_TEXT_LLM_API_KEY`
+- 协议选择和端点路由统一由 `SEEKTALENT_TEXT_LLM_*` 控制
 
 ## Web UI
 
