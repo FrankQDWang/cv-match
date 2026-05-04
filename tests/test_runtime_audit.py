@@ -1912,7 +1912,7 @@ def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
     assert not (artifacts.run_dir / "round_summaries.json").exists()
     assert "cts_tenant_secret" not in json.dumps(run_config, ensure_ascii=False)
     assert "tenant-secret" not in json.dumps(run_config, ensure_ascii=False)
-    assert run_config["configured_providers"] == ["bailian_anthropic_messages"]
+    assert run_config["configured_providers"] == ["bailian_openai_chat_completions"]
     assert run_config["settings"]["enable_eval"] is True
     assert run_config["settings"]["requirements_model_id"] == "deepseek-v4-pro"
     assert run_config["settings"]["controller_model_id"] == "deepseek-v4-pro"
