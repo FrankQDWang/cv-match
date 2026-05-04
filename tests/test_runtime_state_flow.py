@@ -1981,7 +1981,7 @@ def test_run_rounds_delegates_reflection_stage_to_runtime_host(
 def test_run_async_delegates_finalizer_stage_to_runtime_host(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("SEEKTALENT_TEXT_LLM_API_KEY", "test-key")
     settings = make_settings(
         runs_dir=str(tmp_path / "runs"),
         mock_cts=True,

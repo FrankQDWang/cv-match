@@ -3,34 +3,41 @@
 `SeekTalent` reads runtime settings from environment variables.
 
 - `SEEKTALENT_*` variables are loaded by `pydantic-settings`.
-- Provider variables such as `OPENAI_API_KEY` and `OPENAI_BASE_URL` are also read from `.env` at process start.
+- Provider-native variables such as `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `ANTHROPIC_API_KEY`, and `GOOGLE_API_KEY` are also imported from `.env` into the process environment at startup.
+- The canonical text-LLM runtime surface is the `SEEKTALENT_TEXT_LLM_*` tuple plus bare `*_MODEL_ID` variables. The provider-native variables do not replace that surface.
 - `seektalent init` writes the starter env template from `.env.example` in a source checkout, or from `src/seektalent/default.env` in an installed package.
 
 In this repository, `.env.example` is the editable source of the starter env. `src/seektalent/default.env` is its packaged mirror.
+
+The checked-in starter env is the operator-facing default. Some code-level fallbacks in `AppSettings` still differ when no env template is present. For example, the starter env pins `SEEKTALENT_REASONING_EFFORT=off` and `SEEKTALENT_SCORING_MAX_CONCURRENCY=5`, while code-level fallbacks remain valid without the template.
 
 ## Minimal Setup
 
 For a real CTS run, you need:
 
 ```dotenv
-OPENAI_API_KEY=your-openai-compatible-key
+SEEKTALENT_TEXT_LLM_API_KEY=your-text-llm-key
 SEEKTALENT_CTS_TENANT_KEY=your-cts-tenant-key
 SEEKTALENT_CTS_TENANT_SECRET=your-cts-tenant-secret
 ```
 
-The current starter env routes OpenAI-family calls through DashScope-compatible mode:
+The current starter env defaults the text runtime to Bailian's OpenAI-compatible chat-completions endpoint in Beijing:
 
 ```dotenv
-OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=openai_chat_completions_compatible
+SEEKTALENT_TEXT_LLM_PROVIDER_LABEL=bailian
+SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_openai_chat_completions
+SEEKTALENT_TEXT_LLM_ENDPOINT_REGION=beijing
 ```
 
-If you use an official OpenAI endpoint, leave `OPENAI_BASE_URL` empty and configure model ids accordingly.
+Leave `SEEKTALENT_TEXT_LLM_BASE_URL_OVERRIDE` empty unless you need to override the built-in endpoint mapping.
 
-## Starter Env Values
+## Starter Env Snapshot
 
 The generated starter env currently uses these main values:
 
 ```dotenv
+SEEKTALENT_TEXT_LLM_API_KEY=
 OPENAI_API_KEY=
 OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 ANTHROPIC_API_KEY=
@@ -42,18 +49,28 @@ SEEKTALENT_CTS_TENANT_SECRET=
 SEEKTALENT_CTS_TIMEOUT_SECONDS=20
 SEEKTALENT_CTS_SPEC_PATH=cts.validated.yaml
 
-SEEKTALENT_REQUIREMENTS_MODEL=openai-chat:deepseek-v3.2
-SEEKTALENT_CONTROLLER_MODEL=openai-chat:deepseek-v3.2
-SEEKTALENT_SCORING_MODEL=openai-chat:deepseek-v3.2
-SEEKTALENT_FINALIZE_MODEL=openai-chat:deepseek-v3.2
-SEEKTALENT_REFLECTION_MODEL=openai-chat:deepseek-v3.2
-SEEKTALENT_JUDGE_MODEL=openai-responses:gpt-5.4
-SEEKTALENT_JUDGE_OPENAI_BASE_URL=http://127.0.0.1:8317/v1/responses
-SEEKTALENT_JUDGE_OPENAI_API_KEY=
+SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=openai_chat_completions_compatible
+SEEKTALENT_TEXT_LLM_PROVIDER_LABEL=bailian
+SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_openai_chat_completions
+SEEKTALENT_TEXT_LLM_ENDPOINT_REGION=beijing
+SEEKTALENT_TEXT_LLM_BASE_URL_OVERRIDE=
+SEEKTALENT_REQUIREMENTS_MODEL_ID=deepseek-v4-pro
+SEEKTALENT_CONTROLLER_MODEL_ID=deepseek-v4-pro
+SEEKTALENT_SCORING_MODEL_ID=deepseek-v4-flash
+SEEKTALENT_FINALIZE_MODEL_ID=deepseek-v4-flash
+SEEKTALENT_REFLECTION_MODEL_ID=deepseek-v4-pro
+SEEKTALENT_REQUIREMENTS_ENABLE_THINKING=true
+SEEKTALENT_STRUCTURED_REPAIR_MODEL_ID=deepseek-v4-flash
+SEEKTALENT_STRUCTURED_REPAIR_REASONING_EFFORT=off
+SEEKTALENT_JUDGE_MODEL_ID=deepseek-v4-pro
+SEEKTALENT_TUI_SUMMARY_MODEL_ID=
 SEEKTALENT_REASONING_EFFORT=off
 SEEKTALENT_JUDGE_REASONING_EFFORT=high
 SEEKTALENT_CONTROLLER_ENABLE_THINKING=true
 SEEKTALENT_REFLECTION_ENABLE_THINKING=true
+SEEKTALENT_CANDIDATE_FEEDBACK_ENABLED=true
+SEEKTALENT_CANDIDATE_FEEDBACK_MODEL_ID=deepseek-v4-flash
+SEEKTALENT_CANDIDATE_FEEDBACK_REASONING_EFFORT=off
 
 SEEKTALENT_MIN_ROUNDS=3
 SEEKTALENT_MAX_ROUNDS=10
@@ -62,27 +79,31 @@ SEEKTALENT_JUDGE_MAX_CONCURRENCY=5
 SEEKTALENT_SEARCH_MAX_PAGES_PER_ROUND=3
 SEEKTALENT_SEARCH_MAX_ATTEMPTS_PER_ROUND=3
 SEEKTALENT_SEARCH_NO_PROGRESS_LIMIT=2
+SEEKTALENT_RUNTIME_MODE=dev
+SEEKTALENT_LLM_CACHE_DIR=.seektalent/cache
+SEEKTALENT_OPENAI_PROMPT_CACHE_ENABLED=false
+SEEKTALENT_OPENAI_PROMPT_CACHE_RETENTION=
 SEEKTALENT_MOCK_CTS=false
 SEEKTALENT_ENABLE_EVAL=false
 SEEKTALENT_ENABLE_REFLECTION=true
-SEEKTALENT_CANDIDATE_FEEDBACK_ENABLED=true
-SEEKTALENT_TARGET_COMPANY_ENABLED=false
-SEEKTALENT_COMPANY_DISCOVERY_ENABLED=true
-SEEKTALENT_COMPANY_DISCOVERY_PROVIDER=bocha
-SEEKTALENT_BOCHA_API_KEY=
+SEEKTALENT_WANDB_PROJECT=seektalent
+SEEKTALENT_WEAVE_PROJECT=seektalent
 SEEKTALENT_RUNS_DIR=runs
 ```
 
-The code-level fallback defaults in `AppSettings` are intentionally still valid without the starter env. For example, model fallbacks use OpenAI Responses model ids, while the starter env overrides them for the current local DashScope setup.
+See `.env.example` for the full template, including PRF and local sidecar settings.
 
-## Provider Variables
+## Provider Boundary Variables
+
+These variables exist at the process boundary. Only `SEEKTALENT_TEXT_LLM_API_KEY` is part of the canonical text-LLM runtime surface.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | Required for `openai:*`, `openai-chat:*`, and `openai-responses:*` model ids | Used for official OpenAI and OpenAI-compatible endpoints. |
-| `OPENAI_BASE_URL` | Optional | Set this for OpenAI-compatible endpoints such as DashScope. Leave empty for the official OpenAI endpoint. |
-| `ANTHROPIC_API_KEY` | Required only for `anthropic:*` model ids | Requires installing the matching Pydantic AI extra. |
-| `GOOGLE_API_KEY` | Required only for `google-gla:*` model ids | Requires installing the matching Pydantic AI extra. |
+| `SEEKTALENT_TEXT_LLM_API_KEY` | Required for active text-LLM calls | Canonical runtime credential for both supported text protocols. |
+| `OPENAI_API_KEY` | Optional | Convenience mirror for tools or integrations that expect the provider-native OpenAI env var. |
+| `OPENAI_BASE_URL` | Optional | Convenience mirror for tools that expect the provider-native OpenAI base URL. The starter template mirrors the default Bailian OpenAI-compatible endpoint here. |
+| `ANTHROPIC_API_KEY` | Optional | Convenience mirror for tools or integrations that expect the Anthropic-native env var. |
+| `GOOGLE_API_KEY` | Optional | Convenience mirror for tools or integrations that expect the Google-native env var. |
 
 ## CTS Variables
 
@@ -94,32 +115,62 @@ The code-level fallback defaults in `AppSettings` are intentionally still valid 
 | `SEEKTALENT_CTS_TIMEOUT_SECONDS` | No | `20` | HTTP timeout for CTS requests. |
 | `SEEKTALENT_CTS_SPEC_PATH` | No | `cts.validated.yaml` | Default resolves to the packaged CTS spec. Custom values resolve relative to the current working directory unless absolute. |
 
-## Model Variables
+## Canonical Text LLM Surface
 
-All model settings must use `provider:model`.
+The active text runtime is configured by one protocol tuple plus per-stage model ids. The current codebase supports two protocol families and one provider label:
 
-| Variable | Starter value | Notes |
-| --- | --- | --- |
-| `SEEKTALENT_REQUIREMENTS_MODEL` | `openai-chat:deepseek-v3.2` | Requirement extraction. |
-| `SEEKTALENT_CONTROLLER_MODEL` | `openai-chat:deepseek-v3.2` | Round controller. |
-| `SEEKTALENT_SCORING_MODEL` | `openai-chat:deepseek-v3.2` | Per-resume scoring. |
-| `SEEKTALENT_FINALIZE_MODEL` | `openai-chat:deepseek-v3.2` | Final shortlist presentation. |
-| `SEEKTALENT_REFLECTION_MODEL` | `openai-chat:deepseek-v3.2` | Round reflection. |
-| `SEEKTALENT_JUDGE_MODEL` | `openai-responses:gpt-5.4` | Optional eval judge. Falls back to the scoring model if unset. |
-| `SEEKTALENT_JUDGE_OPENAI_BASE_URL` | `http://127.0.0.1:8317/v1/responses` | Optional endpoint override for judge calls. |
-| `SEEKTALENT_JUDGE_OPENAI_API_KEY` | empty | Optional API key override for judge calls. |
-| `SEEKTALENT_TUI_SUMMARY_MODEL` | unset | Optional model for short progress summaries. Falls back to the scoring model. |
-
-Reasoning effort values are `off`, `low`, `medium`, and `high`.
+- `openai_chat_completions_compatible`
+- `anthropic_messages_compatible`
+- `bailian`
 
 | Variable | Starter value | Notes |
 | --- | --- | --- |
-| `SEEKTALENT_REASONING_EFFORT` | `off` | Default effort for model calls unless a stage-specific value overrides it. |
-| `SEEKTALENT_JUDGE_REASONING_EFFORT` | `high` | Judge effort. Falls back to `SEEKTALENT_REASONING_EFFORT` if unset. |
-| `SEEKTALENT_CONTROLLER_ENABLE_THINKING` | `true` | Passed as Bailian `enable_thinking` for supported controller models. |
-| `SEEKTALENT_REFLECTION_ENABLE_THINKING` | `true` | Passed as Bailian `enable_thinking` for supported reflection models. |
+| `SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY` | `openai_chat_completions_compatible` | Selects the wire protocol. |
+| `SEEKTALENT_TEXT_LLM_PROVIDER_LABEL` | `bailian` | Provider label for the current compatibility matrix. |
+| `SEEKTALENT_TEXT_LLM_ENDPOINT_KIND` | `bailian_openai_chat_completions` | Must match the selected protocol family. |
+| `SEEKTALENT_TEXT_LLM_ENDPOINT_REGION` | `beijing` | Current active regions are `beijing` and `singapore`. |
+| `SEEKTALENT_TEXT_LLM_BASE_URL_OVERRIDE` | empty | Optional full base URL override. Leave empty to use the built-in mapping. |
+| `SEEKTALENT_TEXT_LLM_API_KEY` | empty | Required for canonical text-LLM configuration. |
 
-`openai-responses:*` model calls also set low text verbosity. When reasoning is enabled, they request concise reasoning summaries.
+Built-in endpoint mapping:
+
+- `openai_chat_completions_compatible` + `bailian_openai_chat_completions` + `beijing` -> `https://dashscope.aliyuncs.com/compatible-mode/v1`
+- `anthropic_messages_compatible` + `bailian_anthropic_messages` + `beijing` -> `https://dashscope.aliyuncs.com/apps/anthropic`
+- `anthropic_messages_compatible` + `bailian_anthropic_messages` + `singapore` -> `https://dashscope-intl.aliyuncs.com/apps/anthropic`
+
+Legacy `provider:model` strings are decommissioned. Do not set `SEEKTALENT_REQUIREMENTS_MODEL`, `SEEKTALENT_JUDGE_MODEL`, or any other legacy `*_MODEL` key, and do not place prefixes such as `openai-chat:` or `anthropic:` on `*_MODEL_ID` values.
+
+## Model ID Variables
+
+All stage model settings now use bare model ids.
+
+| Variable | Starter value | Notes |
+| --- | --- | --- |
+| `SEEKTALENT_REQUIREMENTS_MODEL_ID` | `deepseek-v4-pro` | Requirement extraction. |
+| `SEEKTALENT_CONTROLLER_MODEL_ID` | `deepseek-v4-pro` | Round controller. |
+| `SEEKTALENT_SCORING_MODEL_ID` | `deepseek-v4-flash` | Per-resume scoring. |
+| `SEEKTALENT_FINALIZE_MODEL_ID` | `deepseek-v4-flash` | Final shortlist presentation. |
+| `SEEKTALENT_REFLECTION_MODEL_ID` | `deepseek-v4-pro` | Round reflection. |
+| `SEEKTALENT_STRUCTURED_REPAIR_MODEL_ID` | `deepseek-v4-flash` | Structured-output repair lane. |
+| `SEEKTALENT_JUDGE_MODEL_ID` | `deepseek-v4-pro` | Eval judge. |
+| `SEEKTALENT_TUI_SUMMARY_MODEL_ID` | empty | Optional short progress summary model. Falls back to the scoring model when unset. |
+| `SEEKTALENT_CANDIDATE_FEEDBACK_MODEL_ID` | `deepseek-v4-flash` | Reserved for dormant model-ranked candidate feedback steps; the active rescue lane remains deterministic. |
+
+## Thinking, Reasoning, And Prompt Behavior
+
+Reasoning effort values are `off`, `low`, `medium`, and `high`. Stage-specific support is validated against the selected protocol and model capability matrix.
+
+| Variable | Starter value | Notes |
+| --- | --- | --- |
+| `SEEKTALENT_REQUIREMENTS_ENABLE_THINKING` | `true` | Enables provider-side thinking for the requirements stage. |
+| `SEEKTALENT_CONTROLLER_ENABLE_THINKING` | `true` | Enables provider-side thinking for the controller stage. |
+| `SEEKTALENT_REFLECTION_ENABLE_THINKING` | `true` | Enables provider-side thinking for the reflection stage. |
+| `SEEKTALENT_REASONING_EFFORT` | `off` | Shared default reasoning effort. The starter env keeps it off. |
+| `SEEKTALENT_STRUCTURED_REPAIR_REASONING_EFFORT` | `off` | Structured-repair reasoning effort. |
+| `SEEKTALENT_JUDGE_REASONING_EFFORT` | `high` | Judge reasoning effort. Falls back to `SEEKTALENT_REASONING_EFFORT` when unset. |
+| `SEEKTALENT_CANDIDATE_FEEDBACK_REASONING_EFFORT` | `off` | Candidate-feedback reasoning effort for the dormant model-ranked lane. |
+| `SEEKTALENT_OPENAI_PROMPT_CACHE_ENABLED` | `false` | Enables prompt caching for OpenAI-compatible requests that support it. |
+| `SEEKTALENT_OPENAI_PROMPT_CACHE_RETENTION` | empty | Optional prompt-cache retention policy. |
 
 ## Runtime Variables
 
@@ -128,11 +179,14 @@ Reasoning effort values are `off`, `low`, `medium`, and `high`.
 | `SEEKTALENT_MIN_ROUNDS` | `3` | Minimum completed retrieval rounds before stopping is allowed. |
 | `SEEKTALENT_MAX_ROUNDS` | `10` | Hard cap for controller/search rounds. Must be `>= min_rounds` and `<= 10`. |
 | `SEEKTALENT_SCORING_MAX_CONCURRENCY` | `5` | Max concurrent per-resume scoring calls. |
+| `SEEKTALENT_JUDGE_MAX_CONCURRENCY` | `5` | Max concurrent judge calls. |
 | `SEEKTALENT_SEARCH_MAX_PAGES_PER_ROUND` | `3` | Per-round CTS page budget. |
 | `SEEKTALENT_SEARCH_MAX_ATTEMPTS_PER_ROUND` | `3` | Per-round CTS attempt budget. |
 | `SEEKTALENT_SEARCH_NO_PROGRESS_LIMIT` | `2` | Repeated no-progress threshold. |
+| `SEEKTALENT_RUNTIME_MODE` | `dev` | Resolves default output/cache roots for source checkouts versus packaged runs. |
+| `SEEKTALENT_LLM_CACHE_DIR` | `.seektalent/cache` | Local cache root. Relative paths resolve from the workspace root. |
 | `SEEKTALENT_ENABLE_REFLECTION` | `true` | Enables reflection after each completed round. |
-| `SEEKTALENT_RUNS_DIR` | `runs` | Output root. Relative paths resolve from the current working directory. |
+| `SEEKTALENT_RUNS_DIR` | `runs` | Output root. Relative paths resolve from the workspace root. |
 
 ## Eval Variables
 
@@ -141,33 +195,20 @@ Eval is off by default. Enable it with `SEEKTALENT_ENABLE_EVAL=true` or the CLI 
 | Variable | Starter value | Notes |
 | --- | --- | --- |
 | `SEEKTALENT_ENABLE_EVAL` | `false` | Enables judge + evaluation artifacts. |
-| `SEEKTALENT_JUDGE_MAX_CONCURRENCY` | `5` | Max concurrent judge calls. |
 | `SEEKTALENT_WANDB_ENTITY` | local template value | Optional W&B entity for eval/report logging. |
 | `SEEKTALENT_WANDB_PROJECT` | `seektalent` | Optional W&B project. |
 | `SEEKTALENT_WEAVE_ENTITY` | local template value | Optional Weave entity. Falls back to W&B entity when unset. |
 | `SEEKTALENT_WEAVE_PROJECT` | `seektalent` | Optional Weave project. |
 
-## Rescue And Discovery Variables
+## Rescue Variables
 
-These settings control low-quality recall repair lanes.
+These settings control the active deterministic rescue lane and its dormant model-ranked extension point.
 
 | Variable | Starter value | Notes |
 | --- | --- | --- |
 | `SEEKTALENT_CANDIDATE_FEEDBACK_ENABLED` | `true` | Allows runtime to derive a safe expansion term from strong scored candidates. |
-| `SEEKTALENT_CANDIDATE_FEEDBACK_MODEL` | `openai-chat:qwen3.5-flash` | Reserved for model-ranked candidate feedback steps. |
-| `SEEKTALENT_CANDIDATE_FEEDBACK_REASONING_EFFORT` | `off` | Reasoning effort for candidate feedback model steps. |
-| `SEEKTALENT_TARGET_COMPANY_ENABLED` | `false` | Explicit target-company bootstrap is disabled by default. |
-| `SEEKTALENT_COMPANY_DISCOVERY_ENABLED` | `true` | Allows bounded web company discovery when quality gates require rescue. |
-| `SEEKTALENT_COMPANY_DISCOVERY_PROVIDER` | `bocha` | Only `bocha` is supported. |
-| `SEEKTALENT_BOCHA_API_KEY` | empty | Required only when web company discovery actually runs. |
-| `SEEKTALENT_COMPANY_DISCOVERY_MODEL` | `openai-chat:qwen3.5-flash` | Model for search planning, evidence extraction, and plan reduction. |
-| `SEEKTALENT_COMPANY_DISCOVERY_REASONING_EFFORT` | `off` | Reasoning effort for company discovery model steps. |
-| `SEEKTALENT_COMPANY_DISCOVERY_MAX_SEARCH_CALLS` | `4` | Max Bocha search calls in one discovery workflow. |
-| `SEEKTALENT_COMPANY_DISCOVERY_MAX_RESULTS_PER_QUERY` | `30` | Max search results per query. |
-| `SEEKTALENT_COMPANY_DISCOVERY_MAX_OPEN_PAGES` | `8` | Max pages opened after rerank. |
-| `SEEKTALENT_COMPANY_DISCOVERY_TIMEOUT_SECONDS` | `25` | Wall-clock budget for discovery. |
-| `SEEKTALENT_COMPANY_DISCOVERY_ACCEPTED_COMPANY_LIMIT` | `8` | Max accepted companies injected into the term pool. |
-| `SEEKTALENT_COMPANY_DISCOVERY_MIN_CONFIDENCE` | `0.65` | Minimum accepted company confidence. |
+| `SEEKTALENT_CANDIDATE_FEEDBACK_MODEL_ID` | `deepseek-v4-flash` | Reserved for dormant model-ranked candidate feedback steps; the active rescue lane remains deterministic. |
+| `SEEKTALENT_CANDIDATE_FEEDBACK_REASONING_EFFORT` | `off` | Reasoning effort for the dormant model-ranked candidate-feedback lane. |
 
 ## Development-Only Mock CTS
 
@@ -175,14 +216,14 @@ These settings control low-quality recall repair lanes.
 | --- | --- | --- |
 | `SEEKTALENT_MOCK_CTS` | `false` | Enables the local mock CTS corpus in source-checkout development. The published CLI rejects this mode. |
 
-## Provider Matching Rules
+## Validation And Migration Rules
 
-Before each run, the runtime checks credentials for configured model prefixes:
+Before each run, the runtime validates the active config surface:
 
-- OpenAI-family models require `OPENAI_API_KEY`.
-- Anthropic models require `ANTHROPIC_API_KEY`.
-- Google GLA models require `GOOGLE_API_KEY`.
+- `SEEKTALENT_TEXT_LLM_ENDPOINT_KIND` must match `SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY`.
+- `SEEKTALENT_TEXT_LLM_API_KEY` is required for active text-LLM calls.
 - Real CTS mode requires both CTS tenant credentials.
+- Legacy text-LLM keys such as `SEEKTALENT_REQUIREMENTS_MODEL`, `SEEKTALENT_CANDIDATE_FEEDBACK_MODEL`, `SEEKTALENT_JUDGE_OPENAI_BASE_URL`, and provider-prefixed `*_MODEL_ID` values now fail fast with a migration error.
 
 Use `seektalent doctor` to validate local configuration without making network calls.
 
