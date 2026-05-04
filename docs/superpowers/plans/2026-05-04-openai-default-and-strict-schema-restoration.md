@@ -20,10 +20,10 @@
   - Checked-in starter environment template.
 - **Modify:** `src/seektalent/default.env`
   - Packaged/default environment template.
-- **Modify:** `.env`
-  - Local development defaults in this workspace.
+- **Modify locally only:** `.env`
+  - Local development defaults in this workspace; keep it in sync, but do not commit it.
 - **Modify:** `docs/configuration.md`
-  - User-facing configuration table for candidate-feedback model config.
+  - User-facing canonical config documentation for the model/provider surface and candidate-feedback config.
 - **Modify:** `tests/test_llm_provider_config.py`
   - Default settings assertions and protocol-sensitive structured-output assertions.
 - **Modify:** `tests/test_cli.py`
@@ -105,7 +105,7 @@ text_llm_endpoint_region: TextLLMEndpointRegion = "beijing"
 candidate_feedback_model_id: str = "deepseek-v4-flash"
 ```
 
-Sync the same values in the env files:
+Sync the same values in the tracked env templates:
 
 ```dotenv
 SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY=openai_chat_completions_compatible
@@ -113,6 +113,8 @@ SEEKTALENT_TEXT_LLM_ENDPOINT_KIND=bailian_openai_chat_completions
 SEEKTALENT_TEXT_LLM_ENDPOINT_REGION=beijing
 SEEKTALENT_CANDIDATE_FEEDBACK_MODEL_ID=deepseek-v4-flash
 ```
+
+Then manually sync the local ignored `.env` to the same values for this workspace without staging it.
 
 - [ ] **Step 4: Re-run the focused defaults tests**
 
@@ -135,7 +137,6 @@ git add \
   src/seektalent/config.py \
   .env.example \
   src/seektalent/default.env \
-  .env \
   tests/test_llm_provider_config.py \
   tests/test_cli.py \
   tests/test_rescue_router_config.py \
@@ -169,13 +170,16 @@ def test_default_openai_structured_stages_use_native_strict_output() -> None:
         "requirements",
         "controller",
         "reflection",
+        "scoring",
         "finalize",
         "judge",
         "structured_repair",
     ]:
         config = resolve_stage_model_config(settings, stage=stage_name)
         assert resolve_structured_output_mode(config) == "native_json_schema"
-        assert isinstance(build_output_spec(config, fake_model, dict), NativeOutput)
+        output_spec = build_output_spec(config, fake_model, dict)
+        assert isinstance(output_spec, NativeOutput)
+        assert output_spec.strict is True
 
 
 def test_anthropic_structured_stages_remain_prompted_output() -> None:
@@ -190,10 +194,21 @@ def test_anthropic_structured_stages_remain_prompted_output() -> None:
         "requirements",
         "controller",
         "reflection",
+        "scoring",
         "finalize",
         "judge",
         "structured_repair",
     ]:
+        config = resolve_stage_model_config(settings, stage=stage_name)
+        assert resolve_structured_output_mode(config) == "prompted_json"
+        assert isinstance(build_output_spec(config, fake_model, dict), PromptedOutput)
+
+
+def test_openai_tui_summary_and_candidate_feedback_remain_prompted_output() -> None:
+    settings = make_settings()
+    fake_model = _FakeStructuredModel()
+
+    for stage_name in ["tui_summary", "candidate_feedback"]:
         config = resolve_stage_model_config(settings, stage=stage_name)
         assert resolve_structured_output_mode(config) == "prompted_json"
         assert isinstance(build_output_spec(config, fake_model, dict), PromptedOutput)
@@ -215,14 +230,34 @@ Run:
 uv run pytest -q \
   tests/test_llm_provider_config.py::test_default_openai_structured_stages_use_native_strict_output \
   tests/test_llm_provider_config.py::test_anthropic_structured_stages_remain_prompted_output \
+  tests/test_llm_provider_config.py::test_openai_tui_summary_and_candidate_feedback_remain_prompted_output \
   tests/test_llm_provider_config.py::test_bailian_deepseek_v4_defaults_to_native_json_schema_mode
 ```
 
 Expected: FAIL because the current Bailian DeepSeek V4 capability map still resolves both protocol families to `prompted_json`.
 
-- [ ] **Step 3: Update the Bailian capability matrix**
+- [ ] **Step 3: Make structured-output resolution stage-aware**
 
-In `src/seektalent/llm.py`, change only the OpenAI-compatible DeepSeek V4 entries:
+Do not let a model-level capability flip silently convert every stage on the same model to native JSON schema. Keep the Bailian capability map as the source of provider/model capability, but add a stage-aware guard so only the intended structured stages restore strict native output on the default OpenAI path.
+
+The intended stage sets are:
+
+```python
+STRICT_OPENAI_STRUCTURED_STAGES = frozenset(
+    {
+        "requirements",
+        "controller",
+        "reflection",
+        "scoring",
+        "finalize",
+        "judge",
+        "structured_repair",
+    }
+)
+ALWAYS_PROMPTED_STAGES = frozenset({"tui_summary", "candidate_feedback"})
+```
+
+Then make the OpenAI DeepSeek V4 capability entries native-capable:
 
 ```python
 (
@@ -251,13 +286,30 @@ In `src/seektalent/llm.py`, change only the OpenAI-compatible DeepSeek V4 entrie
 ),
 ```
 
+And update `resolve_structured_output_mode(config)` so the policy is:
+
+```python
+if config.stage in ALWAYS_PROMPTED_STAGES:
+    return "prompted_json"
+if (
+    config.protocol_family == "openai_chat_completions_compatible"
+    and config.stage in STRICT_OPENAI_STRUCTURED_STAGES
+):
+    capability = _resolve_text_llm_capability(config)
+    if capability is not None and capability.structured_output_mode == "native_json_schema":
+        return "native_json_schema"
+if config.protocol_family == "anthropic_messages_compatible":
+    return "prompted_json"
+...
+```
+
 Keep the Anthropic-compatible entries as:
 
 ```python
 structured_output_mode="prompted_json"
 ```
 
-Do not add new protocol families, new toggles, or stage-specific exceptions here.
+Do not add user-facing toggles. This is an internal stage-output policy correction so `tui_summary` remains free-form and dormant `candidate_feedback` does not drift into strict schema.
 
 - [ ] **Step 4: Re-run the structured-output tests**
 
@@ -267,6 +319,7 @@ Run:
 uv run pytest -q \
   tests/test_llm_provider_config.py::test_default_openai_structured_stages_use_native_strict_output \
   tests/test_llm_provider_config.py::test_anthropic_structured_stages_remain_prompted_output \
+  tests/test_llm_provider_config.py::test_openai_tui_summary_and_candidate_feedback_remain_prompted_output \
   tests/test_llm_provider_config.py::test_bailian_deepseek_v4_defaults_to_native_json_schema_mode
 ```
 
@@ -420,15 +473,30 @@ git commit -m "test: lock candidate feedback behavior during config cleanup"
 **Files:**
 - Modify: `docs/configuration.md`
 
-- [ ] **Step 1: Update the configuration docs**
+- [ ] **Step 1: Rewrite the canonical config docs, not just one row**
 
-Replace the stale candidate-feedback row:
+`docs/configuration.md` still documents the old `provider:model` world, old judge endpoint overrides, and removed company-discovery settings. Replace the stale sections with the canonical dual-protocol config surface that matches the current codebase plus this OpenAI-default change.
+
+At minimum, rewrite:
+
+- the provider credential section so it no longer says active model settings use `provider:model`;
+- the model/provider section so it documents:
+  - `SEEKTALENT_TEXT_LLM_PROTOCOL_FAMILY`
+  - `SEEKTALENT_TEXT_LLM_PROVIDER_LABEL`
+  - `SEEKTALENT_TEXT_LLM_ENDPOINT_KIND`
+  - `SEEKTALENT_TEXT_LLM_ENDPOINT_REGION`
+  - `SEEKTALENT_TEXT_LLM_BASE_URL_OVERRIDE`
+  - `SEEKTALENT_TEXT_LLM_API_KEY`
+  - `*_MODEL_ID` fields instead of legacy `*_MODEL`;
+- the rescue section so it documents `SEEKTALENT_CANDIDATE_FEEDBACK_MODEL_ID` and removes company-discovery variables from active docs.
+
+The candidate-feedback row should read like:
 
 ```md
 | `SEEKTALENT_CANDIDATE_FEEDBACK_MODEL_ID` | `deepseek-v4-flash` | Reserved for dormant model-ranked candidate feedback steps; the active rescue lane remains deterministic. |
 ```
 
-Do not reintroduce `SEEKTALENT_CANDIDATE_FEEDBACK_MODEL` or old provider-prefixed defaults into docs.
+Do not reintroduce `SEEKTALENT_CANDIDATE_FEEDBACK_MODEL`, `SEEKTALENT_REQUIREMENTS_MODEL`, `SEEKTALENT_JUDGE_OPENAI_BASE_URL`, or company-discovery settings into active docs.
 
 - [ ] **Step 2: Run the focused regression suite**
 
