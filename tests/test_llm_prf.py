@@ -30,6 +30,7 @@ from seektalent.candidate_feedback.llm_prf import (
     select_llm_prf_negative_resumes,
     text_sha256,
 )
+from seektalent.candidate_feedback.policy import PRFGateInput, build_prf_policy_decision
 from seektalent.config import AppSettings
 from seektalent.models import FitBucket, NormalizedExperience, NormalizedResume, ScoredCandidate
 from seektalent.prompting import LoadedPrompt
@@ -771,6 +772,75 @@ def test_cjk_ascii_grounding_allows_adjacent_mixed_text() -> None:
 
     assert [record.accepted for record in grounding.records] == [True, True]
     assert [record.reject_reasons for record in grounding.records] == [[], []]
+
+
+def test_cjk_ascii_prf_expression_canonicalizes_generic_chinese_suffix_for_policy() -> None:
+    payload = build_llm_prf_input(
+        seed_resumes=[
+            _scored_candidate("seed-1", evidence=["使用Langgraph框架构建Agent工作流"]),
+            _scored_candidate("seed-2", evidence=["落地Langgraph框架的多Agent协作"]),
+        ],
+        negative_resumes=[],
+    )
+    assert payload is not None
+
+    grounding = ground_llm_prf_candidates(
+        payload,
+        _extraction(
+            _candidate("Langgraph框架", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("Langgraph框架", **_source_ref_kwargs(payload, "seed-2|scorecard_evidence|0")),
+        ),
+    )
+    expressions = feedback_expressions_from_llm_grounding(
+        payload,
+        grounding,
+        known_company_entities=set(),
+        tried_term_family_ids=set(),
+    )
+    decision = build_prf_policy_decision(
+        PRFGateInput(
+            round_no=2,
+            seed_resume_ids=payload.seed_resume_ids,
+            seed_count=len(payload.seed_resume_ids),
+            negative_resume_ids=payload.negative_resume_ids,
+            candidate_expressions=expressions,
+            candidate_expression_count=len(expressions),
+        )
+    )
+
+    assert decision.gate_passed is True
+    assert decision.accepted_expression is not None
+    assert decision.accepted_expression.canonical_expression == "Langgraph"
+    assert decision.accepted_expression.term_family_id == "feedback.langgraph"
+    assert decision.accepted_expression.surface_forms == ["Langgraph框架"]
+
+
+def test_cjk_ascii_prf_expression_does_not_promote_generic_agent_core() -> None:
+    payload = build_llm_prf_input(
+        seed_resumes=[
+            _scored_candidate("seed-1", evidence=["使用Langgraph框架构建Agent工作流"]),
+            _scored_candidate("seed-2", evidence=["复用Langgraph框架建设Agent工作流"]),
+        ],
+        negative_resumes=[],
+    )
+    assert payload is not None
+
+    grounding = ground_llm_prf_candidates(
+        payload,
+        _extraction(
+            _candidate("Agent工作流", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("Agent工作流", **_source_ref_kwargs(payload, "seed-2|scorecard_evidence|0")),
+        ),
+    )
+    expressions = feedback_expressions_from_llm_grounding(
+        payload,
+        grounding,
+        known_company_entities=set(),
+        tried_term_family_ids=set(),
+    )
+
+    assert expressions[0].canonical_expression == "Agent工作流"
+    assert "generic_or_filter_like" in expressions[0].reject_reasons
 
 
 def test_ground_llm_prf_candidates_recovers_case_variant_raw_offsets() -> None:

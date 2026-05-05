@@ -78,6 +78,9 @@ _CAPABILITY_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 _SYMBOLIC_FAMILY_SURFACE_RE = re.compile(r"c\+\+|c#|\.net", re.IGNORECASE)
+_MIXED_CJK_ASCII_CORE_RE = re.compile(r"[A-Za-z][A-Za-z0-9.+#_-]*(?:\s+[A-Za-z][A-Za-z0-9.+#_-]*)*")
+_MIXED_CJK_ASCII_GENERIC_WRAPPERS = ("工作流", "框架", "平台", "系统", "工具", "引擎", "服务", "组件", "模块")
+_MIXED_CJK_ASCII_UNSAFE_CORES = {"agent", "ai", "llm", "ml", "nlp"}
 
 
 def text_sha256(text: str) -> str:
@@ -521,8 +524,9 @@ def feedback_expressions_from_llm_grounding(
     for record in grounding.records:
         if not record.accepted:
             continue
-        family_id = build_conservative_prf_family_id(record.normalized_surface or record.surface)
-        canonical.setdefault(family_id, record.normalized_surface or record.surface)
+        expression = _canonical_llm_prf_expression_surface(record.normalized_surface or record.surface)
+        family_id = build_conservative_prf_family_id(expression)
+        canonical.setdefault(family_id, expression)
         surfaces[family_id].add(record.raw_surface or record.surface)
         field_hits[family_id][record.source_section] += 1
         support_eligible = support_eligible_by_ref.get(
@@ -967,6 +971,32 @@ def _find_raw_match(text: str, surface: str) -> tuple[int, int, Literal["exact",
 
 def _normalize_surface(surface: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", surface).split())
+
+
+def _canonical_llm_prf_expression_surface(surface: str) -> str:
+    clean = _normalize_surface(surface)
+    if not any("\u4e00" <= char <= "\u9fff" for char in clean):
+        return clean
+
+    matches = list(_MIXED_CJK_ASCII_CORE_RE.finditer(clean))
+    if len(matches) != 1:
+        return clean
+
+    core = matches[0].group(0).strip()
+    if _collapse_family_surface(core) in _MIXED_CJK_ASCII_UNSAFE_CORES:
+        return clean
+
+    wrapper = (clean[: matches[0].start()] + clean[matches[0].end() :]).strip()
+    if wrapper and _is_generic_mixed_cjk_ascii_wrapper(wrapper):
+        return core
+    return clean
+
+
+def _is_generic_mixed_cjk_ascii_wrapper(wrapper: str) -> bool:
+    remaining = "".join(wrapper.split())
+    for token in sorted(_MIXED_CJK_ASCII_GENERIC_WRAPPERS, key=len, reverse=True):
+        remaining = remaining.replace(token, "")
+    return not remaining
 
 
 def _nfkc_with_raw_offset_map(text: str) -> tuple[str, list[int]]:
