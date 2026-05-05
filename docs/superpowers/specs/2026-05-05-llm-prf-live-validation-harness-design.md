@@ -1,8 +1,14 @@
 # LLM PRF Live Validation Harness Design
 
 Date: 2026-05-05
-Status: Draft for user review
+Status: Superseded
 Branch context: `codex/llm-prf-probe-mainline`
+
+Superseded by:
+
+- `docs/superpowers/specs/2026-05-05-llm-prf-mainline-cleanup-and-validation-design.md`
+
+This earlier design only covered the live validation harness. The superseding spec folds the harness into the broader LLM PRF mainline cleanup, source provenance, and bugfix boundary.
 
 ## Context
 
