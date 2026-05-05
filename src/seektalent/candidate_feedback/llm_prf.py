@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from collections import Counter, defaultdict
 from hashlib import sha256
-from typing import Any, Literal, cast
+from typing import Any, Literal, Mapping, cast
 
 from pydantic_ai import Agent, PromptedOutput
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from seektalent.candidate_feedback.extraction import classify_feedback_expressions
-from seektalent.candidate_feedback.models import FeedbackCandidateExpression
-from seektalent.candidate_feedback.span_models import CandidateTermType, SourceField
+from seektalent.candidate_feedback.models import CandidateTermType, FeedbackCandidateExpression
 from seektalent.config import AppSettings
 from seektalent.llm import build_model, build_model_settings, build_output_spec, resolve_stage_model_config
-from seektalent.models import ScoredCandidate, unique_strings
+from seektalent.models import NormalizedResume, ScoredCandidate, unique_strings
 from seektalent.prompting import LoadedPrompt
 from seektalent.tracing import ProviderUsageSnapshot, provider_usage_from_result
 
@@ -23,21 +23,45 @@ LLM_PRF_EXTRACTOR_VERSION = "llm-prf-deepseek-v4-flash-v1"
 GROUNDING_VALIDATOR_VERSION = "llm-prf-grounding-v1"
 LLM_PRF_FAMILYING_VERSION = "llm-prf-conservative-surface-family-v1"
 LLM_PRF_OUTPUT_RETRIES = 2
-LLM_PRF_TOP_N_CANDIDATE_CAP = 16
+LLM_PRF_TOP_N_CANDIDATE_CAP = 4
 LLM_PRF_STAGE = "prf_probe_phrase_proposal"
+LLM_PRF_MAX_SOURCE_TEXTS_PER_SEED_RESUME = 4
+LLM_PRF_MAX_SOURCE_TEXTS_PER_NEGATIVE_RESUME = 2
+LLM_PRF_MAX_SOURCE_TEXT_CHARS = 260
+LLM_PRF_SOURCE_PREPARATION_VERSION = "llm-prf-source-prep-v1"
 
 LLMPRFSourceKind = Literal["grounding_eligible", "hint_only"]
+LLMPRFSourceSection = Literal[
+    "skill",
+    "recent_experience_summary",
+    "key_achievement",
+    "raw_text_excerpt",
+    "scorecard_evidence",
+    "scorecard_matched_must_have",
+    "scorecard_matched_preference",
+    "scorecard_strength",
+]
 LLMPRFFailureKind = Literal[
     "timeout",
     "transport_error",
     "provider_error",
     "response_validation_error",
     "structured_output_parse_error",
+    "insufficient_prf_seed_support",
     "settings_migration_error",
     "unsupported_capability",
 ]
 
-_SOURCE_FIELD_ORDER: tuple[SourceField, ...] = ("evidence", "matched_must_haves", "matched_preferences", "strengths")
+_SOURCE_SECTION_ORDER: tuple[LLMPRFSourceSection, ...] = (
+    "skill",
+    "recent_experience_summary",
+    "key_achievement",
+    "raw_text_excerpt",
+    "scorecard_evidence",
+    "scorecard_matched_must_have",
+    "scorecard_matched_preference",
+    "scorecard_strength",
+)
 _UNSAFE_SUBSTRING_PAIRS = (
     ("Java", "JavaScript"),
     ("React", "React Native"),
@@ -45,19 +69,58 @@ _UNSAFE_SUBSTRING_PAIRS = (
 )
 
 
+def text_sha256(text: str) -> str:
+    return sha256(text.encode("utf-8")).hexdigest()
+
+
+def build_llm_prf_source_text_id(
+    *,
+    resume_id: str,
+    source_section: LLMPRFSourceSection,
+    original_field_path: str,
+    normalized_text: str,
+    preparation_version: str,
+) -> str:
+    payload = {
+        "resume_id": resume_id,
+        "source_section": source_section,
+        "original_field_path": original_field_path,
+        "normalized_text": normalized_text,
+        "preparation_version": preparation_version,
+    }
+    return sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 class LLMPRFSourceText(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     resume_id: str
-    source_field: SourceField
+    source_section: LLMPRFSourceSection
+    source_text_id: str = Field(min_length=1)
     source_text_index: int = Field(ge=0)
     source_text_raw: str = Field(min_length=1)
-    source_text_hash: str
+    source_text_hash: str = Field(min_length=1)
+    original_field_path: str
     source_kind: LLMPRFSourceKind
+    support_eligible: bool
+    hint_only: bool
+    preparation_version: str = LLM_PRF_SOURCE_PREPARATION_VERSION
+    dedupe_key: str
+    rank_reason: str = ""
 
     @property
     def source_id(self) -> str:
-        return f"{self.resume_id}|{self.source_field}|{self.source_text_index}"
+        return self.source_text_id
+
+    @model_validator(mode="after")
+    def _validate_support_flags(self) -> LLMPRFSourceText:
+        if self.source_kind == "grounding_eligible" and (not self.support_eligible or self.hint_only):
+            raise ValueError("grounding_eligible sources must be support eligible and not hint only")
+        if self.source_kind == "hint_only" and (self.support_eligible or not self.hint_only):
+            raise ValueError("hint_only sources must be hint only and not support eligible")
+        return self
 
 
 class LLMPRFInput(BaseModel):
@@ -82,22 +145,23 @@ class LLMPRFSourceEvidenceRef(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     resume_id: str
-    source_field: SourceField
+    source_section: LLMPRFSourceSection
+    source_text_id: str = Field(min_length=1)
     source_text_index: int = Field(ge=0)
-    source_text_hash: str
+    source_text_hash: str = Field(min_length=1)
 
 
 class LLMPRFCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    surface: str = Field(min_length=1)
-    normalized_surface: str = Field(min_length=1)
+    surface: str = Field(min_length=1, max_length=80)
+    normalized_surface: str = Field(min_length=1, max_length=80)
     candidate_term_type: CandidateTermType = "unknown"
-    source_evidence_refs: list[LLMPRFSourceEvidenceRef] = Field(default_factory=list)
-    source_resume_ids: list[str] = Field(default_factory=list)
-    linked_requirements: list[str] = Field(default_factory=list)
-    rationale: str = ""
-    risk_flags: list[str] = Field(default_factory=list)
+    source_evidence_refs: list[LLMPRFSourceEvidenceRef] = Field(default_factory=list, max_length=8)
+    source_resume_ids: list[str] = Field(default_factory=list, max_length=8)
+    linked_requirements: list[str] = Field(default_factory=list, max_length=4)
+    rationale: str = Field(default="", max_length=120)
+    risk_flags: list[str] = Field(default_factory=list, max_length=4)
 
     @field_validator("surface", "normalized_surface")
     @classmethod
@@ -124,9 +188,12 @@ class LLMPRFGroundingRecord(BaseModel):
     accepted: bool
     reject_reasons: list[str] = Field(default_factory=list)
     resume_id: str
-    source_field: SourceField
+    source_section: LLMPRFSourceSection
+    source_text_id: str
     source_text_index: int = Field(ge=0)
     source_text_hash: str
+    support_eligible: bool = False
+    hint_only: bool = False
     start_char: int | None = Field(default=None, ge=0)
     end_char: int | None = Field(default=None, gt=0)
     raw_surface: str = ""
@@ -191,7 +258,17 @@ def render_llm_prf_prompt(payload: LLMPRFInput) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-    return f"Return valid json for this PRF phrase proposal payload:\n{payload_json}"
+    return (
+        "Return valid json for this PRF phrase proposal payload.\n"
+        "Hard constraints:\n"
+        "- Return at most 4 candidates.\n"
+        "- Only include candidates supported by at least two distinct fit seed resumes.\n"
+        "- candidate.surface must be copied exactly from every referenced source_text_raw.\n"
+        "- Do not propose existing_query_terms, sent_query_terms, or tried_term_family_ids.\n"
+        "- Do not synthesize descriptive phrases; use the shortest exact shared phrase.\n"
+        "- Prefer an empty candidates list over ungrounded or generic candidates.\n"
+        f"Payload:\n{payload_json}"
+    )
 
 
 def build_llm_prf_success_call_artifact(
@@ -276,9 +353,17 @@ def build_llm_prf_input(
     existing_query_terms: list[str] | None = None,
     sent_query_terms: list[str] | None = None,
     tried_term_family_ids: list[str] | None = None,
+    normalized_resumes_by_id: Mapping[str, NormalizedResume] | None = None,
 ) -> LLMPRFInput | None:
     if len(seed_resumes) < 2:
         return None
+    signal_terms = _llm_prf_signal_terms(
+        role_title=role_title,
+        role_summary=role_summary,
+        must_have_capabilities=must_have_capabilities or [],
+        retrieval_query_terms=retrieval_query_terms or [],
+        existing_query_terms=existing_query_terms or [],
+    )
     return LLMPRFInput(
         round_no=round_no,
         role_title=role_title,
@@ -290,20 +375,32 @@ def build_llm_prf_input(
         tried_term_family_ids=list(tried_term_family_ids or []),
         seed_resume_ids=[resume.resume_id for resume in seed_resumes],
         negative_resume_ids=[resume.resume_id for resume in negative_resumes],
-        source_texts=_source_texts_from_resumes(seed_resumes),
-        negative_source_texts=_source_texts_from_resumes(negative_resumes),
+        source_texts=_source_texts_from_resumes(
+            seed_resumes,
+            normalized_resumes_by_id=normalized_resumes_by_id,
+            signal_terms=signal_terms,
+            per_normalized_resume_limit=LLM_PRF_MAX_SOURCE_TEXTS_PER_SEED_RESUME,
+        ),
+        negative_source_texts=_source_texts_from_resumes(
+            negative_resumes,
+            normalized_resumes_by_id=normalized_resumes_by_id,
+            signal_terms=signal_terms,
+            per_normalized_resume_limit=LLM_PRF_MAX_SOURCE_TEXTS_PER_NEGATIVE_RESUME,
+        ),
     )
 
 
 def ground_llm_prf_candidates(payload: LLMPRFInput, extraction: LLMPRFExtraction) -> LLMPRFGroundingResult:
     sources_by_ref = {
-        (source.resume_id, source.source_field, source.source_text_index): source for source in payload.source_texts
+        (source.resume_id, source.source_section, source.source_text_id): source for source in payload.source_texts
     }
     records: list[LLMPRFGroundingRecord] = []
 
     for candidate in extraction.candidates:
         for evidence_ref in candidate.source_evidence_refs:
-            source = sources_by_ref.get((evidence_ref.resume_id, evidence_ref.source_field, evidence_ref.source_text_index))
+            source = sources_by_ref.get(
+                (evidence_ref.resume_id, evidence_ref.source_section, evidence_ref.source_text_id)
+            )
             if source is None:
                 records.append(
                     LLMPRFGroundingRecord(
@@ -313,7 +410,8 @@ def ground_llm_prf_candidates(payload: LLMPRFInput, extraction: LLMPRFExtraction
                         accepted=False,
                         reject_reasons=["source_reference_not_found"],
                         resume_id=evidence_ref.resume_id,
-                        source_field=evidence_ref.source_field,
+                        source_section=evidence_ref.source_section,
+                        source_text_id=evidence_ref.source_text_id,
                         source_text_index=evidence_ref.source_text_index,
                         source_text_hash=evidence_ref.source_text_hash,
                     )
@@ -328,9 +426,12 @@ def ground_llm_prf_candidates(payload: LLMPRFInput, extraction: LLMPRFExtraction
                         accepted=False,
                         reject_reasons=["source_hash_mismatch"],
                         resume_id=source.resume_id,
-                        source_field=source.source_field,
+                        source_section=source.source_section,
+                        source_text_id=source.source_text_id,
                         source_text_index=source.source_text_index,
                         source_text_hash=evidence_ref.source_text_hash,
+                        support_eligible=source.support_eligible,
+                        hint_only=source.hint_only,
                     )
                 )
                 continue
@@ -340,7 +441,7 @@ def ground_llm_prf_candidates(payload: LLMPRFInput, extraction: LLMPRFExtraction
 
     records.sort(
         key=lambda record: (
-            _source_field_rank(record.source_field),
+            _source_section_rank(record.source_section),
             record.source_text_index,
             record.start_char if record.start_char is not None else 10**9,
             record.resume_id,
@@ -365,10 +466,11 @@ def feedback_expressions_from_llm_grounding(
     seed_support: dict[str, set[str]] = defaultdict(set)
     surfaces: dict[str, set[str]] = defaultdict(set)
     canonical: dict[str, str] = {}
-    source_kind_by_ref = {
-        (source.resume_id, source.source_field, source.source_text_index, source.source_text_hash): source.source_kind
+    support_eligible_by_ref = {
+        (source.resume_id, source.source_text_id, source.source_text_index, source.source_text_hash): source.support_eligible
         for source in payload.source_texts
     }
+    conflicting_family_ids = _conflicting_prf_family_ids(payload, tried_term_family_ids)
 
     for record in grounding.records:
         if not record.accepted:
@@ -376,11 +478,12 @@ def feedback_expressions_from_llm_grounding(
         family_id = build_conservative_prf_family_id(record.normalized_surface or record.surface)
         canonical.setdefault(family_id, record.normalized_surface or record.surface)
         surfaces[family_id].add(record.raw_surface or record.surface)
-        field_hits[family_id][record.source_field] += 1
-        source_kind = source_kind_by_ref.get(
-            (record.resume_id, record.source_field, record.source_text_index, record.source_text_hash)
+        field_hits[family_id][record.source_section] += 1
+        support_eligible = support_eligible_by_ref.get(
+            (record.resume_id, record.source_text_id, record.source_text_index, record.source_text_hash),
+            record.support_eligible,
         )
-        if source_kind == "grounding_eligible":
+        if support_eligible:
             seed_support[family_id].add(record.resume_id)
 
     expressions: list[FeedbackCandidateExpression] = []
@@ -395,7 +498,7 @@ def feedback_expressions_from_llm_grounding(
         if _is_ambiguous_company_or_product(expression):
             candidate_term_type = "company_entity"
             reject_reasons = unique_strings([*reject_reasons, "ambiguous_company_or_product_entity", "company_entity_rejected"])
-        if family_id in tried_term_family_ids:
+        if family_id in conflicting_family_ids:
             reject_reasons = unique_strings([*reject_reasons, "existing_or_tried_family"])
 
         seed_ids = sorted(seed_support.get(family_id, set()))
@@ -424,30 +527,229 @@ def feedback_expressions_from_llm_grounding(
     return expressions
 
 
-def _source_texts_from_resumes(resumes: list[ScoredCandidate]) -> list[LLMPRFSourceText]:
+def _conflicting_prf_family_ids(payload: LLMPRFInput, tried_term_family_ids: set[str]) -> set[str]:
+    family_ids = {_normalize_prf_family_id(family_id) for family_id in tried_term_family_ids}
+    family_ids.update(build_conservative_prf_family_id(term) for term in payload.existing_query_terms)
+    family_ids.update(build_conservative_prf_family_id(term) for term in payload.sent_query_terms)
+    return {family_id for family_id in family_ids if family_id}
+
+
+def _normalize_prf_family_id(family_id: str) -> str:
+    raw = family_id.removeprefix("feedback.")
+    return build_conservative_prf_family_id(raw)
+
+
+def _source_texts_from_resumes(
+    resumes: list[ScoredCandidate],
+    *,
+    normalized_resumes_by_id: Mapping[str, NormalizedResume] | None = None,
+    signal_terms: list[str] | None = None,
+    per_normalized_resume_limit: int = LLM_PRF_MAX_SOURCE_TEXTS_PER_SEED_RESUME,
+) -> list[LLMPRFSourceText]:
     source_texts: list[LLMPRFSourceText] = []
     for resume in resumes:
-        fields = {
-            "evidence": resume.evidence,
-            "matched_must_haves": resume.matched_must_haves,
-            "matched_preferences": resume.matched_preferences,
-            "strengths": resume.strengths,
-        }
-        for source_field in _SOURCE_FIELD_ORDER:
-            for source_text_index, text in enumerate(fields[source_field]):
-                if not text:
-                    continue
-                source_texts.append(
-                    LLMPRFSourceText(
-                        resume_id=resume.resume_id,
-                        source_field=source_field,
-                        source_text_index=source_text_index,
-                        source_text_raw=text,
-                        source_text_hash=sha256(text.encode("utf-8")).hexdigest(),
-                        source_kind="hint_only" if source_field == "strengths" else "grounding_eligible",
-                    )
-                )
+        normalized = normalized_resumes_by_id.get(resume.resume_id) if normalized_resumes_by_id is not None else None
+        if normalized is not None:
+            normalized_source_texts = _source_texts_from_normalized_resume(
+                resume_id=resume.resume_id,
+                resume=normalized,
+                signal_terms=signal_terms or [],
+                limit=per_normalized_resume_limit,
+            )
+            if normalized_source_texts:
+                source_texts.extend(normalized_source_texts)
+                continue
+        source_texts.extend(_source_texts_from_scorecard(resume))
     return source_texts
+
+
+def _source_texts_from_scorecard(resume: ScoredCandidate) -> list[LLMPRFSourceText]:
+    source_texts: list[LLMPRFSourceText] = []
+    fields = {
+        "scorecard_evidence": ("evidence", resume.evidence),
+        "scorecard_matched_must_have": ("matched_must_haves", resume.matched_must_haves),
+        "scorecard_matched_preference": ("matched_preferences", resume.matched_preferences),
+        "scorecard_strength": ("strengths", resume.strengths),
+    }
+    for source_section in _SOURCE_SECTION_ORDER:
+        if source_section not in fields:
+            continue
+        field_name, texts = fields[source_section]
+        for source_text_index, text in enumerate(texts):
+            if not text:
+                continue
+            normalized_text = _normalize_source_text(text)
+            support_eligible = source_section != "scorecard_strength"
+            source_texts.append(
+                LLMPRFSourceText(
+                    resume_id=resume.resume_id,
+                    source_section=source_section,
+                    source_text_id=build_llm_prf_source_text_id(
+                        resume_id=resume.resume_id,
+                        source_section=source_section,
+                        original_field_path=f"{field_name}[{source_text_index}]",
+                        normalized_text=normalized_text,
+                        preparation_version=LLM_PRF_SOURCE_PREPARATION_VERSION,
+                    ),
+                    source_text_index=source_text_index,
+                    source_text_raw=text,
+                    source_text_hash=text_sha256(text),
+                    original_field_path=f"{field_name}[{source_text_index}]",
+                    source_kind="grounding_eligible" if support_eligible else "hint_only",
+                    support_eligible=support_eligible,
+                    hint_only=not support_eligible,
+                    dedupe_key=_normalize_surface(normalized_text).casefold(),
+                    rank_reason=f"scorecard:{field_name}",
+                )
+            )
+    return source_texts
+
+
+def _source_texts_from_normalized_resume(
+    *,
+    resume_id: str,
+    resume: NormalizedResume,
+    signal_terms: list[str],
+    limit: int,
+) -> list[LLMPRFSourceText]:
+    ranked: list[tuple[float, int, int, LLMPRFSourceSection, str, str]] = []
+    order = 0
+    for priority, source_section, original_field_path, text in _normalized_resume_text_sources(resume):
+        for snippet in _resume_source_snippets(text):
+            ranked.append((_source_text_score(snippet, signal_terms), priority, order, source_section, original_field_path, snippet))
+            order += 1
+
+    selected: list[tuple[LLMPRFSourceSection, str, str]] = []
+    seen: set[str] = set()
+    for _score, _priority, _order, source_section, original_field_path, snippet in sorted(
+        ranked,
+        key=lambda item: (-item[0], item[1], item[2]),
+    ):
+        key = _normalize_surface(snippet).casefold()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        selected.append((source_section, original_field_path, snippet))
+        if len(selected) >= limit:
+            break
+
+    return [
+        LLMPRFSourceText(
+            resume_id=resume_id,
+            source_section=source_section,
+            source_text_id=build_llm_prf_source_text_id(
+                resume_id=resume_id,
+                source_section=source_section,
+                original_field_path=original_field_path,
+                normalized_text=text,
+                preparation_version=LLM_PRF_SOURCE_PREPARATION_VERSION,
+            ),
+            source_text_index=index,
+            source_text_raw=text,
+            source_text_hash=text_sha256(text),
+            original_field_path=original_field_path,
+            source_kind="grounding_eligible",
+            support_eligible=True,
+            hint_only=False,
+            dedupe_key=_normalize_surface(text).casefold(),
+            rank_reason="normalized_resume",
+        )
+        for index, (source_section, original_field_path, text) in enumerate(selected)
+    ]
+
+
+def _normalized_resume_text_sources(resume: NormalizedResume) -> list[tuple[int, LLMPRFSourceSection, str, str]]:
+    sources: list[tuple[int, LLMPRFSourceSection, str, str]] = []
+    sources.extend((0, "key_achievement", f"key_achievements[{index}]", text) for index, text in enumerate(resume.key_achievements))
+    sources.extend(
+        (1, "recent_experience_summary", f"recent_experiences[{index}].summary", item.summary)
+        for index, item in enumerate(resume.recent_experiences)
+    )
+    if resume.raw_text_excerpt:
+        sources.append((2, "raw_text_excerpt", "raw_text_excerpt", resume.raw_text_excerpt))
+    sources.extend((3, "skill", f"skills[{index}]", skill) for index, skill in enumerate(resume.skills))
+    return sources
+
+
+def _resume_source_snippets(text: str) -> list[str]:
+    text = _normalize_source_text(text)
+    if not text:
+        return []
+    pieces = [
+        _normalize_source_text(piece)
+        for piece in re.split(r"(?:\n+|[。；;]|[●•·])", text.replace("\r", "\n"))
+    ]
+    snippets: list[str] = []
+    for piece in pieces:
+        if not piece:
+            continue
+        if len(piece) <= LLM_PRF_MAX_SOURCE_TEXT_CHARS:
+            snippets.append(piece)
+            continue
+        snippets.extend(_split_long_source_piece(piece))
+    return snippets
+
+
+def _split_long_source_piece(text: str) -> list[str]:
+    parts = [_normalize_source_text(part) for part in re.split(r"[，,]", text)]
+    chunks: list[str] = []
+    current = ""
+    for part in parts:
+        if not part:
+            continue
+        candidate = f"{current}，{part}" if current else part
+        if len(candidate) <= LLM_PRF_MAX_SOURCE_TEXT_CHARS:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        current = part[:LLM_PRF_MAX_SOURCE_TEXT_CHARS].rstrip()
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _source_text_score(text: str, signal_terms: list[str]) -> float:
+    haystack = _search_key(text)
+    score = 1.0 if len(text) <= 80 else 0.3
+    for term in signal_terms:
+        if term and term in haystack:
+            score += 10 + min(len(term), 20)
+            if haystack == term:
+                score += 20
+    return score
+
+
+def _llm_prf_signal_terms(
+    *,
+    role_title: str,
+    role_summary: str,
+    must_have_capabilities: list[str],
+    retrieval_query_terms: list[str],
+    existing_query_terms: list[str],
+) -> list[str]:
+    raw_terms = [
+        role_title,
+        role_summary,
+        *must_have_capabilities,
+        *retrieval_query_terms,
+        *existing_query_terms,
+    ]
+    terms: list[str] = []
+    for raw_term in raw_terms:
+        normalized = _search_key(raw_term)
+        if 2 <= len(normalized) <= 80:
+            terms.append(normalized)
+        terms.extend(token for token in _family_keys_in_text(raw_term) if 2 <= len(token) <= 40)
+    return unique_strings(terms)
+
+
+def _normalize_source_text(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", text).split())
+
+
+def _search_key(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).casefold()
 
 
 def _base_llm_prf_call_artifact(
@@ -502,9 +804,12 @@ def _ground_surface(*, candidate: LLMPRFCandidate, source: LLMPRFSourceText) -> 
             accepted=False,
             reject_reasons=["substring_not_found"],
             resume_id=source.resume_id,
-            source_field=source.source_field,
+            source_section=source.source_section,
+            source_text_id=source.source_text_id,
             source_text_index=source.source_text_index,
             source_text_hash=source.source_text_hash,
+            support_eligible=source.support_eligible,
+            hint_only=source.hint_only,
         )
 
     start_char, end_char, _match_kind = match
@@ -521,16 +826,19 @@ def _ground_surface(*, candidate: LLMPRFCandidate, source: LLMPRFSourceText) -> 
         accepted=not reject_reasons,
         reject_reasons=reject_reasons,
         resume_id=source.resume_id,
-        source_field=source.source_field,
+        source_section=source.source_section,
+        source_text_id=source.source_text_id,
         source_text_index=source.source_text_index,
         source_text_hash=source.source_text_hash,
+        support_eligible=source.support_eligible,
+        hint_only=source.hint_only,
         start_char=start_char,
         end_char=end_char,
         raw_surface=raw_surface,
     )
 
 
-def _find_raw_match(text: str, surface: str) -> tuple[int, int, Literal["exact", "nfkc"]] | None:
+def _find_raw_match(text: str, surface: str) -> tuple[int, int, Literal["exact", "nfkc", "nfkc_casefold"]] | None:
     start_char = text.find(surface)
     if start_char != -1:
         return start_char, start_char + len(surface), "exact"
@@ -539,7 +847,15 @@ def _find_raw_match(text: str, surface: str) -> tuple[int, int, Literal["exact",
     normalized_surface = unicodedata.normalize("NFKC", surface)
     normalized_start = normalized_text.find(normalized_surface)
     if normalized_start == -1:
-        return None
+        folded_text, folded_offset_map = _casefold_with_offset_map(normalized_text)
+        folded_surface = normalized_surface.casefold()
+        folded_start = folded_text.find(folded_surface)
+        if folded_start == -1:
+            return None
+        folded_end = folded_start + len(folded_surface)
+        normalized_start = folded_offset_map[folded_start]
+        normalized_end = folded_offset_map[folded_end - 1] + 1
+        return raw_offset_map[normalized_start], raw_offset_map[normalized_end - 1] + 1, "nfkc_casefold"
     normalized_end = normalized_start + len(normalized_surface)
     return raw_offset_map[normalized_start], raw_offset_map[normalized_end - 1] + 1, "nfkc"
 
@@ -558,6 +874,16 @@ def _nfkc_with_raw_offset_map(text: str) -> tuple[str, list[int]]:
     return "".join(normalized_chars), raw_offset_map
 
 
+def _casefold_with_offset_map(text: str) -> tuple[str, list[int]]:
+    folded_chars: list[str] = []
+    offset_map: list[int] = []
+    for index, char in enumerate(text):
+        folded = char.casefold()
+        folded_chars.append(folded)
+        offset_map.extend([index] * len(folded))
+    return "".join(folded_chars), offset_map
+
+
 def _is_unsafe_substring_match(text: str, start_char: int, end_char: int, surface: str) -> bool:
     lower_tail = text[start_char:].casefold()
     for unsafe_surface, unsafe_container in _UNSAFE_SUBSTRING_PAIRS:
@@ -566,8 +892,12 @@ def _is_unsafe_substring_match(text: str, start_char: int, end_char: int, surfac
     if surface.isascii():
         before = text[start_char - 1] if start_char > 0 else ""
         after = text[end_char] if end_char < len(text) else ""
-        return bool((before and before.isalnum()) or (after and after.isalnum()))
+        return bool(_is_ascii_token_char(before) or _is_ascii_token_char(after))
     return False
+
+
+def _is_ascii_token_char(char: str) -> bool:
+    return bool(char and char.isascii() and (char.isalnum() or char == "_"))
 
 
 def _negative_support_resume_ids(negative_source_texts: list[LLMPRFSourceText], family_id: str) -> list[str]:
@@ -623,7 +953,7 @@ def _normalize_reject_reasons(reject_reasons: list[str]) -> list[str]:
     return unique_strings(normalized)
 
 
-def _source_field_rank(source_field: SourceField | None) -> int:
-    if source_field is None:
-        return len(_SOURCE_FIELD_ORDER)
-    return _SOURCE_FIELD_ORDER.index(source_field)
+def _source_section_rank(source_section: LLMPRFSourceSection | None) -> int:
+    if source_section is None:
+        return len(_SOURCE_SECTION_ORDER)
+    return _SOURCE_SECTION_ORDER.index(source_section)

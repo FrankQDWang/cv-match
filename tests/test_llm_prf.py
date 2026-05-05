@@ -19,15 +19,18 @@ from seektalent.candidate_feedback.llm_prf import (
     LLMPRFCandidate,
     LLMPRFExtraction,
     LLMPRFSourceEvidenceRef,
+    LLMPRFSourceText,
     build_conservative_prf_family_id,
     build_llm_prf_artifact_refs,
     build_llm_prf_input,
+    build_llm_prf_source_text_id,
     feedback_expressions_from_llm_grounding,
     ground_llm_prf_candidates,
     select_llm_prf_negative_resumes,
+    text_sha256,
 )
 from seektalent.config import AppSettings
-from seektalent.models import FitBucket, ScoredCandidate
+from seektalent.models import FitBucket, NormalizedExperience, NormalizedResume, ScoredCandidate
 from seektalent.prompting import LoadedPrompt
 from seektalent.tracing import ProviderUsageSnapshot
 
@@ -70,10 +73,14 @@ def _candidate(
     *,
     normalized_surface: str | None = None,
     resume_id: str = "seed-1",
-    source_field: str = "evidence",
+    source_section: str = "scorecard_evidence",
+    source_text_id: str = "source-hash",
     source_text_index: int = 0,
-    source_hash: str | None = None,
+    source_hash: str = "text-hash",
     candidate_term_type: str = "technical_phrase",
+    linked_requirements: list[str] | None = None,
+    rationale: str = "Grounded candidate.",
+    risk_flags: list[str] | None = None,
 ) -> LLMPRFCandidate:
     return LLMPRFCandidate(
         surface=surface,
@@ -82,15 +89,16 @@ def _candidate(
         source_evidence_refs=[
             LLMPRFSourceEvidenceRef(
                 resume_id=resume_id,
-                source_field=source_field,
+                source_section=source_section,
+                source_text_id=source_text_id,
                 source_text_index=source_text_index,
-                source_text_hash=source_hash or "",
+                source_text_hash=source_hash,
             )
         ],
         source_resume_ids=[resume_id],
-        linked_requirements=[],
-        rationale="Grounded candidate.",
-        risk_flags=[],
+        linked_requirements=linked_requirements or [],
+        rationale=rationale,
+        risk_flags=risk_flags or [],
     )
 
 
@@ -102,12 +110,32 @@ def _extraction(*candidates: LLMPRFCandidate) -> LLMPRFExtraction:
     )
 
 
+def _source_ref_kwargs(payload, source_id: str) -> dict[str, str | int]:
+    resume_id, source_section, source_text_index = source_id.split("|")
+    source = next(
+        item
+        for item in payload.source_texts
+        if item.resume_id == resume_id
+        and item.source_section == source_section
+        and item.source_text_index == int(source_text_index)
+    )
+    return {
+        "resume_id": source.resume_id,
+        "source_section": source.source_section,
+        "source_text_id": source.source_text_id,
+        "source_text_index": source.source_text_index,
+        "source_hash": source.source_text_hash,
+    }
+
+
 def _source_hash(payload, source_id: str) -> str:
-    resume_id, source_field, source_text_index = source_id.split("|")
+    resume_id, source_section, source_text_index = source_id.split("|")
     return next(
         item.source_text_hash
         for item in payload.source_texts
-        if item.resume_id == resume_id and item.source_field == source_field and item.source_text_index == int(source_text_index)
+        if item.resume_id == resume_id
+        and item.source_section == source_section
+        and item.source_text_index == int(source_text_index)
     )
 
 
@@ -137,6 +165,125 @@ def _payload_for_extractor():
     return payload
 
 
+def test_llm_prf_source_text_uses_source_section_and_stable_id() -> None:
+    raw = "Built LangGraph workflows for multi-agent retrieval."
+    source_id = build_llm_prf_source_text_id(
+        resume_id="seed-1",
+        source_section="recent_experience_summary",
+        original_field_path="recent_experiences[0].summary",
+        normalized_text=raw,
+        preparation_version="llm-prf-source-prep-v1",
+    )
+
+    source = LLMPRFSourceText(
+        resume_id="seed-1",
+        source_section="recent_experience_summary",
+        source_text_id=source_id,
+        source_text_index=0,
+        source_text_raw=raw,
+        source_text_hash=text_sha256(raw),
+        original_field_path="recent_experiences[0].summary",
+        source_kind="grounding_eligible",
+        support_eligible=True,
+        hint_only=False,
+        preparation_version="llm-prf-source-prep-v1",
+        dedupe_key="langgraph workflows for multi-agent retrieval",
+        rank_reason="matched:LangGraph,multi-agent",
+    )
+
+    assert source.source_id == source_id
+    assert source.source_section == "recent_experience_summary"
+    assert source.support_eligible is True
+    assert source.hint_only is False
+
+
+def test_llm_prf_source_ref_resolves_by_source_text_id() -> None:
+    ref = LLMPRFSourceEvidenceRef(
+        resume_id="seed-1",
+        source_section="skill",
+        source_text_id="source-hash",
+        source_text_index=3,
+        source_text_hash="text-hash",
+    )
+
+    assert ref.source_text_id == "source-hash"
+    assert ref.source_section == "skill"
+
+
+@pytest.mark.parametrize("field_name", ["source_text_id", "source_text_hash"])
+def test_llm_prf_source_ref_rejects_empty_ref_identity(field_name: str) -> None:
+    kwargs = {
+        "resume_id": "seed-1",
+        "source_section": "skill",
+        "source_text_id": "source-hash",
+        "source_text_index": 3,
+        "source_text_hash": "text-hash",
+    }
+    kwargs[field_name] = ""
+
+    with pytest.raises(ValidationError):
+        LLMPRFSourceEvidenceRef(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "support_eligible", "hint_only"),
+    [
+        ("grounding_eligible", False, False),
+        ("grounding_eligible", True, True),
+        ("hint_only", True, True),
+        ("hint_only", False, False),
+    ],
+)
+def test_llm_prf_source_text_rejects_conflicting_support_flags(
+    source_kind: str,
+    support_eligible: bool,
+    hint_only: bool,
+) -> None:
+    with pytest.raises(ValidationError):
+        LLMPRFSourceText(
+            resume_id="seed-1",
+            source_section="skill",
+            source_text_id="source-hash",
+            source_text_index=0,
+            source_text_raw="LangGraph",
+            source_text_hash="text-hash",
+            original_field_path="skills[0]",
+            source_kind=source_kind,
+            support_eligible=support_eligible,
+            hint_only=hint_only,
+            dedupe_key="langgraph",
+        )
+
+
+def _normalized_resume(resume_id: str, *, raw_text_excerpt: str, key_achievements: list[str] | None = None) -> NormalizedResume:
+    return NormalizedResume(
+        resume_id=resume_id,
+        dedup_key=resume_id,
+        headline="AI Engineer",
+        current_title="AI Engineer",
+        current_company="Example Co",
+        years_of_experience=5,
+        locations=["上海"],
+        education_summary="Computer Science",
+        skills=["Python", "LangGraph"],
+        industry_tags=[],
+        language_tags=[],
+        recent_experiences=[
+            NormalizedExperience(
+                title="AI Engineer",
+                company="Example Co",
+                duration="2023-2026",
+                summary=raw_text_excerpt,
+            )
+        ],
+        key_achievements=key_achievements or [raw_text_excerpt],
+        raw_text_excerpt=raw_text_excerpt,
+        completeness_score=90,
+        missing_fields=[],
+        normalization_notes=[],
+    )
+
+
 def _agent_model_client_max_retries(agent: Any) -> int:
     model = getattr(agent, "_model")
     return getattr(model.client, "max_retries")
@@ -145,6 +292,46 @@ def _agent_model_client_max_retries(agent: Any) -> int:
 def test_llm_prf_extraction_enforces_top_n_candidate_cap() -> None:
     with pytest.raises(ValidationError):
         LLMPRFExtraction(candidates=[_candidate(f"term-{index}") for index in range(LLM_PRF_TOP_N_CANDIDATE_CAP + 1)])
+
+
+def test_llm_prf_extraction_rejects_more_than_four_candidates() -> None:
+    with pytest.raises(ValidationError):
+        LLMPRFExtraction(candidates=[_candidate(f"term-{index}") for index in range(5)])
+
+
+def test_llm_prf_candidate_schema_keeps_verbose_fields_bounded() -> None:
+    candidate = _candidate(
+        "Flink CDC",
+        rationale="x" * 120,
+        linked_requirements=["streaming", "cdc", "data integration", "ingestion"],
+        risk_flags=["company", "location", "generic", "title_only"],
+    )
+
+    assert candidate.rationale == "x" * 120
+    with pytest.raises(ValidationError):
+        _candidate("Flink CDC", rationale="x" * 121)
+    with pytest.raises(ValidationError):
+        _candidate("Flink CDC", linked_requirements=["one", "two", "three", "four", "five"])
+    with pytest.raises(ValidationError):
+        _candidate("Flink CDC", risk_flags=["one", "two", "three", "four", "five"])
+
+
+def test_llm_prf_system_prompt_hard_limits_output_volume() -> None:
+    prompt = Path("src/seektalent/prompts/prf_probe_phrase_proposal.md").read_text()
+
+    assert "Return at most 4 candidates" in prompt
+    assert "at least two distinct fit seed resumes" in prompt
+    assert "rationale <= 80 chars" in prompt
+
+
+def test_llm_prf_prompt_requires_extractive_surfaces() -> None:
+    system_prompt = Path("src/seektalent/prompts/prf_probe_phrase_proposal.md").read_text()
+    user_prompt = llm_prf.render_llm_prf_prompt(_payload_for_extractor())
+
+    assert "surface must be copied exactly" in system_prompt
+    assert "surface must be copied exactly" in user_prompt
+    assert "Do not synthesize descriptive phrases" in system_prompt
+    assert "Do not synthesize descriptive phrases" in user_prompt
 
 
 @pytest.mark.parametrize("surface", ["", " ", "\t"])
@@ -187,15 +374,59 @@ def test_build_llm_prf_input_freezes_source_text_hashes() -> None:
     assert payload.existing_query_terms == ["Kafka"]
     assert payload.sent_query_terms == ["Flink"]
     assert payload.tried_term_family_ids == ["feedback.kafka"]
-    assert [(item.resume_id, item.source_field, item.source_text_index) for item in payload.source_texts] == [
-        ("seed-1", "evidence", 0),
-        ("seed-1", "strengths", 0),
-        ("seed-2", "matched_must_haves", 0),
+    assert [(item.resume_id, item.source_section, item.source_text_index) for item in payload.source_texts] == [
+        ("seed-1", "scorecard_evidence", 0),
+        ("seed-1", "scorecard_strength", 0),
+        ("seed-2", "scorecard_matched_must_have", 0),
     ]
     assert payload.source_texts[0].source_text_raw == "Built Flink CDC pipelines."
     assert payload.source_texts[0].source_text_hash == sha256("Built Flink CDC pipelines.".encode()).hexdigest()
     assert payload.source_texts[1].source_kind == "hint_only"
+    assert payload.source_texts[1].hint_only is True
+    assert payload.source_texts[1].support_eligible is False
     assert payload.source_texts[2].source_kind == "grounding_eligible"
+
+
+def test_build_llm_prf_input_prefers_normalized_resume_snippets_over_scorecard_labels() -> None:
+    payload = build_llm_prf_input(
+        round_no=2,
+        role_title="AI Agent Engineer",
+        role_summary="Build agent workflows.",
+        must_have_capabilities=["AI Agent", "LangGraph"],
+        retrieval_query_terms=["AI Agent"],
+        existing_query_terms=["AI Agent", "LangGraph"],
+        seed_resumes=[
+            _scored_candidate(
+                "seed-1",
+                evidence=["2年以上软件工程经验", "掌握RAG技术"],
+                matched_must_haves=["2年以上软件工程经验"],
+            ),
+            _scored_candidate(
+                "seed-2",
+                evidence=["2年以上软件工程经验", "掌握RAG技术"],
+                matched_must_haves=["2年以上软件工程经验"],
+            ),
+        ],
+        negative_resumes=[],
+        normalized_resumes_by_id={
+            "seed-1": _normalized_resume(
+                "seed-1",
+                raw_text_excerpt="Built LangGraph workflow orchestration for agent memory and tool use.",
+            ),
+            "seed-2": _normalized_resume(
+                "seed-2",
+                raw_text_excerpt="Maintained LangGraph agent runtime and evaluation workflows.",
+            ),
+        },
+    )
+
+    assert payload is not None
+    source_texts = [item.source_text_raw for item in payload.source_texts]
+    assert any("LangGraph workflow orchestration" in text for text in source_texts)
+    assert any("LangGraph agent runtime" in text for text in source_texts)
+    assert "2年以上软件工程经验" not in source_texts
+    assert all(item.source_kind == "grounding_eligible" for item in payload.source_texts)
+    assert len(payload.source_texts) <= 8
 
 
 def test_build_llm_prf_input_returns_none_with_fewer_than_two_seed_resumes() -> None:
@@ -220,8 +451,8 @@ def test_ground_llm_prf_candidates_uses_exact_raw_substring_offsets() -> None:
     grounding = ground_llm_prf_candidates(
         payload,
         _extraction(
-            _candidate("Flink CDC", source_hash=_source_hash(payload, "seed-1|evidence|0")),
-            _candidate("Flink CDC", resume_id="seed-2", source_hash=_source_hash(payload, "seed-2|evidence|0")),
+            _candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-2|scorecard_evidence|0")),
         ),
     )
 
@@ -233,20 +464,41 @@ def test_ground_llm_prf_candidates_uses_exact_raw_substring_offsets() -> None:
         "accepted",
         "reject_reasons",
         "resume_id",
-        "source_field",
+        "source_section",
+        "source_text_id",
         "source_text_index",
         "source_text_hash",
+        "support_eligible",
+        "hint_only",
         "start_char",
         "end_char",
         "raw_surface",
     }
     assert grounding.records[0].accepted is True
     assert grounding.records[0].resume_id == "seed-1"
-    assert grounding.records[0].source_text_hash == _source_hash(payload, "seed-1|evidence|0")
+    assert grounding.records[0].source_text_hash == _source_hash(payload, "seed-1|scorecard_evidence|0")
     assert grounding.records[0].start_char == len("Built ")
     assert grounding.records[0].end_char == len("Built Flink CDC")
     assert grounding.records[0].raw_surface == "Flink CDC"
     assert grounding.records[0].reject_reasons == []
+
+
+def test_grounding_rejects_source_ref_with_wrong_source_section() -> None:
+    payload = build_llm_prf_input(
+        seed_resumes=[
+            _scored_candidate("seed-1", evidence=["Built Flink CDC pipelines."]),
+            _scored_candidate("seed-2", evidence=["Built Flink CDC ingestion."]),
+        ],
+        negative_resumes=[],
+    )
+    assert payload is not None
+    ref_kwargs = _source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")
+    ref_kwargs["source_section"] = "scorecard_strength"
+
+    grounding = ground_llm_prf_candidates(payload, _extraction(_candidate("Flink CDC", **ref_kwargs)))
+
+    assert grounding.records[0].accepted is False
+    assert grounding.records[0].reject_reasons == ["source_reference_not_found"]
 
 
 def test_ground_llm_prf_candidates_recovers_raw_offsets_after_nfkc_match() -> None:
@@ -261,7 +513,7 @@ def test_ground_llm_prf_candidates_recovers_raw_offsets_after_nfkc_match() -> No
 
     grounding = ground_llm_prf_candidates(
         payload,
-        _extraction(_candidate("Flink CDC", source_hash=_source_hash(payload, "seed-1|evidence|0"))),
+        _extraction(_candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0"))),
     )
 
     record = grounding.records[0]
@@ -283,9 +535,9 @@ def test_ground_llm_prf_candidates_rejects_unsafe_substrings() -> None:
     grounding = ground_llm_prf_candidates(
         payload,
         _extraction(
-            _candidate("Java", source_hash=_source_hash(payload, "seed-1|evidence|0")),
-            _candidate("React", source_hash=_source_hash(payload, "seed-1|evidence|0")),
-            _candidate("阿里", source_hash=_source_hash(payload, "seed-1|evidence|0")),
+            _candidate("Java", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("React", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("阿里", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
         ),
     )
 
@@ -294,6 +546,48 @@ def test_ground_llm_prf_candidates_rejects_unsafe_substrings() -> None:
         ["unsafe_substring_match"],
         ["unsafe_substring_match"],
     ]
+
+
+def test_ground_llm_prf_candidates_allows_ascii_surface_next_to_cjk_text() -> None:
+    payload = build_llm_prf_input(
+        seed_resumes=[
+            _scored_candidate("seed-1", evidence=["使用Langgraph框架搭建multi-agent架构。"]),
+            _scored_candidate("seed-2", evidence=["支持Multi-Agent 协作与任务拆解。"]),
+        ],
+        negative_resumes=[],
+    )
+    assert payload is not None
+
+    grounding = ground_llm_prf_candidates(
+        payload,
+        _extraction(
+            _candidate("Langgraph", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("Multi-Agent", **_source_ref_kwargs(payload, "seed-2|scorecard_evidence|0")),
+        ),
+    )
+
+    assert [record.accepted for record in grounding.records] == [True, True]
+    assert [record.reject_reasons for record in grounding.records] == [[], []]
+
+
+def test_ground_llm_prf_candidates_recovers_case_variant_raw_offsets() -> None:
+    payload = build_llm_prf_input(
+        seed_resumes=[
+            _scored_candidate("seed-1", evidence=["接入Agent skills组件整合智能体项目中的工具。"]),
+            _scored_candidate("seed-2", evidence=["支持Agent Skills模块化实现。"]),
+        ],
+        negative_resumes=[],
+    )
+    assert payload is not None
+
+    grounding = ground_llm_prf_candidates(
+        payload,
+        _extraction(_candidate("Agent Skills", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0"))),
+    )
+
+    record = grounding.records[0]
+    assert record.accepted is True
+    assert record.raw_surface == "Agent skills"
 
 
 def test_family_support_counts_separator_and_camelcase_variants_as_one_family() -> None:
@@ -309,12 +603,10 @@ def test_family_support_counts_separator_and_camelcase_variants_as_one_family() 
     grounding = ground_llm_prf_candidates(
         payload,
         _extraction(
-            _candidate("Flink CDC", source_hash=_source_hash(payload, "seed-1|evidence|0")),
+            _candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
             _candidate(
                 "FlinkCDC",
-                resume_id="seed-2",
-                source_field="matched_must_haves",
-                source_hash=_source_hash(payload, "seed-2|matched_must_haves|0"),
+                **_source_ref_kwargs(payload, "seed-2|scorecard_matched_must_have|0"),
             ),
         ),
     )
@@ -331,6 +623,68 @@ def test_family_support_counts_separator_and_camelcase_variants_as_one_family() 
     assert set(expressions[0].surface_forms) == {"Flink CDC", "FlinkCDC"}
 
 
+def test_feedback_expressions_reject_existing_and_sent_query_term_families() -> None:
+    payload = build_llm_prf_input(
+        existing_query_terms=["AI Agent"],
+        sent_query_terms=["LangGraph"],
+        seed_resumes=[
+            _scored_candidate("seed-1", evidence=["Built AI Agent workflows with LangGraph."]),
+            _scored_candidate("seed-2", evidence=["Shipped AI Agent runtime on LangGraph."]),
+        ],
+        negative_resumes=[],
+    )
+    assert payload is not None
+    grounding = ground_llm_prf_candidates(
+        payload,
+        _extraction(
+            _candidate("AI Agent", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("AI Agent", **_source_ref_kwargs(payload, "seed-2|scorecard_evidence|0")),
+            _candidate("LangGraph", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("LangGraph", **_source_ref_kwargs(payload, "seed-2|scorecard_evidence|0")),
+        ),
+    )
+
+    expressions = feedback_expressions_from_llm_grounding(
+        payload,
+        grounding,
+        known_company_entities=set(),
+        tried_term_family_ids=set(),
+    )
+
+    reject_reasons = {expression.canonical_expression: expression.reject_reasons for expression in expressions}
+    assert reject_reasons == {
+        "AI Agent": ["existing_or_tried_family"],
+        "LangGraph": ["existing_or_tried_family"],
+    }
+
+
+def test_feedback_expressions_normalizes_tried_family_conflicts() -> None:
+    payload = build_llm_prf_input(
+        seed_resumes=[
+            _scored_candidate("seed-1", evidence=["Built AI Agent workflows."]),
+            _scored_candidate("seed-2", evidence=["Shipped AI Agent runtime."]),
+        ],
+        negative_resumes=[],
+    )
+    assert payload is not None
+    grounding = ground_llm_prf_candidates(
+        payload,
+        _extraction(
+            _candidate("AI Agent", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")),
+            _candidate("AI Agent", **_source_ref_kwargs(payload, "seed-2|scorecard_evidence|0")),
+        ),
+    )
+
+    expressions = feedback_expressions_from_llm_grounding(
+        payload,
+        grounding,
+        known_company_entities=set(),
+        tried_term_family_ids={"feedback.ai-agent"},
+    )
+
+    assert expressions[0].reject_reasons == ["existing_or_tried_family"]
+
+
 def test_llm_candidate_term_type_is_advisory_and_runtime_reclassifies_company_entity() -> None:
     payload = build_llm_prf_input(
         seed_resumes=[
@@ -345,7 +699,7 @@ def test_llm_candidate_term_type_is_advisory_and_runtime_reclassifies_company_en
         _extraction(
             _candidate(
                 "OpenAI",
-                source_hash=_source_hash(payload, "seed-1|evidence|0"),
+                **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0"),
                 candidate_term_type="skill",
             )
         ),
@@ -573,7 +927,7 @@ def test_advisory_platform_label_without_known_company_is_still_ambiguous_for_te
         _extraction(
             _candidate(
                 "腾讯云",
-                source_hash=_source_hash(payload, "seed-1|evidence|0"),
+                **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0"),
                 candidate_term_type="product_or_platform",
             )
         ),
@@ -600,7 +954,9 @@ def test_hash_mismatch_rejects_with_source_hash_mismatch() -> None:
     )
     assert payload is not None
 
-    grounding = ground_llm_prf_candidates(payload, _extraction(_candidate("Flink CDC", source_hash="wrong")))
+    ref_kwargs = _source_ref_kwargs(payload, "seed-1|scorecard_evidence|0")
+    ref_kwargs["source_hash"] = "wrong"
+    grounding = ground_llm_prf_candidates(payload, _extraction(_candidate("Flink CDC", **ref_kwargs)))
 
     assert grounding.records[0].accepted is False
     assert grounding.records[0].reject_reasons == ["source_hash_mismatch"]
@@ -637,8 +993,8 @@ def test_strengths_only_support_tracks_field_hits_without_positive_seed_support(
     grounding = ground_llm_prf_candidates(
         payload,
         _extraction(
-            _candidate("Flink CDC", source_field="strengths", source_hash=_source_hash(payload, "seed-1|strengths|0")),
-            _candidate("Flink CDC", resume_id="seed-2", source_field="strengths", source_hash=_source_hash(payload, "seed-2|strengths|0")),
+            _candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-1|scorecard_strength|0")),
+            _candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-2|scorecard_strength|0")),
         ),
     )
 
@@ -649,7 +1005,7 @@ def test_strengths_only_support_tracks_field_hits_without_positive_seed_support(
         tried_term_family_ids=set(),
     )
 
-    assert expressions[0].field_hits == {"strengths": 2}
+    assert expressions[0].field_hits == {"scorecard_strength": 2}
     assert expressions[0].positive_seed_support_count == 0
     assert expressions[0].source_seed_resume_ids == []
 
@@ -666,8 +1022,8 @@ def test_positive_support_requires_grounding_eligible_hit_per_seed_resume() -> N
     grounding = ground_llm_prf_candidates(
         payload,
         _extraction(
-            _candidate("Flink CDC", source_field="strengths", source_hash=_source_hash(payload, "seed-1|strengths|0")),
-            _candidate("Flink CDC", resume_id="seed-2", source_hash=_source_hash(payload, "seed-2|evidence|0")),
+            _candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-1|scorecard_strength|0")),
+            _candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-2|scorecard_evidence|0")),
         ),
     )
 
@@ -680,7 +1036,7 @@ def test_positive_support_requires_grounding_eligible_hit_per_seed_resume() -> N
 
     assert expressions[0].source_seed_resume_ids == ["seed-2"]
     assert expressions[0].positive_seed_support_count == 1
-    assert expressions[0].field_hits == {"strengths": 1, "evidence": 1}
+    assert expressions[0].field_hits == {"scorecard_strength": 1, "scorecard_evidence": 1}
 
 
 def test_negative_support_is_deterministic_scan_over_negative_source_texts() -> None:
@@ -698,7 +1054,7 @@ def test_negative_support_is_deterministic_scan_over_negative_source_texts() -> 
     assert payload is not None
     grounding = ground_llm_prf_candidates(
         payload,
-        _extraction(_candidate("Flink CDC", source_hash=_source_hash(payload, "seed-1|evidence|0"))),
+        _extraction(_candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0"))),
     )
 
     expressions = feedback_expressions_from_llm_grounding(
@@ -726,7 +1082,7 @@ def test_negative_support_family_scan_does_not_match_inside_larger_tokens() -> N
     assert payload is not None
     grounding = ground_llm_prf_candidates(
         payload,
-        _extraction(_candidate("Go", source_hash=_source_hash(payload, "seed-1|evidence|0"))),
+        _extraction(_candidate("Go", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0"))),
     )
 
     expressions = feedback_expressions_from_llm_grounding(
@@ -751,7 +1107,7 @@ def test_grounding_does_not_trust_llm_normalized_surface_for_accepted_identity()
     assert payload is not None
     grounding = ground_llm_prf_candidates(
         payload,
-        _extraction(_candidate("Go", normalized_surface="Python", source_hash=_source_hash(payload, "seed-1|evidence|0"))),
+        _extraction(_candidate("Go", normalized_surface="Python", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0"))),
     )
 
     assert grounding.records[0].accepted is True
@@ -797,7 +1153,7 @@ def test_tried_family_conflicts_use_conservative_prf_family_id() -> None:
     assert payload is not None
     grounding = ground_llm_prf_candidates(
         payload,
-        _extraction(_candidate("Flink CDC", source_hash=_source_hash(payload, "seed-1|evidence|0"))),
+        _extraction(_candidate("Flink CDC", **_source_ref_kwargs(payload, "seed-1|scorecard_evidence|0"))),
     )
 
     expressions = feedback_expressions_from_llm_grounding(

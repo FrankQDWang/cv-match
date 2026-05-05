@@ -21,16 +21,20 @@ from seektalent.candidate_feedback.llm_prf import (
     LLMPRFGroundingRecord,
     LLMPRFGroundingResult,
     LLMPRFInput,
+    LLMPRFSourceSection,
     LLMPRFSourceEvidenceRef,
     LLMPRFSourceText,
     build_conservative_prf_family_id,
     build_llm_prf_artifact_refs,
     build_llm_prf_input,
+    build_llm_prf_source_text_id,
     feedback_expressions_from_llm_grounding,
     ground_llm_prf_candidates,
     select_llm_prf_negative_resumes,
+    text_sha256,
 )
 from seektalent.candidate_feedback.models import (
+    CandidateTermType,
     CandidateFeedbackDecision,
     FeedbackCandidateExpression,
     FeedbackCandidateTerm,
@@ -38,6 +42,7 @@ from seektalent.candidate_feedback.models import (
 
 __all__ = [
     "CandidateFeedbackDecision",
+    "CandidateTermType",
     "FeedbackCandidateExpression",
     "FeedbackCandidateTerm",
     "GROUNDING_VALIDATOR_VERSION",
@@ -47,6 +52,7 @@ __all__ = [
     "LLMPRFGroundingRecord",
     "LLMPRFGroundingResult",
     "LLMPRFInput",
+    "LLMPRFSourceSection",
     "LLMPRFSourceEvidenceRef",
     "LLMPRFSourceText",
     "LLM_PRF_EXTRACTOR_VERSION",
@@ -59,6 +65,7 @@ __all__ = [
     "build_feedback_decision",
     "build_llm_prf_artifact_refs",
     "build_llm_prf_input",
+    "build_llm_prf_source_text_id",
     "classify_feedback_expressions",
     "classify_candidate_expression",
     "extract_feedback_candidate_expressions",
@@ -68,4 +75,5 @@ __all__ = [
     "normalize_expression",
     "select_llm_prf_negative_resumes",
     "select_feedback_seed_resumes",
+    "text_sha256",
 ]
