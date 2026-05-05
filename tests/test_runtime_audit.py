@@ -1655,6 +1655,9 @@ def test_replay_snapshot_contains_provider_snapshot_and_versions(tmp_path: Path)
     assert snapshot["query_plan_version"] == "2"
     assert snapshot["prf_gate_version"]
     assert "generic_explore_version" in snapshot
+    assert "prf_model_backend" not in snapshot
+    assert "prf_sidecar_dependency_manifest_hash" not in snapshot
+    assert "prf_span_model_name" not in snapshot
 
 
 def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:
