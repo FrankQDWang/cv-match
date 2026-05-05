@@ -106,12 +106,12 @@ def _provider_usage_snapshot() -> ProviderUsageSnapshot:
     )
 
 
-def test_outputs_doc_mentions_prf_v1_5_artifacts() -> None:
+def test_outputs_doc_mentions_llm_prf_artifacts() -> None:
     text = Path("docs/outputs.md").read_text(encoding="utf-8")
 
-    assert "rounds/01/retrieval/prf_span_candidates.json" in text
-    assert "rounds/01/retrieval/prf_expression_families.json" in text
     assert "rounds/01/retrieval/prf_policy_decision.json" in text
+    assert "rounds/01/retrieval/llm_prf_input.json" in text
+    assert "rounds/01/retrieval/llm_prf_grounding.json" in text
 
 
 def test_run_tracer_creates_partitioned_run_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1655,9 +1655,6 @@ def test_replay_snapshot_contains_provider_snapshot_and_versions(tmp_path: Path)
     assert snapshot["query_plan_version"] == "2"
     assert snapshot["prf_gate_version"]
     assert "generic_explore_version" in snapshot
-    assert "prf_model_backend" not in snapshot
-    assert "prf_sidecar_dependency_manifest_hash" not in snapshot
-    assert "prf_span_model_name" not in snapshot
 
 
 def test_runtime_writes_v02_audit_outputs(tmp_path: Path, monkeypatch) -> None:

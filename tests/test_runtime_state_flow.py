@@ -1810,7 +1810,6 @@ def test_prf_selection_uses_llm_prf_without_backend_setting(
     tracer = RunTracer(tmp_path / "trace")
 
     assert not hasattr(runtime.settings, "prf_probe_proposal_backend")
-    assert not hasattr(runtime.settings, "prf_v1_5_mode")
 
     try:
         job_title, jd, notes = _sample_inputs()
@@ -1824,8 +1823,6 @@ def test_prf_selection_uses_llm_prf_without_backend_setting(
     assert fake_extractor.calls == 1
     assert decision["prf_probe_proposal_backend"] == "llm_deepseek_v4_flash"
     assert decision["selected_lane_type"] == "prf_probe"
-    assert "prf_v1_5_mode" not in decision
-    assert "shadow_prf_v1_5_artifact_ref" not in decision
 
 
 def test_default_llm_prf_backend_skips_round_one_without_artifacts(tmp_path: Path) -> None:

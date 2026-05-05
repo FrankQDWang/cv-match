@@ -58,7 +58,7 @@ def test_build_second_lane_decision_falls_back_to_generic_when_prf_policy_is_una
     assert lane.lane_type == "generic_explore"
 
 
-def test_second_lane_decision_carries_llm_prf_metadata_without_prf_v1_5_fields() -> None:
+def test_second_lane_decision_carries_llm_prf_metadata() -> None:
     retrieval_plan = _retrieval_plan(query_terms=["python", "ranking"])
 
     decision, lane = build_second_lane_decision(
@@ -88,9 +88,6 @@ def test_second_lane_decision_carries_llm_prf_metadata_without_prf_v1_5_fields()
     assert decision.llm_prf_call_artifact_ref == "round.02.retrieval.llm_prf_call"
     assert decision.llm_prf_candidates_artifact_ref == "round.02.retrieval.llm_prf_candidates"
     assert decision.llm_prf_grounding_artifact_ref == "round.02.retrieval.llm_prf_grounding"
-    dumped = decision.model_dump(mode="json")
-    assert "prf_v1_5_mode" not in dumped
-    assert "shadow_prf_v1_5_artifact_ref" not in dumped
 
 
 def test_build_second_lane_decision_selects_prf_probe_when_gate_passes() -> None:
