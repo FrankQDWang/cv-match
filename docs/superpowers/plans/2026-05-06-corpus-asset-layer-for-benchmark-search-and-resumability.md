@@ -4,7 +4,7 @@
 
 **Goal:** Add a corpus asset layer that saves JD inputs and every CTS/provider returned resume snapshot by default, without coupling corpus assets to query rewriting, static benchmark qrels, resumable execution, or personalized memory runtime.
 
-**Architecture:** Keep `.seektalent/corpus.sqlite3` as the mutable local corpus index and use `ArtifactStore` `corpus` roots for raw payload blobs and immutable corpus materialization. Runtime writes corpus facts before scoring filters candidates down; FlywheelStore remains the query rewriting data boundary.
+**Architecture:** Keep `.seektalent/corpus.sqlite3` as the mutable local corpus index. Runtime creates corpus ingest artifacts only for this run's raw payload blobs and ingest manifest; explicit `corpus-export` materializes full/ref-only corpus JSONL artifacts. Runtime corpus recording is independent from FlywheelStore and uses provider-returned candidate ledgers before dedup/scoring filters candidates down.
 
 **Tech Stack:** Python 3.12, `sqlite3`, Pydantic models where existing runtime boundaries already use them, existing `ArtifactStore`, JSON/JSONL artifacts, pytest, current SeekTalent runtime/retrieval modules.
 
@@ -19,7 +19,7 @@ This is one connected asset-layer rollout. It does not implement static benchmar
 - Create `src/seektalent/corpus/__init__.py`: public exports for corpus helpers.
 - Create `src/seektalent/corpus/store.py`: SQLite schema, connection pragmas, artifact refs, upserts, observation idempotency, and materialized export ledger.
 - Create `src/seektalent/corpus/documents.py`: JD/resume row builders, raw payload hashing, conservative normalization, subject binding, allowed-use defaults, and observation idempotency key construction.
-- Create `src/seektalent/corpus/runtime.py`: runtime glue that writes raw payload artifacts, upserts corpus rows, and materializes corpus JSONL artifacts.
+- Create `src/seektalent/corpus/runtime.py`: runtime glue that writes raw payload artifacts, upserts corpus rows, writes ingest manifests, and materializes corpus JSONL artifacts only for explicit export jobs.
 - Create `src/seektalent/storage/__init__.py`: package marker for neutral storage helpers.
 - Create `src/seektalent/storage/json.py`: canonical JSON and SHA-256 helpers shared by corpus and resume snapshots.
 - Modify `src/seektalent/resumes/snapshots.py`: import canonical JSON from `seektalent.storage.json` instead of `seektalent.flywheel.store`.
@@ -28,13 +28,13 @@ This is one connected asset-layer rollout. It does not implement static benchmar
 - Modify `src/seektalent/artifacts/registry.py`: register `corpus.*` logical artifacts and raw payload collection descriptor.
 - Modify `src/seektalent/config.py`: add `corpus_db_path` setting and `corpus_path` property.
 - Modify `.env.example` and `src/seektalent/default.env`: document the corpus DB path with Chinese comments.
-- Modify `src/seektalent/runtime/orchestrator.py`: create `CorpusStore`, upsert JD input, create run-corpus link, save every provider-returned resume snapshot and observation, and finalize the corpus artifact session.
+- Modify `src/seektalent/runtime/orchestrator.py`: create `CorpusStore`, upsert JD input, create run-corpus link, save every provider-returned resume snapshot and observation through an independent corpus hook, and finalize the corpus ingest artifact session.
 - Modify `src/seektalent/cli.py`: add a small `corpus-export` command that calls `materialize_corpus_artifacts`.
 - Create `tests/test_corpus_store.py`: schema, JSON, tenant, raw payload ref, idempotency, and export tests.
 - Create `tests/test_corpus_documents.py`: row builder, normalization, sensitivity defaults, untrusted content, and idempotency key tests.
 - Create `tests/test_corpus_runtime.py`: raw payload artifact writing, run start, retrieval write path, and materialization tests.
 - Modify `tests/test_artifact_store.py`: corpus artifact kind and logical artifact tests.
-- Modify `tests/test_runtime_audit.py` or `tests/test_runtime_state_flow.py`: prove mock CTS retrieval records all provider-returned snapshots without eval.
+- Modify `tests/test_runtime_audit.py`: prove mock CTS retrieval records all provider-returned snapshots without eval.
 - Modify `tests/test_artifact_path_contract.py`: forbid hand-built `corpus/` JSONL paths outside ArtifactStore descriptors.
 
 ---
@@ -55,12 +55,22 @@ Add this case to `test_create_root_uses_kind_specific_manifest_names` in `tests/
 ("corpus", "corpus", "corpus_manifest.json"),
 ```
 
-Add this test to `tests/test_artifact_store.py`:
+Add these tests to `tests/test_artifact_store.py`:
 
 ```python
-def test_corpus_root_registers_corpus_logical_artifacts(tmp_path: Path) -> None:
+def test_corpus_ingest_root_registers_ingest_manifest(tmp_path: Path) -> None:
     store = ArtifactStore(tmp_path / "artifacts")
     session = store.create_root(kind="corpus", display_name="corpus ingest", producer="CorpusRuntime")
+
+    session.write_json("corpus.ingest_manifest", {"corpus_artifact_role": "ingest"})
+
+    resolver = session.resolver()
+    assert resolver.resolve("corpus.ingest_manifest") == session.root / "corpus/ingest_manifest.json"
+
+
+def test_corpus_export_root_registers_corpus_logical_artifacts(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    session = store.create_root(kind="corpus", display_name="corpus export", producer="CorpusExportCLI")
 
     session.write_jsonl("corpus.jd_documents", [{"jd_doc_id": "jd-1"}])
     session.write_jsonl("corpus.resume_subjects", [{"subject_id": "subj-1"}])
@@ -89,7 +99,7 @@ def test_corpus_root_registers_corpus_logical_artifacts(tmp_path: Path) -> None:
 Run:
 
 ```bash
-uv run pytest tests/test_artifact_store.py::test_create_root_uses_kind_specific_manifest_names tests/test_artifact_store.py::test_corpus_root_registers_corpus_logical_artifacts -q
+uv run pytest tests/test_artifact_store.py::test_create_root_uses_kind_specific_manifest_names tests/test_artifact_store.py::test_corpus_ingest_root_registers_ingest_manifest tests/test_artifact_store.py::test_corpus_export_root_registers_corpus_logical_artifacts -q
 ```
 
 Expected: FAIL because `ArtifactKind("corpus")` is invalid or `corpus.*` descriptors are missing.
@@ -150,6 +160,7 @@ SUMMARY_LOGICAL_ARTIFACT_BY_KIND = {
 Add these entries to `STATIC_ENTRIES` in `src/seektalent/artifacts/registry.py`:
 
 ```python
+    "corpus.ingest_manifest": LogicalArtifactEntry(path="corpus/ingest_manifest.json", content_type="application/json", schema_version="v1"),
     "corpus.jd_documents": LogicalArtifactEntry(path="corpus/jd_documents.jsonl", content_type="application/jsonl", schema_version="v1"),
     "corpus.resume_subjects": LogicalArtifactEntry(path="corpus/resume_subjects.jsonl", content_type="application/jsonl", schema_version="v1"),
     "corpus.resume_documents": LogicalArtifactEntry(path="corpus/resume_documents.jsonl", content_type="application/jsonl", schema_version="v1"),
@@ -167,7 +178,7 @@ Add these entries to `STATIC_ENTRIES` in `src/seektalent/artifacts/registry.py`:
 Run:
 
 ```bash
-uv run pytest tests/test_artifact_store.py::test_create_root_uses_kind_specific_manifest_names tests/test_artifact_store.py::test_corpus_root_registers_corpus_logical_artifacts -q
+uv run pytest tests/test_artifact_store.py::test_create_root_uses_kind_specific_manifest_names tests/test_artifact_store.py::test_corpus_ingest_root_registers_ingest_manifest tests/test_artifact_store.py::test_corpus_export_root_registers_corpus_logical_artifacts -q
 ```
 
 Expected: PASS.
@@ -245,14 +256,15 @@ def test_corpus_store_rejects_invalid_json_columns(tmp_path: Path) -> None:
                 jd_doc_id, tenant_id, workspace_id, job_title, jd_text, notes_text,
                 jd_sha256, notes_sha256, task_sha256, domain_tags_json, source_kind,
                 memory_eligible, allowed_uses_json, search_index_eligible,
-                benchmark_eligible, training_eligible, export_eligible,
-                llm_ingestion_eligible, pii_classification_version, redaction_status,
+                benchmark_eligible, training_eligible, external_export_eligible,
+                internal_materialization_eligible, llm_ingestion_eligible,
+                pii_classification_version, redaction_status,
                 sensitivity_json, content_trust_level, contains_prompt_like_text,
                 llm_ingestion_policy, retention_policy, schema_version, created_at,
                 updated_at
             ) VALUES (
                 'jd-1', 'tenant', 'workspace', 'title', 'jd', '', 'a', 'b', 'c',
-                '{bad', 'manual_input', 0, '[]', 0, 0, 0, 0, 0, 'pii-v1',
+                '{bad', 'manual_input', 0, '[]', 0, 0, 0, 0, 1, 0, 'pii-v1',
                 'unredacted', '{}', 'untrusted_external', 0, 'quote_as_data_only',
                 'retain_local', 'jd-v1', '2026-05-06T00:00:00Z', '2026-05-06T00:00:00Z'
             )
@@ -272,7 +284,6 @@ def test_same_snapshot_hash_is_tenant_scoped(tmp_path: Path) -> None:
                 "provider_candidate_id": "provider-1",
                 "source_resume_id": "source-1",
                 "dedup_key": "provider-1",
-                "latest_resume_doc_id": None,
                 "subject_confidence": "weak",
                 "subject_binding_reason": "provider_candidate_id",
             }
@@ -318,7 +329,8 @@ def test_same_snapshot_hash_is_tenant_scoped(tmp_path: Path) -> None:
                 "search_index_eligible": True,
                 "benchmark_eligible": False,
                 "training_eligible": False,
-                "export_eligible": False,
+                "external_export_eligible": False,
+                "internal_materialization_eligible": True,
                 "llm_ingestion_eligible": False,
                 "consent_basis": None,
                 "source_terms_ref": None,
@@ -518,7 +530,8 @@ _SCHEMA_STATEMENTS = [
         search_index_eligible INTEGER NOT NULL,
         benchmark_eligible INTEGER NOT NULL,
         training_eligible INTEGER NOT NULL,
-        export_eligible INTEGER NOT NULL,
+        external_export_eligible INTEGER NOT NULL,
+        internal_materialization_eligible INTEGER NOT NULL,
         llm_ingestion_eligible INTEGER NOT NULL,
         consent_basis TEXT,
         source_terms_ref TEXT,
@@ -545,7 +558,6 @@ _SCHEMA_STATEMENTS = [
         provider_candidate_id TEXT,
         source_resume_id TEXT,
         dedup_key TEXT,
-        latest_resume_doc_id TEXT,
         subject_confidence TEXT NOT NULL,
         subject_binding_reason TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -593,7 +605,8 @@ _SCHEMA_STATEMENTS = [
         search_index_eligible INTEGER NOT NULL,
         benchmark_eligible INTEGER NOT NULL,
         training_eligible INTEGER NOT NULL,
-        export_eligible INTEGER NOT NULL,
+        external_export_eligible INTEGER NOT NULL,
+        internal_materialization_eligible INTEGER NOT NULL,
         llm_ingestion_eligible INTEGER NOT NULL,
         consent_basis TEXT,
         source_terms_ref TEXT,
@@ -720,12 +733,17 @@ def upsert_resume_subject(self, row: dict[str, Any]) -> None:
     payload.setdefault("created_at", now)
     payload["updated_at"] = now
     columns = list(payload)
-    assignments = ", ".join(f"{column} = excluded.{column}" for column in columns if column != "subject_id")
+    assignments = ", ".join(
+        f"{column} = excluded.{column}"
+        for column in columns
+        if column not in {"subject_id", "created_at"}
+    )
     self.connect().execute(
         f"""
         INSERT INTO resume_subjects ({", ".join(columns)})
         VALUES ({", ".join("?" for _ in columns)})
-        ON CONFLICT(subject_id) DO UPDATE SET {assignments}
+        ON CONFLICT(subject_id) DO UPDATE SET {assignments},
+            created_at = resume_subjects.created_at
         """,
         tuple(payload[column] for column in columns),
     )
@@ -756,7 +774,8 @@ def upsert_resume_document(self, row: dict[str, Any]) -> None:
         "search_index_eligible",
         "benchmark_eligible",
         "training_eligible",
-        "export_eligible",
+        "external_export_eligible",
+        "internal_materialization_eligible",
         "llm_ingestion_eligible",
         "contains_prompt_like_text",
     }
@@ -764,12 +783,29 @@ def upsert_resume_document(self, row: dict[str, Any]) -> None:
         if field in payload:
             payload[field] = int(bool(payload[field]))
     columns = list(payload)
-    assignments = ", ".join(f"{column} = excluded.{column}" for column in columns if column != "resume_doc_id")
+    assignments = ", ".join(
+        f"{column} = excluded.{column}"
+        for column in columns
+        if column
+        not in {
+            "resume_doc_id",
+            "created_at",
+            "first_seen_run_id",
+            "first_seen_query_instance_id",
+            "first_seen_stage_id",
+            "first_seen_artifact_ref_id",
+        }
+    )
     self.connect().execute(
         f"""
         INSERT INTO resume_documents ({", ".join(columns)})
         VALUES ({", ".join("?" for _ in columns)})
-        ON CONFLICT(tenant_id, workspace_id, snapshot_sha256) DO UPDATE SET {assignments}
+        ON CONFLICT(tenant_id, workspace_id, snapshot_sha256) DO UPDATE SET {assignments},
+            created_at = resume_documents.created_at,
+            first_seen_run_id = COALESCE(resume_documents.first_seen_run_id, excluded.first_seen_run_id),
+            first_seen_query_instance_id = COALESCE(resume_documents.first_seen_query_instance_id, excluded.first_seen_query_instance_id),
+            first_seen_stage_id = COALESCE(resume_documents.first_seen_stage_id, excluded.first_seen_stage_id),
+            first_seen_artifact_ref_id = COALESCE(resume_documents.first_seen_artifact_ref_id, excluded.first_seen_artifact_ref_id)
         """,
         tuple(payload[column] for column in columns),
     )
@@ -867,7 +903,8 @@ def test_jd_document_defaults_are_untrusted_and_not_memory_eligible() -> None:
 
     assert row["memory_eligible"] is False
     assert row["training_eligible"] is False
-    assert row["export_eligible"] is False
+    assert row["external_export_eligible"] is False
+    assert row["internal_materialization_eligible"] is True
     assert row["llm_ingestion_eligible"] is False
     assert row["content_trust_level"] == "untrusted_external"
     assert row["llm_ingestion_policy"] == "quote_as_data_only"
@@ -916,6 +953,7 @@ def test_subject_id_is_tenant_scoped() -> None:
         provider_candidate_id="candidate-1",
         source_resume_id="resume-1",
         dedup_key="candidate-1",
+        snapshot_sha256="snapshot-a",
     )
     b = build_resume_subject_row(
         tenant_id="tenant-b",
@@ -924,8 +962,33 @@ def test_subject_id_is_tenant_scoped() -> None:
         provider_candidate_id="candidate-1",
         source_resume_id="resume-1",
         dedup_key="candidate-1",
+        snapshot_sha256="snapshot-b",
     )
     assert a["subject_id"] != b["subject_id"]
+
+
+def test_subject_without_provider_id_uses_snapshot_not_unknown() -> None:
+    first = build_resume_subject_row(
+        tenant_id="local",
+        workspace_id="default",
+        provider_name="cts",
+        provider_candidate_id=None,
+        source_resume_id=None,
+        dedup_key=None,
+        snapshot_sha256="snapshot-1",
+    )
+    second = build_resume_subject_row(
+        tenant_id="local",
+        workspace_id="default",
+        provider_name="cts",
+        provider_candidate_id=None,
+        source_resume_id=None,
+        dedup_key=None,
+        snapshot_sha256="snapshot-2",
+    )
+    assert first["subject_id"] != second["subject_id"]
+    assert first["subject_confidence"] == "snapshot_only"
+    assert first["subject_binding_reason"] == "snapshot_sha256"
 
 
 def test_observation_idempotency_key_is_stable() -> None:
@@ -977,6 +1040,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from seektalent.artifacts import ArtifactStore
 from seektalent.corpus.runtime import write_raw_payload_artifact
 
@@ -990,16 +1055,31 @@ def test_write_raw_payload_artifact_registers_ref_and_payload(tmp_path: Path) ->
 
     result = write_raw_payload_artifact(
         session=session,
-        snapshot_sha256="snapshot-1",
+        snapshot_sha256="a" * 64,
         raw_payload={"resume_id": "r1", "skills": ["Python"]},
     )
 
-    assert result.relative_path == "raw_payloads/snapshot-1.json"
+    assert result.relative_path == f"raw_payloads/{'a' * 64}.json"
     assert result.content_sha256
     assert result.size_bytes > 0
     payload_path = session.root / result.relative_path
     assert json.loads(payload_path.read_text(encoding="utf-8")) == {"resume_id": "r1", "skills": ["Python"]}
-    assert session.load_manifest().logical_artifacts["corpus.raw_payloads.snapshot-1"].path == "raw_payloads/snapshot-1.json"
+    assert session.load_manifest().logical_artifacts[f"corpus.raw_payloads.{'a' * 64}"].path == f"raw_payloads/{'a' * 64}.json"
+
+
+def test_write_raw_payload_rejects_unsafe_snapshot_name(tmp_path: Path) -> None:
+    session = ArtifactStore(tmp_path / "artifacts").create_root(
+        kind="corpus",
+        display_name="corpus ingest",
+        producer="CorpusRuntime",
+    )
+
+    with pytest.raises(ValueError):
+        write_raw_payload_artifact(
+            session=session,
+            snapshot_sha256="../escape",
+            raw_payload={"resume_id": "r1"},
+        )
 ```
 
 - [ ] **Step 3: Run document/runtime tests and verify failure**
@@ -1096,7 +1176,8 @@ def build_jd_document_row(
         "search_index_eligible": True,
         "benchmark_eligible": False,
         "training_eligible": False,
-        "export_eligible": False,
+        "external_export_eligible": False,
+        "internal_materialization_eligible": True,
         "llm_ingestion_eligible": False,
         "consent_basis": None,
         "source_terms_ref": None,
@@ -1123,8 +1204,9 @@ def build_resume_subject_row(
     provider_candidate_id: str | None,
     source_resume_id: str | None,
     dedup_key: str | None,
+    snapshot_sha256: str,
 ) -> dict[str, object]:
-    subject_key = provider_candidate_id or source_resume_id or dedup_key or "unknown"
+    subject_key = provider_candidate_id or source_resume_id or dedup_key or snapshot_sha256
     binding_reason = (
         "provider_candidate_id"
         if provider_candidate_id
@@ -1132,7 +1214,7 @@ def build_resume_subject_row(
         if source_resume_id
         else "dedup_key"
         if dedup_key
-        else "unknown"
+        else "snapshot_sha256"
     )
     return {
         "subject_id": _hash_parts(
@@ -1149,8 +1231,7 @@ def build_resume_subject_row(
         "provider_candidate_id": provider_candidate_id,
         "source_resume_id": source_resume_id,
         "dedup_key": dedup_key,
-        "latest_resume_doc_id": None,
-        "subject_confidence": "weak" if subject_key == "unknown" else "provider_scoped",
+        "subject_confidence": "snapshot_only" if binding_reason == "snapshot_sha256" else "provider_scoped",
         "subject_binding_reason": binding_reason,
     }
 ```
@@ -1221,7 +1302,8 @@ def build_resume_document_row(
         "search_index_eligible": bool(text),
         "benchmark_eligible": False,
         "training_eligible": False,
-        "export_eligible": False,
+        "external_export_eligible": False,
+        "internal_materialization_eligible": True,
         "llm_ingestion_eligible": False,
         "consent_basis": None,
         "source_terms_ref": None,
@@ -1302,12 +1384,15 @@ Create `src/seektalent/corpus/runtime.py`:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
 
 from seektalent.artifacts import ArtifactSession
 from seektalent.artifacts.store import atomic_write_text
+
+SAFE_SNAPSHOT_SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 
 
 @dataclass(frozen=True)
@@ -1324,6 +1409,8 @@ def write_raw_payload_artifact(
     snapshot_sha256: str,
     raw_payload: dict[str, Any],
 ) -> RawPayloadArtifact:
+    if not SAFE_SNAPSHOT_SHA256_RE.fullmatch(snapshot_sha256):
+        raise ValueError("snapshot_sha256 must be a lowercase 64-character hex digest")
     logical_name = f"corpus.raw_payloads.{snapshot_sha256}"
     relative_path = f"raw_payloads/{snapshot_sha256}.json"
     content = json.dumps(raw_payload, ensure_ascii=False, indent=2, sort_keys=True)
@@ -1406,6 +1493,21 @@ def test_record_resume_observation_is_idempotent(tmp_path: Path) -> None:
 
     count = store.connect().execute("SELECT COUNT(*) FROM resume_observations").fetchone()[0]
     assert count == 1
+
+
+def test_resume_document_upsert_preserves_first_seen(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    _seed_resume_document(store)
+    row = dict(store.connect().execute("SELECT * FROM resume_documents WHERE resume_doc_id = 'doc-1'").fetchone())
+    row["first_seen_run_id"] = "run-2"
+    row["first_seen_query_instance_id"] = "query-2"
+    row["first_seen_stage_id"] = "round.02.retrieval"
+    store.upsert_resume_document(row)
+
+    persisted = store.connect().execute("SELECT * FROM resume_documents WHERE resume_doc_id = 'doc-1'").fetchone()
+    assert persisted["first_seen_run_id"] == "run-1"
+    assert persisted["first_seen_query_instance_id"] == "query-1"
+    assert persisted["first_seen_stage_id"] == "round.01.retrieval"
 ```
 
 Add a helper in the test file:
@@ -1421,7 +1523,6 @@ def _seed_resume_document(store: CorpusStore) -> None:
             "provider_candidate_id": "provider-1",
             "source_resume_id": "source-1",
             "dedup_key": "provider-1",
-            "latest_resume_doc_id": None,
             "subject_confidence": "provider_scoped",
             "subject_binding_reason": "provider_candidate_id",
         }
@@ -1476,7 +1577,8 @@ def _seed_resume_document(store: CorpusStore) -> None:
             "search_index_eligible": True,
             "benchmark_eligible": False,
             "training_eligible": False,
-            "export_eligible": False,
+            "external_export_eligible": False,
+            "internal_materialization_eligible": True,
             "llm_ingestion_eligible": False,
             "consent_basis": None,
             "source_terms_ref": None,
@@ -1549,18 +1651,24 @@ def upsert_jd_document(self, row: dict[str, Any]) -> str:
         "search_index_eligible",
         "benchmark_eligible",
         "training_eligible",
-        "export_eligible",
+        "external_export_eligible",
+        "internal_materialization_eligible",
         "llm_ingestion_eligible",
         "contains_prompt_like_text",
     ):
         payload[field] = int(bool(payload[field]))
     columns = list(payload)
-    assignments = ", ".join(f"{column} = excluded.{column}" for column in columns if column != "jd_doc_id")
+    assignments = ", ".join(
+        f"{column} = excluded.{column}"
+        for column in columns
+        if column not in {"jd_doc_id", "created_at"}
+    )
     self.connect().execute(
         f"""
         INSERT INTO jd_documents ({", ".join(columns)})
         VALUES ({", ".join("?" for _ in columns)})
-        ON CONFLICT(tenant_id, workspace_id, task_sha256) DO UPDATE SET {assignments}
+        ON CONFLICT(tenant_id, workspace_id, task_sha256) DO UPDATE SET {assignments},
+            created_at = jd_documents.created_at
         """,
         tuple(payload[column] for column in columns),
     )
@@ -1719,6 +1827,7 @@ Add to `src/seektalent/corpus/runtime.py`:
 
 ```python
 def materialize_corpus_artifacts(*, session: ArtifactSession, store: Any, tenant_id: str, workspace_id: str) -> None:
+    collection_id = store.ensure_default_collection(tenant_id=tenant_id, workspace_id=workspace_id)
     table_to_logical = {
         "jd_documents": "corpus.jd_documents",
         "resume_subjects": "corpus.resume_subjects",
@@ -1728,10 +1837,10 @@ def materialize_corpus_artifacts(*, session: ArtifactSession, store: Any, tenant
         "corpus_collections": "corpus.corpus_collections",
         "corpus_memberships": "corpus.corpus_memberships",
     }
-    row_count = 0
+    row_counts: dict[str, int] = {}
     for table, logical_name in table_to_logical.items():
         rows = store.rows_for_tenant(table=table, tenant_id=tenant_id, workspace_id=workspace_id)
-        row_count += len(rows)
+        row_counts[table] = len(rows)
         path = session.write_jsonl(logical_name, rows)
         content = path.read_bytes()
         store.record_artifact_ref(
@@ -1747,10 +1856,14 @@ def materialize_corpus_artifacts(*, session: ArtifactSession, store: Any, tenant
         "corpus.export_manifest",
         {
             "artifact_id": session.manifest.artifact_id,
+            "corpus_artifact_role": "materialized_export",
+            "self_contained": False,
+            "raw_payload_policy": "external_refs_only",
             "tenant_id": tenant_id,
             "workspace_id": workspace_id,
             "logical_artifacts": sorted(table_to_logical.values()),
-            "row_count": row_count,
+            "row_counts": row_counts,
+            "total_exported_row_count": sum(row_counts.values()),
         },
     )
     manifest_ref_id = store.record_artifact_ref(
@@ -1766,13 +1879,13 @@ def materialize_corpus_artifacts(*, session: ArtifactSession, store: Any, tenant
         corpus_export_id=session.manifest.artifact_id,
         tenant_id=tenant_id,
         workspace_id=workspace_id,
-        corpus_collection_id=store.ensure_default_collection(tenant_id=tenant_id, workspace_id=workspace_id),
+        corpus_collection_id=collection_id,
         artifact_ref_id=manifest_ref_id,
         builder_version="corpus-materializer-v1",
         builder_config={"tenant_id": tenant_id, "workspace_id": workspace_id},
         source_query="all tenant/workspace corpus rows",
         source_run_ids=[],
-        row_count=row_count,
+        row_count=sum(row_counts.values()),
         sha256_value=sha256(manifest_path.read_bytes()).hexdigest(),
     )
     export_rows = store.rows_for_tenant(table="corpus_exports", tenant_id=tenant_id, workspace_id=workspace_id)
@@ -1837,72 +1950,120 @@ git commit -m "feat: persist corpus rows and exports"
 
 ---
 
-### Task 5: Wire Corpus Writes Into Runtime
+### Task 5: Wire Corpus Writes Into Retrieval Runtime
 
 **Files:**
 - Modify: `src/seektalent/runtime/orchestrator.py`
+- Modify: `src/seektalent/runtime/retrieval_runtime.py`
 - Modify: `src/seektalent/corpus/runtime.py`
 - Modify: `tests/test_corpus_runtime.py`
-- Modify: `tests/test_runtime_audit.py` or `tests/test_runtime_state_flow.py`
+- Modify: `tests/test_runtime_audit.py`
 
 - [ ] **Step 1: Write failing runtime integration test**
 
 Extend imports in `tests/test_corpus_runtime.py`:
 
 ```python
-from seektalent.corpus.runtime import record_corpus_candidates, write_raw_payload_artifact
+from seektalent.corpus.runtime import ProviderReturnedCandidate, record_corpus_provider_results, write_raw_payload_artifact
 from seektalent.corpus.store import CorpusStore
-from seektalent.models import QueryResumeHit, ResumeCandidate
+from seektalent.models import ResumeCandidate
 ```
 
-Add a focused test to `tests/test_corpus_runtime.py` using existing runtime fixtures where possible:
+Add focused tests to `tests/test_corpus_runtime.py`:
 
 ```python
 def test_record_provider_candidates_saves_all_returned_snapshots(tmp_path: Path) -> None:
     artifact_store = ArtifactStore(tmp_path / "artifacts")
     session = artifact_store.create_root(kind="corpus", display_name="corpus ingest", producer="CorpusRuntime")
     store = CorpusStore(tmp_path / "corpus.sqlite3")
+    snapshot_hash = "a" * 64
     candidate = _resume_candidate(
         resume_id="resume-1",
-        snapshot_sha256="snapshot-1",
+        snapshot_sha256=snapshot_hash,
         search_text="Python backend LangGraph",
         raw={"resume_id": "resume-1", "projectNameAll": ["LangGraph"], "workSummariesAll": ["Python backend"]},
     )
-    hit = QueryResumeHit(
-        run_id="run-1",
-        query_instance_id="query-1",
-        query_fingerprint="fingerprint-1",
-        hit_sequence_no=1,
-        snapshot_sha256="snapshot-1",
-        resume_id="resume-1",
-        round_no=1,
-        lane_type="exploit",
-        batch_no=1,
-        rank_in_query=1,
-        rank_global_in_query=1,
-        provider_name="cts",
-        provider_page_no=1,
-        provider_fetch_no=1,
-        dedup_key="resume-1",
-        was_new_to_pool=True,
-        was_duplicate=False,
-    )
 
-    record_corpus_candidates(
+    record_corpus_provider_results(
         store=store,
         session=session,
         tenant_id="local",
         workspace_id="default",
         run_id="run-1",
-        stage_id="round.01.retrieval",
-        candidates_by_resume_id={"resume-1": candidate},
-        query_resume_hits=[hit],
+        provider_results=[
+            ProviderReturnedCandidate(
+                candidate=candidate,
+                stage_id="round.01.retrieval",
+                round_no=1,
+                query_instance_id="query-1",
+                query_fingerprint="fingerprint-1",
+                provider_name="cts",
+                provider_request_id="request-1",
+                provider_rank=1,
+                provider_page_no=1,
+                provider_fetch_no=1,
+                attempt_no=1,
+            )
+        ],
     )
 
     conn = store.connect()
     assert conn.execute("SELECT COUNT(*) FROM resume_documents").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM resume_observations").fetchone()[0] == 1
-    assert (session.root / "raw_payloads/snapshot-1.json").exists()
+    assert (session.root / f"raw_payloads/{snapshot_hash}.json").exists()
+
+
+def test_duplicate_provider_returns_create_two_observations_for_one_document(tmp_path: Path) -> None:
+    artifact_store = ArtifactStore(tmp_path / "artifacts")
+    session = artifact_store.create_root(kind="corpus", display_name="corpus ingest", producer="CorpusRuntime")
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    snapshot_hash = "b" * 64
+    candidate = _resume_candidate(
+        resume_id="resume-1",
+        snapshot_sha256=snapshot_hash,
+        search_text="Python backend LangGraph",
+        raw={"resume_id": "resume-1", "projectNameAll": ["LangGraph"], "workSummariesAll": ["Python backend"]},
+    )
+
+    record_corpus_provider_results(
+        store=store,
+        session=session,
+        tenant_id="local",
+        workspace_id="default",
+        run_id="run-1",
+        provider_results=[
+            ProviderReturnedCandidate(
+                candidate=candidate,
+                stage_id="round.01.retrieval",
+                round_no=1,
+                query_instance_id="exploit-query",
+                query_fingerprint="fingerprint-1",
+                provider_name="cts",
+                provider_request_id="request-exploit",
+                provider_rank=1,
+                provider_page_no=1,
+                provider_fetch_no=1,
+                attempt_no=1,
+            ),
+            ProviderReturnedCandidate(
+                candidate=candidate,
+                stage_id="round.01.retrieval",
+                round_no=1,
+                query_instance_id="generic-query",
+                query_fingerprint="fingerprint-2",
+                provider_name="cts",
+                provider_request_id="request-generic",
+                provider_rank=1,
+                provider_page_no=1,
+                provider_fetch_no=1,
+                attempt_no=1,
+            ),
+        ],
+    )
+
+    conn = store.connect()
+    assert conn.execute("SELECT COUNT(*) FROM resume_documents").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM resume_observations").fetchone()[0] == 2
 ```
 
 Add a local helper in the test:
@@ -1919,32 +2080,105 @@ def _resume_candidate(*, resume_id: str, snapshot_sha256: str, search_text: str,
     )
 ```
 
-- [ ] **Step 2: Implement `record_corpus_candidates`**
+Add this integration test to `tests/test_runtime_audit.py`:
+
+```python
+def test_corpus_records_provider_returns_when_eval_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    settings = make_settings(
+        artifacts_dir=str(tmp_path / "artifacts"),
+        runs_dir=str(tmp_path / "runs"),
+        corpus_db_path=str(tmp_path / ".seektalent" / "corpus.sqlite3"),
+        mock_cts=True,
+        enable_eval=False,
+        min_rounds=1,
+        max_rounds=1,
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=SearchTwiceController(), resume_scorer=StubScorer())
+
+    job_title, jd, notes = _sample_inputs()
+    runtime.run(job_title=job_title, jd=jd, notes=notes)
+
+    conn = sqlite3.connect(settings.corpus_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM jd_documents").fetchone()[0] >= 1
+        assert conn.execute("SELECT COUNT(*) FROM resume_documents").fetchone()[0] >= 1
+        assert conn.execute("SELECT COUNT(*) FROM resume_observations").fetchone()[0] >= 1
+    finally:
+        conn.close()
+
+    corpus_roots = list((settings.artifacts_path / "corpus").glob("*/*/*/corpus_*"))
+    assert corpus_roots
+    latest = max(corpus_roots, key=lambda path: path.stat().st_mtime)
+    assert (latest / "corpus/ingest_manifest.json").exists()
+    assert not (latest / "corpus/resume_documents.jsonl").exists()
+```
+
+- [ ] **Step 2: Implement provider-returned corpus recorder**
 
 Add to `src/seektalent/corpus/runtime.py`:
 
 ```python
-def record_corpus_candidates(
+from seektalent.corpus.documents import build_observation_row, build_resume_document_row, build_resume_subject_row
+from seektalent.storage.json import sha256_json
+
+
+@dataclass(frozen=True)
+class ProviderReturnedCandidate:
+    candidate: Any
+    stage_id: str
+    round_no: int
+    query_instance_id: str
+    query_fingerprint: str
+    provider_name: str
+    provider_request_id: str
+    provider_rank: int
+    provider_page_no: int
+    provider_fetch_no: int
+    attempt_no: int
+
+
+def build_deterministic_provider_request_id(
+    *,
+    provider_name: str,
+    query_instance_id: str,
+    query_fingerprint: str,
+    page_no: int,
+    fetch_no: int,
+) -> str:
+    return sha256_json(
+        {
+            "provider_name": provider_name,
+            "query_instance_id": query_instance_id,
+            "query_fingerprint": query_fingerprint,
+            "page_no": page_no,
+            "fetch_no": fetch_no,
+        }
+    )
+```
+
+Add the runtime recorder:
+
+```python
+def record_corpus_provider_results(
     *,
     store: Any,
     session: ArtifactSession,
     tenant_id: str,
     workspace_id: str,
     run_id: str,
-    stage_id: str,
-    candidates_by_resume_id: dict[str, Any],
-    query_resume_hits: list[Any],
+    provider_results: list[ProviderReturnedCandidate],
 ) -> None:
     observations: list[dict[str, object]] = []
     memberships: list[tuple[str, str]] = []
     collection_id = store.ensure_default_collection(tenant_id=tenant_id, workspace_id=workspace_id)
-    for hit in query_resume_hits:
-        candidate = candidates_by_resume_id.get(hit.resume_id)
-        if candidate is None:
-            continue
+    for returned in provider_results:
+        candidate = returned.candidate
+        snapshot_hash = candidate.snapshot_sha256
         raw_artifact = write_raw_payload_artifact(
             session=session,
-            snapshot_sha256=hit.snapshot_sha256 or candidate.snapshot_sha256,
+            snapshot_sha256=snapshot_hash,
             raw_payload=candidate.raw,
         )
         raw_ref_id = store.record_artifact_ref(
@@ -1959,19 +2193,19 @@ def record_corpus_candidates(
         subject_row = build_resume_subject_row(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
-            provider_name=hit.provider_name,
+            provider_name=returned.provider_name,
             provider_candidate_id=candidate.source_resume_id,
             source_resume_id=candidate.source_resume_id,
             dedup_key=candidate.dedup_key,
+            snapshot_sha256=snapshot_hash,
         )
         store.upsert_resume_subject(subject_row)
-        snapshot_hash = hit.snapshot_sha256 or candidate.snapshot_sha256
         resume_doc_id = f"{tenant_id}:{workspace_id}:{snapshot_hash}"
         resume_row = build_resume_document_row(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             raw_payload=candidate.raw,
-            provider_name=hit.provider_name,
+            provider_name=returned.provider_name,
             provider_candidate_id=candidate.source_resume_id,
             source_resume_id=candidate.source_resume_id,
             dedup_key=candidate.dedup_key,
@@ -1983,8 +2217,8 @@ def record_corpus_candidates(
             raw_payload_size_bytes=raw_artifact.size_bytes,
             normalized_text=candidate.search_text,
             first_seen_run_id=run_id,
-            first_seen_query_instance_id=hit.query_instance_id,
-            first_seen_stage_id=stage_id,
+            first_seen_query_instance_id=returned.query_instance_id,
+            first_seen_stage_id=returned.stage_id,
             first_seen_artifact_ref_id=None,
         )
         store.upsert_resume_document(resume_row)
@@ -1993,16 +2227,16 @@ def record_corpus_candidates(
             workspace_id=workspace_id,
             resume_doc_id=resume_doc_id,
             run_id=run_id,
-            round_no=hit.round_no,
-            stage_id=stage_id,
-            query_instance_id=hit.query_instance_id,
-            query_fingerprint=hit.query_fingerprint,
-            provider_name=hit.provider_name,
-            provider_request_id=None,
-            provider_rank=hit.rank_in_query,
-            provider_page_no=hit.provider_page_no,
-            provider_fetch_no=hit.provider_fetch_no,
-            attempt_no=hit.provider_fetch_no or 1,
+            round_no=returned.round_no,
+            stage_id=returned.stage_id,
+            query_instance_id=returned.query_instance_id,
+            query_fingerprint=returned.query_fingerprint,
+            provider_name=returned.provider_name,
+            provider_request_id=returned.provider_request_id,
+            provider_rank=returned.provider_rank,
+            provider_page_no=returned.provider_page_no,
+            provider_fetch_no=returned.provider_fetch_no,
+            attempt_no=returned.attempt_no,
             source_artifact_ref_id=raw_ref_id,
         )
         observations.append(observation)
@@ -2017,12 +2251,82 @@ def record_corpus_candidates(
         )
 ```
 
-- [ ] **Step 3: Wire run start in orchestrator**
+- [ ] **Step 3: Collect provider-returned candidate ledger in retrieval runtime**
+
+Modify imports in `src/seektalent/runtime/retrieval_runtime.py`:
+
+```python
+from seektalent.corpus.runtime import ProviderReturnedCandidate, build_deterministic_provider_request_id
+```
+
+Modify `src/seektalent/runtime/retrieval_runtime.py` so `RetrievalExecutionResult` includes:
+
+```python
+provider_returned_candidates: list[ProviderReturnedCandidate] = field(default_factory=list)
+```
+
+Inside `execute_round_search`, create a ledger list next to `query_resume_hits`:
+
+```python
+provider_returned_candidates: list[ProviderReturnedCandidate] = []
+```
+
+Pass it into every `execute_search_tool` call as `record_provider_return=provider_returned_candidates.append`.
+
+Add the argument to `execute_search_tool`:
+
+```python
+record_provider_return: Callable[[ProviderReturnedCandidate], None] | None = None,
+```
+
+Inside the `for rank_in_batch, candidate in enumerate(fetch_result.candidates, start=1):` loop, before duplicate filtering, append:
+
+```python
+provider_request_id = build_deterministic_provider_request_id(
+    provider_name="cts",
+    query_instance_id=query.query_instance_id or "",
+    query_fingerprint=query.query_fingerprint or "",
+    page_no=page,
+    fetch_no=attempt_no,
+)
+if record_provider_return is not None:
+    record_provider_return(
+        ProviderReturnedCandidate(
+            candidate=candidate,
+            stage_id=f"round.{round_no:02d}.retrieval",
+            round_no=round_no,
+            query_instance_id=query.query_instance_id or "",
+            query_fingerprint=query.query_fingerprint or "",
+            provider_name="cts",
+            provider_request_id=provider_request_id,
+            provider_rank=rank_offset + rank_in_batch,
+            provider_page_no=page,
+            provider_fetch_no=attempt_no,
+            attempt_no=attempt_no,
+        )
+    )
+```
+
+Return it in `RetrievalExecutionResult`:
+
+```python
+return RetrievalExecutionResult(
+    cts_queries=cts_queries,
+    sent_query_records=sent_query_records,
+    new_candidates=all_new_candidates,
+    search_observation=search_observation,
+    search_attempts=all_search_attempts,
+    query_resume_hits=query_resume_hits,
+    provider_returned_candidates=provider_returned_candidates,
+)
+```
+
+- [ ] **Step 4: Wire run start in orchestrator**
 
 Modify `WorkflowRuntime.__init__` in `src/seektalent/runtime/orchestrator.py`:
 
 ```python
-from seektalent.corpus.runtime import materialize_corpus_artifacts, record_corpus_candidates
+from seektalent.corpus.runtime import record_corpus_provider_results, write_corpus_ingest_manifest
 from seektalent.corpus.store import DEFAULT_TENANT_ID, DEFAULT_WORKSPACE_ID, CorpusStore
 ```
 
@@ -2077,24 +2381,22 @@ def _start_corpus_run(
         workspace_id=DEFAULT_WORKSPACE_ID,
         jd_doc_id=jd_doc_id,
         input_artifact_ref_id=None,
-    )
+)
 ```
 
-- [ ] **Step 4: Wire retrieval rows in orchestrator**
+- [ ] **Step 5: Wire corpus recording independently from Flywheel**
 
-At the end of `_record_flywheel_retrieval_rows`, after `self.flywheel_store.record_query_resume_hits(hit_rows)` and before outcome aggregation, call:
+After retrieval completes and before scoring starts, call corpus recording directly from `retrieval_result.provider_returned_candidates`. Do not call this from `_record_flywheel_retrieval_rows`.
 
 ```python
 if self._active_corpus_session is not None:
-    record_corpus_candidates(
+    record_corpus_provider_results(
         store=self.corpus_store,
         session=self._active_corpus_session,
         tenant_id=DEFAULT_TENANT_ID,
         workspace_id=DEFAULT_WORKSPACE_ID,
         run_id=tracer.run_id,
-        stage_id=f"round.{query_resume_hits[0].round_no:02d}.retrieval" if query_resume_hits else "retrieval",
-        candidates_by_resume_id=run_state.candidate_store,
-        query_resume_hits=query_resume_hits,
+        provider_results=retrieval_result.provider_returned_candidates,
     )
 ```
 
@@ -2102,9 +2404,9 @@ In `finally` of `run_async`, before `tracer.close(...)`:
 
 ```python
 if self._active_corpus_session is not None:
-    materialize_corpus_artifacts(
+    write_corpus_ingest_manifest(
         session=self._active_corpus_session,
-        store=self.corpus_store,
+        run_id=tracer.run_id,
         tenant_id=DEFAULT_TENANT_ID,
         workspace_id=DEFAULT_WORKSPACE_ID,
     )
@@ -2113,7 +2415,37 @@ if self._active_corpus_session is not None:
 self.corpus_store.close()
 ```
 
-- [ ] **Step 5: Run corpus runtime tests**
+- [ ] **Step 6: Add ingest manifest helper**
+
+Add to `src/seektalent/corpus/runtime.py`:
+
+```python
+def write_corpus_ingest_manifest(
+    *,
+    session: ArtifactSession,
+    run_id: str,
+    tenant_id: str,
+    workspace_id: str,
+) -> None:
+    raw_payload_entries = {
+        logical_name: entry.path
+        for logical_name, entry in sorted(session.manifest.logical_artifacts.items())
+        if logical_name.startswith("corpus.raw_payloads.")
+    }
+    session.write_json(
+        "corpus.ingest_manifest",
+        {
+            "corpus_artifact_role": "ingest",
+            "run_id": run_id,
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "raw_payload_count": len(raw_payload_entries),
+            "raw_payloads": raw_payload_entries,
+        },
+    )
+```
+
+- [ ] **Step 7: Run corpus runtime tests**
 
 Run:
 
@@ -2123,20 +2455,20 @@ uv run pytest tests/test_corpus_runtime.py -q
 
 Expected: PASS.
 
-- [ ] **Step 6: Run focused runtime test**
+- [ ] **Step 8: Run focused runtime tests**
 
-Run the smallest existing mock runtime test that exercises retrieval:
+Run the smallest existing mock runtime test that exercises retrieval, plus the new eval-disabled and duplicate-observation tests added in this task:
 
 ```bash
-uv run pytest tests/test_runtime_audit.py::test_query_resume_hits_are_enriched_after_scoring -q
+uv run pytest tests/test_runtime_audit.py::test_query_resume_hits_are_enriched_after_scoring tests/test_runtime_audit.py::test_corpus_records_provider_returns_when_eval_disabled tests/test_corpus_runtime.py::test_duplicate_provider_returns_create_two_observations_for_one_document -q
 ```
 
-Expected: PASS and `.seektalent/corpus.sqlite3` exists under the test workspace when the fixture uses real settings.
+Expected: PASS. The runtime corpus ingest artifact contains `corpus/ingest_manifest.json` and raw payload files, but does not contain full `corpus/resume_documents.jsonl` materialization.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/seektalent/runtime/orchestrator.py src/seektalent/corpus/runtime.py tests/test_corpus_runtime.py tests/test_runtime_audit.py
+git add src/seektalent/runtime/orchestrator.py src/seektalent/runtime/retrieval_runtime.py src/seektalent/corpus/runtime.py tests/test_corpus_runtime.py tests/test_runtime_audit.py
 git commit -m "feat: record corpus assets during retrieval"
 ```
 
@@ -2187,7 +2519,12 @@ def test_corpus_export_command_materializes_artifact(tmp_path: Path, monkeypatch
     )
 
     assert result == 0
-    assert list((artifacts_root / "corpus").glob("*/*/*/corpus_*"))
+    export_roots = list((artifacts_root / "corpus").glob("*/*/*/corpus_*"))
+    assert export_roots
+    export_manifest = json.loads((export_roots[0] / "corpus/export_manifest.json").read_text(encoding="utf-8"))
+    assert export_manifest["corpus_artifact_role"] == "materialized_export"
+    assert export_manifest["self_contained"] is False
+    assert export_manifest["raw_payload_policy"] == "external_refs_only"
 ```
 
 - [ ] **Step 2: Add direct-path guard**
@@ -2202,16 +2539,15 @@ def test_corpus_jsonl_paths_use_artifact_registry() -> None:
             "-n",
             r"corpus/(jd_documents|resume_subjects|resume_documents|resume_observations|run_corpus_links|corpus_collections|corpus_memberships|corpus_exports)\\.jsonl",
             "src/seektalent",
-            "tests",
+            "-g",
+            "!src/seektalent/artifacts/registry.py",
         ],
         cwd=REPO_ROOT,
         text=True,
         capture_output=True,
         check=False,
     )
-    allowed = ("src/seektalent/artifacts/registry.py",)
-    offenders = [line for line in output.stdout.splitlines() if not line.startswith(allowed)]
-    assert offenders == []
+    assert output.stdout == ""
 ```
 
 - [ ] **Step 3: Implement CLI command**
@@ -2258,7 +2594,7 @@ Add to `docs/outputs.md`:
 
 Raw provider resume payloads are artifact-first. Runtime writes them under `artifacts/corpus/YYYY/MM/DD/corpus_<ulid>/raw_payloads/`, and the DB stores artifact ref, hash, and size rather than inlining full resume payload JSON by default.
 
-Use `uv run seektalent corpus-export` to materialize corpus rows through `ArtifactStore` logical names. Corpus exports are separate from Flywheel query rewriting exports and do not contain benchmark qrels.
+Use `uv run seektalent corpus-export` to materialize corpus rows through `ArtifactStore` logical names. Corpus exports are separate from Flywheel query rewriting exports and do not contain benchmark qrels. V1 corpus exports are ref-only: `self_contained=false` and `raw_payload_policy=external_refs_only`.
 ```
 
 - [ ] **Step 5: Run focused tests**
@@ -2290,7 +2626,7 @@ git commit -m "feat: export corpus assets"
 Run:
 
 ```bash
-uv run pytest tests/test_corpus_store.py tests/test_corpus_documents.py tests/test_corpus_runtime.py tests/test_artifact_store.py::test_corpus_root_registers_corpus_logical_artifacts -q
+uv run pytest tests/test_corpus_store.py tests/test_corpus_documents.py tests/test_corpus_runtime.py tests/test_artifact_store.py::test_corpus_ingest_root_registers_ingest_manifest tests/test_artifact_store.py::test_corpus_export_root_registers_corpus_logical_artifacts -q
 ```
 
 Expected: PASS.
@@ -2300,7 +2636,7 @@ Expected: PASS.
 Run:
 
 ```bash
-uv run pytest tests/test_runtime_audit.py::test_query_resume_hits_are_enriched_after_scoring tests/test_flywheel_runtime.py tests/test_flywheel_store.py -q
+uv run pytest tests/test_runtime_audit.py::test_query_resume_hits_are_enriched_after_scoring tests/test_runtime_audit.py::test_corpus_records_provider_returns_when_eval_disabled tests/test_flywheel_runtime.py tests/test_flywheel_store.py -q
 ```
 
 Expected: PASS.
@@ -2366,6 +2702,8 @@ Expected:
 - at least one `jd_documents` row;
 - `resume_documents` and `resume_observations` rows when provider results were returned;
 - corpus artifact root with `raw_payloads/*.json`;
+- runtime corpus artifact has `corpus/ingest_manifest.json`;
+- runtime corpus artifact does not contain full `corpus/resume_documents.jsonl` unless `corpus-export` was explicitly run;
 - no benchmark qrels or flywheel query rewrite samples in corpus artifacts.
 
 ## Implementation Notes
@@ -2374,5 +2712,5 @@ Expected:
 - Keep DB write transactions short and deterministic.
 - Do not let eval availability decide corpus accumulation.
 - Do not store static benchmark pools or qrels in `CorpusStore` in this rollout.
-- Do not mark runtime-inferred rows as memory/training/export/LLM-ingestion eligible by default.
+- Do not mark runtime-inferred rows as memory/training/external-export/LLM-ingestion eligible by default.
 - Do not build a workflow checkpoint engine in this rollout.

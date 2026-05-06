@@ -140,7 +140,8 @@ Fields:
 - `search_index_eligible INTEGER NOT NULL`
 - `benchmark_eligible INTEGER NOT NULL`
 - `training_eligible INTEGER NOT NULL`
-- `export_eligible INTEGER NOT NULL`
+- `external_export_eligible INTEGER NOT NULL`
+- `internal_materialization_eligible INTEGER NOT NULL`
 - `llm_ingestion_eligible INTEGER NOT NULL`
 - `consent_basis TEXT`
 - `source_terms_ref TEXT`
@@ -161,8 +162,9 @@ Notes:
 - `task_sha256` must include job title, JD text, notes text, and schema version.
 - `source_kind` examples: `manual_input`, `benchmark_seed`, `import`, `run_input`.
 - `memory_eligible` defaults to `0`.
-- `training_eligible`, `export_eligible`, and `llm_ingestion_eligible` default to `0`.
-- `allowed_uses_json` records the explicit allowed use set, such as `search`, `benchmark`, `training`, `memory`, `export`, and `llm_ingestion`.
+- `training_eligible`, `external_export_eligible`, and `llm_ingestion_eligible` default to `0`.
+- `internal_materialization_eligible` defaults to `1`; it only allows internal ArtifactStore materialization, not external/customer/training export.
+- `allowed_uses_json` records the explicit allowed use set, such as `search`, `benchmark`, `training`, `memory`, `external_export`, `internal_materialization`, and `llm_ingestion`.
 - `content_trust_level` defaults to `untrusted_external`.
 - `llm_ingestion_policy` defaults to `quote_as_data_only`.
 - `tenant_id` and `workspace_id` are required even in local mode. Local mode may use stable defaults such as `local` / `default`.
@@ -180,7 +182,6 @@ Fields:
 - `provider_candidate_id TEXT`
 - `source_resume_id TEXT`
 - `dedup_key TEXT`
-- `latest_resume_doc_id TEXT`
 - `subject_confidence TEXT NOT NULL`
 - `subject_binding_reason TEXT NOT NULL`
 - `created_at TEXT NOT NULL`
@@ -189,8 +190,7 @@ Fields:
 Notes:
 
 - V1 may create weak subjects from provider ID, source resume ID, or existing dedup key.
-- `subject_id` may be generated even when confidence is weak.
-- `latest_resume_doc_id` points to the newest known usable snapshot when available.
+- `subject_id` may be generated even when confidence is weak, but the fallback key must be `snapshot_sha256`, never a shared literal such as `unknown`.
 - Subject binding must stay tenant/workspace scoped.
 
 ### `resume_documents`
@@ -238,7 +238,8 @@ Fields:
 - `search_index_eligible INTEGER NOT NULL`
 - `benchmark_eligible INTEGER NOT NULL`
 - `training_eligible INTEGER NOT NULL`
-- `export_eligible INTEGER NOT NULL`
+- `external_export_eligible INTEGER NOT NULL`
+- `internal_materialization_eligible INTEGER NOT NULL`
 - `llm_ingestion_eligible INTEGER NOT NULL`
 - `consent_basis TEXT`
 - `source_terms_ref TEXT`
@@ -271,8 +272,9 @@ Notes:
 - `current_company`, names, salary, school, and location fields may be useful for product display and filtering, but they must be classified in `sensitivity_json`.
 - `content_trust_level` defaults to `untrusted_external`.
 - `llm_ingestion_policy` defaults to `quote_as_data_only`.
-- `allowed_uses_json` records the explicit allowed use set, such as `search`, `benchmark`, `training`, `memory`, `export`, and `llm_ingestion`.
-- `training_eligible`, `memory_eligible`, `export_eligible`, and `llm_ingestion_eligible` default to `0`.
+- `allowed_uses_json` records the explicit allowed use set, such as `search`, `benchmark`, `training`, `memory`, `external_export`, `internal_materialization`, and `llm_ingestion`.
+- `training_eligible`, `memory_eligible`, `external_export_eligible`, and `llm_ingestion_eligible` default to `0`.
+- `internal_materialization_eligible` defaults to `1`; it only allows internal ArtifactStore materialization.
 - `pii_classification_version` and `redaction_status` make later export/search/memory decisions auditable instead of implicit.
 
 ### `resume_observations`
@@ -432,6 +434,7 @@ manifest: artifacts/corpus/YYYY/MM/DD/corpus_<ulid>/manifests/corpus_manifest.js
 
 Logical artifacts:
 
+- `corpus.ingest_manifest`
 - `corpus.jd_documents`
 - `corpus.resume_subjects`
 - `corpus.resume_documents`
@@ -445,6 +448,7 @@ Logical artifacts:
 Suggested paths:
 
 ```text
+corpus/ingest_manifest.json
 corpus/jd_documents.jsonl
 corpus/resume_subjects.jsonl
 corpus/resume_documents.jsonl
@@ -458,19 +462,32 @@ corpus/export_manifest.json
 
 SQLite is the mutable local queryable index. Corpus artifacts are immutable snapshots or ingest containers. Do not treat `artifacts/corpus/` itself as a mutable loose folder.
 
+Corpus artifacts have an explicit role:
+
+- `corpus_artifact_role = "ingest"`: runtime-created artifact containing this run's raw payload blobs and an ingest manifest. It must not materialize full corpus JSONL tables.
+- `corpus_artifact_role = "materialized_export"`: manual/export-created artifact containing corpus JSONL tables and `corpus.export_manifest`.
+
 Raw provider payloads should be written into registered corpus artifact/blob refs, for example under an immutable corpus ingest artifact:
 
 ```text
 artifacts/corpus/YYYY/MM/DD/corpus_<ulid>/
   manifests/corpus_manifest.json
+  corpus/ingest_manifest.json
   raw_payloads/<snapshot_sha256>.json
 ```
 
 The DB stores the artifact ref, content hash, and size. Consumers must resolve raw payloads through artifact refs rather than hand-built paths.
 
+V1 corpus exports are ref-only:
+
+- `export_manifest.self_contained = false`
+- `export_manifest.raw_payload_policy = "external_refs_only"`
+- exported resume rows keep raw payload artifact refs pointing to prior ingest artifacts;
+- export jobs do not copy raw payload blobs into the export root.
+
 ## Runtime Write Path
 
-When retrieval receives provider results:
+When retrieval receives provider results, corpus recording must use the provider-returned candidate ledger as the source of truth, before dedup/scoring filters candidates down:
 
 1. Canonicalize each provider candidate payload.
 2. Compute `snapshot_sha256`.
@@ -483,12 +500,16 @@ When retrieval receives provider results:
 
 This must happen before scoring filters candidates down. Corpus accumulation should not inherit current scoring/model bias.
 
+Corpus runtime writes must not be called from Flywheel-specific methods. Flywheel recording may use the same retrieval facts, but corpus accumulation must continue to work when eval/flywheel writes are disabled or fail.
+
 When a run starts:
 
 1. Upsert the input JD as a `jd_documents` row.
 2. Insert `run_corpus_links` for `run_id -> jd_doc_id`.
 
 The first implementation does not need to populate benchmark pools or qrels.
+
+The runtime-created corpus artifact is an ingest artifact only. It writes raw payload blobs and `corpus.ingest_manifest`; it does not call full corpus materialization. Full JSONL materialization is owned by an explicit corpus export command/job.
 
 ## Benchmark Boundary
 
@@ -612,7 +633,8 @@ Memory-ready fields are included only to avoid losing provenance:
 - `memory_eligible`
 - `allowed_uses_json`
 - `training_eligible`
-- `export_eligible`
+- `external_export_eligible`
+- `internal_materialization_eligible`
 - `llm_ingestion_eligible`
 - `consent_basis`
 - `source_terms_ref`
@@ -628,13 +650,14 @@ Rules:
 
 - default `memory_eligible = 0`;
 - default `training_eligible = 0`;
-- default `export_eligible = 0`;
+- default `external_export_eligible = 0`;
+- default `internal_materialization_eligible = 1`;
 - default `llm_ingestion_eligible = 0`;
 - user explicit feedback may later produce memory-eligible records;
 - runtime inference alone should not become long-term user memory by default;
 - names, company names, salaries, locations, schools, and contact-like data must be marked sensitive;
 - corpus text is untrusted external content and must later be quoted as data, not treated as model instruction;
-- memory eligibility must stay separate from search, benchmark, training, export, and LLM-ingestion eligibility;
+- memory eligibility must stay separate from search, benchmark, training, external export, internal materialization, and LLM-ingestion eligibility;
 - memory extraction must be a separate future design.
 
 ## Cloud And Tenant Isolation Preparation
@@ -688,13 +711,16 @@ Focused tests should cover:
 8. Retrieval with mock CTS records all provider-returned resumes, not only scored candidates.
 9. Resume observations preserve query/run/provider provenance.
 10. Retried provider pages do not duplicate observations because of deterministic idempotency keys.
-11. Run start writes `run_corpus_links`.
-12. Corpus accumulation does not require eval.
-13. Corpus export writes immutable JSONL through `ArtifactStore` logical names.
-14. Flywheel export still contains no benchmark/qrels/corpus raw-payload output.
-15. Static benchmark tables are not implemented in this rollout.
-16. Memory, training, export, and LLM-ingestion fields default to not eligible.
-17. Sensitivity and untrusted-content metadata is present on JD and resume docs.
+11. The same resume returned by two lanes creates one resume document and two observations.
+12. Run start writes `run_corpus_links`.
+13. Corpus accumulation does not require eval.
+14. Corpus export writes immutable JSONL through `ArtifactStore` logical names.
+15. Runtime corpus ingest does not materialize full tenant/workspace corpus JSONL.
+16. Flywheel export still contains no benchmark/qrels/corpus raw-payload output.
+17. Static benchmark tables are not implemented in this rollout.
+18. Memory, training, external export, and LLM-ingestion fields default to not eligible.
+19. Internal materialization eligibility is separate and defaults to eligible.
+20. Sensitivity and untrusted-content metadata is present on JD and resume docs.
 
 ## Acceptance Criteria
 
@@ -706,14 +732,17 @@ Focused tests should cover:
 6. Raw provider payload is artifact-first and not inline in SQLite by default.
 7. Provider retry or stage retry is idempotent for observations.
 8. Normalization failures preserve raw payload ref and do not drop the provider observation.
-9. Corpus assets can be materialized through immutable `ArtifactStore` logical artifacts.
-10. Mutable corpus collections are not represented as corpus versions.
-11. `FlywheelStore` remains the query rewriting data boundary and is not renamed or expanded into benchmark/corpus ownership.
-12. `flywheel-export` remains query rewriting only and does not export corpus raw payloads, benchmark qrels, or benchmark reports.
-13. Static benchmark pool/qrels tables are not implemented yet.
-14. Resumable run execution is not implemented yet.
-15. Personalized memory runtime is not implemented yet.
-16. Tests prove corpus accumulation does not require eval.
+9. Runtime corpus artifacts are ingest-only and do not export full corpus JSONL tables.
+10. Corpus assets can be materialized through an explicit corpus export command/job.
+11. Corpus export manifests declare `self_contained = false` and `raw_payload_policy = "external_refs_only"`.
+12. Mutable corpus collections are not represented as corpus versions.
+13. `FlywheelStore` remains the query rewriting data boundary and is not renamed or expanded into benchmark/corpus ownership.
+14. Corpus recording is independent of Flywheel recording.
+15. `flywheel-export` remains query rewriting only and does not export corpus raw payloads, benchmark qrels, or benchmark reports.
+16. Static benchmark pool/qrels tables are not implemented yet.
+17. Resumable run execution is not implemented yet.
+18. Personalized memory runtime is not implemented yet.
+19. Tests prove corpus accumulation does not require eval.
 
 ## Rollout Order
 
@@ -722,10 +751,11 @@ Focused tests should cover:
 3. Add raw payload artifact write helpers and artifact-ref recording.
 4. Add resume normalization/searchable-text helper if no existing helper is clean enough.
 5. Wire JD input upsert and `run_corpus_links` at run start.
-6. Wire all provider-returned resume snapshots and idempotent observations at retrieval time.
-7. Add corpus export/materialization as immutable `ArtifactStore` snapshots.
-8. Update docs and env defaults.
-9. Run focused tests and full suite.
+6. Wire all provider-returned resume snapshots and idempotent observations at retrieval time through an independent corpus hook.
+7. Add runtime ingest manifests without full corpus materialization.
+8. Add explicit corpus export/materialization as immutable ref-only `ArtifactStore` snapshots.
+9. Update docs and env defaults.
+10. Run focused tests and full suite.
 
 ## Open Decisions For Future Specs
 
