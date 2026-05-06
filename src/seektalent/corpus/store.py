@@ -45,7 +45,7 @@ _SCHEMA_STATEMENTS = [
         content_sha256 TEXT,
         schema_version TEXT,
         created_at TEXT NOT NULL,
-        UNIQUE(artifact_kind, artifact_id, logical_name, relative_path)
+        UNIQUE(artifact_kind, artifact_id, logical_name)
     ){strict}
     """,
     """
@@ -193,7 +193,7 @@ _SCHEMA_STATEMENTS = [
         was_scored INTEGER NOT NULL,
         was_judged INTEGER NOT NULL,
         was_selected_final INTEGER NOT NULL,
-        source_artifact_ref_id TEXT,
+        source_artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
         created_at TEXT NOT NULL,
         UNIQUE(tenant_id, workspace_id, idempotency_key),
         UNIQUE(tenant_id, workspace_id, observation_id),
@@ -207,7 +207,7 @@ _SCHEMA_STATEMENTS = [
         tenant_id TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
         jd_doc_id TEXT NOT NULL,
-        input_artifact_ref_id TEXT,
+        input_artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
         created_at TEXT NOT NULL,
         PRIMARY KEY (run_id, tenant_id, workspace_id),
         FOREIGN KEY(tenant_id, workspace_id, jd_doc_id)
@@ -454,8 +454,9 @@ class CorpusStore:
                 artifact_ref_id, artifact_kind, artifact_id, artifact_root,
                 logical_name, relative_path, content_sha256, schema_version, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(artifact_kind, artifact_id, logical_name, relative_path) DO UPDATE SET
+            ON CONFLICT(artifact_kind, artifact_id, logical_name) DO UPDATE SET
                 artifact_root = excluded.artifact_root,
+                relative_path = excluded.relative_path,
                 content_sha256 = excluded.content_sha256,
                 schema_version = excluded.schema_version
             """,

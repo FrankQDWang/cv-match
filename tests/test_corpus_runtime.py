@@ -49,7 +49,11 @@ def _jd_document_row() -> dict[str, object]:
     }
 
 
-def _seed_resume_document(store: CorpusStore) -> tuple[str, str]:
+def _seed_resume_document(
+    store: CorpusStore,
+    *,
+    raw_payload_json: dict[str, object] | None = None,
+) -> tuple[str, str | None]:
     store.upsert_resume_subject(
         {
             "subject_id": "subject-1",
@@ -63,15 +67,18 @@ def _seed_resume_document(store: CorpusStore) -> tuple[str, str]:
             "subject_binding_reason": "provider_candidate_id",
         }
     )
-    artifact_ref_id = store.record_artifact_ref(
-        artifact_kind="corpus",
-        artifact_id="corpus-test",
-        artifact_root=str(store.path.parent),
-        logical_name="corpus.raw_payloads.resume-doc-1",
-        relative_path="raw_payloads/resume-doc-1.json",
-        content_sha256=sha256(b"raw").hexdigest(),
-        schema_version="v1",
-    )
+    raw_payload_text = json.dumps(raw_payload_json, sort_keys=True) if raw_payload_json is not None else "raw"
+    artifact_ref_id = None
+    if raw_payload_json is None:
+        artifact_ref_id = store.record_artifact_ref(
+            artifact_kind="corpus",
+            artifact_id="corpus-test",
+            artifact_root=str(store.path.parent),
+            logical_name="corpus.raw_payloads.resume-doc-1",
+            relative_path="raw_payloads/resume-doc-1.json",
+            content_sha256=sha256(raw_payload_text.encode()).hexdigest(),
+            schema_version="v1",
+        )
     store.upsert_resume_document(
         {
             "resume_doc_id": "resume-doc-1",
@@ -84,10 +91,10 @@ def _seed_resume_document(store: CorpusStore) -> tuple[str, str]:
             "provider_candidate_id": "provider-1",
             "dedup_key": "provider-1",
             "raw_payload_artifact_ref_id": artifact_ref_id,
-            "raw_payload_sha256": sha256(b"raw").hexdigest(),
-            "raw_payload_size_bytes": 3,
-            "raw_payload_json": None,
-            "raw_payload_inline_reason": None,
+            "raw_payload_sha256": sha256(raw_payload_text.encode()).hexdigest(),
+            "raw_payload_size_bytes": len(raw_payload_text.encode()),
+            "raw_payload_json": raw_payload_json,
+            "raw_payload_inline_reason": "test_inline_payload" if raw_payload_json is not None else None,
             "normalized_text": "Python backend",
             "normalized_sections_json": {},
             "skills_json": ["Python"],
@@ -267,3 +274,36 @@ def test_materialize_corpus_artifacts_writes_export_rows(tmp_path: Path) -> None
     export_rows = (session.root / "corpus/corpus_exports.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(export_rows) == 1
     assert json.loads(export_rows[0])["corpus_export_id"] == session.manifest.artifact_id
+
+
+def test_materialize_corpus_artifacts_omits_inline_raw_payload(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    _resume_doc_id, _artifact_ref_id = _seed_resume_document(
+        store,
+        raw_payload_json={"resume_id": "resume-doc-1", "private_note": "inline raw payload"},
+    )
+    session = ArtifactStore(tmp_path / "artifacts").create_root(
+        kind="corpus",
+        display_name="corpus export",
+        producer="CorpusRuntime",
+    )
+
+    materialize_corpus_artifacts(
+        session=session,
+        store=store,
+        tenant_id="tenant-a",
+        workspace_id="workspace",
+    )
+
+    export_manifest = json.loads((session.root / "corpus/export_manifest.json").read_text(encoding="utf-8"))
+    resume_rows = (session.root / "corpus/resume_documents.jsonl").read_text(encoding="utf-8").splitlines()
+    exported_resume = json.loads(resume_rows[0])
+
+    assert export_manifest["raw_payload_policy"] == "external_refs_only"
+    assert "inline raw payload" not in resume_rows[0]
+    assert exported_resume["raw_payload_json"] is None
+    assert exported_resume["raw_payload_sha256"] == sha256(
+        json.dumps({"resume_id": "resume-doc-1", "private_note": "inline raw payload"}, sort_keys=True).encode()
+    ).hexdigest()
+    assert exported_resume["raw_payload_size_bytes"] > 0
+    assert exported_resume["raw_payload_inline_reason"] == "omitted_from_external_refs_only_export"

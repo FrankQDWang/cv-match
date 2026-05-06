@@ -9,6 +9,7 @@ from typing import Any
 from seektalent.artifacts import ArtifactSession, atomic_write_text, safe_artifact_path
 
 SAFE_SNAPSHOT_SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
+OMITTED_RAW_PAYLOAD_INLINE_REASON = "omitted_from_external_refs_only_export"
 MATERIALIZED_CORPUS_TABLES = {
     "jd_documents": "corpus.jd_documents",
     "resume_subjects": "corpus.resume_subjects",
@@ -71,6 +72,20 @@ def _record_session_artifact_ref(*, session: ArtifactSession, store: Any, logica
     )
 
 
+def _rows_for_materialized_export(table: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if table != "resume_documents":
+        return rows
+
+    exported_rows = []
+    for row in rows:
+        exported_row = dict(row)
+        if exported_row.get("raw_payload_json") is not None:
+            exported_row["raw_payload_json"] = None
+            exported_row["raw_payload_inline_reason"] = OMITTED_RAW_PAYLOAD_INLINE_REASON
+        exported_rows.append(exported_row)
+    return exported_rows
+
+
 def materialize_corpus_artifacts(
     *,
     session: ArtifactSession,
@@ -83,7 +98,7 @@ def materialize_corpus_artifacts(
 
     for table, logical_name in MATERIALIZED_CORPUS_TABLES.items():
         rows = store.rows_for_tenant(table, tenant_id, workspace_id)
-        session.write_jsonl(logical_name, rows)
+        session.write_jsonl(logical_name, _rows_for_materialized_export(table, rows))
         row_counts[logical_name] = len(rows)
         _record_session_artifact_ref(session=session, store=store, logical_name=logical_name)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -93,6 +94,49 @@ def _resume_document_row(
         "llm_ingestion_policy": "quote_as_data_only",
         "retention_policy": "retain_local",
         "schema_version": "resume-doc-v1",
+    }
+
+
+def _jd_document_row(
+    *,
+    tenant_id: str = "tenant-a",
+    workspace_id: str = "workspace",
+    jd_doc_id: str = "jd-doc-1",
+) -> dict[str, object]:
+    return {
+        "jd_doc_id": jd_doc_id,
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id,
+        "job_title": "Backend Engineer",
+        "jd_text": "Build Python services",
+        "notes_text": "",
+        "jd_sha256": sha256(b"Build Python services").hexdigest(),
+        "notes_sha256": sha256(b"").hexdigest(),
+        "task_sha256": f"{tenant_id}:{workspace_id}:task-sha-1",
+        "language": "en",
+        "domain_tags_json": ["backend"],
+        "seniority": "senior",
+        "source_kind": "manual_input",
+        "source_ref": None,
+        "memory_eligible": False,
+        "allowed_uses_json": ["search"],
+        "search_index_eligible": True,
+        "benchmark_eligible": False,
+        "training_eligible": False,
+        "external_export_eligible": False,
+        "internal_materialization_eligible": True,
+        "llm_ingestion_eligible": False,
+        "consent_basis": None,
+        "source_terms_ref": None,
+        "pii_classification_version": "pii-v1",
+        "redaction_status": "unredacted",
+        "sensitivity_json": {},
+        "content_trust_level": "trusted_internal",
+        "contains_prompt_like_text": False,
+        "llm_sanitization_version": None,
+        "llm_ingestion_policy": "quote_as_data_only",
+        "retention_policy": "retain_local",
+        "schema_version": "jd-doc-v1",
     }
 
 
@@ -273,6 +317,44 @@ def test_artifact_refs_relative_path_uniqueness_handles_empty_path(tmp_path: Pat
         )
 
 
+def test_record_artifact_ref_updates_path_for_same_logical_name(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+
+    first_ref_id = store.record_artifact_ref(
+        artifact_kind="corpus",
+        artifact_id="corpus-1",
+        artifact_root=str(tmp_path / "artifacts"),
+        logical_name="corpus.resume_documents",
+        relative_path="corpus/resume_documents.jsonl",
+        content_sha256="sha-1",
+        schema_version="v1",
+    )
+    second_ref_id = store.record_artifact_ref(
+        artifact_kind="corpus",
+        artifact_id="corpus-1",
+        artifact_root=str(tmp_path / "artifacts"),
+        logical_name="corpus.resume_documents",
+        relative_path="corpus/resume_documents-v2.jsonl",
+        content_sha256="sha-2",
+        schema_version="v2",
+    )
+
+    rows = store.connect().execute("SELECT * FROM artifact_refs").fetchall()
+    assert second_ref_id == first_ref_id == "corpus:corpus-1:corpus.resume_documents"
+    assert len(rows) == 1
+    assert dict(rows[0]) | {"created_at": "ignored"} == {
+        "artifact_ref_id": "corpus:corpus-1:corpus.resume_documents",
+        "artifact_kind": "corpus",
+        "artifact_id": "corpus-1",
+        "artifact_root": str(tmp_path / "artifacts"),
+        "logical_name": "corpus.resume_documents",
+        "relative_path": "corpus/resume_documents-v2.jsonl",
+        "content_sha256": "sha-2",
+        "schema_version": "v2",
+        "created_at": "ignored",
+    }
+
+
 def test_resume_subject_identity_is_tenant_workspace_scoped(tmp_path: Path) -> None:
     store = CorpusStore(tmp_path / "corpus.sqlite3")
     store.upsert_resume_subject(
@@ -364,3 +446,101 @@ def test_record_resume_observation_is_idempotent(tmp_path: Path) -> None:
 
     count = store.connect().execute("SELECT COUNT(*) FROM resume_observations").fetchone()[0]
     assert count == 1
+
+
+def test_link_run_to_jd_rejects_missing_input_artifact_ref(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    jd_doc_id = store.upsert_jd_document(_jd_document_row())
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.link_run_to_jd(
+            run_id="run-1",
+            tenant_id="tenant-a",
+            workspace_id="workspace",
+            jd_doc_id=jd_doc_id,
+            input_artifact_ref_id="missing-artifact-ref",
+        )
+
+
+def test_link_run_to_jd_allows_null_input_artifact_ref(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    jd_doc_id = store.upsert_jd_document(_jd_document_row())
+
+    store.link_run_to_jd(
+        run_id="run-1",
+        tenant_id="tenant-a",
+        workspace_id="workspace",
+        jd_doc_id=jd_doc_id,
+        input_artifact_ref_id=None,
+    )
+
+    row = store.connect().execute("SELECT input_artifact_ref_id FROM run_corpus_links").fetchone()
+    assert row["input_artifact_ref_id"] is None
+
+
+def test_record_resume_observation_rejects_missing_source_artifact_ref(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    resume_doc_id, _artifact_ref_id = _seed_resume_document(store)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.record_resume_observations(
+            [
+                {
+                    "observation_id": "obs-1",
+                    "tenant_id": "tenant-a",
+                    "workspace_id": "workspace",
+                    "resume_doc_id": resume_doc_id,
+                    "run_id": "run-1",
+                    "round_no": 1,
+                    "stage_id": "retrieval",
+                    "query_instance_id": "query-1",
+                    "query_fingerprint": "query-fingerprint-1",
+                    "provider_name": "cts",
+                    "provider_request_id": "request-1",
+                    "provider_rank": 1,
+                    "provider_page_no": 1,
+                    "provider_fetch_no": 1,
+                    "attempt_no": 1,
+                    "idempotency_key": "tenant-a:workspace:run-1:query-1:resume-doc-1",
+                    "was_scored": False,
+                    "was_judged": True,
+                    "was_selected_final": False,
+                    "source_artifact_ref_id": "missing-artifact-ref",
+                }
+            ]
+        )
+
+
+def test_record_resume_observation_allows_null_source_artifact_ref(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    resume_doc_id, _artifact_ref_id = _seed_resume_document(store)
+
+    store.record_resume_observations(
+        [
+            {
+                "observation_id": "obs-1",
+                "tenant_id": "tenant-a",
+                "workspace_id": "workspace",
+                "resume_doc_id": resume_doc_id,
+                "run_id": "run-1",
+                "round_no": 1,
+                "stage_id": "retrieval",
+                "query_instance_id": "query-1",
+                "query_fingerprint": "query-fingerprint-1",
+                "provider_name": "cts",
+                "provider_request_id": "request-1",
+                "provider_rank": 1,
+                "provider_page_no": 1,
+                "provider_fetch_no": 1,
+                "attempt_no": 1,
+                "idempotency_key": "tenant-a:workspace:run-1:query-1:resume-doc-1",
+                "was_scored": False,
+                "was_judged": True,
+                "was_selected_final": False,
+                "source_artifact_ref_id": None,
+            }
+        ]
+    )
+
+    row = store.connect().execute("SELECT source_artifact_ref_id FROM resume_observations").fetchone()
+    assert row["source_artifact_ref_id"] is None
