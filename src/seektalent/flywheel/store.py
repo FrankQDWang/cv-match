@@ -368,6 +368,13 @@ _SCHEMA_STATEMENTS = [
     """,
 ]
 
+ALLOWED_RUN_ROW_TABLES = {
+    "query_outcomes",
+    "query_judge_outcomes",
+    "term_events",
+    "term_outcomes",
+}
+
 
 class FlywheelStore:
     def __init__(self, path: Path | str) -> None:
@@ -740,6 +747,97 @@ class FlywheelStore:
                 """,
                 values,
             )
+
+    def query_hits_for_run_round(self, *, run_id: str, round_no: int) -> list[dict[str, Any]]:
+        rows = self.connect().execute(
+            """
+            SELECT *
+            FROM query_resume_hits
+            WHERE run_id = ? AND round_no = ?
+            ORDER BY query_instance_id, hit_sequence_no
+            """,
+            (run_id, round_no),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_query_outcomes(self, rows: list[dict[str, object]]) -> None:
+        if not rows:
+            return
+        now = utc_now()
+        values = []
+        for row in rows:
+            if "created_at" in row:
+                raise ValueError("created_at is owned by FlywheelStore")
+            values.append({**row, "created_at": now})
+        conn = self.connect()
+        with conn:
+            conn.executemany(
+                """
+                INSERT INTO query_outcomes (
+                    run_id, query_instance_id, query_fingerprint, outcome_schema_version,
+                    outcome_policy_version, outcome_thresholds_hash, outcome_thresholds_json,
+                    scoring_policy_version, dedupe_version, outcome_basis, round_no, lane_type,
+                    provider_returned_count, new_unique_resume_count, duplicate_count,
+                    scored_resume_count, new_fit_count, new_near_fit_count, fit_rate_denominator,
+                    fit_rate, must_have_match_avg, risk_score_avg, off_intent_reason_count,
+                    primary_label, labels_json, reasons_json, latency_ms, cost_estimate_usd,
+                    artifact_ref_id, created_at
+                ) VALUES (
+                    :run_id, :query_instance_id, :query_fingerprint, :outcome_schema_version,
+                    :outcome_policy_version, :outcome_thresholds_hash, :outcome_thresholds_json,
+                    :scoring_policy_version, :dedupe_version, :outcome_basis, :round_no, :lane_type,
+                    :provider_returned_count, :new_unique_resume_count, :duplicate_count,
+                    :scored_resume_count, :new_fit_count, :new_near_fit_count, :fit_rate_denominator,
+                    :fit_rate, :must_have_match_avg, :risk_score_avg, :off_intent_reason_count,
+                    :primary_label, :labels_json, :reasons_json, :latency_ms, :cost_estimate_usd,
+                    :artifact_ref_id, :created_at
+                )
+                ON CONFLICT(run_id, query_instance_id) DO UPDATE SET
+                    query_fingerprint = excluded.query_fingerprint,
+                    outcome_schema_version = excluded.outcome_schema_version,
+                    outcome_policy_version = excluded.outcome_policy_version,
+                    outcome_thresholds_hash = excluded.outcome_thresholds_hash,
+                    outcome_thresholds_json = excluded.outcome_thresholds_json,
+                    scoring_policy_version = excluded.scoring_policy_version,
+                    dedupe_version = excluded.dedupe_version,
+                    outcome_basis = excluded.outcome_basis,
+                    provider_returned_count = excluded.provider_returned_count,
+                    new_unique_resume_count = excluded.new_unique_resume_count,
+                    duplicate_count = excluded.duplicate_count,
+                    scored_resume_count = excluded.scored_resume_count,
+                    new_fit_count = excluded.new_fit_count,
+                    new_near_fit_count = excluded.new_near_fit_count,
+                    fit_rate_denominator = excluded.fit_rate_denominator,
+                    fit_rate = excluded.fit_rate,
+                    must_have_match_avg = excluded.must_have_match_avg,
+                    risk_score_avg = excluded.risk_score_avg,
+                    off_intent_reason_count = excluded.off_intent_reason_count,
+                    primary_label = excluded.primary_label,
+                    labels_json = excluded.labels_json,
+                    reasons_json = excluded.reasons_json,
+                    latency_ms = excluded.latency_ms,
+                    cost_estimate_usd = excluded.cost_estimate_usd
+                """,
+                values,
+            )
+
+    def rows_for_run(self, table: str, *, run_id: str) -> list[dict[str, Any]]:
+        if table not in ALLOWED_RUN_ROW_TABLES:
+            raise ValueError(f"unsupported flywheel run table: {table}")
+        rows = self.connect().execute(
+            f"SELECT * FROM {table} WHERE run_id = ? ORDER BY rowid",
+            (run_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def attach_artifact_ref_to_run_rows(self, *, table: str, run_id: str, artifact_ref_id: str) -> None:
+        if table not in ALLOWED_RUN_ROW_TABLES:
+            raise ValueError(f"unsupported flywheel run table: {table}")
+        self.connect().execute(
+            f"UPDATE {table} SET artifact_ref_id = ? WHERE run_id = ?",
+            (artifact_ref_id, run_id),
+        )
+        self.connect().commit()
 
     def record_judge_label(
         self,

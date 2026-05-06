@@ -1664,6 +1664,10 @@ def test_runtime_populates_flywheel_run_query_and_hit_rows(
             "SELECT * FROM query_resume_hits WHERE run_id = ? ORDER BY hit_sequence_no",
             (artifacts.run_id,),
         ).fetchall()
+        outcome_rows = conn.execute(
+            "SELECT * FROM query_outcomes WHERE run_id = ? ORDER BY query_instance_id",
+            (artifacts.run_id,),
+        ).fetchall()
     finally:
         conn.close()
 
@@ -1675,6 +1679,9 @@ def test_runtime_populates_flywheel_run_query_and_hit_rows(
     assert hit_rows
     assert hit_rows[0]["snapshot_sha256"]
     assert hit_rows[0]["final_candidate_status"] == "fit"
+    assert outcome_rows
+    assert outcome_rows[0]["artifact_ref_id"]
+    assert (artifacts.run_dir / "flywheel/query_outcomes.jsonl").exists()
 
 
 def test_replay_snapshot_contains_provider_snapshot_and_versions(tmp_path: Path) -> None:

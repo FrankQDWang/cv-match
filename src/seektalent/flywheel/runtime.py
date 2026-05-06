@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any
 
 from seektalent.flywheel.store import canonical_json
 from seektalent.models import QueryResumeHit, SentQueryRecord
 
 QUERY_SPEC_SCHEMA_VERSION = "canonical-query-spec-v1"
+
+RUN_MATERIALIZED_TABLES = {
+    "query_outcomes": "flywheel.query_outcomes",
+    "query_judge_outcomes": "flywheel.query_judge_outcomes",
+    "term_events": "flywheel.term_events",
+    "term_outcomes": "flywheel.term_outcomes",
+}
 
 
 def build_run_query_rows(
@@ -59,3 +67,21 @@ def build_run_query_rows(
 
 def query_hit_rows_from_hits(hits: list[QueryResumeHit]) -> list[dict[str, Any]]:
     return [hit.model_dump(mode="json") for hit in hits]
+
+
+def materialize_flywheel_run_artifacts(*, session: Any, store: Any, run_id: str) -> None:
+    for table, logical_name in RUN_MATERIALIZED_TABLES.items():
+        rows = store.rows_for_run(table, run_id=run_id)
+        if not rows:
+            continue
+        path = session.write_jsonl(logical_name, rows)
+        artifact_ref_id = store.record_artifact_ref(
+            artifact_kind=session.manifest.artifact_kind.value,
+            artifact_id=session.manifest.artifact_id,
+            artifact_root=str(session.root),
+            logical_name=logical_name,
+            relative_path=str(path.relative_to(session.root)),
+            content_sha256=sha256(path.read_bytes()).hexdigest(),
+            schema_version="v1",
+        )
+        store.attach_artifact_ref_to_run_rows(table=table, run_id=run_id, artifact_ref_id=artifact_ref_id)

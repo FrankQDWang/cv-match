@@ -48,7 +48,8 @@ from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.core.retrieval.service import RetrievalService
 from seektalent.evaluation import TOP_K, AsyncJudgeLimiter, EvaluationResult, evaluate_run
 from seektalent.finalize.finalizer import Finalizer
-from seektalent.flywheel.runtime import build_run_query_rows, query_hit_rows_from_hits
+from seektalent.flywheel.outcomes import build_runtime_query_outcome_row, build_runtime_query_outcome_rows_from_hits
+from seektalent.flywheel.runtime import build_run_query_rows, materialize_flywheel_run_artifacts, query_hit_rows_from_hits
 from seektalent.flywheel.store import FlywheelStore
 from seektalent.llm import preflight_models, resolve_stage_model_config
 from seektalent.models import (
@@ -66,6 +67,7 @@ from seektalent.models import (
     ResumeCandidate,
     QueryTermCandidate,
     QueryRole,
+    QueryOutcomeClassification,
     ReflectionContext,
     RuntimeConstraint,
     RoundState,
@@ -1101,6 +1103,51 @@ class WorkflowRuntime:
                 row["snapshot_sha256"] = None
                 row["snapshot_missing_reason"] = "raw_payload_unavailable"
         self.flywheel_store.record_query_resume_hits(hit_rows)
+        persisted_hits = self.flywheel_store.query_hits_for_run_round(
+            run_id=tracer.run_id,
+            round_no=query_resume_hits[0].round_no if query_resume_hits else 0,
+        )
+        outcome_rows = build_runtime_query_outcome_rows_from_hits(
+            run_id=tracer.run_id,
+            hits=persisted_hits,
+            thresholds_payload=QueryOutcomeThresholds().model_dump(mode="json"),
+        )
+        covered_query_ids = {str(row["query_instance_id"]) for row in outcome_rows}
+        thresholds_payload = QueryOutcomeThresholds().model_dump(mode="json")
+        for record in sent_query_records:
+            if record.query_instance_id is None or record.query_fingerprint is None:
+                continue
+            if record.query_instance_id in covered_query_ids:
+                continue
+            outcome_rows.append(
+                build_runtime_query_outcome_row(
+                    run_id=tracer.run_id,
+                    query_instance_id=record.query_instance_id,
+                    query_fingerprint=record.query_fingerprint,
+                    round_no=record.round_no,
+                    lane_type=str(record.lane_type or "exploit"),
+                    provider_returned_count=0,
+                    new_unique_resume_count=0,
+                    duplicate_count=0,
+                    scored_resume_count=0,
+                    new_fit_count=0,
+                    must_have_match_scores=[],
+                    risk_scores=[],
+                    off_intent_reason_count=0,
+                    classification=QueryOutcomeClassification(
+                        primary_label="zero_recall",
+                        labels=["zero_recall"],
+                        reasons=["provider_returned_count == 0"],
+                    ),
+                    thresholds_payload=thresholds_payload,
+                )
+            )
+        self.flywheel_store.record_query_outcomes(outcome_rows)
+        materialize_flywheel_run_artifacts(
+            session=tracer.session,
+            store=self.flywheel_store,
+            run_id=tracer.run_id,
+        )
 
     def _logical_query_summaries(self, query_states: list[LogicalQueryState]) -> list[dict[str, object]]:
         return [
