@@ -478,6 +478,13 @@ class FlywheelStore:
         )
         self.connect().commit()
 
+    def resume_snapshot_exists(self, snapshot_sha256: str) -> bool:
+        row = self.connect().execute(
+            "SELECT 1 FROM resume_snapshots WHERE snapshot_sha256 = ?",
+            (snapshot_sha256,),
+        ).fetchone()
+        return row is not None
+
     def start_run(
         self,
         *,
@@ -571,6 +578,168 @@ class FlywheelStore:
         )
         self.connect().commit()
         return artifact_ref_id
+
+    def complete_run(self, *, run_id: str, status: str, failure_summary: str | None = None) -> None:
+        self.connect().execute(
+            """
+            UPDATE runs
+            SET status = ?, failure_summary = ?, completed_at = ?
+            WHERE run_id = ?
+            """,
+            (status, failure_summary, utc_now(), run_id),
+        )
+        self.connect().commit()
+
+    def record_run_queries(self, rows: list[dict[str, object]]) -> None:
+        if not rows:
+            return
+        now = utc_now()
+        values = [
+            (
+                row["run_id"],
+                row["query_instance_id"],
+                row["query_fingerprint"],
+                row["round_no"],
+                row["lane_type"],
+                row.get("query_role"),
+                row["canonical_query_spec_json"],
+                row["query_spec_schema_version"],
+                row["query_policy_version"],
+                row["job_intent_fingerprint"],
+                row["provider_name"],
+                row["rendered_provider_query"],
+                row["keyword_query"],
+                row["query_terms_json"],
+                row["filters_json"],
+                row.get("location_key"),
+                row.get("batch_no"),
+                row.get("source_plan_version"),
+                row.get("selected_prf_expression"),
+                row.get("accepted_prf_term_family_id"),
+                row.get("fallback_reason"),
+                row.get("artifact_ref_id"),
+                now,
+            )
+            for row in rows
+        ]
+        conn = self.connect()
+        with conn:
+            conn.executemany(
+                """
+                INSERT INTO run_queries (
+                    run_id, query_instance_id, query_fingerprint, round_no,
+                    lane_type, query_role, canonical_query_spec_json,
+                    query_spec_schema_version, query_policy_version,
+                    job_intent_fingerprint, provider_name, rendered_provider_query,
+                    keyword_query, query_terms_json, filters_json, location_key,
+                    batch_no, source_plan_version, selected_prf_expression,
+                    accepted_prf_term_family_id, fallback_reason, artifact_ref_id,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(run_id, query_instance_id) DO UPDATE SET
+                    query_fingerprint = excluded.query_fingerprint,
+                    round_no = excluded.round_no,
+                    lane_type = excluded.lane_type,
+                    query_role = excluded.query_role,
+                    canonical_query_spec_json = excluded.canonical_query_spec_json,
+                    query_spec_schema_version = excluded.query_spec_schema_version,
+                    query_policy_version = excluded.query_policy_version,
+                    job_intent_fingerprint = excluded.job_intent_fingerprint,
+                    provider_name = excluded.provider_name,
+                    rendered_provider_query = excluded.rendered_provider_query,
+                    keyword_query = excluded.keyword_query,
+                    query_terms_json = excluded.query_terms_json,
+                    filters_json = excluded.filters_json,
+                    location_key = excluded.location_key,
+                    batch_no = excluded.batch_no,
+                    source_plan_version = excluded.source_plan_version,
+                    selected_prf_expression = excluded.selected_prf_expression,
+                    accepted_prf_term_family_id = excluded.accepted_prf_term_family_id,
+                    fallback_reason = excluded.fallback_reason,
+                    artifact_ref_id = excluded.artifact_ref_id
+                """,
+                values,
+            )
+
+    def record_query_resume_hits(self, rows: list[dict[str, object]]) -> None:
+        if not rows:
+            return
+        now = utc_now()
+        values = [
+            (
+                row["run_id"],
+                row["query_instance_id"],
+                row["query_fingerprint"],
+                row["hit_sequence_no"],
+                row.get("snapshot_sha256"),
+                row.get("snapshot_missing_reason"),
+                row["resume_id"],
+                row["round_no"],
+                row["lane_type"],
+                row.get("location_key"),
+                row.get("location_type"),
+                row["batch_no"],
+                row["rank_in_query"],
+                row.get("rank_global_in_query"),
+                row["provider_name"],
+                row.get("provider_page_no"),
+                row.get("provider_fetch_no"),
+                row.get("provider_score_if_any"),
+                row.get("dedup_key"),
+                int(bool(row["was_new_to_pool"])),
+                int(bool(row["was_duplicate"])),
+                row.get("scored_fit_bucket"),
+                row.get("overall_score"),
+                row.get("must_have_match_score"),
+                row.get("risk_score"),
+                row.get("off_intent_reason_count") or 0,
+                row.get("final_candidate_status"),
+                now,
+            )
+            for row in rows
+        ]
+        conn = self.connect()
+        with conn:
+            conn.executemany(
+                """
+                INSERT INTO query_resume_hits (
+                    run_id, query_instance_id, query_fingerprint, hit_sequence_no,
+                    snapshot_sha256, snapshot_missing_reason, resume_id, round_no,
+                    lane_type, location_key, location_type, batch_no, rank_in_query,
+                    rank_global_in_query, provider_name, provider_page_no,
+                    provider_fetch_no, provider_score_if_any, dedup_key,
+                    was_new_to_pool, was_duplicate, scored_fit_bucket,
+                    overall_score, must_have_match_score, risk_score,
+                    off_intent_reason_count, final_candidate_status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(run_id, query_instance_id, hit_sequence_no) DO UPDATE SET
+                    query_fingerprint = excluded.query_fingerprint,
+                    snapshot_sha256 = excluded.snapshot_sha256,
+                    snapshot_missing_reason = excluded.snapshot_missing_reason,
+                    resume_id = excluded.resume_id,
+                    round_no = excluded.round_no,
+                    lane_type = excluded.lane_type,
+                    location_key = excluded.location_key,
+                    location_type = excluded.location_type,
+                    batch_no = excluded.batch_no,
+                    rank_in_query = excluded.rank_in_query,
+                    rank_global_in_query = excluded.rank_global_in_query,
+                    provider_name = excluded.provider_name,
+                    provider_page_no = excluded.provider_page_no,
+                    provider_fetch_no = excluded.provider_fetch_no,
+                    provider_score_if_any = excluded.provider_score_if_any,
+                    dedup_key = excluded.dedup_key,
+                    was_new_to_pool = excluded.was_new_to_pool,
+                    was_duplicate = excluded.was_duplicate,
+                    scored_fit_bucket = excluded.scored_fit_bucket,
+                    overall_score = excluded.overall_score,
+                    must_have_match_score = excluded.must_have_match_score,
+                    risk_score = excluded.risk_score,
+                    off_intent_reason_count = excluded.off_intent_reason_count,
+                    final_candidate_status = excluded.final_candidate_status
+                """,
+                values,
+            )
 
     def record_judge_label(
         self,

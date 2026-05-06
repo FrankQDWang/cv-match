@@ -48,6 +48,8 @@ from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.core.retrieval.service import RetrievalService
 from seektalent.evaluation import TOP_K, AsyncJudgeLimiter, EvaluationResult, evaluate_run
 from seektalent.finalize.finalizer import Finalizer
+from seektalent.flywheel.runtime import build_run_query_rows, query_hit_rows_from_hits
+from seektalent.flywheel.store import FlywheelStore
 from seektalent.llm import preflight_models, resolve_stage_model_config
 from seektalent.models import (
     CTSQuery,
@@ -94,6 +96,7 @@ from seektalent.retrieval import (
     build_round_retrieval_plan,
 )
 from seektalent.retrieval.query_identity import build_job_intent_fingerprint
+from seektalent.resumes.snapshots import canonical_resume_snapshot_payload
 from seektalent.resume_quality import ResumeQualityCommenter
 from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime import controller_runtime
@@ -293,6 +296,9 @@ class WorkflowRuntime:
             retrieval_service=retrieval_service,
         )
         self.retrieval_service = retrieval_service
+        self.flywheel_store = FlywheelStore(settings.flywheel_path)
+        self._active_flywheel_task_id: str | None = None
+        self._active_flywheel_run_id: str | None = None
 
     @property
     def retrieval_service(self) -> RetrievalService:
@@ -328,6 +334,7 @@ class WorkflowRuntime:
         close_status = "completed"
         close_failure_summary: str | None = None
         try:
+            self._start_flywheel_run(tracer=tracer, job_title=job_title, jd=jd, notes=notes)
             self._write_run_preamble(tracer=tracer, job_title=job_title, jd=jd, notes=notes)
             self._emit_progress(
                 progress_callback,
@@ -448,6 +455,15 @@ class WorkflowRuntime:
             )
             raise
         finally:
+            if self._active_flywheel_run_id == tracer.run_id:
+                self.flywheel_store.complete_run(
+                    run_id=tracer.run_id,
+                    status=close_status,
+                    failure_summary=close_failure_summary,
+                )
+                self._active_flywheel_run_id = None
+                self._active_flywheel_task_id = None
+            self.flywheel_store.close()
             tracer.close(status=close_status, failure_summary=close_failure_summary)
 
     async def _build_run_state(
@@ -506,6 +522,35 @@ class WorkflowRuntime:
                 "configured_providers": self._configured_providers(),
             },
         )
+
+    def _start_flywheel_run(self, *, tracer: RunTracer, job_title: str, jd: str, notes: str) -> None:
+        task_id = self.flywheel_store.upsert_task(job_title=job_title, jd_text=jd, notes_text=notes)
+        manifest_ref_id = self.flywheel_store.record_artifact_ref(
+            artifact_kind=tracer.session.manifest.artifact_kind.value,
+            artifact_id=tracer.run_id,
+            artifact_root=str(tracer.run_dir),
+            logical_name="manifest.run",
+            relative_path="manifests/run_manifest.json",
+            content_sha256=None,
+            schema_version=tracer.session.manifest.manifest_schema_version,
+        )
+        config_payload = self._build_public_run_config()
+        self.flywheel_store.start_run(
+            run_id=tracer.run_id,
+            task_id=task_id,
+            version=tracer.session.manifest.producer_version,
+            git_sha=tracer.session.manifest.git_sha,
+            artifact_ref_id=manifest_ref_id,
+            artifact_root=str(tracer.run_dir),
+            config_hash=json_sha256(config_payload),
+            config_payload=config_payload,
+            status="running",
+            eval_enabled=self.settings.enable_eval,
+            benchmark_id=None,
+            benchmark_case_id=None,
+        )
+        self._active_flywheel_task_id = task_id
+        self._active_flywheel_run_id = tracer.run_id
 
     async def _run_rounds(
         self,
@@ -776,6 +821,14 @@ class WorkflowRuntime:
                     query_resume_hits=query_resume_hits,
                     scorecards_by_resume_id=run_state.scorecards_by_resume_id,
                 )
+                self._record_flywheel_retrieval_rows(
+                    tracer=tracer,
+                    run_state=run_state,
+                    cts_queries=cts_queries,
+                    sent_query_records=sent_query_records,
+                    query_resume_hits=query_resume_hits,
+                    job_intent_fingerprint=job_intent_fingerprint,
+                )
                 replay_snapshot = build_replay_snapshot_direct(
                     run_id=tracer.run_id,
                     round_no=round_no,
@@ -982,6 +1035,72 @@ class WorkflowRuntime:
             f"round.{round_no:02d}.retrieval.query_resume_hits",
             [item.model_dump(mode="json") for item in query_resume_hits],
         )
+
+    def _record_flywheel_retrieval_rows(
+        self,
+        *,
+        tracer: RunTracer,
+        run_state: RunState,
+        cts_queries: list[CTSQuery],
+        sent_query_records: list[SentQueryRecord],
+        query_resume_hits: list[QueryResumeHit],
+        job_intent_fingerprint: str,
+    ) -> None:
+        if self._active_flywheel_run_id != tracer.run_id:
+            return
+
+        canonical_query_specs: dict[str, dict[str, object]] = {}
+        for query in cts_queries:
+            if query.query_instance_id is None or query.query_instance_id in canonical_query_specs:
+                continue
+            canonical_query_specs[query.query_instance_id] = {
+                "lane_type": query.lane_type,
+                "query_role": query.query_role,
+                "query_terms": query.query_terms,
+                "keyword_query": query.keyword_query,
+                "provider_filters": query.native_filters,
+                "rendered_provider_query": query.keyword_query,
+                "provider_name": "cts",
+                "page": query.page,
+                "page_size": query.page_size,
+            }
+
+        query_rows = build_run_query_rows(
+            run_id=tracer.run_id,
+            artifact_id=tracer.run_id,
+            sent_query_records=sent_query_records,
+            canonical_query_specs=canonical_query_specs,
+            job_intent_fingerprint=job_intent_fingerprint,
+            query_policy_version="typed-second-lane-v1",
+        )
+        self.flywheel_store.record_run_queries(query_rows)
+
+        available_snapshot_hashes: set[str] = set()
+        for hit in query_resume_hits:
+            if not hit.snapshot_sha256:
+                continue
+            candidate = run_state.candidate_store.get(hit.resume_id)
+            if candidate is None:
+                if self.flywheel_store.resume_snapshot_exists(hit.snapshot_sha256):
+                    available_snapshot_hashes.add(hit.snapshot_sha256)
+                continue
+            snapshot_payload = canonical_resume_snapshot_payload(candidate.raw)
+            self.flywheel_store.upsert_resume_snapshot(
+                snapshot_sha256=hit.snapshot_sha256,
+                source_resume_id=candidate.source_resume_id or candidate.resume_id,
+                dedup_key=candidate.dedup_key,
+                raw_payload=snapshot_payload,
+                normalized_preview={"search_text": candidate.search_text},
+            )
+            available_snapshot_hashes.add(hit.snapshot_sha256)
+
+        hit_rows = query_hit_rows_from_hits(query_resume_hits)
+        for row in hit_rows:
+            snapshot_hash = row.get("snapshot_sha256")
+            if snapshot_hash and snapshot_hash not in available_snapshot_hashes:
+                row["snapshot_sha256"] = None
+                row["snapshot_missing_reason"] = "raw_payload_unavailable"
+        self.flywheel_store.record_query_resume_hits(hit_rows)
 
     def _logical_query_summaries(self, query_states: list[LogicalQueryState]) -> list[dict[str, object]]:
         return [

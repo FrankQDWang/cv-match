@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sqlite3
 from pathlib import Path
 from tempfile import mkdtemp
 from types import SimpleNamespace
@@ -1630,6 +1631,50 @@ def test_query_resume_hits_are_enriched_after_scoring(tmp_path: Path) -> None:
     assert hit["risk_score"] is not None
     assert hit["off_intent_reason_count"] == 0
     assert hit["final_candidate_status"] == "fit"
+
+
+def test_runtime_populates_flywheel_run_query_and_hit_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SEEKTALENT_TEXT_LLM_API_KEY", "test-key")
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        min_rounds=1,
+        max_rounds=1,
+        enable_eval=False,
+    )
+    runtime = WorkflowRuntime(settings)
+    _install_runtime_stubs(runtime, controller=StubController(), resume_scorer=StubScorer())
+    job_title, jd, notes = _sample_inputs()
+
+    artifacts = runtime.run(job_title=job_title, jd=jd, notes=notes)
+
+    conn = sqlite3.connect(settings.flywheel_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        run_row = conn.execute("SELECT * FROM runs WHERE run_id = ?", (artifacts.run_id,)).fetchone()
+        query_rows = conn.execute(
+            "SELECT * FROM run_queries WHERE run_id = ? ORDER BY round_no, batch_no",
+            (artifacts.run_id,),
+        ).fetchall()
+        hit_rows = conn.execute(
+            "SELECT * FROM query_resume_hits WHERE run_id = ? ORDER BY hit_sequence_no",
+            (artifacts.run_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert run_row["status"] == "completed"
+    assert run_row["artifact_root"] == str(artifacts.run_dir)
+    assert query_rows
+    assert json.loads(query_rows[0]["canonical_query_spec_json"])["provider_name"] == "cts"
+    assert query_rows[0]["rendered_provider_query"] == query_rows[0]["keyword_query"]
+    assert hit_rows
+    assert hit_rows[0]["snapshot_sha256"]
+    assert hit_rows[0]["final_candidate_status"] == "fit"
 
 
 def test_replay_snapshot_contains_provider_snapshot_and_versions(tmp_path: Path) -> None:

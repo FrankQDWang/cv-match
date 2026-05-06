@@ -492,6 +492,9 @@ class QueryResumeHit(BaseModel):
     run_id: str
     query_instance_id: str
     query_fingerprint: str
+    hit_sequence_no: int
+    snapshot_sha256: str | None = None
+    snapshot_missing_reason: str | None = None
     resume_id: str
     round_no: int
     lane_type: LaneType
@@ -499,6 +502,7 @@ class QueryResumeHit(BaseModel):
     location_type: str | None = None
     batch_no: int
     rank_in_query: int
+    rank_global_in_query: int | None = None
     provider_name: str
     provider_page_no: int | None = None
     provider_fetch_no: int | None = None
@@ -507,9 +511,9 @@ class QueryResumeHit(BaseModel):
     was_new_to_pool: bool
     was_duplicate: bool
     scored_fit_bucket: FitBucket | None = None
-    overall_score: int | None = None
-    must_have_match_score: int | None = None
-    risk_score: int | None = None
+    overall_score: float | None = None
+    must_have_match_score: float | None = None
+    risk_score: float | None = None
     off_intent_reason_count: int = 0
     final_candidate_status: str | None = None
 

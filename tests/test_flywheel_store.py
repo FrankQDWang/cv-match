@@ -136,6 +136,104 @@ def test_query_hits_require_snapshot_or_missing_reason(tmp_path: Path) -> None:
         store.close()
 
 
+def test_store_records_run_queries_and_hits_with_timestamps(tmp_path: Path) -> None:
+    store = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    try:
+        task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD", notes_text="")
+        store.start_run(
+            run_id="run-1",
+            task_id=task_id,
+            version="0.6.2",
+            git_sha="abc123",
+            artifact_ref_id=None,
+            artifact_root=str(tmp_path / "artifacts/runs/run-1"),
+            config_hash="config-hash",
+            config_payload={"mock_cts": True},
+            status="running",
+            eval_enabled=False,
+            benchmark_id=None,
+            benchmark_case_id=None,
+        )
+        store.upsert_resume_snapshot(
+            snapshot_sha256="snapshot-1",
+            source_resume_id="resume-1",
+            dedup_key="resume-1",
+            raw_payload={"resume_id": "resume-1"},
+            normalized_preview={"search_text": "agent"},
+        )
+
+        store.record_run_queries(
+            [
+                {
+                    "run_id": "run-1",
+                    "query_instance_id": "query-1",
+                    "query_fingerprint": "fingerprint-1",
+                    "round_no": 1,
+                    "lane_type": "exploit",
+                    "query_role": "exploit",
+                    "canonical_query_spec_json": canonical_json({"lane_type": "exploit"}),
+                    "query_spec_schema_version": "canonical-query-spec-v1",
+                    "query_policy_version": "query-policy-v1",
+                    "job_intent_fingerprint": "intent-1",
+                    "provider_name": "cts",
+                    "rendered_provider_query": "agent",
+                    "keyword_query": "agent",
+                    "query_terms_json": canonical_json(["agent"]),
+                    "filters_json": canonical_json({}),
+                    "location_key": "上海",
+                    "batch_no": 1,
+                    "source_plan_version": "1",
+                    "selected_prf_expression": None,
+                    "accepted_prf_term_family_id": None,
+                    "fallback_reason": None,
+                    "artifact_ref_id": None,
+                }
+            ]
+        )
+        store.record_query_resume_hits(
+            [
+                {
+                    "run_id": "run-1",
+                    "query_instance_id": "query-1",
+                    "query_fingerprint": "fingerprint-1",
+                    "hit_sequence_no": 1,
+                    "snapshot_sha256": "snapshot-1",
+                    "snapshot_missing_reason": None,
+                    "resume_id": "resume-1",
+                    "round_no": 1,
+                    "lane_type": "exploit",
+                    "location_key": "上海",
+                    "location_type": "city",
+                    "batch_no": 1,
+                    "rank_in_query": 1,
+                    "rank_global_in_query": 1,
+                    "provider_name": "cts",
+                    "provider_page_no": 1,
+                    "provider_fetch_no": 1,
+                    "provider_score_if_any": None,
+                    "dedup_key": "resume-1",
+                    "was_new_to_pool": True,
+                    "was_duplicate": False,
+                    "scored_fit_bucket": None,
+                    "overall_score": None,
+                    "must_have_match_score": None,
+                    "risk_score": None,
+                    "off_intent_reason_count": 0,
+                    "final_candidate_status": None,
+                }
+            ]
+        )
+
+        conn = store.connect()
+        query_row = conn.execute("SELECT * FROM run_queries WHERE query_instance_id = 'query-1'").fetchone()
+        hit_row = conn.execute("SELECT * FROM query_resume_hits WHERE resume_id = 'resume-1'").fetchone()
+        assert query_row["created_at"].endswith("Z")
+        assert hit_row["created_at"].endswith("Z")
+        assert hit_row["snapshot_sha256"] == "snapshot-1"
+    finally:
+        store.close()
+
+
 def test_judge_label_cache_uses_contract_hash(tmp_path: Path) -> None:
     store = FlywheelStore(tmp_path / "flywheel.sqlite3")
     try:

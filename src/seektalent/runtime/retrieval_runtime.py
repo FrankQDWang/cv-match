@@ -32,6 +32,7 @@ from seektalent.models import (
     unique_strings,
 )
 from seektalent.providers.cts.query_builder import CTSQueryBuildInput, build_cts_query
+from seektalent.resumes.snapshots import snapshot_sha256
 from seektalent.retrieval import allocate_balanced_city_targets, serialize_keyword_query
 from seektalent.retrieval.query_identity import build_query_fingerprint, build_query_instance_id
 from seektalent.runtime.runtime_diagnostics import classify_query_outcome
@@ -633,6 +634,7 @@ class RetrievalRuntime:
         attempts: list[SearchAttempt] = []
         raw_candidate_count = 0
         duplicate_count = 0
+        emitted_hit_count = 0
         adapter_notes: list[str] = []
         cumulative_latency_ms = 0
         consecutive_zero_gain_attempts = 0
@@ -685,11 +687,16 @@ class RetrievalRuntime:
             for rank_in_batch, candidate in enumerate(fetch_result.candidates, start=1):
                 was_new_to_pool = candidate.dedup_key not in local_seen_keys and candidate.resume_id not in seen_resume_ids
                 if record_resume_hit is not None:
+                    emitted_hit_count += 1
+                    snapshot_hash = candidate.snapshot_sha256 or snapshot_sha256(candidate.raw)
                     record_resume_hit(
                         QueryResumeHit(
                             run_id=tracer.run_id,
                             query_instance_id=query.query_instance_id or "",
                             query_fingerprint=query.query_fingerprint or "",
+                            hit_sequence_no=emitted_hit_count,
+                            snapshot_sha256=snapshot_hash,
+                            snapshot_missing_reason=None,
                             resume_id=candidate.resume_id,
                             round_no=round_no,
                             lane_type=query.lane_type or "exploit",
@@ -697,6 +704,7 @@ class RetrievalRuntime:
                             location_type=location_type,
                             batch_no=effective_batch_no,
                             rank_in_query=rank_offset + rank_in_batch,
+                            rank_global_in_query=rank_offset + rank_in_batch,
                             provider_name="cts",
                             provider_page_no=page,
                             provider_fetch_no=attempt_no,
