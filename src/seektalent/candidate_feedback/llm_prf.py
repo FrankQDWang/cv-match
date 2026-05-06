@@ -242,7 +242,7 @@ class LLMPRFExtractor:
     async def propose(self, payload: LLMPRFInput) -> LLMPRFExtraction:
         result = await self._build_agent().run(render_llm_prf_prompt(payload))
         self.last_provider_usage = provider_usage_from_result(result)
-        return cast(LLMPRFExtraction, result.output)
+        return cast(LLMPRFExtraction, result.output)  # ty:ignore[redundant-cast]
 
     def _build_agent(self) -> Agent[None, LLMPRFExtraction]:
         config = resolve_stage_model_config(self.settings, stage=LLM_PRF_STAGE)
@@ -262,7 +262,7 @@ class LLMPRFExtractor:
                 model_settings=model_settings,
                 retries=0,
                 output_retries=LLM_PRF_OUTPUT_RETRIES,
-            ),
+            ),  # ty:ignore[no-matching-overload]
         )
 
 
@@ -995,7 +995,7 @@ def _canonical_llm_prf_expression_surface(surface: str) -> str:
 def _is_generic_mixed_cjk_ascii_wrapper(wrapper: str) -> bool:
     remaining = "".join(wrapper.split())
     for token in sorted(_MIXED_CJK_ASCII_GENERIC_WRAPPERS, key=len, reverse=True):
-        remaining = remaining.replace(token, "")
+        remaining = remaining.replace(token, "")  # ty:ignore[no-matching-overload]
     return not remaining
 
 

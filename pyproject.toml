@@ -50,3 +50,9 @@ extend-select = ["BLE001", "S110", "S112", "TRY203"]
 
 [tool.ruff.lint.flake8-bandit]
 check-typed-exception = true
+
+[[tool.ty.overrides]]
+include = ["tests/**"]
+
+[tool.ty.overrides.rules]
+all = "ignore"

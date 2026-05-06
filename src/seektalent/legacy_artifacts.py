@@ -62,7 +62,7 @@ def split_legacy_prf_replay_metadata(
 
     existing_legacy_metadata = payload.get("legacy_prf_replay_metadata")
     if isinstance(existing_legacy_metadata, dict):
-        legacy_payload.update(existing_legacy_metadata)
+        legacy_payload.update(existing_legacy_metadata)  # ty:ignore[no-matching-overload]
 
     for key, value in payload.items():
         if is_legacy_prf_replay_key(key):

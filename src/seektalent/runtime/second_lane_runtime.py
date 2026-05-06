@@ -59,7 +59,7 @@ def build_second_lane_decision(
                 reject_reasons=["round_one_or_anchor_only"],
                 no_fetch_reason="single_lane_round",
                 prf_policy_version="unavailable",
-                **llm_prf_metadata,
+                **llm_prf_metadata,  # ty:ignore[invalid-argument-type]
             ),
             None,
         )
@@ -90,7 +90,7 @@ def build_second_lane_decision(
                 prf_seed_resume_ids=list(prf_decision.gate_input.seed_resume_ids),
                 prf_candidate_expression_count=prf_decision.gate_input.candidate_expression_count,
                 prf_policy_version=prf_decision.gate_input.policy_version,
-                **llm_prf_metadata,
+                **llm_prf_metadata,  # ty:ignore[invalid-argument-type]
             ),
             query_state,
         )
@@ -116,7 +116,7 @@ def build_second_lane_decision(
                 no_fetch_reason="no_generic_explore_query",
                 prf_policy_version=prf_policy_version,
                 generic_explore_version="v1",
-                **llm_prf_metadata,
+                **llm_prf_metadata,  # ty:ignore[invalid-argument-type]
             ),
             None,
         )

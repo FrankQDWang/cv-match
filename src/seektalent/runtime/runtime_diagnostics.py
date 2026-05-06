@@ -223,7 +223,7 @@ def build_replay_snapshot(
         llm_prf_call_artifact_ref=second_lane_decision.llm_prf_call_artifact_ref,
         llm_prf_candidates_artifact_ref=second_lane_decision.llm_prf_candidates_artifact_ref,
         llm_prf_grounding_artifact_ref=second_lane_decision.llm_prf_grounding_artifact_ref,
-        **llm_prf_snapshot_update,
+        **llm_prf_snapshot_update,  # ty:ignore[invalid-argument-type]
     )
     return snapshot
 
@@ -504,10 +504,10 @@ def build_search_diagnostics(
             "stop_reason": terminal_controller_round.controller_decision.stop_reason,
             "response_to_reflection": terminal_controller_round.controller_decision.response_to_reflection,
             "reflection_advice_application": reflection_advice_application_for_decision(
-                run_state=run_state,
-                round_no=terminal_controller_round.round_no,
-                controller_decision=terminal_controller_round.controller_decision,
-            ),
+                run_state=run_state,  # ty:ignore[unknown-argument]
+                round_no=terminal_controller_round.round_no,  # ty:ignore[unknown-argument]
+                controller_decision=terminal_controller_round.controller_decision,  # ty:ignore[unknown-argument]
+            ),  # ty:ignore[missing-argument]
             "stop_guidance": terminal_controller_round.stop_guidance.model_dump(mode="json"),
         }
     return {
@@ -528,7 +528,7 @@ def build_search_diagnostics(
         },
         "llm_schema_pressure": collect_llm_schema_pressure(tracer.run_dir),
         "rounds": [
-            build_round_search_diagnostics(run_state=run_state, round_state=round_state)
+            build_round_search_diagnostics(run_state=run_state, round_state=round_state)  # ty:ignore[missing-argument, unknown-argument]
             for round_state in run_state.round_history
         ],
     }

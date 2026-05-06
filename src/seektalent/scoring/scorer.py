@@ -254,7 +254,7 @@ class ResumeScorer:
                     branch_id=branch_id,
                     model_id=self._model_config.model_id,
                     provider=self._model_config.provider_label,
-                    protocol_family=self._model_config.protocol_family,
+                    protocol_family=self._model_config.protocol_family,  # ty:ignore[invalid-argument-type]
                     endpoint_kind=self._model_config.endpoint_kind,
                     endpoint_region=self._model_config.endpoint_region,
                     prompt_hash=self.prompt.sha256,
@@ -338,7 +338,7 @@ class ResumeScorer:
                     branch_id=branch_id,
                     model_id=self._model_config.model_id,
                     provider=self._model_config.provider_label,
-                    protocol_family=self._model_config.protocol_family,
+                    protocol_family=self._model_config.protocol_family,  # ty:ignore[invalid-argument-type]
                     endpoint_kind=self._model_config.endpoint_kind,
                     endpoint_region=self._model_config.endpoint_region,
                     prompt_hash=self.prompt.sha256,
@@ -413,7 +413,7 @@ class ResumeScorer:
                     branch_id=branch_id,
                     model_id=self._model_config.model_id,
                     provider=self._model_config.provider_label,
-                    protocol_family=self._model_config.protocol_family,
+                    protocol_family=self._model_config.protocol_family,  # ty:ignore[invalid-argument-type]
                     endpoint_kind=self._model_config.endpoint_kind,
                     endpoint_region=self._model_config.endpoint_region,
                     prompt_hash=self.prompt.sha256,

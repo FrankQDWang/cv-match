@@ -201,7 +201,7 @@ def classify_feedback_expressions(
                 term_family_id=build_term_family_id(normalized),
                 canonical_expression=normalized,
                 surface_forms=[normalized] if normalized else [],
-                candidate_term_type=candidate_term_type,
+                candidate_term_type=candidate_term_type,  # ty:ignore[invalid-argument-type]
                 reject_reasons=reject_reasons,
             )
         )

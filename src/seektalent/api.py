@@ -65,7 +65,7 @@ def _install_run_tracer_patch() -> None:
             return
         from seektalent.runtime import orchestrator as orchestrator_module
 
-        orchestrator_module.RunTracer = _InjectedSessionRunTracer
+        orchestrator_module.RunTracer = _InjectedSessionRunTracer  # ty:ignore[invalid-assignment]
         _TRACER_PATCHED = True
 
 
@@ -95,7 +95,7 @@ def _effective_settings(
         if workspace_root is None:
             return settings
         return settings.with_overrides(workspace_root=str(workspace_root))
-    return AppSettings(  # ty: ignore[unknown-argument]
+    return AppSettings(
         _env_file=env_file,
         workspace_root=str(workspace_root) if workspace_root else None,
     )

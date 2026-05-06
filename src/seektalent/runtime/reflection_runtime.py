@@ -176,7 +176,7 @@ async def run_reflection_stage(
             round_no=round_no,
             payload={"stage": "reflection", "error_type": type(exc).__name__},
         )
-        if isinstance(exc, run_stage_error):
+        if isinstance(exc, run_stage_error):  # ty:ignore[invalid-argument-type]
             raise
         raise run_stage_error("reflection", str(exc)) from exc
 

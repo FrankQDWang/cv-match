@@ -489,7 +489,7 @@ class AppSettings(BaseSettings):
             data["runs_dir"] = None
         if reset_llm_cache_dir:
             data["llm_cache_dir"] = None
-        settings = type(self)(_env_file=None, **{**data, **filtered})  # ty: ignore[unknown-argument]
+        settings = type(self)(_env_file=None, **{**data, **filtered})
         if reset_artifacts_dir:
             settings.model_fields_set.discard("artifacts_dir")
         if reset_runs_dir:

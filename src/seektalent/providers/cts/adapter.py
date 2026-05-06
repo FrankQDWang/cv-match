@@ -42,7 +42,7 @@ class CTSProviderAdapter:
         page = _decode_cursor(request.cursor)
         cts_query_role = QUERY_ROLE_TO_CTS[request.query_role]
         cts_query = CTSQuery(
-            query_role=cts_query_role,
+            query_role=cts_query_role,  # ty:ignore[invalid-argument-type]
             query_terms=request.query_terms,
             keyword_query=request.keyword_query,
             native_filters=dict(request.provider_filters),

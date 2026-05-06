@@ -296,7 +296,7 @@ def _build_settings(args: argparse.Namespace) -> AppSettings:
         "artifacts_dir": str(artifacts_root) if artifacts_root is not None else None,
         "runs_dir": str(output_path) if output_path is not None else None,
     }
-    return AppSettings(_env_file=args.env_file).with_overrides(**overrides)  # ty: ignore[unknown-argument]
+    return AppSettings(_env_file=args.env_file).with_overrides(**overrides)
 
 
 def _read_text(*, inline_value: str | None, file_value: str | None, label: str) -> str:
@@ -988,7 +988,7 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         results = [result_rows_by_index[index] for index in sorted(result_rows_by_index)]
         payload, summary_path, _ = _finalize_benchmark_execution(
             benchmark_session=benchmark_session,
-            benchmark_metadata=benchmark_metadata,
+            benchmark_metadata=benchmark_metadata,  # ty:ignore[invalid-argument-type]
             case_runs=all_case_runs,
             results=results,
         )
@@ -1091,7 +1091,7 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     results = [result_rows_by_index[index] for index in sorted(result_rows_by_index)]
     payload, summary_path, has_failed_rows = _finalize_benchmark_execution(
         benchmark_session=benchmark_session,
-        benchmark_metadata=benchmark_metadata,
+        benchmark_metadata=benchmark_metadata,  # ty:ignore[invalid-argument-type]
         case_runs=all_case_runs,
         results=results,
     )

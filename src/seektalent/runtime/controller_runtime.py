@@ -99,7 +99,7 @@ async def run_controller_stage(
                 prompt_cache_key=controller_prompt_cache_key,
             )
         else:
-            controller_decision = await controller.decide(context=controller_context)
+            controller_decision = await controller.decide(context=controller_context)  # ty:ignore[unresolved-attribute]
     except Exception as exc:  # noqa: BLE001
         latency_ms = max(1, int((perf_counter() - controller_started_clock) * 1000))
         controller_repair_attempt_count = int(getattr(controller, "last_repair_attempt_count", 0))

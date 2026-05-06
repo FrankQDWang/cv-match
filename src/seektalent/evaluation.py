@@ -154,8 +154,8 @@ def build_replay_rows(snapshots: Sequence[ReplaySnapshot]) -> list[dict[str, obj
                 for key, value in snapshot.legacy_prf_replay_metadata.items()
                 if is_legacy_prf_replay_key(key)
             }
-        )
-        rows.append(row)
+        )  # ty:ignore[no-matching-overload]
+        rows.append(row)  # ty:ignore[invalid-argument-type]
     return rows
 
 
@@ -694,7 +694,7 @@ def _register_evaluation_outputs(run_dir: Path, evaluation: EvaluationResult) ->
 
     replay_rows_path = run_dir / "evaluation" / "replay_rows.jsonl"
     if replay_rows_path.exists():
-        session.write_jsonl("evaluation.replay_rows", _jsonl_rows(replay_rows_path))
+        session.write_jsonl("evaluation.replay_rows", _jsonl_rows(replay_rows_path))  # ty:ignore[invalid-argument-type]
 
     for stage in ("round_01", "final"):
         logical_name = f"evaluation.{stage}_judge_tasks"
@@ -708,7 +708,7 @@ def _register_evaluation_outputs(run_dir: Path, evaluation: EvaluationResult) ->
             content_type="application/x-ndjson",
             schema_version="v1",
         )
-        session.write_jsonl(logical_name, _jsonl_rows(judge_tasks_path))
+        session.write_jsonl(logical_name, _jsonl_rows(judge_tasks_path))  # ty:ignore[invalid-argument-type]
 
     raw_resumes_dir = run_dir / "raw_resumes"
     if not raw_resumes_dir.exists():

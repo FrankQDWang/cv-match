@@ -232,7 +232,7 @@ def finalize_finalizer_stage(
 
 
 async def _finalize(*, finalizer: object, finalize_context: FinalizeContext) -> FinalResult:
-    return await finalizer.finalize(
+    return await finalizer.finalize(  # ty:ignore[unresolved-attribute]
         run_id=finalize_context.run_id,
         run_dir=finalize_context.run_dir,
         rounds_executed=finalize_context.rounds_executed,

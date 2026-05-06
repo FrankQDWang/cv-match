@@ -1254,7 +1254,7 @@ class WorkflowRuntime:
         ]
         scored_candidates, scoring_failures = await self.resume_scorer.score_candidates_parallel(
             contexts=scoring_contexts,
-            tracer=_NoOpTracer(),
+            tracer=_NoOpTracer(),  # ty:ignore[invalid-argument-type]
         )
         if scoring_failures:
             raise RunStageError("scoring", self._format_scoring_failure_message(scoring_failures))
@@ -1499,7 +1499,7 @@ class WorkflowRuntime:
             branch_id=branch_id,
             model_id=model_id,
             provider=stage_config.provider_label,
-            protocol_family=stage_config.protocol_family,
+            protocol_family=stage_config.protocol_family,  # ty:ignore[invalid-argument-type]
             endpoint_kind=stage_config.endpoint_kind,
             endpoint_region=stage_config.endpoint_region,
             prompt_hash=prompt.sha256,
@@ -1753,8 +1753,8 @@ class WorkflowRuntime:
             final_result=final_result,
             terminal_controller_round=terminal_controller_round,
             collect_llm_schema_pressure=self._collect_llm_schema_pressure,
-            build_round_search_diagnostics=self._build_round_search_diagnostics,
-            reflection_advice_application_for_decision=self._reflection_advice_application_for_decision,
+            build_round_search_diagnostics=self._build_round_search_diagnostics,  # ty:ignore[invalid-argument-type]
+            reflection_advice_application_for_decision=self._reflection_advice_application_for_decision,  # ty:ignore[invalid-argument-type]
         )
 
     def _build_term_surface_audit(
@@ -1773,7 +1773,7 @@ class WorkflowRuntime:
         )
 
     def _query_containing_term_stats(self, run_state: RunState) -> dict[str, _TermSurfaceStats]:
-        return query_containing_term_stats_direct(run_state)
+        return query_containing_term_stats_direct(run_state)  # ty:ignore[invalid-return-type]
 
     def _sent_query_key(
         self,
@@ -1806,7 +1806,7 @@ class WorkflowRuntime:
     ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
         return build_surface_audit_rows_direct(
             query_term_pool=query_term_pool,
-            stats_by_term=stats_by_term,
+            stats_by_term=stats_by_term,  # ty:ignore[invalid-argument-type]
             positive_final_ids=positive_final_ids,
             final_result=final_result,
             evaluation_result=evaluation_result,

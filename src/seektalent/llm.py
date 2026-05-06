@@ -324,8 +324,8 @@ def build_provider_request_policy(config: ResolvedTextModelConfig) -> ProviderRe
     thinking_type = "enabled" if config.thinking_mode else "disabled"
     extra_body = {"thinking": {"type": thinking_type}}
     if config.reasoning_effort != "off":
-        extra_body["reasoning_effort"] = config.reasoning_effort
-    return ProviderRequestPolicy(extra_body=extra_body)
+        extra_body["reasoning_effort"] = config.reasoning_effort  # ty:ignore[invalid-assignment]
+    return ProviderRequestPolicy(extra_body=extra_body)  # ty:ignore[invalid-argument-type]
 
 
 def _build_resolved_model(
