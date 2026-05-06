@@ -327,9 +327,16 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     assert payload["failure_contract"]["stderr_json_fields"] == ["error", "error_type"]
 
 
-def test_corpus_export_command_materializes_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_corpus_export_command_materializes_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    home_dir = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home_dir))
     db_path = tmp_path / ".seektalent" / "corpus.sqlite3"
-    artifacts_root = tmp_path / "artifacts"
+    artifacts_root = home_dir / "corpus-artifacts"
     store = CorpusStore(db_path)
     jd_doc_id = store.upsert_jd_document(
         build_jd_document_row(
@@ -343,6 +350,7 @@ def test_corpus_export_command_materializes_artifact(tmp_path: Path, monkeypatch
         )
     )
     assert jd_doc_id
+    store.close()
 
     result = main(
         [
@@ -350,7 +358,7 @@ def test_corpus_export_command_materializes_artifact(tmp_path: Path, monkeypatch
             "--corpus-db",
             str(db_path),
             "--artifacts-dir",
-            str(artifacts_root),
+            "~/corpus-artifacts",
             "--tenant-id",
             "local",
             "--workspace-id",
@@ -361,10 +369,27 @@ def test_corpus_export_command_materializes_artifact(tmp_path: Path, monkeypatch
     assert result == 0
     export_roots = list((artifacts_root / "corpus").glob("*/*/*/corpus_*"))
     assert export_roots
+    assert not (tmp_path / "~").exists()
     export_manifest = json.loads((export_roots[0] / "corpus/export_manifest.json").read_text(encoding="utf-8"))
     assert export_manifest["corpus_artifact_role"] == "materialized_export"
     assert export_manifest["self_contained"] is False
     assert export_manifest["raw_payload_policy"] == "external_refs_only"
+
+    assert main(
+        [
+            "corpus-export",
+            "--corpus-db",
+            str(db_path),
+            "--artifacts-dir",
+            "runs",
+            "--tenant-id",
+            "local",
+            "--workspace-id",
+            "default",
+        ]
+    ) == 1
+    assert "legacy runs/ root is decommissioned" in capsys.readouterr().err
+    assert not (tmp_path / "runs").exists()
 
 
 def test_archive_legacy_artifacts_command_prints_plan_and_result(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

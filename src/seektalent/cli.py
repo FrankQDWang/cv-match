@@ -1132,8 +1132,12 @@ def _flywheel_export_command(args: argparse.Namespace) -> int:
 
 def _corpus_export_command(args: argparse.Namespace) -> int:
     settings = AppSettings()
-    db_path = Path(args.corpus_db) if args.corpus_db else settings.corpus_path
-    artifacts_root = Path(args.artifacts_dir) if args.artifacts_dir else settings.artifacts_path
+    settings = settings.with_overrides(
+        corpus_db_path=args.corpus_db,
+        artifacts_dir=args.artifacts_dir,
+    )
+    db_path = settings.corpus_path
+    artifacts_root = settings.artifacts_path
     store = CorpusStore(db_path)
     try:
         session = ArtifactStore(artifacts_root).create_root(
