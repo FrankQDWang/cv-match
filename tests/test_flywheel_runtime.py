@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 
 from seektalent.artifacts import ArtifactStore
-from seektalent.flywheel.outcomes import build_query_judge_outcome_rows, build_runtime_query_outcome_row
+from seektalent.flywheel.outcomes import (
+    build_query_judge_outcome_rows,
+    build_rejected_prf_term_event,
+    build_runtime_query_outcome_row,
+)
 from seektalent.flywheel.runtime import build_run_query_rows, materialize_flywheel_run_artifacts, query_hit_rows_from_hits
 from seektalent.flywheel.store import FlywheelStore
 from seektalent.models import QueryOutcomeClassification, QueryResumeHit, SentQueryRecord
@@ -191,3 +195,26 @@ def test_query_judge_outcome_counts_only_new_hits_as_gain() -> None:
 
     assert rows[0]["new_judge_positive_count"] == 0
     assert rows[0]["judged_resume_count"] == 1
+
+
+def test_rejected_prf_term_event_is_not_bound_to_generic_query() -> None:
+    event = build_rejected_prf_term_event(
+        run_id="run-1",
+        proposal_id="proposal-1",
+        prf_decision_id="decision-1",
+        prf_candidate_artifact_ref_id="artifact-candidates",
+        prf_policy_decision_artifact_ref_id="artifact-policy",
+        prf_proposal_extractor_version="llm-prf-v1",
+        prf_familying_version="conservative-family-v1",
+        prf_gate_version="prf-gate-v1",
+        term_surface="Agent工作流",
+        term_family_id="feedback.agent-workflow",
+        round_no=2,
+        reject_reasons=["generic_phrase"],
+        supporting_resume_ids=["r1", "r2"],
+        negative_resume_ids=[],
+    )
+
+    assert event["executed_query_instance_id"] is None
+    assert event["selected_query_instance_id"] is None
+    assert event["source"] == "llm_prf_candidate"

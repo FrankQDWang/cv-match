@@ -1668,6 +1668,10 @@ def test_runtime_populates_flywheel_run_query_and_hit_rows(
             "SELECT * FROM query_outcomes WHERE run_id = ? ORDER BY query_instance_id",
             (artifacts.run_id,),
         ).fetchall()
+        term_event_rows = conn.execute(
+            "SELECT * FROM term_events WHERE run_id = ? ORDER BY term_event_id",
+            (artifacts.run_id,),
+        ).fetchall()
     finally:
         conn.close()
 
@@ -1682,6 +1686,9 @@ def test_runtime_populates_flywheel_run_query_and_hit_rows(
     assert outcome_rows
     assert outcome_rows[0]["artifact_ref_id"]
     assert (artifacts.run_dir / "flywheel/query_outcomes.jsonl").exists()
+    assert term_event_rows
+    assert term_event_rows[0]["executed_query_instance_id"]
+    assert (artifacts.run_dir / "flywheel/term_events.jsonl").exists()
 
 
 def test_replay_snapshot_contains_provider_snapshot_and_versions(tmp_path: Path) -> None:

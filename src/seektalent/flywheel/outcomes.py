@@ -11,6 +11,7 @@ QUERY_OUTCOME_SCHEMA_VERSION = "query-outcome-v1"
 QUERY_OUTCOME_POLICY_VERSION = "query-outcome-policy-v1"
 JUDGE_QUERY_OUTCOME_SCHEMA_VERSION = "query-judge-outcome-v1"
 JUDGE_QUERY_OUTCOME_POLICY_VERSION = "query-judge-outcome-policy-v1"
+TERM_OUTCOME_SCHEMA_VERSION = "term-outcome-v1"
 DEDUPE_VERSION = "dedupe-v1"
 
 
@@ -196,6 +197,89 @@ def build_query_judge_outcome_rows(
                 "primary_label": labels[0],
                 "labels_json": canonical_json(labels),
                 "reasons_json": canonical_json(reasons),
+                "artifact_ref_id": None,
+            }
+        )
+    return rows
+
+
+def build_rejected_prf_term_event(
+    *,
+    run_id: str,
+    proposal_id: str,
+    prf_decision_id: str,
+    prf_candidate_artifact_ref_id: str | None,
+    prf_policy_decision_artifact_ref_id: str | None,
+    prf_proposal_extractor_version: str,
+    prf_familying_version: str,
+    prf_gate_version: str,
+    term_surface: str,
+    term_family_id: str,
+    round_no: int,
+    reject_reasons: list[str],
+    supporting_resume_ids: list[str],
+    negative_resume_ids: list[str],
+) -> dict[str, object]:
+    return {
+        "run_id": run_id,
+        "term_event_id": f"{proposal_id}:{term_family_id}",
+        "proposal_id": proposal_id,
+        "prf_decision_id": prf_decision_id,
+        "prf_candidate_artifact_ref_id": prf_candidate_artifact_ref_id,
+        "prf_policy_decision_artifact_ref_id": prf_policy_decision_artifact_ref_id,
+        "prf_proposal_extractor_version": prf_proposal_extractor_version,
+        "prf_familying_version": prf_familying_version,
+        "prf_gate_version": prf_gate_version,
+        "candidate_query_fingerprint": None,
+        "executed_query_instance_id": None,
+        "selected_query_instance_id": None,
+        "term_surface": term_surface,
+        "term_family_id": term_family_id,
+        "term_role": "prf_candidate",
+        "source": "llm_prf_candidate",
+        "round_no": round_no,
+        "lane_type": "prf_probe",
+        "accepted_by_prf_gate": 0,
+        "prf_reject_reasons_json": canonical_json(reject_reasons),
+        "supporting_resume_ids_json": canonical_json(supporting_resume_ids),
+        "negative_resume_ids_json": canonical_json(negative_resume_ids),
+        "artifact_ref_id": None,
+    }
+
+
+def build_term_outcome_rows(
+    *,
+    term_events: list[dict[str, object]],
+    runtime_outcomes: dict[str, dict[str, object]] | None = None,
+    judge_outcomes: dict[str, dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    runtime_outcomes = runtime_outcomes or {}
+    judge_outcomes = judge_outcomes or {}
+    rows: list[dict[str, object]] = []
+    for event in term_events:
+        query_id = event.get("executed_query_instance_id")
+        runtime_outcome = runtime_outcomes.get(str(query_id)) if query_id is not None else None
+        judge_outcome = judge_outcomes.get(str(query_id)) if query_id is not None else None
+        if judge_outcome is not None:
+            execution_status = "executed_judge_joined"
+        elif runtime_outcome is not None:
+            execution_status = "executed_runtime"
+        else:
+            execution_status = "not_executed"
+        rows.append(
+            {
+                "run_id": event["run_id"],
+                "term_event_id": event["term_event_id"],
+                "term_family_id": event["term_family_id"],
+                "term_outcome_schema_version": TERM_OUTCOME_SCHEMA_VERSION,
+                "term_familying_version": event.get("prf_familying_version") or "query-term-family-v1",
+                "prf_gate_version": event.get("prf_gate_version"),
+                "prf_policy_version": None,
+                "execution_status": execution_status,
+                "runtime_outcome_json": canonical_json(runtime_outcome) if runtime_outcome is not None else None,
+                "judge_outcome_json": canonical_json(judge_outcome) if judge_outcome is not None else None,
+                "labels_json": canonical_json([execution_status]),
+                "reasons_json": canonical_json([]),
                 "artifact_ref_id": None,
             }
         )

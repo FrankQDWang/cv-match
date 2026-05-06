@@ -890,6 +890,104 @@ class FlywheelStore:
                 values,
             )
 
+    def record_term_events(self, rows: list[dict[str, object]]) -> None:
+        if not rows:
+            return
+        now = utc_now()
+        values = []
+        for row in rows:
+            if "created_at" in row:
+                raise ValueError("created_at is owned by FlywheelStore")
+            values.append({**row, "created_at": now})
+        conn = self.connect()
+        with conn:
+            conn.executemany(
+                """
+                INSERT INTO term_events (
+                    run_id, term_event_id, proposal_id, prf_decision_id,
+                    prf_candidate_artifact_ref_id, prf_policy_decision_artifact_ref_id,
+                    prf_proposal_extractor_version, prf_familying_version,
+                    prf_gate_version, candidate_query_fingerprint,
+                    executed_query_instance_id, selected_query_instance_id,
+                    term_surface, term_family_id, term_role, source, round_no,
+                    lane_type, accepted_by_prf_gate, prf_reject_reasons_json,
+                    supporting_resume_ids_json, negative_resume_ids_json,
+                    artifact_ref_id, created_at
+                ) VALUES (
+                    :run_id, :term_event_id, :proposal_id, :prf_decision_id,
+                    :prf_candidate_artifact_ref_id, :prf_policy_decision_artifact_ref_id,
+                    :prf_proposal_extractor_version, :prf_familying_version,
+                    :prf_gate_version, :candidate_query_fingerprint,
+                    :executed_query_instance_id, :selected_query_instance_id,
+                    :term_surface, :term_family_id, :term_role, :source, :round_no,
+                    :lane_type, :accepted_by_prf_gate, :prf_reject_reasons_json,
+                    :supporting_resume_ids_json, :negative_resume_ids_json,
+                    :artifact_ref_id, :created_at
+                )
+                ON CONFLICT(run_id, term_event_id) DO UPDATE SET
+                    proposal_id = excluded.proposal_id,
+                    prf_decision_id = excluded.prf_decision_id,
+                    prf_candidate_artifact_ref_id = excluded.prf_candidate_artifact_ref_id,
+                    prf_policy_decision_artifact_ref_id = excluded.prf_policy_decision_artifact_ref_id,
+                    prf_proposal_extractor_version = excluded.prf_proposal_extractor_version,
+                    prf_familying_version = excluded.prf_familying_version,
+                    prf_gate_version = excluded.prf_gate_version,
+                    candidate_query_fingerprint = excluded.candidate_query_fingerprint,
+                    executed_query_instance_id = excluded.executed_query_instance_id,
+                    selected_query_instance_id = excluded.selected_query_instance_id,
+                    term_surface = excluded.term_surface,
+                    term_family_id = excluded.term_family_id,
+                    term_role = excluded.term_role,
+                    source = excluded.source,
+                    round_no = excluded.round_no,
+                    lane_type = excluded.lane_type,
+                    accepted_by_prf_gate = excluded.accepted_by_prf_gate,
+                    prf_reject_reasons_json = excluded.prf_reject_reasons_json,
+                    supporting_resume_ids_json = excluded.supporting_resume_ids_json,
+                    negative_resume_ids_json = excluded.negative_resume_ids_json
+                """,
+                values,
+            )
+
+    def record_term_outcomes(self, rows: list[dict[str, object]]) -> None:
+        if not rows:
+            return
+        now = utc_now()
+        values = []
+        for row in rows:
+            if "created_at" in row:
+                raise ValueError("created_at is owned by FlywheelStore")
+            values.append({**row, "created_at": now})
+        conn = self.connect()
+        with conn:
+            conn.executemany(
+                """
+                INSERT INTO term_outcomes (
+                    run_id, term_event_id, term_family_id, term_outcome_schema_version,
+                    term_familying_version, prf_gate_version, prf_policy_version,
+                    execution_status, runtime_outcome_json, judge_outcome_json,
+                    labels_json, reasons_json, artifact_ref_id, created_at
+                ) VALUES (
+                    :run_id, :term_event_id, :term_family_id, :term_outcome_schema_version,
+                    :term_familying_version, :prf_gate_version, :prf_policy_version,
+                    :execution_status, :runtime_outcome_json, :judge_outcome_json,
+                    :labels_json, :reasons_json, :artifact_ref_id, :created_at
+                )
+                ON CONFLICT(run_id, term_event_id) DO UPDATE SET
+                    term_family_id = excluded.term_family_id,
+                    term_outcome_schema_version = excluded.term_outcome_schema_version,
+                    term_familying_version = excluded.term_familying_version,
+                    prf_gate_version = excluded.prf_gate_version,
+                    prf_policy_version = excluded.prf_policy_version,
+                    execution_status = excluded.execution_status,
+                    runtime_outcome_json = excluded.runtime_outcome_json,
+                    judge_outcome_json = excluded.judge_outcome_json,
+                    labels_json = excluded.labels_json,
+                    reasons_json = excluded.reasons_json
+                """,
+                values,
+            )
+
     def rows_for_run(self, table: str, *, run_id: str) -> list[dict[str, Any]]:
         if table not in ALLOWED_RUN_ROW_TABLES:
             raise ValueError(f"unsupported flywheel run table: {table}")
