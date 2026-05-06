@@ -322,6 +322,7 @@ class AppSettings(BaseSettings):
     workspace_root: str | None = None
     artifacts_dir: str | None = None
     llm_cache_dir: str | None = None
+    flywheel_db_path: str = ".seektalent/flywheel.sqlite3"
     openai_prompt_cache_enabled: bool = False
     openai_prompt_cache_retention: str | None = None
     mock_cts: bool = False
@@ -432,6 +433,10 @@ class AppSettings(BaseSettings):
         if self.llm_cache_dir is None:
             raise ValueError("llm_cache_dir was not resolved")
         return resolve_path_from_root(self.llm_cache_dir, root=self.project_root)
+
+    @property
+    def flywheel_path(self) -> Path:
+        return resolve_path_from_root(self.flywheel_db_path, root=self.project_root)
 
     @property
     def artifacts_path(self) -> Path:
