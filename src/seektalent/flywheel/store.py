@@ -374,6 +374,7 @@ ALLOWED_RUN_ROW_TABLES = {
     "term_events",
     "term_outcomes",
 }
+ALLOWED_EXPORT_ROW_TABLES = {*ALLOWED_RUN_ROW_TABLES, "query_rewrite_samples"}
 
 
 class FlywheelStore:
@@ -997,12 +998,171 @@ class FlywheelStore:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def rows_for_runs(self, table: str, *, run_ids: list[str]) -> list[dict[str, Any]]:
+        if table not in ALLOWED_EXPORT_ROW_TABLES:
+            raise ValueError(f"unsupported flywheel export table: {table}")
+        if not run_ids:
+            return []
+        placeholders = ",".join("?" for _ in run_ids)
+        rows = self.connect().execute(
+            f"SELECT * FROM {table} WHERE run_id IN ({placeholders}) ORDER BY run_id, rowid",
+            tuple(run_ids),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def attach_artifact_ref_to_run_rows(self, *, table: str, run_id: str, artifact_ref_id: str) -> None:
         if table not in ALLOWED_RUN_ROW_TABLES:
             raise ValueError(f"unsupported flywheel run table: {table}")
         self.connect().execute(
             f"UPDATE {table} SET artifact_ref_id = ? WHERE run_id = ?",
             (artifact_ref_id, run_id),
+        )
+        self.connect().commit()
+
+    def query_rewrite_source_rows(self, *, run_ids: list[str]) -> list[dict[str, Any]]:
+        if not run_ids:
+            return []
+        placeholders = ",".join("?" for _ in run_ids)
+        rows = self.connect().execute(
+            f"""
+            SELECT
+                qjo.*,
+                tasks.job_title,
+                tasks.task_sha256,
+                run_queries.keyword_query,
+                run_queries.query_terms_json
+            FROM query_judge_outcomes AS qjo
+            JOIN tasks ON tasks.task_id = qjo.task_id
+            LEFT JOIN run_queries
+              ON run_queries.run_id = qjo.run_id
+             AND run_queries.query_instance_id = qjo.query_instance_id
+            WHERE qjo.run_id IN ({placeholders})
+            ORDER BY qjo.run_id, qjo.query_instance_id, qjo.judge_contract_hash
+            """,
+            tuple(run_ids),
+        ).fetchall()
+        output: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            query_terms = json.loads(str(payload.get("query_terms_json") or "[]"))
+            keyword_query = payload.get("keyword_query")
+            positive = int(payload.get("new_judge_positive_count") or 0) > 0
+            payload["query_history"] = [keyword_query] if keyword_query else []
+            payload["failed_terms"] = [] if positive else query_terms
+            payload["successful_terms"] = query_terms if positive else []
+            payload["prf_evidence_summaries"] = []
+            payload["top_positive_signals"] = json.loads(str(payload.get("labels_json") or "[]"))
+            payload["top_negative_signals"] = json.loads(str(payload.get("reasons_json") or "[]"))
+            payload["select_terms"] = query_terms if positive else []
+            payload["suppress_terms"] = [] if positive else query_terms
+            payload["rank_terms"] = query_terms
+            output.append(payload)
+        return output
+
+    def source_artifact_refs_for_runs(self, *, run_ids: list[str]) -> list[str]:
+        if not run_ids:
+            return []
+        refs: set[str] = set()
+        placeholders = ",".join("?" for _ in run_ids)
+        for table in ALLOWED_RUN_ROW_TABLES:
+            rows = self.connect().execute(
+                f"SELECT artifact_ref_id FROM {table} WHERE run_id IN ({placeholders}) AND artifact_ref_id IS NOT NULL",
+                tuple(run_ids),
+            ).fetchall()
+            refs.update(str(row["artifact_ref_id"]) for row in rows)
+        return sorted(refs)
+
+    def record_query_rewrite_samples(self, rows: list[dict[str, object]]) -> None:
+        if not rows:
+            return
+        now = utc_now()
+        values = []
+        for row in rows:
+            if "created_at" in row:
+                raise ValueError("created_at is owned by FlywheelStore")
+            values.append({**row, "created_at": now})
+        conn = self.connect()
+        with conn:
+            conn.executemany(
+                """
+                INSERT INTO query_rewrite_samples (
+                    sample_id, task_id, run_id, source_query_instance_ids_json,
+                    sample_basis, input_json, target_json, reward_json,
+                    schema_version, dataset_version, builder_version,
+                    builder_config_hash, artifact_ref_id, created_at
+                ) VALUES (
+                    :sample_id, :task_id, :run_id, :source_query_instance_ids_json,
+                    :sample_basis, :input_json, :target_json, :reward_json,
+                    :schema_version, :dataset_version, :builder_version,
+                    :builder_config_hash, :artifact_ref_id, :created_at
+                )
+                ON CONFLICT(sample_id) DO UPDATE SET
+                    input_json = excluded.input_json,
+                    target_json = excluded.target_json,
+                    reward_json = excluded.reward_json,
+                    dataset_version = excluded.dataset_version,
+                    builder_version = excluded.builder_version,
+                    builder_config_hash = excluded.builder_config_hash,
+                    artifact_ref_id = excluded.artifact_ref_id
+                """,
+                values,
+            )
+
+    def record_dataset_export(
+        self,
+        *,
+        export_id: str,
+        dataset_name: str,
+        dataset_version: str,
+        schema_version: str,
+        builder_version: str,
+        builder_config: dict[str, Any],
+        source_run_ids: list[str],
+        source_query: str,
+        source_db_sha256: str,
+        source_artifact_refs: list[str],
+        git_sha: str | None,
+        artifact_root: str,
+        output_path: str,
+        artifact_ref_id: str | None,
+        row_count: int,
+        sha256_value: str,
+    ) -> None:
+        builder_config_json = canonical_json(builder_config)
+        self.connect().execute(
+            """
+            INSERT INTO dataset_exports (
+                export_id, dataset_name, dataset_version, schema_version,
+                builder_version, builder_config_hash, builder_config_json,
+                source_db_sha256, source_run_ids_json, source_query,
+                source_artifact_refs_json, git_sha, artifact_root, output_path,
+                artifact_ref_id, row_count, sha256, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(export_id) DO UPDATE SET
+                row_count = excluded.row_count,
+                sha256 = excluded.sha256,
+                artifact_ref_id = excluded.artifact_ref_id
+            """,
+            (
+                export_id,
+                dataset_name,
+                dataset_version,
+                schema_version,
+                builder_version,
+                sha256(builder_config_json.encode("utf-8")).hexdigest(),
+                builder_config_json,
+                source_db_sha256,
+                canonical_json(source_run_ids),
+                source_query,
+                canonical_json(source_artifact_refs),
+                git_sha,
+                artifact_root,
+                output_path,
+                artifact_ref_id,
+                row_count,
+                sha256_value,
+                utc_now(),
+            ),
         )
         self.connect().commit()
 
