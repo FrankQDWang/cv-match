@@ -30,6 +30,15 @@ def _create_and_finalize_run(root_path: str) -> tuple[str, str]:
     return session.manifest.artifact_id, str(session.root.parent)
 
 
+def _partition_index_row(session) -> dict[str, object]:
+    rows = [
+        json.loads(line)
+        for line in (session.root.parent / "_index.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    return next(row for row in rows if row["artifact_id"] == session.manifest.artifact_id)
+
+
 def test_create_run_root_writes_running_manifest_and_runtime_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -120,6 +129,7 @@ def test_corpus_ingest_root_registers_ingest_manifest(
 
     resolver = session.resolver()
     assert resolver.resolve("corpus.ingest_manifest") == session.root / "corpus/ingest_manifest.json"
+    assert _partition_index_row(session)["summary_logical_artifact"] == "corpus.ingest_manifest"
 
 
 def test_corpus_export_root_registers_corpus_logical_artifacts(
@@ -150,6 +160,7 @@ def test_corpus_export_root_registers_corpus_logical_artifacts(
     assert resolver.resolve("corpus.corpus_memberships") == session.root / "corpus/corpus_memberships.jsonl"
     assert resolver.resolve("corpus.corpus_exports") == session.root / "corpus/corpus_exports.jsonl"
     assert resolver.resolve("corpus.export_manifest") == session.root / "corpus/export_manifest.json"
+    assert _partition_index_row(session)["summary_logical_artifact"] == "corpus.export_manifest"
 
 
 def test_manifest_persists_required_top_level_runtime_artifacts(

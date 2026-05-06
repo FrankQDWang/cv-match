@@ -15,6 +15,7 @@ from seektalent.models import (
     FinalCandidate,
     FinalResult,
     HardConstraintSlots,
+    LocationExecutionPlan,
     ProposedFilterPlan,
     QueryTermCandidate,
     ReflectionAdvice,
@@ -23,6 +24,7 @@ from seektalent.models import (
     RequirementExtractionDraft,
     RequirementSheet,
     ResumeCandidate,
+    RoundRetrievalPlan,
     ScoredCandidate,
     ScoredCandidateDraft,
     ScoringFailure,
@@ -49,6 +51,7 @@ from seektalent.runtime.runtime_diagnostics import (
 import seektalent.artifacts.store as artifact_store_module
 from seektalent.progress import ProgressEvent
 from seektalent.runtime import WorkflowRuntime
+from seektalent.runtime.retrieval_runtime import RetrievalRuntime, build_logical_query_state
 from seektalent.scoring.scorer import ResumeScorer
 from seektalent.tracing import LLMCallSnapshot, ProviderUsageSnapshot, RunTracer, json_sha256, provider_usage_from_result
 from tests.settings_factory import make_settings
@@ -199,6 +202,40 @@ def test_run_tracer_runtime_failure_marks_run_manifest_failed(tmp_path: Path, mo
     assert manifest["status"] == "failed"
     assert manifest["failure_summary"] == "boom failure"
     assert manifest["completed_at"].endswith("Z")
+
+
+def test_corpus_finalization_failure_does_not_mask_existing_runtime_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(
+        artifacts_dir=str(tmp_path / "artifacts"),
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+    )
+    runtime = WorkflowRuntime(settings)
+    monkeypatch.setattr(
+        runtime,
+        "_require_live_llm_config",
+        lambda: (_ for _ in ()).throw(RuntimeError("original runtime failure")),
+    )
+
+    def fail_corpus_manifest(**kwargs) -> None:  # noqa: ANN003
+        del kwargs
+        raise RuntimeError("corpus finalization failure")
+
+    monkeypatch.setattr("seektalent.runtime.orchestrator.write_corpus_ingest_manifest", fail_corpus_manifest)
+
+    with pytest.raises(RuntimeError, match="original runtime failure"):
+        runtime.run(job_title="Python Engineer", jd="JD", notes="")
+
+    run_dir = _single_run_dir(settings.artifacts_path)
+    manifest = json.loads((run_dir / "manifests" / "run_manifest.json").read_text(encoding="utf-8"))
+    events = _read_jsonl(run_dir / "runtime/events.jsonl")
+
+    assert manifest["status"] == "failed"
+    assert manifest["failure_summary"] == "original runtime failure"
+    assert any(event["event_type"] == "corpus_ingest_finalization_failed" for event in events)
 
 
 def test_real_scorer_success_path_writes_scoring_calls_to_migrated_round_layout(
@@ -1600,6 +1637,81 @@ def test_workflow_runtime_execute_search_tool_delegates_to_retrieval_runtime(tmp
     assert [candidate.resume_id for candidate in new_candidates] == ["resume-1"]
     assert observation.adapter_notes == ["delegated"]
     assert duplicate_count == 0
+
+
+def test_round_search_flushes_provider_returns_before_query_outcome_scoring_failure(tmp_path: Path) -> None:
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        mock_cts=True,
+        search_max_pages_per_round=1,
+        search_max_attempts_per_round=1,
+    )
+    location_plan = LocationExecutionPlan(mode="none", target_new=1)
+    retrieval_plan = RoundRetrievalPlan(
+        plan_version=1,
+        round_no=1,
+        query_terms=["python"],
+        keyword_query="python",
+        location_execution_plan=location_plan,
+        target_new=1,
+        rationale="flush provider returns before outcome scoring",
+    )
+    query_state = build_logical_query_state(
+        run_id="run-flush",
+        round_no=1,
+        lane_type="exploit",
+        query_terms=["python"],
+        job_intent_fingerprint="job-intent",
+        source_plan_version="1",
+        provider_filters={},
+        location_execution_plan=location_plan,
+    )
+
+    class OneCandidateSearch:
+        name = "cts"
+
+        async def search(self, **kwargs) -> SearchResult:  # noqa: ANN003
+            del kwargs
+            return SearchResult(
+                candidates=[_make_candidate("resume-1")],
+                diagnostics=["served one candidate"],
+                request_payload={"city": "上海", "page": 1},
+                raw_candidate_count=1,
+                latency_ms=1,
+            )
+
+    runtime = RetrievalRuntime(settings=settings, retrieval_service=OneCandidateSearch())
+    tracer = RunTracer(tmp_path / "trace-flush")
+    events: list[tuple[str, int]] = []
+
+    def record_provider_return_batch(batch) -> None:  # noqa: ANN001
+        events.append(("flush", len(batch)))
+
+    async def fail_query_outcome_scoring(candidates: list[ResumeCandidate]) -> list[ScoredCandidate]:
+        del candidates
+        events.append(("score", 0))
+        raise RuntimeError("query outcome scoring failed")
+
+    try:
+        with pytest.raises(RuntimeError, match="query outcome scoring failed"):
+            asyncio.run(
+                runtime.execute_round_search(
+                    round_no=1,
+                    retrieval_plan=retrieval_plan,
+                    query_states=[query_state],
+                    base_adapter_notes=[],
+                    target_new=1,
+                    seen_resume_ids=set(),
+                    seen_dedup_keys=set(),
+                    tracer=tracer,
+                    score_for_query_outcome=fail_query_outcome_scoring,
+                    record_provider_return_batch=record_provider_return_batch,
+                )
+            )
+    finally:
+        tracer.close(status="failed", failure_summary="test cleanup")
+
+    assert events == [("flush", 1), ("score", 0)]
 
 
 def test_query_resume_hits_are_enriched_after_scoring(tmp_path: Path) -> None:

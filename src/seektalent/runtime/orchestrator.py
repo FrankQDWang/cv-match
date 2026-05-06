@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import re
 from datetime import datetime
 from collections import Counter
@@ -46,7 +47,7 @@ from seektalent.candidate_feedback.policy import (
 from seektalent.config import AppSettings
 from seektalent.controller import ReActController
 from seektalent.corpus.documents import build_jd_document_row
-from seektalent.corpus.runtime import record_corpus_provider_results, write_corpus_ingest_manifest
+from seektalent.corpus.runtime import ProviderReturnedCandidate, record_corpus_provider_results, write_corpus_ingest_manifest
 from seektalent.corpus.store import DEFAULT_TENANT_ID, DEFAULT_WORKSPACE_ID, CorpusStore
 from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.core.retrieval.service import RetrievalService
@@ -174,6 +175,8 @@ CANONICAL_STOP_REASONS = {
     "max_pages_reached",
     "max_attempts_reached",
 }
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _register_artifact(
@@ -475,15 +478,55 @@ class WorkflowRuntime:
             )
             raise
         finally:
+            corpus_finalization_error: RunStageError | None = None
             if self._active_corpus_session is corpus_session:
-                write_corpus_ingest_manifest(
-                    session=corpus_session,
-                    run_id=tracer.run_id,
-                    tenant_id=DEFAULT_TENANT_ID,
-                    workspace_id=DEFAULT_WORKSPACE_ID,
-                )
-                corpus_session.finalize(status=close_status, failure_summary=close_failure_summary)
-                self._active_corpus_session = None
+                try:
+                    try:
+                        write_corpus_ingest_manifest(
+                            session=corpus_session,
+                            run_id=tracer.run_id,
+                            tenant_id=DEFAULT_TENANT_ID,
+                            workspace_id=DEFAULT_WORKSPACE_ID,
+                        )
+                        corpus_session.finalize(status=close_status, failure_summary=close_failure_summary)
+                    except Exception as exc:  # noqa: BLE001
+                        if close_status == "completed":
+                            close_status = "failed"
+                            close_failure_summary = str(exc)
+                            corpus_finalization_error = RunStageError("corpus_ingest", str(exc))
+                            try:
+                                tracer.emit(
+                                    "run_failed",
+                                    summary=str(exc),
+                                    payload={
+                                        "stage": "corpus_ingest",
+                                        "error_type": type(exc).__name__,
+                                        "error_message": str(exc),
+                                    },
+                                )
+                            except Exception as log_exc:  # noqa: BLE001
+                                LOGGER.warning(
+                                    "failed to emit corpus finalization failure event",
+                                    exc_info=log_exc,
+                                )
+                        else:
+                            try:
+                                tracer.emit(
+                                    "corpus_ingest_finalization_failed",
+                                    summary=str(exc),
+                                    payload={
+                                        "stage": "corpus_ingest",
+                                        "error_type": type(exc).__name__,
+                                        "error_message": str(exc),
+                                    },
+                                )
+                            except Exception as log_exc:  # noqa: BLE001
+                                LOGGER.warning(
+                                    "failed to emit corpus finalization failure event",
+                                    exc_info=log_exc,
+                                )
+                finally:
+                    self._active_corpus_session = None
             self.corpus_store.close()
             if self._active_flywheel_run_id == tracer.run_id:
                 self.flywheel_store.complete_run(
@@ -495,6 +538,8 @@ class WorkflowRuntime:
                 self._active_flywheel_task_id = None
             self.flywheel_store.close()
             tracer.close(status=close_status, failure_summary=close_failure_summary)
+            if corpus_finalization_error is not None:
+                raise corpus_finalization_error
 
     async def _build_run_state(
         self,
@@ -797,7 +842,20 @@ class WorkflowRuntime:
                         runtime_only_constraints=retrieval_plan.runtime_only_constraints,
                     ),
                     query_outcome_thresholds=QueryOutcomeThresholds(),
+                    record_provider_return_batch=lambda batch: self._record_corpus_provider_results(
+                        tracer=tracer,
+                        returned_candidates=batch,
+                    ),
                 )
+            except RunStageError as exc:
+                self._emit_progress(
+                    progress_callback,
+                    "search_failed",
+                    str(exc),
+                    round_no=round_no,
+                    payload={"stage": exc.stage, "error_type": type(exc).__name__},
+                )
+                raise
             except Exception as exc:  # noqa: BLE001
                 self._emit_progress(
                     progress_callback,
@@ -813,10 +871,6 @@ class WorkflowRuntime:
             search_observation = retrieval_result.search_observation
             search_attempts = retrieval_result.search_attempts
             query_resume_hits = retrieval_result.query_resume_hits
-            self._record_corpus_provider_results(
-                tracer=tracer,
-                returned_candidates=retrieval_result.provider_returned_candidates,
-            )
             self._emit_progress(
                 progress_callback,
                 "search_completed",
@@ -1100,18 +1154,28 @@ class WorkflowRuntime:
             [item.model_dump(mode="json") for item in query_resume_hits],
         )
 
-    def _record_corpus_provider_results(self, *, tracer: RunTracer, returned_candidates: list[object]) -> None:
+    def _record_corpus_provider_results(
+        self,
+        *,
+        tracer: RunTracer,
+        returned_candidates: list[ProviderReturnedCandidate],
+    ) -> None:
         corpus_session = self._active_corpus_session
         if corpus_session is None:
             return
-        record_corpus_provider_results(
-            session=corpus_session,
-            store=self.corpus_store,
-            run_id=tracer.run_id,
-            tenant_id=DEFAULT_TENANT_ID,
-            workspace_id=DEFAULT_WORKSPACE_ID,
-            returned_candidates=returned_candidates,
-        )
+        try:
+            record_corpus_provider_results(
+                session=corpus_session,
+                store=self.corpus_store,
+                run_id=tracer.run_id,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=DEFAULT_WORKSPACE_ID,
+                returned_candidates=returned_candidates,
+            )
+        except RunStageError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise RunStageError("corpus_ingest", str(exc)) from exc
 
     def _record_flywheel_retrieval_rows(
         self,

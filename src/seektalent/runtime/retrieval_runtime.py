@@ -90,6 +90,7 @@ def _provider_request_id(
         query_fingerprint=query_fingerprint,
         page_no=page_no,
         fetch_no=fetch_no,
+        request_payload=fetch_result.request_payload,
     )
 
 
@@ -302,6 +303,7 @@ class RetrievalRuntime:
         tracer: RunTracer,
         score_for_query_outcome: Callable[[list[ResumeCandidate]], Awaitable[list[ScoredCandidate]]] | None = None,
         query_outcome_thresholds: QueryOutcomeThresholds | None = None,
+        record_provider_return_batch: Callable[[list[ProviderReturnedCandidate]], None] | None = None,
     ) -> RetrievalExecutionResult:
         location_plan = retrieval_plan.location_execution_plan
         adapter_notes = list(base_adapter_notes or [])
@@ -323,6 +325,7 @@ class RetrievalRuntime:
         city_search_summaries: list[CitySearchSummary] = []
         query_resume_hits: list[QueryResumeHit] = []
         provider_returned_candidates: list[ProviderReturnedCandidate] = []
+        pending_provider_returns: list[ProviderReturnedCandidate] = []
         raw_candidate_count = 0
         batch_no = 0
         last_exhausted_reason: str | None = None
@@ -339,6 +342,18 @@ class RetrievalRuntime:
             if not exploit_scores:
                 return fallback
             return sum(candidate.must_have_match_score for candidate in exploit_scores) / len(exploit_scores)
+
+        def capture_provider_return(returned_candidate: ProviderReturnedCandidate) -> None:
+            provider_returned_candidates.append(returned_candidate)
+            if record_provider_return_batch is not None:
+                pending_provider_returns.append(returned_candidate)
+
+        def flush_provider_returns() -> None:
+            if record_provider_return_batch is None or not pending_provider_returns:
+                return
+            batch = list(pending_provider_returns)
+            record_provider_return_batch(batch)
+            pending_provider_returns.clear()
 
         async def register_dispatch_outcome(
             *,
@@ -418,7 +433,7 @@ class RetrievalRuntime:
                         seen_dedup_keys=global_seen_dedup_keys,
                         tracer=tracer,
                         record_resume_hit=query_resume_hits.append,
-                        record_provider_return=provider_returned_candidates.append,
+                        record_provider_return=capture_provider_return,
                     )
                     cts_queries.append(dispatch["cts_query"])
                     sent_query_records.append(dispatch["sent_query_record"])
@@ -429,6 +444,7 @@ class RetrievalRuntime:
                     query_state.adapter_notes = unique_strings(
                         query_state.adapter_notes + dispatch["search_observation"].adapter_notes
                     )
+                    flush_provider_returns()
                     latest_dispatch_outcome = await register_dispatch_outcome(
                         query_state=query_state,
                         new_candidates=dispatch["new_candidates"],
@@ -486,7 +502,7 @@ class RetrievalRuntime:
                     batch_no=batch_no,
                     write_round_artifacts=False,
                     record_resume_hit=query_resume_hits.append,
-                    record_provider_return=provider_returned_candidates.append,
+                    record_provider_return=capture_provider_return,
                 )
                 cts_queries.append(query)
                 sent_query_records.append(sent_query_record)
@@ -499,6 +515,7 @@ class RetrievalRuntime:
                 if search_observation.exhausted_reason != "target_satisfied":
                     query_state.exhausted = True
                 last_exhausted_reason = search_observation.exhausted_reason or last_exhausted_reason
+                flush_provider_returns()
                 latest_dispatch_outcome = await register_dispatch_outcome(
                     query_state=query_state,
                     new_candidates=new_candidates,

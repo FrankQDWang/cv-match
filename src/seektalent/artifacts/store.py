@@ -286,6 +286,14 @@ class ArtifactSession:
         atomic_write_text(self.manifest_path, self.manifest.model_dump_json(indent=2))
         self._write_partition_index()
 
+    def _summary_logical_artifact(self) -> str | None:
+        if self.manifest.artifact_kind == ArtifactKind.CORPUS:
+            if "corpus.export_manifest" in self.manifest.logical_artifacts:
+                return "corpus.export_manifest"
+            if "corpus.ingest_manifest" in self.manifest.logical_artifacts:
+                return "corpus.ingest_manifest"
+        return SUMMARY_LOGICAL_ARTIFACT_BY_KIND.get(self.manifest.artifact_kind)
+
     def _write_partition_index(self) -> None:
         index_path = self.root.parent / "_index.jsonl"
         with _locked_partition_index(index_path):
@@ -303,7 +311,7 @@ class ArtifactSession:
                 "status": self.manifest.status,
                 "display_name": self.manifest.display_name,
                 "producer": self.manifest.producer,
-                "summary_logical_artifact": SUMMARY_LOGICAL_ARTIFACT_BY_KIND.get(self.manifest.artifact_kind),
+                "summary_logical_artifact": self._summary_logical_artifact(),
             }
             rows_by_id[self.manifest.artifact_id] = row
             atomic_write_text(

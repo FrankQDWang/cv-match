@@ -97,6 +97,7 @@ def build_deterministic_provider_request_id(
     query_fingerprint: str,
     page_no: int,
     fetch_no: int,
+    request_payload: dict[str, Any] | None = None,
 ) -> str:
     return sha256_json(
         {
@@ -105,6 +106,7 @@ def build_deterministic_provider_request_id(
             "query_fingerprint": query_fingerprint,
             "page_no": page_no,
             "fetch_no": fetch_no,
+            "request_payload": request_payload,
         }
     )
 

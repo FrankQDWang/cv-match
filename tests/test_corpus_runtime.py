@@ -9,6 +9,7 @@ import pytest
 from seektalent.artifacts import ArtifactStore
 from seektalent.corpus.runtime import (
     ProviderReturnedCandidate,
+    build_deterministic_provider_request_id,
     materialize_corpus_artifacts,
     record_corpus_provider_results,
     write_raw_payload_artifact,
@@ -428,3 +429,24 @@ def test_duplicate_provider_returns_create_two_observations_for_one_document(tmp
 
     assert len(store.rows_for_tenant("resume_documents", "tenant-a", "workspace")) == 1
     assert len(store.rows_for_tenant("resume_observations", "tenant-a", "workspace")) == 2
+
+
+def test_deterministic_provider_request_id_includes_request_payload() -> None:
+    first_id = build_deterministic_provider_request_id(
+        provider_name="cts",
+        query_instance_id="query-1",
+        query_fingerprint="fingerprint-1",
+        page_no=1,
+        fetch_no=1,
+        request_payload={"city": "上海", "page": 1},
+    )
+    second_id = build_deterministic_provider_request_id(
+        provider_name="cts",
+        query_instance_id="query-1",
+        query_fingerprint="fingerprint-1",
+        page_no=1,
+        fetch_no=1,
+        request_payload={"city": "北京", "page": 1},
+    )
+
+    assert first_id != second_id
