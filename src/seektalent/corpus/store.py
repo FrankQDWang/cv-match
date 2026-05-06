@@ -79,7 +79,7 @@ _SCHEMA_STATEMENTS = [
     """,
     """
     CREATE TABLE IF NOT EXISTS resume_subjects (
-        subject_id TEXT PRIMARY KEY,
+        subject_id TEXT NOT NULL,
         tenant_id TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
         provider_name TEXT NOT NULL,
@@ -90,7 +90,7 @@ _SCHEMA_STATEMENTS = [
         subject_binding_reason TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        UNIQUE(tenant_id, workspace_id, subject_id)
+        PRIMARY KEY (tenant_id, workspace_id, subject_id)
     ){strict}
     """,
     """
@@ -150,6 +150,10 @@ _SCHEMA_STATEMENTS = [
         schema_version TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        CHECK(
+            raw_payload_artifact_ref_id IS NOT NULL
+            OR (raw_payload_json IS NOT NULL AND raw_payload_inline_reason IS NOT NULL)
+        ),
         UNIQUE(tenant_id, workspace_id, snapshot_sha256),
         UNIQUE(tenant_id, workspace_id, resume_doc_id),
         FOREIGN KEY(tenant_id, workspace_id, subject_id)
@@ -347,12 +351,16 @@ class CorpusStore:
         data.setdefault("created_at", now)
         data["updated_at"] = now
         columns = list(data)
-        updates = [column for column in columns if column not in {"subject_id", "created_at"}]
+        updates = [
+            column
+            for column in columns
+            if column not in {"tenant_id", "workspace_id", "subject_id", "created_at"}
+        ]
         self.connect().execute(
             f"""
             INSERT INTO resume_subjects ({", ".join(columns)})
             VALUES ({", ".join(f":{column}" for column in columns)})
-            ON CONFLICT(subject_id) DO UPDATE SET
+            ON CONFLICT(tenant_id, workspace_id, subject_id) DO UPDATE SET
                 {", ".join(f"{column} = excluded.{column}" for column in updates)}
             """,
             data,

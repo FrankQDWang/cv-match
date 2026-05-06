@@ -12,11 +12,16 @@ def _tables(conn: sqlite3.Connection) -> set[str]:
     return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
 
-def _subject_row(*, tenant_id: str, subject_id: str = "subject-1") -> dict[str, object]:
+def _subject_row(
+    *,
+    tenant_id: str,
+    workspace_id: str = "workspace",
+    subject_id: str = "subject-1",
+) -> dict[str, object]:
     return {
         "subject_id": subject_id,
         "tenant_id": tenant_id,
-        "workspace_id": "workspace",
+        "workspace_id": workspace_id,
         "provider_name": "cts",
         "provider_candidate_id": "provider-1",
         "source_resume_id": "source-1",
@@ -47,8 +52,8 @@ def _resume_document_row(
         "raw_payload_artifact_ref_id": None,
         "raw_payload_sha256": "raw-sha",
         "raw_payload_size_bytes": 12,
-        "raw_payload_json": None,
-        "raw_payload_inline_reason": None,
+        "raw_payload_json": {"resume_id": resume_doc_id, "source": "test"},
+        "raw_payload_inline_reason": "test_inline_payload",
         "normalized_text": normalized_text,
         "normalized_sections_json": {},
         "skills_json": ["Python"],
@@ -238,3 +243,63 @@ def test_artifact_refs_relative_path_uniqueness_handles_empty_path(tmp_path: Pat
             )
             """
         )
+
+
+def test_resume_subject_identity_is_tenant_workspace_scoped(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    store.upsert_resume_subject(
+        _subject_row(tenant_id="tenant-a", workspace_id="workspace-a", subject_id="shared-subject")
+    )
+    tenant_b = _subject_row(tenant_id="tenant-b", workspace_id="workspace-b", subject_id="shared-subject")
+    tenant_b["provider_candidate_id"] = "provider-b"
+    tenant_b["dedup_key"] = "provider-b"
+    tenant_b["subject_confidence"] = "strong"
+    store.upsert_resume_subject(tenant_b)
+
+    tenant_b["subject_binding_reason"] = "dedup_key"
+    store.upsert_resume_subject(tenant_b)
+
+    rows = store.connect().execute(
+        """
+        SELECT tenant_id, workspace_id, subject_id, provider_candidate_id,
+               dedup_key, subject_confidence, subject_binding_reason
+        FROM resume_subjects
+        WHERE subject_id = 'shared-subject'
+        ORDER BY tenant_id, workspace_id
+        """
+    ).fetchall()
+    assert [dict(row) for row in rows] == [
+        {
+            "tenant_id": "tenant-a",
+            "workspace_id": "workspace-a",
+            "subject_id": "shared-subject",
+            "provider_candidate_id": "provider-1",
+            "dedup_key": "provider-1",
+            "subject_confidence": "weak",
+            "subject_binding_reason": "provider_candidate_id",
+        },
+        {
+            "tenant_id": "tenant-b",
+            "workspace_id": "workspace-b",
+            "subject_id": "shared-subject",
+            "provider_candidate_id": "provider-b",
+            "dedup_key": "provider-b",
+            "subject_confidence": "strong",
+            "subject_binding_reason": "dedup_key",
+        },
+    ]
+
+
+def test_resume_document_requires_raw_payload_source(tmp_path: Path) -> None:
+    store = CorpusStore(tmp_path / "corpus.sqlite3")
+    store.upsert_resume_subject(_subject_row(tenant_id="tenant-a"))
+    row = _resume_document_row(
+        tenant_id="tenant-a",
+        resume_doc_id="doc-without-payload",
+        subject_id="subject-1",
+    )
+    row["raw_payload_json"] = None
+    row["raw_payload_inline_reason"] = None
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.upsert_resume_document(row)
