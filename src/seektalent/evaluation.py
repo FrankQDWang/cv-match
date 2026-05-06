@@ -20,6 +20,12 @@ from pydantic_ai import Agent
 
 from seektalent.artifacts import ArtifactResolver, ArtifactSession
 from seektalent.config import AppSettings
+from seektalent.flywheel.store import (
+    FLYWHEEL_LABEL_SCHEMA_VERSION,
+    FlywheelStore,
+    build_judge_contract_hash,
+    task_sha256 as flywheel_task_sha256,
+)
 from seektalent.legacy_artifacts import (
     LegacyPRFReplayMetadata,
     is_legacy_prf_replay_key,
@@ -28,6 +34,7 @@ from seektalent.legacy_artifacts import (
 from seektalent.llm import build_model, build_model_settings, build_output_spec, resolve_stage_model_config
 from seektalent.models import ReplaySnapshot, ResumeCandidate, StopGuidance
 from seektalent.prompting import LoadedPrompt, json_block
+from seektalent.resumes.snapshots import snapshot_sha256
 from seektalent.resources import package_prompt_dir
 
 TOP_K = 10
@@ -41,6 +48,7 @@ REQUIRED_WANDB_SUMMARY_KEYS = (
     "round_01_precision_at_10",
     "round_01_ndcg_at_10",
 )
+JUDGE_POLICY_VERSION = "resume-judge-v1"
 
 
 JudgeScore = Literal[0, 1, 2, 3]
@@ -105,14 +113,8 @@ def canonical_json(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
 
-def snapshot_sha256(payload: dict[str, Any]) -> str:
-    return sha256(canonical_json(payload).encode("utf-8")).hexdigest()
-
-
-def task_sha256(jd: str, notes: str = "") -> str:
-    if not notes.strip():
-        return sha256(jd.encode("utf-8")).hexdigest()
-    return sha256(canonical_json({"jd": jd, "notes": notes}).encode("utf-8")).hexdigest()
+def task_sha256(jd: str, notes: str = "", job_title: str = "") -> str:
+    return flywheel_task_sha256(job_title=job_title, jd=jd, notes=notes)
 
 
 def build_replay_rows(snapshots: Sequence[ReplaySnapshot]) -> list[dict[str, object]]:
@@ -282,11 +284,21 @@ def _app_version() -> str:
 
 @dataclass(frozen=True)
 class JudgeLabelWrite:
-    task_sha256_value: str
-    snapshot_sha256_value: str
-    judge_model: str
+    task_id: str
+    snapshot_sha256: str
+    judge_model_id: str
+    judge_protocol_family: str
+    judge_provider_label: str
+    judge_endpoint_kind: str
+    structured_output_mode: str
+    judge_prompt_hash: str
+    judge_contract_hash: str
+    judge_output_schema_hash: str
+    reasoning_effort: str | None
+    temperature: float | None
     result: ResumeJudgeResult
     judge_prompt_text: str | None = None
+    latency_ms: int | None = None
 
 
 class JudgeCache:
@@ -556,8 +568,31 @@ class ResumeJudge:
         self.settings = settings
         self.prompt = prompt
 
+    def _model_config(self):
+        return resolve_stage_model_config(self.settings, stage="judge")
+
+    def _output_schema_hash(self) -> str:
+        schema_json = canonical_json(ResumeJudgeResult.model_json_schema())
+        return sha256(schema_json.encode("utf-8")).hexdigest()
+
+    def _judge_contract_hash(self) -> str:
+        config = self._model_config()
+        return build_judge_contract_hash(
+            judge_model_id=config.model_id,
+            judge_protocol_family=config.protocol_family,
+            judge_provider_label=config.provider_label,
+            judge_endpoint_kind=config.endpoint_kind,
+            structured_output_mode=config.structured_output_mode,
+            judge_prompt_hash=self.prompt.sha256,
+            judge_policy_version=JUDGE_POLICY_VERSION,
+            label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+            judge_output_schema_hash=self._output_schema_hash(),
+            reasoning_effort=config.reasoning_effort,
+            temperature=0.0,
+        )
+
     def _build_agent(self) -> Agent[None, ResumeJudgeResult]:
-        config = resolve_stage_model_config(self.settings, stage="judge")
+        config = self._model_config()
         model = build_model(config)
         return cast(Agent[None, ResumeJudgeResult], Agent(
             model=model,
@@ -571,25 +606,31 @@ class ResumeJudge:
     async def judge_many(
         self,
         *,
+        task_id: str,
         jd: str,
         notes: str = "",
         candidates: list[ResumeCandidate],
-        cache: JudgeCache,
+        store: FlywheelStore,
         judge_limiter: AsyncJudgeLimiter | None = None,
     ) -> tuple[dict[str, tuple[ResumeJudgeResult, bool, int]], list[JudgeLabelWrite]]:
         limiter = judge_limiter or AsyncJudgeLimiter(self.settings.judge_max_concurrency)
-        task_hash = task_sha256(jd, notes)
+        config = self._model_config()
+        contract_hash = self._judge_contract_hash()
+        output_schema_hash = self._output_schema_hash()
         results: dict[str, tuple[ResumeJudgeResult, bool, int]] = {}
         pending_cache_writes: list[JudgeLabelWrite] = []
         pending_candidates_by_snapshot: dict[str, list[ResumeCandidate]] = {}
 
         for candidate in candidates:
             snapshot_hash = candidate.snapshot_sha256 or snapshot_sha256(candidate.raw)
-            cached = cache.get_label(
-                task_sha256_value=task_hash,
-                snapshot_sha256_value=snapshot_hash,
+            cached_payload = store.get_cached_judge_label(
+                task_id=task_id,
+                snapshot_sha256=snapshot_hash,
+                judge_contract_hash=contract_hash,
+                label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
             )
-            if cached is not None:
+            if cached_payload is not None:
+                cached = ResumeJudgeResult.model_validate(cached_payload)
                 results[candidate.resume_id] = (cached, True, 0)
             else:
                 pending_candidates_by_snapshot.setdefault(snapshot_hash, []).append(candidate)
@@ -615,11 +656,21 @@ class ResumeJudge:
                 results[alias.resume_id] = (result, False, latency_ms)
             pending_cache_writes.append(
                 JudgeLabelWrite(
-                    task_sha256_value=task_hash,
-                    snapshot_sha256_value=snapshot_hash,
-                    judge_model=self.settings.judge_model_id,
+                    task_id=task_id,
+                    snapshot_sha256=snapshot_hash,
+                    judge_model_id=config.model_id,
+                    judge_protocol_family=config.protocol_family,
+                    judge_provider_label=config.provider_label,
+                    judge_endpoint_kind=config.endpoint_kind,
+                    structured_output_mode=config.structured_output_mode,
+                    judge_prompt_hash=self.prompt.sha256,
+                    judge_contract_hash=contract_hash,
+                    judge_output_schema_hash=output_schema_hash,
+                    reasoning_effort=config.reasoning_effort,
+                    temperature=0.0,
                     result=result,
                     judge_prompt_text=self.prompt.content,
+                    latency_ms=latency_ms,
                 )
             )
 
@@ -1427,7 +1478,7 @@ async def evaluate_run(
     judge_limiter: AsyncJudgeLimiter | None = None,
     log_remote: bool = True,
 ) -> EvaluationArtifacts:
-    cache = JudgeCache(settings.project_root)
+    store = FlywheelStore(settings.flywheel_path)
     temp_root = run_dir / "._evaluation_tmp"
     final_evaluation_dir = run_dir / "evaluation"
     final_raw_dir = run_dir / "raw_resumes"
@@ -1438,26 +1489,47 @@ async def evaluate_run(
             unique_candidates[candidate.resume_id] = candidate
         input_truth = _load_input_truth_for_run(run_dir)
         job_title = input_truth.get("job_title") if input_truth else None
-        cache.upsert_jd_asset(
-            job_title=job_title,
-            jd=jd,
-            notes=notes,
-        )
+        task_id = store.upsert_task(job_title=str(job_title or ""), jd_text=jd, notes_text=notes)
         for candidate in unique_candidates.values():
             snapshot_hash = candidate.snapshot_sha256 or snapshot_sha256(candidate.raw)
-            cache.upsert_resume_asset(
-                snapshot_sha256_value=snapshot_hash,
+            store.upsert_resume_snapshot(
+                snapshot_sha256=snapshot_hash,
+                source_resume_id=candidate.source_resume_id or candidate.resume_id,
+                dedup_key=candidate.dedup_key,
                 raw_payload=candidate.raw,
+                normalized_preview={"search_text": candidate.search_text},
             )
 
         judged, pending_cache_writes = await ResumeJudge(settings, prompt).judge_many(
+            task_id=task_id,
             jd=jd,
             notes=notes,
             candidates=list(unique_candidates.values()),
-            cache=cache,
+            store=store,
             judge_limiter=judge_limiter,
         )
-        cache.put_many(pending_cache_writes)
+        for write in pending_cache_writes:
+            store.record_judge_label(
+                task_id=write.task_id,
+                snapshot_sha256=write.snapshot_sha256,
+                judge_model_id=write.judge_model_id,
+                judge_protocol_family=write.judge_protocol_family,
+                judge_provider_label=write.judge_provider_label,
+                judge_endpoint_kind=write.judge_endpoint_kind,
+                structured_output_mode=write.structured_output_mode,
+                judge_prompt_hash=write.judge_prompt_hash,
+                judge_contract_hash=write.judge_contract_hash,
+                judge_policy_version=JUDGE_POLICY_VERSION,
+                label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+                judge_output_schema_hash=write.judge_output_schema_hash,
+                reasoning_effort=write.reasoning_effort,
+                temperature=write.temperature,
+                score=write.result.score,
+                rationale=write.result.rationale,
+                label_payload=write.result.model_dump(mode="json"),
+                judge_prompt_text=write.judge_prompt_text,
+                latency_ms=write.latency_ms,
+            )
         evaluation = EvaluationResult(
             run_id=run_id,
             judge_model=settings.judge_model_id,
@@ -1498,7 +1570,7 @@ async def evaluate_run(
         _remove_path(final_raw_dir)
         raise
     finally:
-        cache.close()
+        store.close()
 
 
 def _judge_prompt_text_for_run(run_dir: Path) -> str:

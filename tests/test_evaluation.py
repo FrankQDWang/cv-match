@@ -41,6 +41,7 @@ from seektalent.evaluation import (
     task_sha256,
 )
 from seektalent.artifacts import ArtifactResolver, ArtifactStore
+from seektalent.flywheel.store import FLYWHEEL_LABEL_SCHEMA_VERSION, FlywheelStore, build_judge_contract_hash
 from seektalent.llm import ResolvedTextModelConfig
 from seektalent.models import QueryOutcomeThresholds, ReplaySnapshot, ResumeCandidate, SearchObservation, SecondLaneDecision
 from seektalent.prompting import LoadedPrompt
@@ -80,10 +81,10 @@ def test_snapshot_sha256_is_stable_for_key_order() -> None:
     assert snapshot_sha256(left) == snapshot_sha256(right)
 
 
-def test_task_sha256_keeps_empty_notes_compatible_with_jd_hash() -> None:
+def test_task_sha256_includes_title_and_notes() -> None:
     jd = "Build AI agents."
 
-    assert task_sha256(jd, "") == sha256(jd.encode("utf-8")).hexdigest()
+    assert task_sha256(jd, "", job_title="Agent Engineer") != task_sha256(jd, "", job_title="Data Engineer")
     assert task_sha256(jd, "Prefer LangGraph") != task_sha256(jd, "Prefer RAG")
 
 
@@ -92,6 +93,12 @@ def _table_names(conn: sqlite3.Connection) -> set[str]:
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
     }
+
+
+def _flywheel_store_with_task(tmp_path: Path, *, jd: str = "JD text", notes: str = "") -> tuple[FlywheelStore, str]:
+    store = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    task_id = store.upsert_task(job_title="Agent Engineer", jd_text=jd, notes_text=notes)
+    return store, task_id
 
 
 def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -760,12 +767,12 @@ def test_evaluate_run_registers_evaluation_outputs_in_run_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, jd, notes, cache, judge_limiter
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, store, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
-            [("jd", candidate.snapshot_sha256, "deepseek-v4-pro", result) for candidate in candidates],
+            [],
         )
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
@@ -1113,31 +1120,59 @@ def test_version_report_markdown_includes_extra_current_run(monkeypatch: pytest.
     assert "0.2000" in means
 
 
-def test_judge_cache_round_trip(tmp_path: Path) -> None:
-    cache = JudgeCache(tmp_path)
+def test_resume_judge_cache_uses_flywheel_judge_contract(tmp_path: Path) -> None:
+    store = FlywheelStore(tmp_path / ".seektalent" / "flywheel.sqlite3")
     try:
-        result = ResumeJudgeResult(score=3, rationale="Strong direct match.")
-        cache.put_label(
-            task_sha256_value="task",
-            snapshot_sha256_value="resume",
-            judge_model="deepseek-v4-pro",
-            result=result,
+        task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD text", notes_text="Prefer agents")
+        store.upsert_resume_snapshot(
+            snapshot_sha256="snapshot-1",
+            source_resume_id="resume-1",
+            dedup_key="resume-1",
+            raw_payload={"resume_id": "resume-1"},
+            normalized_preview={"search_text": "agent"},
+        )
+        contract = build_judge_contract_hash(
+            judge_model_id="deepseek-v4-pro",
+            judge_protocol_family="openai_chat_completions_compatible",
+            judge_provider_label="bailian",
+            judge_endpoint_kind="openai-compatible",
+            structured_output_mode="strict_native_schema",
+            judge_prompt_hash="prompt-hash",
+            judge_policy_version="resume-judge-v1",
+            label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+            judge_output_schema_hash="schema-hash",
+            reasoning_effort=None,
+            temperature=0.0,
+        )
+        store.record_judge_label(
+            task_id=task_id,
+            snapshot_sha256="snapshot-1",
+            judge_model_id="deepseek-v4-pro",
+            judge_protocol_family="openai_chat_completions_compatible",
+            judge_provider_label="bailian",
+            judge_endpoint_kind="openai-compatible",
+            structured_output_mode="strict_native_schema",
+            judge_prompt_hash="prompt-hash",
+            judge_contract_hash=contract,
+            judge_policy_version="resume-judge-v1",
+            label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+            judge_output_schema_hash="schema-hash",
+            reasoning_effort=None,
+            temperature=0.0,
+            score=3,
+            rationale="Strong direct match.",
+            label_payload={"score": 3, "rationale": "Strong direct match."},
+            judge_prompt_text="judge prompt",
         )
 
-        loaded = cache.get_label(
-            task_sha256_value="task",
-            snapshot_sha256_value="resume",
-        )
-        loaded_with_other_model = cache.get(
-            jd_sha256_value="task",
-            snapshot_sha256_value="resume",
-            model_id="qwen-plus",
-        )
-
-        assert loaded == result
-        assert loaded_with_other_model == result
+        assert store.get_cached_judge_label(
+            task_id=task_id,
+            snapshot_sha256="snapshot-1",
+            judge_contract_hash=contract,
+            label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+        ) == {"score": 3, "rationale": "Strong direct match."}
     finally:
-        cache.close()
+        store.close()
 
 
 def test_judge_cache_summary_counts_unique_snapshots_once() -> None:
@@ -1190,8 +1225,8 @@ def test_judge_cache_summary_counts_unique_snapshots_once() -> None:
 def test_evaluate_run_keeps_no_judge_artifacts_on_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, jd, notes, candidates, cache, judge_limiter
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, candidates, store, judge_limiter
         raise RuntimeError("judge failed")
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
@@ -1227,18 +1262,18 @@ def test_evaluate_run_keeps_no_judge_artifacts_on_failure(tmp_path: Path, monkey
 
     assert not (run_dir / "evaluation").exists()
     assert not (run_dir / "raw_resumes").exists()
-    assert (tmp_path / ".seektalent" / "judge_cache.sqlite3").exists()
+    assert (tmp_path / ".seektalent" / "flywheel.sqlite3").exists()
 
 
 def test_evaluate_run_does_not_log_wandb_when_weave_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, jd, notes, cache, judge_limiter
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, store, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
-            [("jd", candidate.snapshot_sha256, "deepseek-v4-pro", result) for candidate in candidates],
+            [],
         )
 
     wandb_calls: list[str] = []
@@ -1278,7 +1313,7 @@ def test_evaluate_run_does_not_log_wandb_when_weave_fails(tmp_path: Path, monkey
 
     assert wandb_calls == []
     assert not (run_dir / "evaluation").exists()
-    assert (tmp_path / ".seektalent" / "judge_cache.sqlite3").exists()
+    assert (tmp_path / ".seektalent" / "flywheel.sqlite3").exists()
 
 
 def test_resume_judge_includes_notes_block_only_when_present(tmp_path: Path) -> None:
@@ -1295,7 +1330,7 @@ def test_resume_judge_includes_notes_block_only_when_present(tmp_path: Path) -> 
         search_text="engineer",
         raw={"resume_id": "resume-1"},
     )
-    cache = JudgeCache(tmp_path)
+    store, task_id = _flywheel_store_with_task(tmp_path, notes="Prefer agent experience")
     prompts: list[str] = []
 
     class FakeAgent:
@@ -1306,10 +1341,30 @@ def test_resume_judge_includes_notes_block_only_when_present(tmp_path: Path) -> 
     judge = ResumeJudge(settings, prompt)
     cast(Any, judge)._build_agent = lambda: FakeAgent()
     try:
-        asyncio.run(judge.judge_many(jd="JD text", notes="Prefer agent experience", candidates=[candidate], cache=cache))
-        asyncio.run(judge.judge_many(jd="JD text", notes="", candidates=[candidate], cache=JudgeCache(tmp_path / "other")))
+        asyncio.run(
+            judge.judge_many(
+                task_id=task_id,
+                jd="JD text",
+                notes="Prefer agent experience",
+                candidates=[candidate],
+                store=store,
+            )
+        )
+        other_store, other_task_id = _flywheel_store_with_task(tmp_path / "other", notes="")
+        try:
+            asyncio.run(
+                judge.judge_many(
+                    task_id=other_task_id,
+                    jd="JD text",
+                    notes="",
+                    candidates=[candidate],
+                    store=other_store,
+                )
+            )
+        finally:
+            other_store.close()
     finally:
-        cache.close()
+        store.close()
 
     assert "JOB DESCRIPTION" in prompts[0]
     assert "NOTES" in prompts[0]
@@ -1369,8 +1424,8 @@ def test_resume_judge_build_agent_uses_resolved_stage_config(monkeypatch: pytest
     assert captured["model_settings"] == {"config": stage_config}
 
 
-def test_resume_judge_cache_uses_task_and_resume_without_model(tmp_path: Path) -> None:
-    cache = JudgeCache(tmp_path)
+def test_resume_judge_cache_uses_task_and_resume_contract(tmp_path: Path) -> None:
+    store, task_id = _flywheel_store_with_task(tmp_path, notes="Prefer agent experience")
     candidate = ResumeCandidate(
         resume_id="resume-1",
         source_resume_id="resume-1",
@@ -1383,12 +1438,6 @@ def test_resume_judge_cache_uses_task_and_resume_without_model(tmp_path: Path) -
         raw={"resume_id": "resume-1"},
     )
     cached = ResumeJudgeResult(score=3, rationale="Cached fit.")
-    cache.put_label(
-        task_sha256_value=task_sha256("JD text", "Prefer agent experience"),
-        snapshot_sha256_value="snapshot-1",
-        judge_model="old-model",
-        result=cached,
-    )
     prompts: list[str] = []
 
     class FakeAgent:
@@ -1396,24 +1445,56 @@ def test_resume_judge_cache_uses_task_and_resume_without_model(tmp_path: Path) -
             prompts.append(prompt_text)
             return SimpleNamespace(output=ResumeJudgeResult(score=0, rationale="should not run"))
 
-    settings = make_settings(judge_model_id="new-model")
+    settings = make_settings()
     judge = ResumeJudge(settings, LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge", sha256="hash"))
+    contract = judge._judge_contract_hash()
+    store.upsert_resume_snapshot(
+        snapshot_sha256="snapshot-1",
+        source_resume_id="resume-1",
+        dedup_key="resume-1",
+        raw_payload={"resume_id": "resume-1"},
+        normalized_preview={"search_text": "engineer"},
+    )
+    store.record_judge_label(
+        task_id=task_id,
+        snapshot_sha256="snapshot-1",
+        judge_model_id=settings.judge_model_id,
+        judge_protocol_family="openai_chat_completions_compatible",
+        judge_provider_label="bailian",
+        judge_endpoint_kind="bailian_openai_chat_completions",
+        structured_output_mode="native_json_schema",
+        judge_prompt_hash="hash",
+        judge_contract_hash=contract,
+        judge_policy_version="resume-judge-v1",
+        label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+        judge_output_schema_hash=judge._output_schema_hash(),
+        reasoning_effort="high",
+        temperature=0.0,
+        score=cached.score,
+        rationale=cached.rationale,
+        label_payload=cached.model_dump(mode="json"),
+        judge_prompt_text="judge",
+    )
     cast(Any, judge)._build_agent = lambda: FakeAgent()
     try:
         results, writes = asyncio.run(
             judge.judge_many(
+                task_id=task_id,
                 jd="JD text",
                 notes="Prefer agent experience",
                 candidates=[candidate],
-                cache=cache,
+                store=store,
             )
         )
-        different_notes = cache.get_label(
-            task_sha256_value=task_sha256("JD text", "Different notes"),
-            snapshot_sha256_value="snapshot-1",
+        different_task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD text", notes_text="Different notes")
+        different_notes = store.get_cached_judge_label(
+            task_id=different_task_id,
+            snapshot_sha256="snapshot-1",
+            judge_contract_hash=contract,
+            label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
         )
     finally:
-        cache.close()
+        store.close()
 
     assert results["resume-1"] == (cached, True, 0)
     assert writes == []
@@ -1455,18 +1536,18 @@ def test_resume_judge_reuses_pending_snapshot_within_batch(tmp_path: Path) -> No
             prompts.append(prompt_text)
             return SimpleNamespace(output=ResumeJudgeResult(score=3, rationale="Strong fit."))
 
-    cache = JudgeCache(tmp_path)
+    store, task_id = _flywheel_store_with_task(tmp_path)
     judge = ResumeJudge(settings, prompt)
     cast(Any, judge)._build_agent = lambda: FakeAgent()
     try:
-        results, writes = asyncio.run(judge.judge_many(jd="JD text", candidates=candidates, cache=cache))
+        results, writes = asyncio.run(judge.judge_many(task_id=task_id, jd="JD text", candidates=candidates, store=store))
     finally:
-        cache.close()
+        store.close()
 
     assert len(prompts) == 1
     assert results["resume-1"][0] == results["resume-2"][0]
     assert len(writes) == 1
-    assert writes[0].snapshot_sha256_value == "same-snapshot"
+    assert writes[0].snapshot_sha256 == "same-snapshot"
 
 
 def test_resume_judge_uses_judge_concurrency_limit(tmp_path: Path) -> None:
@@ -1497,13 +1578,13 @@ def test_resume_judge_uses_judge_concurrency_limit(tmp_path: Path) -> None:
             counters["active"] -= 1
             return SimpleNamespace(output=ResumeJudgeResult(score=2, rationale="ok"))
 
-    cache = JudgeCache(tmp_path)
+    store, task_id = _flywheel_store_with_task(tmp_path)
     judge = ResumeJudge(settings, prompt)
     cast(Any, judge)._build_agent = lambda: FakeAgent()
     try:
-        results, writes = asyncio.run(judge.judge_many(jd="JD text", candidates=candidates, cache=cache))
+        results, writes = asyncio.run(judge.judge_many(task_id=task_id, jd="JD text", candidates=candidates, store=store))
     finally:
-        cache.close()
+        store.close()
 
     assert counters["max_active"] == 2
     assert set(results) == {candidate.resume_id for candidate in candidates}
@@ -1538,16 +1619,16 @@ def test_resume_judge_uses_supplied_judge_limiter(tmp_path: Path) -> None:
             counters["active"] -= 1
             return SimpleNamespace(output=ResumeJudgeResult(score=2, rationale="ok"))
 
-    cache = JudgeCache(tmp_path)
+    store, task_id = _flywheel_store_with_task(tmp_path)
     judge = ResumeJudge(settings, prompt)
     cast(Any, judge)._build_agent = lambda: FakeAgent()
     limiter = AsyncJudgeLimiter(1)
     try:
         results, writes = asyncio.run(
-            judge.judge_many(jd="JD text", candidates=candidates, cache=cache, judge_limiter=limiter)
+            judge.judge_many(task_id=task_id, jd="JD text", candidates=candidates, store=store, judge_limiter=limiter)
         )
     finally:
-        cache.close()
+        store.close()
 
     assert counters["max_active"] == 1
     assert set(results) == {candidate.resume_id for candidate in candidates}
@@ -1596,14 +1677,14 @@ def test_evaluate_run_passes_notes_to_judge(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.chdir(tmp_path)
     seen: dict[str, object] = {}
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, cache, judge_limiter
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, store, judge_limiter
         seen["jd"] = jd
         seen["notes"] = notes
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
-            [("jd", candidate.snapshot_sha256, "deepseek-v4-pro", result) for candidate in candidates],
+            [],
         )
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
@@ -1646,13 +1727,13 @@ def test_evaluate_run_passes_judge_limiter_to_judge(tmp_path: Path, monkeypatch:
     monkeypatch.chdir(tmp_path)
     seen: dict[str, object] = {}
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, jd, notes, cache
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, store
         seen["judge_limiter"] = judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
-            [("jd", candidate.snapshot_sha256, "deepseek-v4-pro", result) for candidate in candidates],
+            [],
         )
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
@@ -1732,35 +1813,45 @@ def test_evaluate_run_persists_jd_resume_and_label_assets(tmp_path: Path, monkey
         )
     )
 
-    conn = sqlite3.connect(tmp_path / ".seektalent" / "judge_cache.sqlite3")
+    conn = sqlite3.connect(tmp_path / ".seektalent" / "flywheel.sqlite3")
     conn.row_factory = sqlite3.Row
     try:
         task_hash = task_sha256("JD text", "Notes text")
-        jd_row = conn.execute("SELECT * FROM jd_assets WHERE task_sha256 = ?", (task_hash,)).fetchone()
-        resume_row = conn.execute("SELECT * FROM resume_assets WHERE snapshot_sha256 = ?", ("snapshot-1",)).fetchone()
+        task_row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_hash,)).fetchone()
+        resume_row = conn.execute("SELECT * FROM resume_snapshots WHERE snapshot_sha256 = ?", ("snapshot-1",)).fetchone()
         label_row = conn.execute(
-            "SELECT * FROM judge_labels WHERE task_sha256 = ? AND snapshot_sha256 = ?",
+            "SELECT * FROM judge_labels WHERE task_id = ? AND snapshot_sha256 = ?",
             (task_hash, "snapshot-1"),
         ).fetchone()
         tables = _table_names(conn)
-        jd_columns = _column_names(conn, "jd_assets")
-        resume_columns = _column_names(conn, "resume_assets")
+        task_columns = _column_names(conn, "tasks")
+        resume_columns = _column_names(conn, "resume_snapshots")
         label_columns = _column_names(conn, "judge_labels")
     finally:
         conn.close()
 
-    assert tables == {"jd_assets", "resume_assets", "judge_labels"}
-    assert "source_run_id" not in jd_columns
-    assert resume_columns == {"snapshot_sha256", "raw_json", "captured_at"}
-    assert "label_source" not in label_columns
-    assert "judge_prompt_sha256" not in label_columns
+    assert {"tasks", "resume_snapshots", "judge_labels"} <= tables
+    assert {"task_id", "task_sha256", "job_title", "jd_text", "notes_text"} <= task_columns
+    assert {"snapshot_sha256", "raw_json", "normalized_preview_json"} <= resume_columns
+    assert {"task_id", "snapshot_sha256", "judge_contract_hash", "label_json"} <= label_columns
     assert artifacts.result.final.candidates[0].cache_hit is False
-    assert jd_row["jd_text"] == "JD text"
-    assert jd_row["notes_text"] == "Notes text"
+    assert task_row["job_title"] == ""
+    assert task_row["jd_text"] == "JD text"
+    assert task_row["notes_text"] == "Notes text"
     assert json.loads(resume_row["raw_json"]) == {"resume_id": "resume-1", "skill": "agent"}
     assert label_row["score"] == 3
-    assert label_row["judge_model"] == "deepseek-v4-pro"
+    assert label_row["rationale"] == "Strong fit."
+    assert label_row["judge_model_id"] == "deepseek-v4-pro"
     assert label_row["judge_prompt_text"] == "judge prompt"
+    assert label_row["judge_prompt_hash"] == "prompt-hash"
+    assert label_row["judge_contract_hash"]
+    assert label_row["judge_protocol_family"] == "openai_chat_completions_compatible"
+    assert label_row["judge_provider_label"] == "bailian"
+    assert label_row["judge_endpoint_kind"] == "bailian_openai_chat_completions"
+    assert label_row["structured_output_mode"] == "native_json_schema"
+    assert label_row["judge_policy_version"] == "resume-judge-v1"
+    assert label_row["label_schema_version"] == FLYWHEEL_LABEL_SCHEMA_VERSION
+    assert json.loads(label_row["label_json"]) == {"score": 3, "rationale": "Strong fit."}
 
 
 def test_evaluate_run_reads_current_format_input_truth_for_job_title(
@@ -1812,15 +1903,15 @@ def test_evaluate_run_reads_current_format_input_truth_for_job_title(
         )
     )
 
-    conn = sqlite3.connect(tmp_path / ".seektalent" / "judge_cache.sqlite3")
+    conn = sqlite3.connect(tmp_path / ".seektalent" / "flywheel.sqlite3")
     conn.row_factory = sqlite3.Row
     try:
-        task_hash = task_sha256("JD text", "Notes text")
-        jd_row = conn.execute("SELECT * FROM jd_assets WHERE task_sha256 = ?", (task_hash,)).fetchone()
+        task_hash = task_sha256("JD text", "Notes text", job_title="Agent Engineer")
+        task_row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_hash,)).fetchone()
     finally:
         conn.close()
 
-    assert jd_row["job_title"] == "Agent Engineer"
+    assert task_row["job_title"] == "Agent Engineer"
 
 
 def test_migrate_judge_assets_backfills_runs_and_reports_conflicts(tmp_path: Path) -> None:
@@ -2251,12 +2342,12 @@ def test_evaluate_run_logs_weave_and_wandb(
             ),
         )
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, jd, notes, cache, judge_limiter
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, store, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
-            [("jd", candidate.snapshot_sha256, "deepseek-v4-pro", result) for candidate in candidates],
+            [],
         )
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
@@ -2342,12 +2433,12 @@ def test_evaluate_run_logs_weave_and_wandb(
 def test_evaluate_run_logs_weave_before_wandb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, jd, notes, cache, judge_limiter
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, store, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
-            [("jd", candidate.snapshot_sha256, "deepseek-v4-pro", result) for candidate in candidates],
+            [],
         )
 
     calls: list[str] = []
@@ -2389,12 +2480,12 @@ def test_evaluate_run_logs_weave_before_wandb(tmp_path: Path, monkeypatch: pytes
 def test_evaluate_run_can_skip_remote_logging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, jd, notes, cache, judge_limiter
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, store, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong.")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
-            [("jd", candidate.snapshot_sha256, "deepseek-v4-pro", result) for candidate in candidates],
+            [],
         )
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
@@ -2498,12 +2589,12 @@ def test_evaluate_run_skips_empty_weave_stage(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setitem(sys.modules, "weave", SimpleNamespace(init=lambda project_name: project_name, EvaluationLogger=FakeEvaluationLogger))
     monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: None)
 
-    async def fake_judge_many(self, *, jd, notes, candidates, cache, judge_limiter=None):  # noqa: ANN001
-        del self, jd, notes, cache, judge_limiter
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, store, judge_limiter
         result = ResumeJudgeResult(score=3, rationale="Strong fit")
         return (
             {candidate.resume_id: (result, False, 1) for candidate in candidates},
-            [("jd", candidate.snapshot_sha256, "deepseek-v4-pro", result) for candidate in candidates],
+            [],
         )
 
     monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
