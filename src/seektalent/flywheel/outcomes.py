@@ -6,10 +6,11 @@ from typing import Any
 
 from seektalent.flywheel.store import canonical_json
 from seektalent.models import QueryOutcomeClassification, QueryOutcomeThresholds
-from seektalent.runtime.runtime_diagnostics import classify_query_outcome
 
 QUERY_OUTCOME_SCHEMA_VERSION = "query-outcome-v1"
 QUERY_OUTCOME_POLICY_VERSION = "query-outcome-policy-v1"
+JUDGE_QUERY_OUTCOME_SCHEMA_VERSION = "query-judge-outcome-v1"
+JUDGE_QUERY_OUTCOME_POLICY_VERSION = "query-judge-outcome-policy-v1"
 DEDUPE_VERSION = "dedupe-v1"
 
 
@@ -79,6 +80,8 @@ def build_runtime_query_outcome_rows_from_hits(
 ) -> list[dict[str, object]]:
     thresholds_payload = thresholds_payload or QueryOutcomeThresholds().model_dump(mode="json")
     thresholds = QueryOutcomeThresholds.model_validate(thresholds_payload)
+    from seektalent.runtime.runtime_diagnostics import classify_query_outcome
+
     hits_by_query: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for hit in hits:
         hits_by_query[str(hit["query_instance_id"])].append(hit)
@@ -126,5 +129,74 @@ def build_runtime_query_outcome_rows_from_hits(
                 classification=classification,
                 thresholds_payload=thresholds_payload,
             )
+        )
+    return rows
+
+
+def build_query_judge_outcome_rows(
+    *,
+    run_id: str,
+    task_id: str,
+    query_hits: list[dict[str, Any]],
+    judged_by_snapshot: dict[str, dict[str, Any]],
+    judge_contract_hash: str,
+    judge_model_id: str,
+    judge_prompt_hash: str,
+    label_schema_version: str,
+    thresholds_payload: dict[str, Any],
+) -> list[dict[str, object]]:
+    hits_by_query: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for hit in query_hits:
+        if not hit.get("snapshot_sha256"):
+            continue
+        hits_by_query[str(hit["query_instance_id"])].append(hit)
+
+    thresholds_json = canonical_json(thresholds_payload)
+    thresholds_hash = sha256(thresholds_json.encode("utf-8")).hexdigest()
+    rows: list[dict[str, object]] = []
+    for query_instance_id, hits in sorted(hits_by_query.items()):
+        new_hits = [hit for hit in hits if bool(hit.get("was_new_to_pool"))]
+        judged_new_hits = [
+            judged_by_snapshot[str(hit["snapshot_sha256"])]
+            for hit in new_hits
+            if str(hit["snapshot_sha256"]) in judged_by_snapshot
+        ]
+        positive_count = sum(1 for item in judged_new_hits if int(item["score"]) >= 2)
+        near_positive_count = sum(1 for item in judged_new_hits if int(item["score"]) == 2)
+        if not judged_new_hits:
+            labels = ["judge_coverage_missing"]
+            reasons = ["no new query hits had judge labels"]
+        elif positive_count:
+            labels = ["marginal_gain"]
+            reasons = ["new judge-positive resumes joined to query hits"]
+        else:
+            labels = ["low_recall_high_precision"]
+            reasons = ["new query hits were judged but no positive label was found"]
+        rows.append(
+            {
+                "run_id": run_id,
+                "query_instance_id": query_instance_id,
+                "query_fingerprint": str(hits[0]["query_fingerprint"]),
+                "task_id": task_id,
+                "judge_contract_hash": judge_contract_hash,
+                "judge_model_id": judge_model_id,
+                "judge_prompt_hash": judge_prompt_hash,
+                "label_schema_version": label_schema_version,
+                "outcome_schema_version": JUDGE_QUERY_OUTCOME_SCHEMA_VERSION,
+                "outcome_policy_version": JUDGE_QUERY_OUTCOME_POLICY_VERSION,
+                "outcome_thresholds_hash": thresholds_hash,
+                "outcome_thresholds_json": thresholds_json,
+                "provider_returned_count": len(hits),
+                "new_unique_resume_count": len(new_hits),
+                "judged_resume_count": len(judged_new_hits),
+                "new_judge_positive_count": positive_count,
+                "new_judge_near_positive_count": near_positive_count,
+                "judge_positive_rate": positive_count / len(judged_new_hits) if judged_new_hits else None,
+                "duplicate_count": sum(1 for hit in hits if bool(hit.get("was_duplicate"))),
+                "primary_label": labels[0],
+                "labels_json": canonical_json(labels),
+                "reasons_json": canonical_json(reasons),
+                "artifact_ref_id": None,
+            }
         )
     return rows

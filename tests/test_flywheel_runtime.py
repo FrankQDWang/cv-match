@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from seektalent.artifacts import ArtifactStore
-from seektalent.flywheel.outcomes import build_runtime_query_outcome_row
+from seektalent.flywheel.outcomes import build_query_judge_outcome_rows, build_runtime_query_outcome_row
 from seektalent.flywheel.runtime import build_run_query_rows, materialize_flywheel_run_artifacts, query_hit_rows_from_hits
 from seektalent.flywheel.store import FlywheelStore
 from seektalent.models import QueryOutcomeClassification, QueryResumeHit, SentQueryRecord
@@ -156,3 +156,38 @@ def test_materialize_flywheel_run_artifacts_backfills_artifact_refs(tmp_path: Pa
         assert (session.root / "flywheel/query_outcomes.jsonl").exists()
     finally:
         store.close()
+
+
+def test_query_judge_outcome_counts_only_new_hits_as_gain() -> None:
+    rows = build_query_judge_outcome_rows(
+        run_id="run-1",
+        task_id="task-1",
+        query_hits=[
+            {
+                "query_instance_id": "query-1",
+                "query_fingerprint": "fingerprint-1",
+                "snapshot_sha256": "snapshot-old",
+                "was_new_to_pool": False,
+                "was_duplicate": True,
+            },
+            {
+                "query_instance_id": "query-1",
+                "query_fingerprint": "fingerprint-1",
+                "snapshot_sha256": "snapshot-new",
+                "was_new_to_pool": True,
+                "was_duplicate": False,
+            },
+        ],
+        judged_by_snapshot={
+            "snapshot-old": {"score": 3},
+            "snapshot-new": {"score": 1},
+        },
+        judge_contract_hash="contract",
+        judge_model_id="deepseek-v4-pro",
+        judge_prompt_hash="prompt",
+        label_schema_version="judge-label-v1",
+        thresholds_payload={},
+    )
+
+    assert rows[0]["new_judge_positive_count"] == 0
+    assert rows[0]["judged_resume_count"] == 1

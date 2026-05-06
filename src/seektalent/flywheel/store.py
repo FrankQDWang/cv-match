@@ -760,6 +760,18 @@ class FlywheelStore:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def query_hits_for_run(self, *, run_id: str) -> list[dict[str, Any]]:
+        rows = self.connect().execute(
+            """
+            SELECT *
+            FROM query_resume_hits
+            WHERE run_id = ?
+            ORDER BY round_no, query_instance_id, hit_sequence_no
+            """,
+            (run_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def record_query_outcomes(self, rows: list[dict[str, object]]) -> None:
         if not rows:
             return
@@ -817,6 +829,63 @@ class FlywheelStore:
                     reasons_json = excluded.reasons_json,
                     latency_ms = excluded.latency_ms,
                     cost_estimate_usd = excluded.cost_estimate_usd
+                """,
+                values,
+            )
+
+    def record_query_judge_outcomes(self, rows: list[dict[str, object]]) -> None:
+        if not rows:
+            return
+        now = utc_now()
+        values = []
+        for row in rows:
+            if "created_at" in row:
+                raise ValueError("created_at is owned by FlywheelStore")
+            values.append({**row, "created_at": now})
+        conn = self.connect()
+        with conn:
+            conn.executemany(
+                """
+                INSERT INTO query_judge_outcomes (
+                    run_id, query_instance_id, query_fingerprint, task_id,
+                    judge_contract_hash, judge_model_id, judge_prompt_hash,
+                    label_schema_version, outcome_schema_version, outcome_policy_version,
+                    outcome_thresholds_hash, outcome_thresholds_json,
+                    provider_returned_count, new_unique_resume_count,
+                    judged_resume_count, new_judge_positive_count,
+                    new_judge_near_positive_count, judge_positive_rate,
+                    duplicate_count, primary_label, labels_json, reasons_json,
+                    artifact_ref_id, created_at
+                ) VALUES (
+                    :run_id, :query_instance_id, :query_fingerprint, :task_id,
+                    :judge_contract_hash, :judge_model_id, :judge_prompt_hash,
+                    :label_schema_version, :outcome_schema_version, :outcome_policy_version,
+                    :outcome_thresholds_hash, :outcome_thresholds_json,
+                    :provider_returned_count, :new_unique_resume_count,
+                    :judged_resume_count, :new_judge_positive_count,
+                    :new_judge_near_positive_count, :judge_positive_rate,
+                    :duplicate_count, :primary_label, :labels_json, :reasons_json,
+                    :artifact_ref_id, :created_at
+                )
+                ON CONFLICT(run_id, query_instance_id, judge_contract_hash) DO UPDATE SET
+                    query_fingerprint = excluded.query_fingerprint,
+                    judge_model_id = excluded.judge_model_id,
+                    judge_prompt_hash = excluded.judge_prompt_hash,
+                    label_schema_version = excluded.label_schema_version,
+                    outcome_schema_version = excluded.outcome_schema_version,
+                    outcome_policy_version = excluded.outcome_policy_version,
+                    outcome_thresholds_hash = excluded.outcome_thresholds_hash,
+                    outcome_thresholds_json = excluded.outcome_thresholds_json,
+                    provider_returned_count = excluded.provider_returned_count,
+                    new_unique_resume_count = excluded.new_unique_resume_count,
+                    judged_resume_count = excluded.judged_resume_count,
+                    new_judge_positive_count = excluded.new_judge_positive_count,
+                    new_judge_near_positive_count = excluded.new_judge_near_positive_count,
+                    judge_positive_rate = excluded.judge_positive_rate,
+                    duplicate_count = excluded.duplicate_count,
+                    primary_label = excluded.primary_label,
+                    labels_json = excluded.labels_json,
+                    reasons_json = excluded.reasons_json
                 """,
                 values,
             )

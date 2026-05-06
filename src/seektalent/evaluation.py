@@ -20,6 +20,8 @@ from pydantic_ai import Agent
 
 from seektalent.artifacts import ArtifactResolver, ArtifactSession
 from seektalent.config import AppSettings
+from seektalent.flywheel.outcomes import build_query_judge_outcome_rows
+from seektalent.flywheel.runtime import materialize_flywheel_run_artifacts
 from seektalent.flywheel.store import (
     FLYWHEEL_LABEL_SCHEMA_VERSION,
     FlywheelStore,
@@ -32,7 +34,7 @@ from seektalent.legacy_artifacts import (
     split_legacy_prf_replay_metadata,
 )
 from seektalent.llm import build_model, build_model_settings, build_output_spec, resolve_stage_model_config
-from seektalent.models import ReplaySnapshot, ResumeCandidate, StopGuidance
+from seektalent.models import QueryOutcomeThresholds, ReplaySnapshot, ResumeCandidate, StopGuidance
 from seektalent.prompting import LoadedPrompt, json_block
 from seektalent.resumes.snapshots import snapshot_sha256
 from seektalent.resources import package_prompt_dir
@@ -1500,7 +1502,8 @@ async def evaluate_run(
                 normalized_preview={"search_text": candidate.search_text},
             )
 
-        judged, pending_cache_writes = await ResumeJudge(settings, prompt).judge_many(
+        judge_runner = ResumeJudge(settings, prompt)
+        judged, pending_cache_writes = await judge_runner.judge_many(
             task_id=task_id,
             jd=jd,
             notes=notes,
@@ -1530,6 +1533,31 @@ async def evaluate_run(
                 judge_prompt_text=write.judge_prompt_text,
                 latency_ms=write.latency_ms,
             )
+        query_hits = store.query_hits_for_run(run_id=run_id)
+        if query_hits:
+            judged_by_snapshot: dict[str, dict[str, Any]] = {}
+            for candidate in unique_candidates.values():
+                judged_result = judged.get(candidate.resume_id)
+                if judged_result is None:
+                    continue
+                snapshot_hash = candidate.snapshot_sha256 or snapshot_sha256(candidate.raw)
+                judged_by_snapshot[snapshot_hash] = judged_result[0].model_dump(mode="json")
+            config = judge_runner._model_config()
+            query_judge_rows = build_query_judge_outcome_rows(
+                run_id=run_id,
+                task_id=task_id,
+                query_hits=query_hits,
+                judged_by_snapshot=judged_by_snapshot,
+                judge_contract_hash=judge_runner._judge_contract_hash(),
+                judge_model_id=config.model_id,
+                judge_prompt_hash=prompt.sha256,
+                label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+                thresholds_payload=QueryOutcomeThresholds().model_dump(mode="json"),
+            )
+            store.record_query_judge_outcomes(query_judge_rows)
+            session = _artifact_session_for_run(run_dir)
+            if session is not None:
+                materialize_flywheel_run_artifacts(session=session, store=store, run_id=run_id)
         evaluation = EvaluationResult(
             run_id=run_id,
             judge_model=settings.judge_model_id,

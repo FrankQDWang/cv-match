@@ -1914,6 +1914,126 @@ def test_evaluate_run_reads_current_format_input_truth_for_job_title(
     assert task_row["job_title"] == "Agent Engineer"
 
 
+def test_evaluate_run_writes_query_judge_outcomes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("seektalent.evaluation._log_to_wandb", lambda **kwargs: None)
+    monkeypatch.setattr("seektalent.evaluation._log_to_weave", lambda **kwargs: None)
+
+    async def fake_judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+        del self, task_id, jd, notes, store, judge_limiter
+        result = ResumeJudgeResult(score=3, rationale="Strong fit")
+        return ({candidate.resume_id: (result, False, 1) for candidate in candidates}, [])
+
+    monkeypatch.setattr("seektalent.evaluation.ResumeJudge.judge_many", fake_judge_many)
+    settings = make_settings(
+        runs_dir=str(tmp_path / "runs"),
+        enable_eval=True,
+        flywheel_db_path=str(tmp_path / "flywheel.sqlite3"),
+    )
+    prompt = LoadedPrompt(name="judge", path=tmp_path / "judge.md", content="judge prompt", sha256="prompt-hash")
+    candidate = ResumeCandidate(
+        resume_id="resume-1",
+        source_resume_id="resume-1",
+        snapshot_sha256="snapshot-1",
+        dedup_key="resume-1",
+        search_text="agent",
+        raw={"resume_id": "resume-1", "skill": "agent"},
+    )
+    artifact_store = ArtifactStore(tmp_path / "artifacts")
+    session = artifact_store.create_root(kind="run", display_name="seek talent workflow run", producer="WorkflowRuntime")
+    session.write_json("input.input_truth", {"job_title": "Agent Engineer", "jd": "JD text", "notes": ""})
+    flywheel = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    try:
+        task_id = flywheel.upsert_task(job_title="Agent Engineer", jd_text="JD text", notes_text="")
+        flywheel.upsert_resume_snapshot(
+            snapshot_sha256="snapshot-1",
+            source_resume_id="resume-1",
+            dedup_key="resume-1",
+            raw_payload={"resume_id": "resume-1", "skill": "agent"},
+            normalized_preview={"search_text": "agent"},
+        )
+        flywheel.start_run(
+            run_id=session.manifest.artifact_id,
+            task_id=task_id,
+            version="0.6.2",
+            git_sha="abc123",
+            artifact_ref_id=None,
+            artifact_root=str(session.root),
+            config_hash="config",
+            config_payload={},
+            status="completed",
+            eval_enabled=True,
+            benchmark_id=None,
+            benchmark_case_id=None,
+        )
+        flywheel.record_run_queries(
+            [
+                {
+                    "run_id": session.manifest.artifact_id,
+                    "round_no": 1,
+                    "lane_type": "exploit",
+                    "query_instance_id": "query-1",
+                    "query_fingerprint": "fingerprint-1",
+                    "query_role": "exploit",
+                    "canonical_query_spec_json": "{}",
+                    "query_spec_schema_version": "canonical-query-spec-v1",
+                    "query_policy_version": "query-policy-v1",
+                    "job_intent_fingerprint": "intent-1",
+                    "provider_name": "cts",
+                    "rendered_provider_query": "agent",
+                    "keyword_query": "agent",
+                    "query_terms_json": "[]",
+                    "filters_json": "{}",
+                    "artifact_ref_id": None,
+                }
+            ]
+        )
+        flywheel.record_query_resume_hits(
+            [
+                {
+                    "run_id": session.manifest.artifact_id,
+                    "query_instance_id": "query-1",
+                    "query_fingerprint": "fingerprint-1",
+                    "hit_sequence_no": 1,
+                    "snapshot_sha256": "snapshot-1",
+                    "snapshot_missing_reason": None,
+                    "resume_id": "resume-1",
+                    "round_no": 1,
+                    "lane_type": "exploit",
+                    "batch_no": 1,
+                    "rank_in_query": 1,
+                    "provider_name": "cts",
+                    "was_new_to_pool": True,
+                    "was_duplicate": False,
+                    "final_candidate_status": "fit",
+                }
+            ]
+        )
+    finally:
+        flywheel.close()
+
+    asyncio.run(
+        evaluate_run(
+            settings=settings,
+            prompt=prompt,
+            run_id=session.manifest.artifact_id,
+            run_dir=session.root,
+            jd="JD text",
+            round_01_candidates=[candidate],
+            final_candidates=[candidate],
+            rounds_executed=1,
+        )
+    )
+
+    conn = sqlite3.connect(tmp_path / "flywheel.sqlite3")
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM query_judge_outcomes").fetchone()[0]
+    finally:
+        conn.close()
+    assert count >= 1
+    assert (session.root / "flywheel/query_judge_outcomes.jsonl").exists()
+
+
 def test_migrate_judge_assets_backfills_runs_and_reports_conflicts(tmp_path: Path) -> None:
     def write_run(run_name: str, *, score: int, rationale: str, include_prompt_snapshot: bool = True) -> None:
         run_dir = tmp_path / "runs" / run_name
