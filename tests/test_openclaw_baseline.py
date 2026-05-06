@@ -399,8 +399,8 @@ def test_evaluate_baseline_run_writes_openclaw_eval_artifacts(
         def __init__(self, settings, prompt) -> None:  # noqa: ANN001
             del settings, prompt
 
-        async def judge_many(self, *, jd, notes, candidates, cache):  # noqa: ANN001
-            del jd, notes, cache
+        async def judge_many(self, *, task_id, jd, notes, candidates, store, judge_limiter=None):  # noqa: ANN001
+            del task_id, jd, notes, store, judge_limiter
             judged = {
                 candidate.resume_id: (ResumeJudgeResult(score=3, rationale="Strong fit."), False, 1)
                 for candidate in candidates

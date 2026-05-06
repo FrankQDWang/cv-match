@@ -24,7 +24,7 @@ seektalent update
 | --- | --- |
 | `seektalent run` | Run one resume-matching workflow. |
 | `seektalent benchmark` | Run benchmark JD rows from a JSONL file. |
-| `seektalent migrate-judge-assets` | Rebuild the local judge asset database from existing run artifacts. |
+| `seektalent flywheel-export` | Export query rewriting flywheel dataset artifacts. |
 | `seektalent init` | Write a starter env file. |
 | `seektalent doctor` | Check local configuration without network calls. |
 | `seektalent version` | Print the installed version. |
@@ -114,15 +114,18 @@ Default directory mode skips generated or temporary JSONL files such as `phase_*
 
 The command writes `benchmark_summary_*.json` under the configured runs directory.
 
-## `seektalent migrate-judge-assets`
+## `seektalent flywheel-export`
 
-Rebuild the local judge asset database from run artifacts:
+Export query rewriting samples and source flywheel rows from `.seektalent/flywheel.sqlite3`:
 
 ```bash
-seektalent migrate-judge-assets --runs-dir runs --project-root .
+seektalent flywheel-export \
+  --dataset-version 0.6.2 \
+  --run-id run_01H... \
+  --output-dir ./artifacts
 ```
 
-Use `--json` for a machine-readable migration summary.
+Use `--run-id` more than once to include multiple runs. The command writes an export artifact under `artifacts/exports/` and registers `flywheel.*` logical artifacts in the export manifest. Use `--json` for a machine-readable export summary.
 
 ## Setup Commands
 

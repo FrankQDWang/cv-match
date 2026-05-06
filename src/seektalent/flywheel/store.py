@@ -1272,7 +1272,7 @@ class FlywheelStore:
             return None
         return json.loads(str(row["label_json"]))
 
-    def judge_cache_summary(self, *, task_id: str, judge_contract_hash: str) -> dict[str, object]:
+    def judge_label_cache_summary(self, *, task_id: str, judge_contract_hash: str) -> dict[str, object]:
         row = self.connect().execute(
             """
             SELECT COUNT(*) AS hits

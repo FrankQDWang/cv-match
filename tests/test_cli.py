@@ -257,7 +257,6 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     assert "run" in payload["commands"]
     assert "benchmark" in payload["commands"]
     assert "doctor" in payload["commands"]
-    assert "migrate-judge-assets" in payload["commands"]
     assert "llm-prf-live-validate" in payload["commands"]
     assert "prf-sidecar-prefetch" not in payload["commands"]
     assert "inspect" in payload["commands"]
@@ -318,58 +317,12 @@ def test_inspect_json_returns_machine_readable_contract(capsys: pytest.CaptureFi
     assert payload["json_contracts"]["benchmark"]["stdout_success_fields"] == ["count", "runs", "summary_path"]
     assert payload["json_contracts"]["benchmark"]["file_mode_fields"] == ["benchmark_file"]
     assert payload["json_contracts"]["benchmark"]["directory_mode_fields"] == ["benchmark_dir", "benchmark_files"]
-    assert payload["json_contracts"]["migrate-judge-assets"]["stdout_success_fields"] == [
-        "runs_scanned",
-        "jd_assets_upserted",
-        "resume_assets_upserted",
-        "judge_labels_upserted",
-        "conflicts",
-        "missing_raw_resumes",
-    ]
     live_prf_args = {item["name"]: item for item in payload["commands"]["llm-prf-live-validate"]["arguments"]}
     assert live_prf_args["--cases"]["required"] is True
     assert live_prf_args["--output-dir"]["required"] is True
     assert live_prf_args["--env-file"]["default"] == ".env"
     assert payload["json_contracts"]["doctor"]["stdout_success_fields"] == ["ok", "checks"]
     assert payload["failure_contract"]["stderr_json_fields"] == ["error", "error_type"]
-
-
-def test_migrate_judge_assets_json_command(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    seen: dict[str, Path] = {}
-
-    def fake_migrate_judge_assets(*, project_root: Path, runs_dir: Path) -> dict[str, object]:
-        seen["project_root"] = project_root
-        seen["runs_dir"] = runs_dir
-        return {
-            "runs_scanned": 1,
-            "jd_assets_upserted": 1,
-            "resume_assets_upserted": 2,
-            "judge_labels_upserted": 3,
-            "conflicts": [],
-            "missing_raw_resumes": [],
-        }
-
-    monkeypatch.setattr("seektalent.cli.migrate_judge_assets", fake_migrate_judge_assets)
-
-    assert main(
-        [
-            "migrate-judge-assets",
-            "--runs-dir",
-            str(tmp_path / "runs"),
-            "--project-root",
-            str(tmp_path),
-            "--json",
-        ]
-    ) == 0
-
-    payload = json.loads(capsys.readouterr().out)
-    assert seen == {"project_root": tmp_path, "runs_dir": tmp_path / "runs"}
-    assert payload["runs_scanned"] == 1
-    assert payload["judge_labels_upserted"] == 3
 
 
 def test_archive_legacy_artifacts_command_prints_plan_and_result(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

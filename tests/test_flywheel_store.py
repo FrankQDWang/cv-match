@@ -345,3 +345,43 @@ def test_record_judge_label_rejects_mismatched_contract_hash(tmp_path: Path) -> 
 
 def test_canonical_json_is_stable() -> None:
     assert canonical_json({"b": 2, "a": 1}) == '{"a":1,"b":2}'
+
+
+def test_active_python_no_longer_mentions_legacy_judge_cache() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    forbidden_tokens = (
+        "JudgeCache",
+        "judge_cache",
+        "judge_cache.sqlite3",
+        "migrate_judge_assets",
+        "migrate-judge-assets",
+        "jd_assets",
+        "resume_assets",
+    )
+    allowed = {Path("tests/test_flywheel_store.py")}
+    offenders: list[str] = []
+
+    for root in (repo_root / "src", repo_root / "tests", repo_root / "experiments"):
+        for path in root.rglob("*.py"):
+            relative = path.relative_to(repo_root)
+            if relative in allowed:
+                continue
+            text = path.read_text(encoding="utf-8")
+            if any(token in text for token in forbidden_tokens):
+                offenders.append(str(relative))
+
+    assert offenders == []
+
+
+def test_tests_do_not_write_repo_root_cache_test_dirs() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    offenders: list[str] = []
+
+    for path in (repo_root / "tests").rglob("*.py"):
+        relative = path.relative_to(repo_root)
+        if relative == Path("tests/test_flywheel_store.py"):
+            continue
+        if "cache-test-" in path.read_text(encoding="utf-8"):
+            offenders.append(str(relative))
+
+    assert offenders == []

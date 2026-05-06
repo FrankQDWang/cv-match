@@ -4,7 +4,6 @@ import asyncio
 import json
 import sqlite3
 import sys
-from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -15,11 +14,10 @@ from pydantic import ValidationError
 from seektalent.evaluation import (
     AsyncJudgeLimiter,
     WANDB_REPORT_TITLE,
-    _judge_cache_summary,
+    _judge_label_cache_summary,
     _latest_runs_by_version_rows,
     _best_runs_by_version_rows,
     _worst_runs_by_version_rows,
-    JudgeCache,
     ResumeJudge,
     ResumeJudgeResult,
     _upsert_wandb_report,
@@ -33,7 +31,6 @@ from seektalent.evaluation import (
     evaluate_run,
     export_replay_rows,
     log_evaluation_remotely,
-    migrate_judge_assets,
     ndcg_at_10,
     precision_at_10,
     parse_replay_snapshot_payload,
@@ -45,7 +42,6 @@ from seektalent.flywheel.store import FLYWHEEL_LABEL_SCHEMA_VERSION, FlywheelSto
 from seektalent.llm import ResolvedTextModelConfig
 from seektalent.models import QueryOutcomeThresholds, ReplaySnapshot, ResumeCandidate, SearchObservation, SecondLaneDecision
 from seektalent.prompting import LoadedPrompt
-from seektalent.resources import package_prompt_dir
 from seektalent.runtime.runtime_diagnostics import build_replay_snapshot, classify_query_outcome
 from tests.settings_factory import make_settings
 
@@ -1015,12 +1011,12 @@ def test_version_means_rows_averages_all_successful_runs() -> None:
             "round1_total_mean": pytest.approx(0.05),
             "round1_precision_mean": pytest.approx(0.1),
             "round1_ndcg_mean": pytest.approx(0.15),
-            "judge_cache_reuse_pct": 0.0,
+            "judge_label_cache_reuse_pct": 0.0,
         }
     ]
 
 
-def test_version_means_rows_aggregates_judge_cache_reuse_counts() -> None:
+def test_version_means_rows_aggregates_judge_label_cache_reuse_counts() -> None:
     rows = _version_means_rows(
         [
             {
@@ -1037,7 +1033,7 @@ def test_version_means_rows_aggregates_judge_cache_reuse_counts() -> None:
                 "round_01_precision_at_10": 0.0,
                 "round_01_ndcg_at_10": 0.0,
                 "judge_candidate_count": 4,
-                "judge_cache_hit_count": 1,
+                "judge_label_cache_hit_count": 1,
             },
             {
                 "run_name": "run-2",
@@ -1053,15 +1049,15 @@ def test_version_means_rows_aggregates_judge_cache_reuse_counts() -> None:
                 "round_01_precision_at_10": 0.2,
                 "round_01_ndcg_at_10": 0.3,
                 "judge_candidate_count": 6,
-                "judge_cache_hit_count": 4,
+                "judge_label_cache_hit_count": 4,
             },
         ]
     )
 
-    assert rows[0]["judge_cache_reuse_pct"] == pytest.approx(50.0)
+    assert rows[0]["judge_label_cache_reuse_pct"] == pytest.approx(50.0)
 
 
-def test_version_means_summary_markdown_includes_judge_cache_reuse_pct(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_version_means_summary_markdown_includes_judge_label_cache_reuse_pct(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "seektalent.evaluation._report_run_rows",
         lambda **kwargs: [  # noqa: ARG005
@@ -1079,14 +1075,14 @@ def test_version_means_summary_markdown_includes_judge_cache_reuse_pct(monkeypat
                 "round_01_precision_at_10": 0.0,
                 "round_01_ndcg_at_10": 0.0,
                 "judge_candidate_count": 2,
-                "judge_cache_hit_count": 1,
+                "judge_label_cache_hit_count": 1,
             }
         ],
     )
 
     markdown = _version_means_summary_markdown(entity="entity", project="project")
 
-    assert "Judge cache reuse %" in markdown
+    assert "Judge label cache reuse %" in markdown
     assert "50.00%" in markdown
 
 
@@ -1120,7 +1116,7 @@ def test_version_report_markdown_includes_extra_current_run(monkeypatch: pytest.
     assert "0.2000" in means
 
 
-def test_resume_judge_cache_uses_flywheel_judge_contract(tmp_path: Path) -> None:
+def test_resume_judge_label_cache_uses_flywheel_judge_contract(tmp_path: Path) -> None:
     store = FlywheelStore(tmp_path / ".seektalent" / "flywheel.sqlite3")
     try:
         task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD text", notes_text="Prefer agents")
@@ -1175,7 +1171,7 @@ def test_resume_judge_cache_uses_flywheel_judge_contract(tmp_path: Path) -> None
         store.close()
 
 
-def test_judge_cache_summary_counts_unique_snapshots_once() -> None:
+def test_judge_label_cache_summary_counts_unique_snapshots_once() -> None:
     cached = EvaluatedCandidate(
         rank=1,
         resume_id="cached-round",
@@ -1215,10 +1211,10 @@ def test_judge_cache_summary_counts_unique_snapshots_once() -> None:
         ),
     )
 
-    assert _judge_cache_summary(evaluation) == {
+    assert _judge_label_cache_summary(evaluation) == {
         "judge_candidate_count": 2,
-        "judge_cache_hit_count": 1,
-        "judge_cache_hit_rate_pct": 50.0,
+        "judge_label_cache_hit_count": 1,
+        "judge_label_cache_hit_rate_pct": 50.0,
     }
 
 
@@ -1424,7 +1420,7 @@ def test_resume_judge_build_agent_uses_resolved_stage_config(monkeypatch: pytest
     assert captured["model_settings"] == {"config": stage_config}
 
 
-def test_resume_judge_cache_uses_task_and_resume_contract(tmp_path: Path) -> None:
+def test_resume_judge_label_cache_uses_task_and_resume_contract(tmp_path: Path) -> None:
     store, task_id = _flywheel_store_with_task(tmp_path, notes="Prefer agent experience")
     candidate = ResumeCandidate(
         resume_id="resume-1",
@@ -2034,200 +2030,6 @@ def test_evaluate_run_writes_query_judge_outcomes(tmp_path: Path, monkeypatch: p
     assert (session.root / "flywheel/query_judge_outcomes.jsonl").exists()
 
 
-def test_migrate_judge_assets_backfills_runs_and_reports_conflicts(tmp_path: Path) -> None:
-    def write_run(run_name: str, *, score: int, rationale: str, include_prompt_snapshot: bool = True) -> None:
-        run_dir = tmp_path / "runs" / run_name
-        (run_dir / "raw_resumes").mkdir(parents=True)
-        (run_dir / "evaluation").mkdir()
-        if include_prompt_snapshot:
-            (run_dir / "prompt_snapshots").mkdir()
-            (run_dir / "prompt_snapshots" / "judge.md").write_text(
-                f"{run_name} judge prompt",
-                encoding="utf-8",
-            )
-        input_truth = {
-            "job_title": "Agent Engineer",
-            "jd": "JD text",
-            "notes": "Notes text",
-            "job_title_sha256": "title",
-            "jd_sha256": "jd",
-            "notes_sha256": "notes",
-        }
-        (run_dir / "input_truth.json").write_text(json.dumps(input_truth), encoding="utf-8")
-        raw_resume = {
-            "resume_id": "resume-1",
-            "source_resume_id": "source-1",
-            "snapshot_sha256": "snapshot-1",
-            "captured_at": "2026-04-19T00:00:00+08:00",
-            "candidate": {"resume_id": "resume-1", "skill": "agent"},
-        }
-        (run_dir / "raw_resumes" / "snapshot-1.json").write_text(json.dumps(raw_resume), encoding="utf-8")
-        evaluation = {
-            "run_id": run_name,
-            "judge_model": "deepseek-v4-pro",
-            "jd_sha256": sha256("JD text".encode("utf-8")).hexdigest(),
-            "round_01": {"stage": "round_01", "candidates": []},
-            "final": {
-                "stage": "final",
-                "candidates": [
-                    {
-                        "rank": 1,
-                        "resume_id": "resume-1",
-                        "source_resume_id": "source-1",
-                        "snapshot_sha256": "snapshot-1",
-                        "raw_resume_path": "raw_resumes/snapshot-1.json",
-                        "judge_score": score,
-                        "judge_rationale": rationale,
-                    }
-                ],
-            },
-        }
-        (run_dir / "evaluation" / "evaluation.json").write_text(json.dumps(evaluation), encoding="utf-8")
-
-    db_path = tmp_path / ".seektalent" / "judge_cache.sqlite3"
-    db_path.parent.mkdir()
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute("CREATE TABLE judge_cache (jd_sha256 TEXT)")
-        conn.commit()
-    finally:
-        conn.close()
-    write_run("20260418_000000_old", score=1, rationale="Old label.")
-    write_run("20260419_000000_new", score=3, rationale="New label.")
-    write_run("20260420_000000_fallback_prompt", score=2, rationale="Fallback prompt.", include_prompt_snapshot=False)
-
-    report = migrate_judge_assets(project_root=tmp_path, runs_dir=tmp_path / "runs")
-
-    conn = sqlite3.connect(tmp_path / ".seektalent" / "judge_cache.sqlite3")
-    conn.row_factory = sqlite3.Row
-    try:
-        task_hash = task_sha256("JD text", "Notes text")
-        label = conn.execute(
-            "SELECT * FROM judge_labels WHERE task_sha256 = ? AND snapshot_sha256 = ?",
-            (task_hash, "snapshot-1"),
-        ).fetchone()
-        resume = conn.execute("SELECT * FROM resume_assets WHERE snapshot_sha256 = ?", ("snapshot-1",)).fetchone()
-        jd = conn.execute("SELECT * FROM jd_assets WHERE task_sha256 = ?", (task_hash,)).fetchone()
-        tables = _table_names(conn)
-        resume_columns = _column_names(conn, "resume_assets")
-        label_columns = _column_names(conn, "judge_labels")
-    finally:
-        conn.close()
-
-    assert report["runs_scanned"] == 3
-    assert len(cast(list[object], report["conflicts"])) == 2
-    assert "unresolved_legacy_rows" not in report
-    assert tables == {"jd_assets", "resume_assets", "judge_labels"}
-    assert resume_columns == {"snapshot_sha256", "raw_json", "captured_at"}
-    assert "source_run_id" not in label_columns
-    assert "judge_prompt_sha256" not in label_columns
-    assert label["score"] == 2
-    assert label["judge_prompt_text"] == (package_prompt_dir() / "judge.md").read_text(encoding="utf-8")
-    assert json.loads(resume["raw_json"]) == {"resume_id": "resume-1", "skill": "agent"}
-    assert jd["job_title"] == "Agent Engineer"
-
-
-def test_migrate_judge_assets_scans_current_format_input_truth_layout(tmp_path: Path) -> None:
-    run_dir = tmp_path / "runs" / "20260419_000000_current"
-    (run_dir / "raw_resumes").mkdir(parents=True)
-    (run_dir / "evaluation").mkdir()
-    (run_dir / "input").mkdir()
-    (run_dir / "input" / "input_truth.json").write_text(
-        json.dumps({"job_title": "Agent Engineer", "jd": "JD text", "notes": "Notes text"}),
-        encoding="utf-8",
-    )
-    (run_dir / "raw_resumes" / "snapshot-2.json").write_text(
-        json.dumps({"snapshot_sha256": "snapshot-2", "candidate": {"skill": "rag"}}),
-        encoding="utf-8",
-    )
-    (run_dir / "evaluation" / "evaluation.json").write_text(
-        json.dumps(
-            {
-                "run_id": "20260419_000000_current",
-                "judge_model": "deepseek-v4-pro",
-                "round_01": {"stage": "round_01", "candidates": []},
-                "final": {
-                    "stage": "final",
-                    "candidates": [
-                        {
-                            "rank": 1,
-                            "resume_id": "resume-2",
-                            "snapshot_sha256": "snapshot-2",
-                            "raw_resume_path": "raw_resumes/snapshot-2.json",
-                            "judge_score": 3,
-                            "judge_rationale": "Strong.",
-                        }
-                    ],
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    report = migrate_judge_assets(project_root=tmp_path, runs_dir=tmp_path / "runs")
-
-    conn = sqlite3.connect(tmp_path / ".seektalent" / "judge_cache.sqlite3")
-    conn.row_factory = sqlite3.Row
-    try:
-        task_hash = task_sha256("JD text", "Notes text")
-        jd_row = conn.execute("SELECT * FROM jd_assets WHERE task_sha256 = ?", (task_hash,)).fetchone()
-    finally:
-        conn.close()
-
-    assert report["runs_scanned"] == 1
-    assert jd_row["job_title"] == "Agent Engineer"
-
-
-def test_migrate_judge_assets_stores_prompt_snapshot_text(tmp_path: Path) -> None:
-    run_dir = tmp_path / "runs" / "20260419_000000_prompt"
-    (run_dir / "raw_resumes").mkdir(parents=True)
-    (run_dir / "evaluation").mkdir()
-    (run_dir / "prompt_snapshots").mkdir()
-    (run_dir / "input_truth.json").write_text(
-        json.dumps({"job_title": "Agent Engineer", "jd": "JD text", "notes": "Notes text"}),
-        encoding="utf-8",
-    )
-    (run_dir / "prompt_snapshots" / "judge.md").write_text("historical judge prompt", encoding="utf-8")
-    (run_dir / "raw_resumes" / "snapshot-2.json").write_text(
-        json.dumps({"snapshot_sha256": "snapshot-2", "candidate": {"skill": "rag"}}),
-        encoding="utf-8",
-    )
-    (run_dir / "evaluation" / "evaluation.json").write_text(
-        json.dumps(
-            {
-                "run_id": "20260419_000000_prompt",
-                "judge_model": "deepseek-v4-pro",
-                "round_01": {"stage": "round_01", "candidates": []},
-                "final": {
-                    "stage": "final",
-                    "candidates": [
-                        {
-                            "rank": 1,
-                            "resume_id": "resume-2",
-                            "snapshot_sha256": "snapshot-2",
-                            "raw_resume_path": "raw_resumes/snapshot-2.json",
-                            "judge_score": 3,
-                            "judge_rationale": "Strong.",
-                        }
-                    ],
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    migrate_judge_assets(project_root=tmp_path, runs_dir=tmp_path / "runs")
-
-    conn = sqlite3.connect(tmp_path / ".seektalent" / "judge_cache.sqlite3")
-    conn.row_factory = sqlite3.Row
-    try:
-        row = conn.execute("SELECT judge_prompt_text FROM judge_labels").fetchone()
-    finally:
-        conn.close()
-
-    assert row["judge_prompt_text"] == "historical judge prompt"
-
-
 def test_evaluate_run_logs_weave_and_wandb(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2527,8 +2329,8 @@ def test_evaluate_run_logs_weave_and_wandb(
     assert any(payload.get("terminal_strong_fit_count") is None for payload in fake_wandb.runs[0].logged)
     assert any(payload.get("terminal_broadening_attempted") is None for payload in fake_wandb.runs[0].logged)
     assert any(payload.get("judge_candidate_count") == 1 for payload in fake_wandb.runs[0].logged)
-    assert any(payload.get("judge_cache_hit_count") == 0 for payload in fake_wandb.runs[0].logged)
-    assert any(payload.get("judge_cache_hit_rate_pct") == 0.0 for payload in fake_wandb.runs[0].logged)
+    assert any(payload.get("judge_label_cache_hit_count") == 0 for payload in fake_wandb.runs[0].logged)
+    assert any(payload.get("judge_label_cache_hit_rate_pct") == 0.0 for payload in fake_wandb.runs[0].logged)
     assert fake_wandb.runs[0].artifacts
     assert FakeReport.instances[0].title == WANDB_REPORT_TITLE
     markdown_blocks = [block for block in FakeReport.instances[0].blocks if isinstance(block, tuple) and block[0] == "MarkdownBlock"]

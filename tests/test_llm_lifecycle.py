@@ -4,7 +4,6 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from uuid import uuid4
 
 import pytest
 
@@ -46,9 +45,9 @@ def _prompt(name: str) -> LoadedPrompt:
     return LoadedPrompt(name=name, path=Path(f"{name}.md"), content=f"{name} prompt", sha256="hash")
 
 
-def _settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
+def _settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AppSettings:
     monkeypatch.setenv("SEEKTALENT_TEXT_LLM_API_KEY", "test-key")
-    return make_settings(llm_cache_dir=f".seektalent/cache-test-{uuid4().hex}")
+    return make_settings(llm_cache_dir=str(tmp_path / "llm-cache"))
 
 
 def _requirement_sheet() -> RequirementSheet:
@@ -267,8 +266,8 @@ class _StubAgent:
         return SimpleNamespace(output=self.output)
 
 
-def test_requirement_extractor_uses_run_sync(monkeypatch: pytest.MonkeyPatch) -> None:
-    extractor = RequirementExtractor(_settings(monkeypatch), _prompt("requirements"))
+def test_requirement_extractor_uses_run_sync(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    extractor = RequirementExtractor(_settings(monkeypatch, tmp_path), _prompt("requirements"))
     stub_agent = _StubAgent(
         RequirementExtractionDraft(
             role_title="Senior Python Engineer",
@@ -312,14 +311,19 @@ def test_requirement_extractor_uses_run_sync(monkeypatch: pytest.MonkeyPatch) ->
         (Finalizer, "finalize"),
     ],
 )
-def test_sync_stages_build_fresh_agents(builder, prompt_name: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    component = builder(_settings(monkeypatch), _prompt(prompt_name))
+def test_sync_stages_build_fresh_agents(
+    builder,
+    prompt_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    component = builder(_settings(monkeypatch, tmp_path), _prompt(prompt_name))
 
     assert component._get_agent() is not component._get_agent()
 
 
-def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> None:
-    controller = ReActController(_settings(monkeypatch), _prompt("controller"))
+def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    controller = ReActController(_settings(monkeypatch, tmp_path), _prompt("controller"))
     controller_agent = _StubAgent(
         {
             "thought_summary": "Search.",
@@ -336,7 +340,7 @@ def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> 
     assert "DECISION STATE" in controller_agent.prompts[0]
     assert "CONTROLLER_CONTEXT" not in controller_agent.prompts[0]
 
-    critic = ReflectionCritic(_settings(monkeypatch), _prompt("reflection"))
+    critic = ReflectionCritic(_settings(monkeypatch, tmp_path), _prompt("reflection"))
     reflection_agent = _StubAgent(
         ReflectionAdvice(
             keyword_advice=ReflectionKeywordAdvice(),
@@ -352,7 +356,7 @@ def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> 
     assert "ROUND RESULT" in reflection_agent.prompts[0]
     assert "REFLECTION_CONTEXT" not in reflection_agent.prompts[0]
 
-    finalizer = Finalizer(_settings(monkeypatch), _prompt("finalize"))
+    finalizer = Finalizer(_settings(monkeypatch, tmp_path), _prompt("finalize"))
     finalizer_agent = _StubAgent(
         FinalResultDraft(
             summary="Shortlist ready.",
@@ -389,8 +393,8 @@ def test_repeated_async_stage_calls_succeed(monkeypatch: pytest.MonkeyPatch) -> 
     assert "FINALIZATION_CONTEXT" not in finalizer_agent.prompts[0]
 
 
-def test_scorer_builds_one_agent_per_parallel_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    scorer = ResumeScorer(_settings(monkeypatch), _prompt("scoring"))
+def test_scorer_builds_one_agent_per_parallel_call(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scorer = ResumeScorer(_settings(monkeypatch, tmp_path), _prompt("scoring"))
     created_agents: list[object] = []
     used_agents: list[object] = []
 
