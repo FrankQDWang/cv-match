@@ -48,6 +48,14 @@ from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.core.retrieval.service import RetrievalService
 from seektalent.evaluation import TOP_K, AsyncJudgeLimiter, EvaluationResult, evaluate_run
 from seektalent.finalize.finalizer import Finalizer
+from seektalent.flywheel.outcomes import (
+    build_rejected_prf_term_event,
+    build_runtime_query_outcome_row,
+    build_runtime_query_outcome_rows_from_hits,
+    build_term_outcome_rows,
+)
+from seektalent.flywheel.runtime import build_run_query_rows, materialize_flywheel_run_artifacts, query_hit_rows_from_hits
+from seektalent.flywheel.store import FlywheelStore
 from seektalent.llm import preflight_models, resolve_stage_model_config
 from seektalent.models import (
     CTSQuery,
@@ -64,6 +72,7 @@ from seektalent.models import (
     ResumeCandidate,
     QueryTermCandidate,
     QueryRole,
+    QueryOutcomeClassification,
     ReflectionContext,
     RuntimeConstraint,
     RoundState,
@@ -94,6 +103,7 @@ from seektalent.retrieval import (
     build_round_retrieval_plan,
 )
 from seektalent.retrieval.query_identity import build_job_intent_fingerprint
+from seektalent.resumes.snapshots import canonical_resume_snapshot_payload
 from seektalent.resume_quality import ResumeQualityCommenter
 from seektalent.runtime.context_views import top_candidates
 from seektalent.runtime import controller_runtime
@@ -293,6 +303,9 @@ class WorkflowRuntime:
             retrieval_service=retrieval_service,
         )
         self.retrieval_service = retrieval_service
+        self.flywheel_store = FlywheelStore(settings.flywheel_path)
+        self._active_flywheel_task_id: str | None = None
+        self._active_flywheel_run_id: str | None = None
 
     @property
     def retrieval_service(self) -> RetrievalService:
@@ -328,6 +341,7 @@ class WorkflowRuntime:
         close_status = "completed"
         close_failure_summary: str | None = None
         try:
+            self._start_flywheel_run(tracer=tracer, job_title=job_title, jd=jd, notes=notes)
             self._write_run_preamble(tracer=tracer, job_title=job_title, jd=jd, notes=notes)
             self._emit_progress(
                 progress_callback,
@@ -448,6 +462,15 @@ class WorkflowRuntime:
             )
             raise
         finally:
+            if self._active_flywheel_run_id == tracer.run_id:
+                self.flywheel_store.complete_run(
+                    run_id=tracer.run_id,
+                    status=close_status,
+                    failure_summary=close_failure_summary,
+                )
+                self._active_flywheel_run_id = None
+                self._active_flywheel_task_id = None
+            self.flywheel_store.close()
             tracer.close(status=close_status, failure_summary=close_failure_summary)
 
     async def _build_run_state(
@@ -506,6 +529,35 @@ class WorkflowRuntime:
                 "configured_providers": self._configured_providers(),
             },
         )
+
+    def _start_flywheel_run(self, *, tracer: RunTracer, job_title: str, jd: str, notes: str) -> None:
+        task_id = self.flywheel_store.upsert_task(job_title=job_title, jd_text=jd, notes_text=notes)
+        manifest_ref_id = self.flywheel_store.record_artifact_ref(
+            artifact_kind=tracer.session.manifest.artifact_kind.value,
+            artifact_id=tracer.run_id,
+            artifact_root=str(tracer.run_dir),
+            logical_name="manifest.run",
+            relative_path="manifests/run_manifest.json",
+            content_sha256=None,
+            schema_version=tracer.session.manifest.manifest_schema_version,
+        )
+        config_payload = self._build_public_run_config()
+        self.flywheel_store.start_run(
+            run_id=tracer.run_id,
+            task_id=task_id,
+            version=tracer.session.manifest.producer_version,
+            git_sha=tracer.session.manifest.git_sha,
+            artifact_ref_id=manifest_ref_id,
+            artifact_root=str(tracer.run_dir),
+            config_hash=json_sha256(config_payload),
+            config_payload=config_payload,
+            status="running",
+            eval_enabled=self.settings.enable_eval,
+            benchmark_id=None,
+            benchmark_case_id=None,
+        )
+        self._active_flywheel_task_id = task_id
+        self._active_flywheel_run_id = tracer.run_id
 
     async def _run_rounds(
         self,
@@ -776,6 +828,15 @@ class WorkflowRuntime:
                     query_resume_hits=query_resume_hits,
                     scorecards_by_resume_id=run_state.scorecards_by_resume_id,
                 )
+                self._record_flywheel_retrieval_rows(
+                    tracer=tracer,
+                    run_state=run_state,
+                    cts_queries=cts_queries,
+                    sent_query_records=sent_query_records,
+                    query_resume_hits=query_resume_hits,
+                    job_intent_fingerprint=job_intent_fingerprint,
+                    prf_selection=prf_selection,
+                )
                 replay_snapshot = build_replay_snapshot_direct(
                     run_id=tracer.run_id,
                     round_no=round_no,
@@ -982,6 +1043,208 @@ class WorkflowRuntime:
             f"round.{round_no:02d}.retrieval.query_resume_hits",
             [item.model_dump(mode="json") for item in query_resume_hits],
         )
+
+    def _record_flywheel_retrieval_rows(
+        self,
+        *,
+        tracer: RunTracer,
+        run_state: RunState,
+        cts_queries: list[CTSQuery],
+        sent_query_records: list[SentQueryRecord],
+        query_resume_hits: list[QueryResumeHit],
+        job_intent_fingerprint: str,
+        prf_selection: _PRFBackendSelection,
+    ) -> None:
+        if self._active_flywheel_run_id != tracer.run_id:
+            return
+
+        canonical_query_specs: dict[str, dict[str, object]] = {}
+        for query in cts_queries:
+            if query.query_instance_id is None or query.query_instance_id in canonical_query_specs:
+                continue
+            canonical_query_specs[query.query_instance_id] = {
+                "lane_type": query.lane_type,
+                "query_role": query.query_role,
+                "query_terms": query.query_terms,
+                "keyword_query": query.keyword_query,
+                "provider_filters": query.native_filters,
+                "rendered_provider_query": query.keyword_query,
+                "provider_name": "cts",
+                "page": query.page,
+                "page_size": query.page_size,
+            }
+
+        query_rows = build_run_query_rows(
+            run_id=tracer.run_id,
+            artifact_id=tracer.run_id,
+            sent_query_records=sent_query_records,
+            canonical_query_specs=canonical_query_specs,
+            job_intent_fingerprint=job_intent_fingerprint,
+            query_policy_version="typed-second-lane-v1",
+        )
+        self.flywheel_store.record_run_queries(query_rows)
+
+        available_snapshot_hashes: set[str] = set()
+        for hit in query_resume_hits:
+            if not hit.snapshot_sha256:
+                continue
+            candidate = run_state.candidate_store.get(hit.resume_id)
+            if candidate is None:
+                if self.flywheel_store.resume_snapshot_exists(hit.snapshot_sha256):
+                    available_snapshot_hashes.add(hit.snapshot_sha256)
+                continue
+            snapshot_payload = canonical_resume_snapshot_payload(candidate.raw)
+            self.flywheel_store.upsert_resume_snapshot(
+                snapshot_sha256=hit.snapshot_sha256,
+                source_resume_id=candidate.source_resume_id or candidate.resume_id,
+                dedup_key=candidate.dedup_key,
+                raw_payload=snapshot_payload,
+                normalized_preview={"search_text": candidate.search_text},
+            )
+            available_snapshot_hashes.add(hit.snapshot_sha256)
+
+        hit_rows = query_hit_rows_from_hits(query_resume_hits)
+        for row in hit_rows:
+            snapshot_hash = row.get("snapshot_sha256")
+            if snapshot_hash and snapshot_hash not in available_snapshot_hashes:
+                row["snapshot_sha256"] = None
+                row["snapshot_missing_reason"] = "raw_payload_unavailable"
+        self.flywheel_store.record_query_resume_hits(hit_rows)
+        persisted_hits = self.flywheel_store.query_hits_for_run_round(
+            run_id=tracer.run_id,
+            round_no=query_resume_hits[0].round_no if query_resume_hits else 0,
+        )
+        outcome_rows = build_runtime_query_outcome_rows_from_hits(
+            run_id=tracer.run_id,
+            hits=persisted_hits,
+            thresholds_payload=QueryOutcomeThresholds().model_dump(mode="json"),
+        )
+        covered_query_ids = {str(row["query_instance_id"]) for row in outcome_rows}
+        thresholds_payload = QueryOutcomeThresholds().model_dump(mode="json")
+        for record in sent_query_records:
+            if record.query_instance_id is None or record.query_fingerprint is None:
+                continue
+            if record.query_instance_id in covered_query_ids:
+                continue
+            outcome_rows.append(
+                build_runtime_query_outcome_row(
+                    run_id=tracer.run_id,
+                    query_instance_id=record.query_instance_id,
+                    query_fingerprint=record.query_fingerprint,
+                    round_no=record.round_no,
+                    lane_type=str(record.lane_type or "exploit"),
+                    provider_returned_count=0,
+                    new_unique_resume_count=0,
+                    duplicate_count=0,
+                    scored_resume_count=0,
+                    new_fit_count=0,
+                    must_have_match_scores=[],
+                    risk_scores=[],
+                    off_intent_reason_count=0,
+                    classification=QueryOutcomeClassification(
+                        primary_label="zero_recall",
+                        labels=["zero_recall"],
+                        reasons=["provider_returned_count == 0"],
+                    ),
+                    thresholds_payload=thresholds_payload,
+                )
+            )
+        self.flywheel_store.record_query_outcomes(outcome_rows)
+
+        term_events = self._build_flywheel_term_events(
+            tracer=tracer,
+            sent_query_records=sent_query_records,
+            prf_selection=prf_selection,
+        )
+        if term_events:
+            self.flywheel_store.record_term_events(term_events)
+            runtime_outcomes = {str(row["query_instance_id"]): row for row in outcome_rows}
+            self.flywheel_store.record_term_outcomes(
+                build_term_outcome_rows(term_events=term_events, runtime_outcomes=runtime_outcomes)
+            )
+        materialize_flywheel_run_artifacts(
+            session=tracer.session,
+            store=self.flywheel_store,
+            run_id=tracer.run_id,
+        )
+
+    def _build_flywheel_term_events(
+        self,
+        *,
+        tracer: RunTracer,
+        sent_query_records: list[SentQueryRecord],
+        prf_selection: _PRFBackendSelection,
+    ) -> list[dict[str, object]]:
+        events: list[dict[str, object]] = []
+        for record in sent_query_records:
+            if record.query_instance_id is None:
+                continue
+            for index, term in enumerate(record.query_terms):
+                term_family_id = build_term_family_id(term)
+                if record.lane_type == "prf_probe" and index > 0:
+                    source = "accepted_prf_expression"
+                    accepted_by_prf_gate: int | None = 1
+                elif record.lane_type == "generic_explore":
+                    source = "generic_explore"
+                    accepted_by_prf_gate = None
+                else:
+                    source = "controller_query"
+                    accepted_by_prf_gate = None
+                events.append(
+                    {
+                        "run_id": tracer.run_id,
+                        "term_event_id": f"executed:{record.query_instance_id}:{term_family_id}",
+                        "proposal_id": None,
+                        "prf_decision_id": None,
+                        "prf_candidate_artifact_ref_id": None,
+                        "prf_policy_decision_artifact_ref_id": None,
+                        "prf_proposal_extractor_version": None,
+                        "prf_familying_version": None,
+                        "prf_gate_version": None,
+                        "candidate_query_fingerprint": record.query_fingerprint,
+                        "executed_query_instance_id": record.query_instance_id,
+                        "selected_query_instance_id": record.query_instance_id,
+                        "term_surface": term,
+                        "term_family_id": term_family_id,
+                        "term_role": "query_term",
+                        "source": source,
+                        "round_no": record.round_no,
+                        "lane_type": record.lane_type,
+                        "accepted_by_prf_gate": accepted_by_prf_gate,
+                        "prf_reject_reasons_json": None,
+                        "supporting_resume_ids_json": None,
+                        "negative_resume_ids_json": None,
+                        "artifact_ref_id": None,
+                    }
+                )
+
+        decision = prf_selection.prf_decision
+        if decision is None:
+            return events
+        proposal_id = f"{tracer.run_id}:round-{decision.gate_input.round_no}:llm-prf"
+        prf_decision_id = f"{proposal_id}:policy"
+        for expression in decision.candidate_expressions:
+            if not expression.reject_reasons:
+                continue
+            events.append(
+                build_rejected_prf_term_event(
+                    run_id=tracer.run_id,
+                    proposal_id=proposal_id,
+                    prf_decision_id=prf_decision_id,
+                    prf_candidate_artifact_ref_id=prf_selection.llm_prf_candidates_artifact_ref,
+                    prf_policy_decision_artifact_ref_id=None,
+                    prf_proposal_extractor_version=LLM_PRF_EXTRACTOR_VERSION,
+                    prf_familying_version=LLM_PRF_FAMILYING_VERSION,
+                    prf_gate_version=PRF_POLICY_VERSION,
+                    term_surface=expression.canonical_expression,
+                    term_family_id=expression.term_family_id,
+                    round_no=decision.gate_input.round_no,
+                    reject_reasons=expression.reject_reasons,
+                    supporting_resume_ids=expression.supporting_resume_ids,
+                    negative_resume_ids=decision.gate_input.negative_resume_ids,
+                )
+            )
+        return events
 
     def _logical_query_summaries(self, query_states: list[LogicalQueryState]) -> list[dict[str, object]]:
         return [

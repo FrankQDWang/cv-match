@@ -7,10 +7,10 @@ from pathlib import Path
 
 from seektalent.config import AppSettings
 from seektalent.evaluation import (
+    JUDGE_POLICY_VERSION,
     TOP_K,
     EvaluationArtifacts,
     EvaluationResult,
-    JudgeCache,
     ResumeJudge,
     _register_evaluation_outputs,
     _remove_path,
@@ -19,8 +19,10 @@ from seektalent.evaluation import (
     export_judge_tasks,
     persist_raw_resume_snapshot,
 )
+from seektalent.flywheel.store import FLYWHEEL_LABEL_SCHEMA_VERSION, FlywheelStore
 from seektalent.models import ResumeCandidate
 from seektalent.prompting import LoadedPrompt
+from seektalent.resumes.snapshots import snapshot_sha256
 
 
 async def evaluate_baseline_run(
@@ -34,7 +36,7 @@ async def evaluate_baseline_run(
     round_01_candidates: list[ResumeCandidate],
     final_candidates: list[ResumeCandidate],
 ) -> EvaluationArtifacts:
-    cache = JudgeCache(settings.project_root)
+    store = FlywheelStore(settings.flywheel_path)
     temp_root = run_dir / "._evaluation_tmp"
     final_evaluation_dir = run_dir / "evaluation"
     final_raw_dir = run_dir / "raw_resumes"
@@ -43,12 +45,23 @@ async def evaluate_baseline_run(
         unique_candidates: dict[str, ResumeCandidate] = {}
         for candidate in [*round_01_candidates[:TOP_K], *final_candidates[:TOP_K]]:
             unique_candidates[candidate.resume_id] = candidate
+        task_id = store.upsert_task(job_title="", jd_text=jd, notes_text=notes)
+        for candidate in unique_candidates.values():
+            snapshot_hash = candidate.snapshot_sha256 or snapshot_sha256(candidate.raw)
+            store.upsert_resume_snapshot(
+                snapshot_sha256=snapshot_hash,
+                source_resume_id=candidate.source_resume_id or candidate.resume_id,
+                dedup_key=candidate.dedup_key,
+                raw_payload=candidate.raw,
+                normalized_preview={"search_text": candidate.search_text},
+            )
 
         judged, pending_cache_writes = await ResumeJudge(settings, prompt).judge_many(
+            task_id=task_id,
             jd=jd,
             notes=notes,
             candidates=list(unique_candidates.values()),
-            cache=cache,
+            store=store,
         )
         evaluation = EvaluationResult(
             run_id=run_id,
@@ -73,7 +86,28 @@ async def evaluate_baseline_run(
         _remove_path(final_raw_dir)
         shutil.move(str(temp_root / "evaluation"), str(final_evaluation_dir))
         shutil.move(str(temp_root / "raw_resumes"), str(final_raw_dir))
-        cache.put_many(pending_cache_writes)
+        for write in pending_cache_writes:
+            store.record_judge_label(
+                task_id=write.task_id,
+                snapshot_sha256=write.snapshot_sha256,
+                judge_model_id=write.judge_model_id,
+                judge_protocol_family=write.judge_protocol_family,
+                judge_provider_label=write.judge_provider_label,
+                judge_endpoint_kind=write.judge_endpoint_kind,
+                structured_output_mode=write.structured_output_mode,
+                judge_prompt_hash=write.judge_prompt_hash,
+                judge_contract_hash=write.judge_contract_hash,
+                judge_policy_version=JUDGE_POLICY_VERSION,
+                label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+                judge_output_schema_hash=write.judge_output_schema_hash,
+                reasoning_effort=write.reasoning_effort,
+                temperature=write.temperature,
+                score=write.result.score,
+                rationale=write.result.rationale,
+                label_payload=write.result.model_dump(mode="json"),
+                judge_prompt_text=write.judge_prompt_text,
+                latency_ms=write.latency_ms,
+            )
         _register_evaluation_outputs(run_dir, evaluation)
         _remove_path(temp_root)
         return EvaluationArtifacts(result=evaluation, path=final_evaluation_dir / "evaluation.json")
@@ -83,4 +117,4 @@ async def evaluate_baseline_run(
         _remove_path(final_raw_dir)
         raise
     finally:
-        cache.close()
+        store.close()

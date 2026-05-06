@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
 
 import pytest
 from pydantic_ai.models.test import TestModel
@@ -46,10 +45,10 @@ def _prompt(name: str) -> LoadedPrompt:
     return LoadedPrompt(name=name, path=Path(f"{name}.md"), content=f"{name} prompt", sha256="hash")
 
 
-def _settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
+def _settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AppSettings:
     monkeypatch.setenv("SEEKTALENT_TEXT_LLM_API_KEY", "test-key")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    return make_settings(llm_cache_dir=f".seektalent/cache-test-{uuid4().hex}")
+    return make_settings(llm_cache_dir=str(tmp_path / "llm-cache"))
 
 
 def _test_model(output_text: str) -> TestModel:
@@ -179,8 +178,8 @@ def _scoring_context() -> ScoringContext:
     )
 
 
-def test_controller_decide_raises_live_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    controller = ReActController(_settings(monkeypatch), _prompt("controller"))
+def test_controller_decide_raises_live_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    controller = ReActController(_settings(monkeypatch, tmp_path), _prompt("controller"))
     stub_agent = type("StubAgent", (), {"run": lambda self, *args, **kwargs: (_ for _ in ()).throw(RuntimeError("controller boom"))})()
     monkeypatch.setattr(controller, "_get_agent", lambda: stub_agent)
 
@@ -188,8 +187,8 @@ def test_controller_decide_raises_live_errors(monkeypatch: pytest.MonkeyPatch) -
         asyncio.run(controller.decide(context=_controller_context()))
 
 
-def test_requirement_extractor_raises_live_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    extractor = RequirementExtractor(_settings(monkeypatch), _prompt("requirements"))
+def test_requirement_extractor_raises_live_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    extractor = RequirementExtractor(_settings(monkeypatch, tmp_path), _prompt("requirements"))
     stub_agent = type(
         "StubAgent",
         (),
@@ -212,8 +211,8 @@ def test_requirement_extractor_raises_live_errors(monkeypatch: pytest.MonkeyPatc
         )
 
 
-def test_reflection_reflect_raises_live_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    critic = ReflectionCritic(_settings(monkeypatch), _prompt("reflection"))
+def test_reflection_reflect_raises_live_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    critic = ReflectionCritic(_settings(monkeypatch, tmp_path), _prompt("reflection"))
     stub_agent = type("StubAgent", (), {"run": lambda self, *args, **kwargs: (_ for _ in ()).throw(RuntimeError("reflection boom"))})()
     monkeypatch.setattr(critic, "_get_agent", lambda: stub_agent)
 
@@ -221,8 +220,8 @@ def test_reflection_reflect_raises_live_errors(monkeypatch: pytest.MonkeyPatch) 
         asyncio.run(critic.reflect(context=_reflection_context()))
 
 
-def test_finalizer_uses_live_path_and_raises_for_empty_ranked_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    finalizer = Finalizer(_settings(monkeypatch), _prompt("finalize"))
+def test_finalizer_uses_live_path_and_raises_for_empty_ranked_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    finalizer = Finalizer(_settings(monkeypatch, tmp_path), _prompt("finalize"))
     stub_agent = type("StubAgent", (), {"run": lambda self, *args, **kwargs: (_ for _ in ()).throw(RuntimeError("finalizer boom"))})()
     monkeypatch.setattr(finalizer, "_get_agent", lambda: stub_agent)
 
@@ -238,8 +237,8 @@ def test_finalizer_uses_live_path_and_raises_for_empty_ranked_list(monkeypatch: 
         )
 
 
-def test_requirement_extractor_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    extractor = RequirementExtractor(_settings(monkeypatch), _prompt("requirements"))
+def test_requirement_extractor_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    extractor = RequirementExtractor(_settings(monkeypatch, tmp_path), _prompt("requirements"))
     monkeypatch.setattr("seektalent.requirements.extractor.build_model", lambda model_id: _test_model("{}"))
 
     with pytest.raises(Exception, match="Exceeded maximum retries \\(2\\) for output validation"):
@@ -257,8 +256,8 @@ def test_requirement_extractor_fails_after_two_output_retries(monkeypatch: pytes
         )
 
 
-def test_controller_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    controller = ReActController(_settings(monkeypatch), _prompt("controller"))
+def test_controller_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    controller = ReActController(_settings(monkeypatch, tmp_path), _prompt("controller"))
     monkeypatch.setattr(
         "seektalent.controller.react_controller.build_model",
         lambda model_id: _test_model('{"action":"search_cts"}'),
@@ -268,7 +267,7 @@ def test_controller_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPat
         asyncio.run(controller.decide(context=_controller_context()))
 
 
-def test_requirement_repair_prompt_uses_explicit_repair_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_requirement_repair_prompt_uses_explicit_repair_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, str] = {}
     draft = RequirementExtractionDraft(
         role_title="Senior Python Engineer",
@@ -290,7 +289,7 @@ def test_requirement_repair_prompt_uses_explicit_repair_prompt(monkeypatch: pyte
 
     repaired, _, _ = asyncio.run(
         repair_requirement_draft(
-            _settings(monkeypatch),
+            _settings(monkeypatch, tmp_path),
             _prompt("requirements"),
             _prompt("repair_requirements"),
             InputTruth(
@@ -312,7 +311,7 @@ def test_requirement_repair_prompt_uses_explicit_repair_prompt(monkeypatch: pyte
     assert "requirements prompt" in captured["user_prompt"]
 
 
-def test_controller_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_controller_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, str] = {}
     decision = SearchControllerDecision(
         thought_summary="Search.",
@@ -332,7 +331,7 @@ def test_controller_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
 
     repaired, _, _ = asyncio.run(
         repair_controller_decision(
-            _settings(monkeypatch),
+            _settings(monkeypatch, tmp_path),
             _prompt("controller"),
             _prompt("repair_controller"),
             "VISIBLE CONTROLLER PROMPT",
@@ -348,15 +347,15 @@ def test_controller_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
     assert "CONTROLLER_CONTEXT" not in captured["user_prompt"]
 
 
-def test_reflection_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    critic = ReflectionCritic(_settings(monkeypatch), _prompt("reflection"))
+def test_reflection_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    critic = ReflectionCritic(_settings(monkeypatch, tmp_path), _prompt("reflection"))
     monkeypatch.setattr("seektalent.reflection.critic.build_model", lambda model_id: _test_model("{}"))
 
     with pytest.raises(Exception, match="Exceeded maximum retries \\(2\\) for output validation"):
         asyncio.run(critic.reflect(context=_reflection_context()))
 
 
-def test_reflection_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reflection_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, str] = {}
     draft = ReflectionAdviceDraft(
         keyword_advice=ReflectionKeywordAdviceDraft(),
@@ -376,7 +375,7 @@ def test_reflection_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
 
     repaired, _, _ = asyncio.run(
         repair_reflection_draft(
-            _settings(monkeypatch),
+            _settings(monkeypatch, tmp_path),
             _prompt("reflection"),
             _prompt("repair_reflection"),
             "VISIBLE REFLECTION PROMPT",
@@ -392,7 +391,7 @@ def test_reflection_repair_prompt_uses_source_user_prompt(monkeypatch: pytest.Mo
     assert "REFLECTION_CONTEXT" not in captured["user_prompt"]
 
 
-def test_requirement_repair_captures_call_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_requirement_repair_captures_call_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     draft = RequirementExtractionDraft(
         role_title="Senior Python Engineer",
         title_anchor_terms=["Python"],
@@ -436,7 +435,7 @@ def test_requirement_repair_captures_call_artifact(monkeypatch: pytest.MonkeyPat
 
     repaired, usage, artifact = asyncio.run(
         repair_requirement_draft(
-            _settings(monkeypatch),
+            _settings(monkeypatch, tmp_path),
             _prompt("requirements"),
             _prompt("repair_requirements"),
             InputTruth(
@@ -471,8 +470,8 @@ def test_requirement_repair_captures_call_artifact(monkeypatch: pytest.MonkeyPat
     assert artifact["provider_usage"].model_dump(mode="json") == usage.model_dump(mode="json")
 
 
-def test_finalizer_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    finalizer = Finalizer(_settings(monkeypatch), _prompt("finalize"))
+def test_finalizer_fails_after_two_output_retries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    finalizer = Finalizer(_settings(monkeypatch, tmp_path), _prompt("finalize"))
     monkeypatch.setattr("seektalent.finalize.finalizer.build_model", lambda model_id: _test_model("{}"))
 
     with pytest.raises(Exception, match="Exceeded maximum retries \\(2\\) for output validation"):
@@ -501,8 +500,8 @@ def test_runtime_does_not_eagerly_load_candidate_feedback_prompt(monkeypatch: py
     assert "candidate_feedback" not in captured["names"]
 
 
-def test_scorer_returns_failure_after_two_output_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    scorer = ResumeScorer(_settings(monkeypatch), _prompt("scoring"))
+def test_scorer_returns_failure_after_two_output_retries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scorer = ResumeScorer(_settings(monkeypatch, tmp_path), _prompt("scoring"))
     monkeypatch.setattr("seektalent.scoring.scorer.build_model", lambda model_id: _test_model("{}"))
 
     class StubTracer:

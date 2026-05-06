@@ -5,9 +5,14 @@
 - Active single runs write to `artifacts/runs/YYYY/MM/DD/run_<ulid>/`
 - Maintained benchmark input JSONL files remain in `artifacts/benchmarks/`
 - Benchmark execution outputs write to `artifacts/benchmark-executions/YYYY/MM/DD/benchmark_<ulid>/`
+- Query rewriting dataset exports write to `artifacts/exports/YYYY/MM/DD/export_<ulid>/`
 - Historical `runs/` content is archived under `artifacts/archive/`, and `runs/` is no longer an active output root
 
 The exact run or benchmark execution path is printed by the CLI on success.
+
+## Flywheel index
+
+The query rewriting data flywheel uses `.seektalent/flywheel.sqlite3` as the local queryable index. Runtime writes canonical query, query-resume hit, runtime outcome, and PRF term-lineage rows. Eval writes judge labels and judge-consistent query outcomes. The database is the indexed source for local analysis; JSONL files under run and export artifacts are materialized handoff artifacts registered through manifests.
 
 ## Single-run layout
 
@@ -40,6 +45,15 @@ Common logical artifacts inside a run root include:
 | `output/judge_packet.json` | Consolidated audit packet for downstream review. |
 | `output/run_summary.md` | Human-readable run summary. |
 | `evaluation/evaluation.json` | Final evaluation summary for the run when eval is enabled. |
+
+Flywheel materialized rows may also appear under:
+
+| Path | Purpose |
+| --- | --- |
+| `flywheel/query_outcomes.jsonl` | Runtime query outcome rows for the run. |
+| `flywheel/query_judge_outcomes.jsonl` | Judge-consistent query outcome rows when eval is enabled. |
+| `flywheel/term_events.jsonl` | PRF proposal and executed-term lineage events. |
+| `flywheel/term_outcomes.jsonl` | Aggregated term-family outcomes. |
 
 ## Prompt assets
 

@@ -26,7 +26,9 @@ from seektalent.config import (
     TextLLMConfigMigrationError,
     load_process_env,
 )
-from seektalent.evaluation import AsyncJudgeLimiter, _upsert_wandb_report, log_evaluation_remotely, migrate_judge_assets
+from seektalent.evaluation import AsyncJudgeLimiter, _upsert_wandb_report, log_evaluation_remotely
+from seektalent.flywheel.datasets import export_query_rewriting_dataset
+from seektalent.flywheel.store import FlywheelStore
 from seektalent.resources import (
     REQUIRED_PROMPTS,
     package_prompt_dir,
@@ -138,7 +140,7 @@ KNOWN_COMMANDS = {
     "run",
     "benchmark",
     "archive-legacy-artifacts",
-    "migrate-judge-assets",
+    "flywheel-export",
     "llm-prf-live-validate",
     "init",
     "doctor",
@@ -715,21 +717,6 @@ def _inspect_payload() -> dict[str, object]:
             "outputs": "Human-readable checks on stdout by default. In --json mode, stdout contains one JSON object.",
             "side_effects": "May create the configured output directory to verify writability.",
         },
-        "migrate-judge-assets": {
-            "description": "Rebuild the local judge asset database from run artifacts.",
-            "machine_readable": False,
-            "arguments": [
-                _arg_spec("--runs-dir", "path", "Directory containing run artifacts.", default="runs"),
-                _arg_spec("--project-root", "path", "Project root containing .seektalent.", default="."),
-                _arg_spec("--json", "flag", "Emit a single JSON object."),
-            ],
-            "examples": [
-                "seektalent migrate-judge-assets --runs-dir runs --project-root .",
-                "seektalent migrate-judge-assets --json",
-            ],
-            "outputs": "Prints a migration summary. In --json mode, stdout contains one JSON object.",
-            "side_effects": "Rebuilds .seektalent/judge_cache.sqlite3 under the selected project root.",
-        },
         "llm-prf-live-validate": {
             "description": "Run the manual live LLM PRF validation harness on checked input cases.",
             "machine_readable": False,
@@ -842,17 +829,6 @@ def _inspect_payload() -> dict[str, object]:
             "doctor": {
                 "flag": "--json",
                 "stdout_success_fields": ["ok", "checks"],
-            },
-            "migrate-judge-assets": {
-                "flag": "--json",
-                "stdout_success_fields": [
-                    "runs_scanned",
-                    "jd_assets_upserted",
-                    "resume_assets_upserted",
-                    "judge_labels_upserted",
-                    "conflicts",
-                    "missing_raw_resumes",
-                ],
             },
         },
         "failure_contract": {
@@ -1114,23 +1090,6 @@ def _benchmark_command(args: argparse.Namespace) -> int:
     return 1 if has_failed_rows else 0
 
 
-def _migrate_judge_assets_command(args: argparse.Namespace) -> int:
-    report = migrate_judge_assets(
-        project_root=resolve_user_path(args.project_root),
-        runs_dir=resolve_user_path(args.runs_dir),
-    )
-    if args.json_output:
-        _emit_json(sys.stdout, report)
-        return 0
-    print(f"runs_scanned: {report['runs_scanned']}")
-    print(f"jd_assets_upserted: {report['jd_assets_upserted']}")
-    print(f"resume_assets_upserted: {report['resume_assets_upserted']}")
-    print(f"judge_labels_upserted: {report['judge_labels_upserted']}")
-    print(f"conflicts: {len(cast(list[object], report['conflicts']))}")
-    print(f"missing_raw_resumes: {len(cast(list[object], report['missing_raw_resumes']))}")
-    return 0
-
-
 def _archive_legacy_artifacts_command(args: argparse.Namespace) -> int:
     report = execute_archive_migration(
         project_root=resolve_user_path(args.project_root),
@@ -1139,6 +1098,32 @@ def _archive_legacy_artifacts_command(args: argparse.Namespace) -> int:
     )
     print(f"archive_plan: {report.plan_path}")
     print(f"archive_result: {report.result_path}")
+    return 0
+
+
+def _flywheel_export_command(args: argparse.Namespace) -> int:
+    settings = _build_settings(args)
+    builder_config = json.loads(args.builder_config_json) if args.builder_config_json else {}
+    store = FlywheelStore(settings.flywheel_path)
+    try:
+        result = export_query_rewriting_dataset(
+            store=store,
+            artifact_store=ArtifactStore(settings.artifacts_path),
+            dataset_version=args.dataset_version,
+            builder_config=builder_config,
+            run_ids=args.run_id,
+        )
+    finally:
+        store.close()
+    payload = asdict(result)
+    payload["root"] = str(result.root)
+    if args.json_output:
+        _emit_json(sys.stdout, payload)
+    else:
+        print(f"export_id: {result.export_id}")
+        print(f"export_directory: {result.root}")
+        print(f"row_count: {result.row_count}")
+        print(f"sha256: {result.sha256}")
     return 0
 
 
@@ -1473,14 +1458,17 @@ def build_exec_parser() -> argparse.ArgumentParser:
     archive_parser.add_argument("--project-root", default=".", help="Workspace root containing both locations.")
     archive_parser.set_defaults(handler=_archive_legacy_artifacts_command)
 
-    migrate_parser = subparsers.add_parser(
-        "migrate-judge-assets",
-        help="Rebuild the local judge asset database from run artifacts.",
+    flywheel_export_parser = subparsers.add_parser(
+        "flywheel-export",
+        help="Export query rewriting flywheel dataset artifacts.",
     )
-    migrate_parser.add_argument("--runs-dir", default="runs", help="Directory containing run artifacts.")
-    migrate_parser.add_argument("--project-root", default=".", help="Project root containing .seektalent.")
-    migrate_parser.add_argument("--json", dest="json_output", action="store_true", help="Emit a single JSON object.")
-    migrate_parser.set_defaults(handler=_migrate_judge_assets_command)
+    flywheel_export_parser.add_argument("--env-file", default=".env", help="Path to the env file for this export.")
+    flywheel_export_parser.add_argument("--output-dir", help="Artifact root where export artifacts should be written.")
+    flywheel_export_parser.add_argument("--dataset-version", required=True)
+    flywheel_export_parser.add_argument("--run-id", action="append", required=True, help="Run id to include.")
+    flywheel_export_parser.add_argument("--builder-config-json", default="{}", help="JSON object for builder config.")
+    flywheel_export_parser.add_argument("--json", dest="json_output", action="store_true", help="Emit a single JSON object.")
+    flywheel_export_parser.set_defaults(handler=_flywheel_export_command)
 
     live_prf_parser = subparsers.add_parser("llm-prf-live-validate", help="Run live LLM PRF validation cases.")
     live_prf_parser.add_argument("--cases", type=Path, required=True)
