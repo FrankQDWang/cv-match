@@ -21,6 +21,8 @@ This is one connected data-pipeline change, not a set of independent products. I
 - Create `src/seektalent/flywheel/runtime.py`: converts runtime objects into `FlywheelStore` rows and materializes flywheel run artifacts.
 - Create `src/seektalent/flywheel/outcomes.py`: runtime query outcomes, judge query outcomes, term events, and term outcomes.
 - Create `src/seektalent/flywheel/datasets.py`: deterministic dataset export builder.
+- Create `src/seektalent/resumes/__init__.py`: resume package marker.
+- Create `src/seektalent/resumes/snapshots.py`: neutral resume snapshot canonicalization and hash helpers shared by runtime and evaluation.
 - Modify `src/seektalent/artifacts/models.py`: add `ArtifactKind.EXPORT`.
 - Modify `src/seektalent/artifacts/store.py`: add `exports` root and `export_manifest.json`.
 - Modify `src/seektalent/artifacts/registry.py`: register `flywheel.*` logical artifacts.
@@ -238,6 +240,7 @@ def test_flywheel_store_creates_tables_and_enables_foreign_keys(tmp_path: Path) 
         }
         assert {
             "tasks",
+            "schema_meta",
             "resume_snapshots",
             "artifact_refs",
             "runs",
@@ -252,6 +255,9 @@ def test_flywheel_store_creates_tables_and_enables_foreign_keys(tmp_path: Path) 
             "dataset_exports",
         } <= table_names
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert conn.execute("SELECT json_valid(?)", ("{}",)).fetchone()[0] == 1
+        assert conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()[0] == "flywheel-schema-v1"
     finally:
         store.close()
 
@@ -283,6 +289,62 @@ def test_json_columns_reject_invalid_json(tmp_path: Path) -> None:
         store.close()
 
 
+def test_query_hits_require_snapshot_or_missing_reason(tmp_path: Path) -> None:
+    store = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    try:
+        task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD", notes_text="")
+        store.start_run(
+            run_id="run-1",
+            task_id=task_id,
+            version="0.6.2",
+            git_sha="abc123",
+            artifact_ref_id=None,
+            artifact_root=str(tmp_path / "artifacts/runs/run-1"),
+            config_hash="config-hash",
+            config_payload={},
+            status="running",
+            eval_enabled=False,
+            benchmark_id=None,
+            benchmark_case_id=None,
+        )
+        conn = store.connect()
+        conn.execute(
+            """
+            INSERT INTO run_queries (
+                run_id, query_instance_id, query_fingerprint, round_no,
+                lane_type, canonical_query_spec_json, query_spec_schema_version,
+                query_policy_version, job_intent_fingerprint, provider_name,
+                rendered_provider_query, keyword_query, query_terms_json,
+                filters_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "run-1", "query-1", "fingerprint-1", 1, "exploit",
+                "{}", "canonical-query-spec-v1", "query-policy-v1", "intent-1",
+                "cts", "agent", "agent", "[]", "{}",
+                "2026-05-06T00:00:00Z",
+            ),
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                """
+                INSERT INTO query_resume_hits (
+                    run_id, query_instance_id, query_fingerprint, hit_sequence_no,
+                    snapshot_sha256, snapshot_missing_reason, resume_id, round_no,
+                    lane_type, batch_no, rank_in_query, provider_name,
+                    was_new_to_pool, was_duplicate, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "run-1", "query-1", "fingerprint-1", 1,
+                    None, None, "resume-1", 1, "exploit", 1, 1,
+                    "cts", 1, 0, "2026-05-06T00:00:00Z",
+                ),
+            )
+    finally:
+        store.close()
+
+
 def test_judge_label_cache_uses_contract_hash(tmp_path: Path) -> None:
     store = FlywheelStore(tmp_path / "flywheel.sqlite3")
     try:
@@ -296,24 +358,45 @@ def test_judge_label_cache_uses_contract_hash(tmp_path: Path) -> None:
         )
         first_contract = build_judge_contract_hash(
             judge_model_id="deepseek-v4-pro",
+            judge_protocol_family="openai_chat_completions_compatible",
+            judge_provider_label="bailian",
+            judge_endpoint_kind="openai-compatible",
+            structured_output_mode="strict_native_schema",
             judge_prompt_hash="prompt-a",
             judge_policy_version="judge-policy-v1",
             label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+            judge_output_schema_hash="schema-hash",
+            reasoning_effort=None,
+            temperature=0.0,
         )
         second_contract = build_judge_contract_hash(
             judge_model_id="deepseek-v4-pro",
+            judge_protocol_family="openai_chat_completions_compatible",
+            judge_provider_label="bailian",
+            judge_endpoint_kind="openai-compatible",
+            structured_output_mode="strict_native_schema",
             judge_prompt_hash="prompt-b",
             judge_policy_version="judge-policy-v1",
             label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+            judge_output_schema_hash="schema-hash",
+            reasoning_effort=None,
+            temperature=0.0,
         )
         store.record_judge_label(
             task_id=task_id,
             snapshot_sha256="snapshot-1",
             judge_model_id="deepseek-v4-pro",
+            judge_protocol_family="openai_chat_completions_compatible",
+            judge_provider_label="bailian",
+            judge_endpoint_kind="openai-compatible",
+            structured_output_mode="strict_native_schema",
             judge_prompt_hash="prompt-a",
             judge_contract_hash=first_contract,
             judge_policy_version="judge-policy-v1",
             label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+            judge_output_schema_hash="schema-hash",
+            reasoning_effort=None,
+            temperature=0.0,
             score=3,
             rationale="Strong fit.",
             label_payload={"score": 3, "rationale": "Strong fit."},
@@ -331,6 +414,42 @@ def test_judge_label_cache_uses_contract_hash(tmp_path: Path) -> None:
             judge_contract_hash=second_contract,
             label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
         ) is None
+    finally:
+        store.close()
+
+
+def test_record_judge_label_rejects_mismatched_contract_hash(tmp_path: Path) -> None:
+    store = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    try:
+        task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD", notes_text="")
+        store.upsert_resume_snapshot(
+            snapshot_sha256="snapshot-1",
+            source_resume_id="resume-1",
+            dedup_key="resume-1",
+            raw_payload={"resume_id": "resume-1"},
+            normalized_preview={"search_text": "agent"},
+        )
+        with pytest.raises(ValueError, match="judge_contract_hash"):
+            store.record_judge_label(
+                task_id=task_id,
+                snapshot_sha256="snapshot-1",
+                judge_model_id="deepseek-v4-pro",
+                judge_protocol_family="openai_chat_completions_compatible",
+                judge_provider_label="bailian",
+                judge_endpoint_kind="openai-compatible",
+                structured_output_mode="strict_native_schema",
+                judge_prompt_hash="prompt-a",
+                judge_contract_hash="wrong",
+                judge_policy_version="judge-policy-v1",
+                label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+                judge_output_schema_hash="schema-hash",
+                reasoning_effort=None,
+                temperature=0.0,
+                score=3,
+                rationale="Strong fit.",
+                label_payload={"score": 3, "rationale": "Strong fit."},
+                judge_prompt_text="prompt text",
+            )
     finally:
         store.close()
 
@@ -401,17 +520,18 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+FLYWHEEL_SCHEMA_VERSION = "flywheel-schema-v1"
 FLYWHEEL_TASK_SCHEMA_VERSION = "task-v1"
 FLYWHEEL_LABEL_SCHEMA_VERSION = "judge-label-v1"
 
 
 def utc_now() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def canonical_json(payload: object) -> str:
@@ -431,15 +551,29 @@ def task_sha256(*, job_title: str, jd: str, notes: str) -> str:
 def build_judge_contract_hash(
     *,
     judge_model_id: str,
+    judge_protocol_family: str,
+    judge_provider_label: str,
+    judge_endpoint_kind: str,
+    structured_output_mode: str,
     judge_prompt_hash: str,
     judge_policy_version: str,
     label_schema_version: str,
+    judge_output_schema_hash: str,
+    reasoning_effort: str | None = None,
+    temperature: float | None = None,
 ) -> str:
     payload = {
         "judge_model_id": judge_model_id,
+        "judge_protocol_family": judge_protocol_family,
+        "judge_provider_label": judge_provider_label,
+        "judge_endpoint_kind": judge_endpoint_kind,
+        "structured_output_mode": structured_output_mode,
         "judge_prompt_hash": judge_prompt_hash,
         "judge_policy_version": judge_policy_version,
         "label_schema_version": label_schema_version,
+        "judge_output_schema_hash": judge_output_schema_hash,
+        "reasoning_effort": reasoning_effort,
+        "temperature": temperature,
     }
     return sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 ```
@@ -471,13 +605,54 @@ class FlywheelStore:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA busy_timeout = 5000")
 
+    def _strict_suffix(self, conn: sqlite3.Connection) -> str:
+        try:
+            conn.execute("CREATE TEMP TABLE __flywheel_strict_probe (value TEXT) STRICT")
+            conn.execute("DROP TABLE __flywheel_strict_probe")
+        except sqlite3.OperationalError:
+            return ""
+        return " STRICT"
+
     def _ensure_schema(self, conn: sqlite3.Connection) -> None:
+        if conn.execute("SELECT json_valid(?)", ("{}",)).fetchone()[0] != 1:
+            raise RuntimeError("SQLite JSON1 support is required for FlywheelStore")
+        conn.execute("PRAGMA user_version = 1")
+        strict_suffix = self._strict_suffix(conn)
         for statement in _SCHEMA_STATEMENTS:
-            conn.execute(statement)
+            conn.execute(statement.format(strict=strict_suffix))
+        conn.execute(
+            """
+            INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (FLYWHEEL_SCHEMA_VERSION,),
+        )
         conn.commit()
 ```
 
-Include table DDL for at least `tasks`, `resume_snapshots`, and `judge_labels` in this task. Later tasks extend DDL for runtime/outcome/export tables. The initial DDL must include these exact constraints:
+Task 2 must create the full schema in one `_SCHEMA_STATEMENTS` list. Later tasks add methods and wiring only; they do not add tables. Keep DB transactions short and never perform artifact file IO, network IO, or judge calls inside a DB transaction. Use `STRICT` tables when the local SQLite version accepts a `STRICT` table suffix; otherwise use the same DDL without `STRICT` and rely on explicit column types, `CHECK(json_valid(column))`, foreign keys, and Python-side row construction.
+
+In `_SCHEMA_STATEMENTS`, end each `CREATE TABLE` statement with `{strict}` after the closing parenthesis:
+
+```python
+_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS schema_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    ){strict}
+    """,
+]
+```
+
+The full DDL must include `schema_meta`, `tasks`, `resume_snapshots`, `artifact_refs`, `runs`, `run_queries`, `query_resume_hits`, `judge_labels`, `query_outcomes`, `query_judge_outcomes`, `term_events`, `term_outcomes`, `query_rewrite_samples`, and `dataset_exports`. These constraints are mandatory:
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+)
+```
 
 ```sql
 CREATE TABLE IF NOT EXISTS tasks (
@@ -505,16 +680,121 @@ CREATE TABLE IF NOT EXISTS resume_snapshots (
 ```
 
 ```sql
+CREATE TABLE IF NOT EXISTS artifact_refs (
+    artifact_ref_id TEXT PRIMARY KEY,
+    artifact_kind TEXT NOT NULL,
+    artifact_id TEXT NOT NULL,
+    artifact_root TEXT NOT NULL,
+    logical_name TEXT NOT NULL,
+    relative_path TEXT,
+    content_sha256 TEXT,
+    schema_version TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(artifact_kind, artifact_id, logical_name)
+)
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS runs (
+    run_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES tasks(task_id),
+    version TEXT,
+    git_sha TEXT,
+    artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    artifact_root TEXT NOT NULL,
+    config_hash TEXT NOT NULL,
+    config_json TEXT NOT NULL CHECK(json_valid(config_json)),
+    status TEXT NOT NULL,
+    eval_enabled INTEGER NOT NULL,
+    benchmark_id TEXT,
+    benchmark_case_id TEXT,
+    failure_summary TEXT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT
+)
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS run_queries (
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    query_instance_id TEXT NOT NULL,
+    query_fingerprint TEXT NOT NULL,
+    round_no INTEGER NOT NULL,
+    lane_type TEXT NOT NULL,
+    query_role TEXT,
+    canonical_query_spec_json TEXT NOT NULL CHECK(json_valid(canonical_query_spec_json)),
+    query_spec_schema_version TEXT NOT NULL,
+    query_policy_version TEXT NOT NULL,
+    job_intent_fingerprint TEXT NOT NULL,
+    provider_name TEXT NOT NULL,
+    rendered_provider_query TEXT NOT NULL,
+    keyword_query TEXT NOT NULL,
+    query_terms_json TEXT NOT NULL CHECK(json_valid(query_terms_json)),
+    filters_json TEXT NOT NULL CHECK(json_valid(filters_json)),
+    location_key TEXT,
+    batch_no INTEGER,
+    source_plan_version TEXT,
+    selected_prf_expression TEXT,
+    accepted_prf_term_family_id TEXT,
+    fallback_reason TEXT,
+    artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, query_instance_id)
+)
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS query_resume_hits (
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    query_instance_id TEXT NOT NULL,
+    query_fingerprint TEXT NOT NULL,
+    hit_sequence_no INTEGER NOT NULL,
+    snapshot_sha256 TEXT REFERENCES resume_snapshots(snapshot_sha256),
+    snapshot_missing_reason TEXT,
+    resume_id TEXT NOT NULL,
+    round_no INTEGER NOT NULL,
+    lane_type TEXT NOT NULL,
+    location_key TEXT,
+    location_type TEXT,
+    batch_no INTEGER NOT NULL,
+    rank_in_query INTEGER NOT NULL,
+    rank_global_in_query INTEGER,
+    provider_name TEXT NOT NULL,
+    provider_page_no INTEGER,
+    provider_fetch_no INTEGER,
+    provider_score_if_any REAL,
+    dedup_key TEXT,
+    was_new_to_pool INTEGER NOT NULL,
+    was_duplicate INTEGER NOT NULL,
+    scored_fit_bucket TEXT,
+    overall_score REAL,
+    must_have_match_score REAL,
+    risk_score REAL,
+    off_intent_reason_count INTEGER NOT NULL DEFAULT 0,
+    final_candidate_status TEXT,
+    created_at TEXT NOT NULL,
+    CHECK(snapshot_sha256 IS NOT NULL OR snapshot_missing_reason IS NOT NULL),
+    PRIMARY KEY (run_id, query_instance_id, hit_sequence_no),
+    FOREIGN KEY (run_id, query_instance_id) REFERENCES run_queries(run_id, query_instance_id)
+)
+```
+
+```sql
 CREATE TABLE IF NOT EXISTS judge_labels (
     task_id TEXT NOT NULL REFERENCES tasks(task_id),
     snapshot_sha256 TEXT NOT NULL REFERENCES resume_snapshots(snapshot_sha256),
     judge_model_id TEXT NOT NULL,
     judge_prompt_hash TEXT NOT NULL,
     judge_contract_hash TEXT NOT NULL,
-    judge_protocol_family TEXT,
-    judge_provider_label TEXT,
+    judge_protocol_family TEXT NOT NULL,
+    judge_provider_label TEXT NOT NULL,
+    judge_endpoint_kind TEXT NOT NULL,
+    structured_output_mode TEXT NOT NULL,
     judge_policy_version TEXT NOT NULL,
     label_schema_version TEXT NOT NULL,
+    judge_output_schema_hash TEXT NOT NULL,
+    reasoning_effort TEXT,
+    temperature REAL,
     score INTEGER NOT NULL,
     rationale TEXT NOT NULL,
     label_json TEXT NOT NULL CHECK(json_valid(label_json)),
@@ -525,6 +805,166 @@ CREATE TABLE IF NOT EXISTS judge_labels (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (task_id, snapshot_sha256, judge_contract_hash, label_schema_version)
+)
+```
+
+Create the remaining outcome/export tables in this same task with these column contracts:
+
+```sql
+CREATE TABLE IF NOT EXISTS query_outcomes (
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    query_instance_id TEXT NOT NULL,
+    query_fingerprint TEXT NOT NULL,
+    outcome_schema_version TEXT NOT NULL,
+    outcome_policy_version TEXT NOT NULL,
+    outcome_thresholds_hash TEXT NOT NULL,
+    outcome_thresholds_json TEXT NOT NULL CHECK(json_valid(outcome_thresholds_json)),
+    scoring_policy_version TEXT,
+    dedupe_version TEXT,
+    outcome_basis TEXT NOT NULL,
+    round_no INTEGER NOT NULL,
+    lane_type TEXT NOT NULL,
+    provider_returned_count INTEGER NOT NULL,
+    new_unique_resume_count INTEGER NOT NULL,
+    duplicate_count INTEGER NOT NULL,
+    scored_resume_count INTEGER NOT NULL,
+    new_fit_count INTEGER NOT NULL,
+    new_near_fit_count INTEGER NOT NULL,
+    fit_rate_denominator TEXT,
+    fit_rate REAL,
+    must_have_match_avg REAL,
+    risk_score_avg REAL,
+    off_intent_reason_count INTEGER NOT NULL,
+    primary_label TEXT NOT NULL,
+    labels_json TEXT NOT NULL CHECK(json_valid(labels_json)),
+    reasons_json TEXT NOT NULL CHECK(json_valid(reasons_json)),
+    latency_ms INTEGER,
+    cost_estimate_usd REAL,
+    artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, query_instance_id)
+)
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS query_judge_outcomes (
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    query_instance_id TEXT NOT NULL,
+    query_fingerprint TEXT NOT NULL,
+    task_id TEXT NOT NULL REFERENCES tasks(task_id),
+    judge_contract_hash TEXT NOT NULL,
+    judge_model_id TEXT NOT NULL,
+    judge_prompt_hash TEXT NOT NULL,
+    label_schema_version TEXT NOT NULL,
+    outcome_schema_version TEXT NOT NULL,
+    outcome_policy_version TEXT NOT NULL,
+    outcome_thresholds_hash TEXT NOT NULL,
+    outcome_thresholds_json TEXT NOT NULL CHECK(json_valid(outcome_thresholds_json)),
+    provider_returned_count INTEGER NOT NULL,
+    new_unique_resume_count INTEGER NOT NULL,
+    judged_resume_count INTEGER NOT NULL,
+    new_judge_positive_count INTEGER NOT NULL,
+    new_judge_near_positive_count INTEGER NOT NULL,
+    judge_positive_rate REAL,
+    duplicate_count INTEGER NOT NULL,
+    primary_label TEXT NOT NULL,
+    labels_json TEXT NOT NULL CHECK(json_valid(labels_json)),
+    reasons_json TEXT NOT NULL CHECK(json_valid(reasons_json)),
+    artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, query_instance_id, judge_contract_hash)
+)
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS term_events (
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    term_event_id TEXT NOT NULL,
+    proposal_id TEXT,
+    prf_decision_id TEXT,
+    prf_candidate_artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    prf_policy_decision_artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    prf_proposal_extractor_version TEXT,
+    prf_familying_version TEXT,
+    prf_gate_version TEXT,
+    candidate_query_fingerprint TEXT,
+    executed_query_instance_id TEXT,
+    selected_query_instance_id TEXT,
+    term_surface TEXT NOT NULL,
+    term_family_id TEXT NOT NULL,
+    term_role TEXT NOT NULL,
+    source TEXT NOT NULL,
+    round_no INTEGER NOT NULL,
+    lane_type TEXT,
+    accepted_by_prf_gate INTEGER,
+    prf_reject_reasons_json TEXT CHECK(prf_reject_reasons_json IS NULL OR json_valid(prf_reject_reasons_json)),
+    supporting_resume_ids_json TEXT CHECK(supporting_resume_ids_json IS NULL OR json_valid(supporting_resume_ids_json)),
+    negative_resume_ids_json TEXT CHECK(negative_resume_ids_json IS NULL OR json_valid(negative_resume_ids_json)),
+    artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, term_event_id)
+)
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS term_outcomes (
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    term_event_id TEXT NOT NULL,
+    term_family_id TEXT NOT NULL,
+    term_outcome_schema_version TEXT NOT NULL,
+    term_familying_version TEXT NOT NULL,
+    prf_gate_version TEXT,
+    prf_policy_version TEXT,
+    execution_status TEXT NOT NULL,
+    runtime_outcome_json TEXT CHECK(runtime_outcome_json IS NULL OR json_valid(runtime_outcome_json)),
+    judge_outcome_json TEXT CHECK(judge_outcome_json IS NULL OR json_valid(judge_outcome_json)),
+    labels_json TEXT NOT NULL CHECK(json_valid(labels_json)),
+    reasons_json TEXT NOT NULL CHECK(json_valid(reasons_json)),
+    artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, term_event_id)
+)
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS query_rewrite_samples (
+    sample_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES tasks(task_id),
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    source_query_instance_ids_json TEXT NOT NULL CHECK(json_valid(source_query_instance_ids_json)),
+    sample_basis TEXT NOT NULL,
+    input_json TEXT NOT NULL CHECK(json_valid(input_json)),
+    target_json TEXT NOT NULL CHECK(json_valid(target_json)),
+    reward_json TEXT NOT NULL CHECK(json_valid(reward_json)),
+    schema_version TEXT NOT NULL,
+    dataset_version TEXT NOT NULL,
+    builder_version TEXT NOT NULL,
+    builder_config_hash TEXT NOT NULL,
+    artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    created_at TEXT NOT NULL
+)
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS dataset_exports (
+    export_id TEXT PRIMARY KEY,
+    dataset_name TEXT NOT NULL,
+    dataset_version TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    builder_version TEXT NOT NULL,
+    builder_config_hash TEXT NOT NULL,
+    builder_config_json TEXT NOT NULL CHECK(json_valid(builder_config_json)),
+    source_db_sha256 TEXT NOT NULL,
+    source_run_ids_json TEXT NOT NULL CHECK(json_valid(source_run_ids_json)),
+    source_query TEXT NOT NULL,
+    source_artifact_refs_json TEXT NOT NULL CHECK(json_valid(source_artifact_refs_json)),
+    git_sha TEXT,
+    artifact_root TEXT NOT NULL,
+    output_path TEXT NOT NULL,
+    artifact_ref_id TEXT REFERENCES artifact_refs(artifact_ref_id),
+    row_count INTEGER NOT NULL,
+    sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL
 )
 ```
 
@@ -604,25 +1044,49 @@ Add methods to `FlywheelStore`:
         task_id: str,
         snapshot_sha256: str,
         judge_model_id: str,
+        judge_protocol_family: str,
+        judge_provider_label: str,
+        judge_endpoint_kind: str,
+        structured_output_mode: str,
         judge_prompt_hash: str,
         judge_contract_hash: str,
         judge_policy_version: str,
         label_schema_version: str,
+        judge_output_schema_hash: str,
+        reasoning_effort: str | None,
+        temperature: float | None,
         score: int,
         rationale: str,
         label_payload: dict[str, Any],
         judge_prompt_text: str | None,
         latency_ms: int | None = None,
     ) -> None:
+        expected_contract = build_judge_contract_hash(
+            judge_model_id=judge_model_id,
+            judge_protocol_family=judge_protocol_family,
+            judge_provider_label=judge_provider_label,
+            judge_endpoint_kind=judge_endpoint_kind,
+            structured_output_mode=structured_output_mode,
+            judge_prompt_hash=judge_prompt_hash,
+            judge_policy_version=judge_policy_version,
+            label_schema_version=label_schema_version,
+            judge_output_schema_hash=judge_output_schema_hash,
+            reasoning_effort=reasoning_effort,
+            temperature=temperature,
+        )
+        if judge_contract_hash != expected_contract:
+            raise ValueError("judge_contract_hash does not match judge label contract fields")
         now = utc_now()
         self.connect().execute(
             """
             INSERT INTO judge_labels (
                 task_id, snapshot_sha256, judge_model_id, judge_prompt_hash,
-                judge_contract_hash, judge_policy_version, label_schema_version,
+                judge_contract_hash, judge_protocol_family, judge_provider_label,
+                judge_endpoint_kind, structured_output_mode, judge_policy_version,
+                label_schema_version, judge_output_schema_hash, reasoning_effort, temperature,
                 score, rationale, label_json, judge_prompt_text, latency_ms,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(task_id, snapshot_sha256, judge_contract_hash, label_schema_version) DO UPDATE SET
                 score = excluded.score,
                 rationale = excluded.rationale,
@@ -637,8 +1101,15 @@ Add methods to `FlywheelStore`:
                 judge_model_id,
                 judge_prompt_hash,
                 judge_contract_hash,
+                judge_protocol_family,
+                judge_provider_label,
+                judge_endpoint_kind,
+                structured_output_mode,
                 judge_policy_version,
                 label_schema_version,
+                judge_output_schema_hash,
+                reasoning_effort,
+                temperature,
                 score,
                 rationale,
                 canonical_json(label_payload),
@@ -674,6 +1145,18 @@ Add methods to `FlywheelStore`:
         if row is None:
             return None
         return json.loads(str(row["label_json"]))
+
+    def judge_cache_summary(self, *, task_id: str, judge_contract_hash: str) -> dict[str, object]:
+        row = self.connect().execute(
+            """
+            SELECT COUNT(*) AS hits
+            FROM judge_labels
+            WHERE task_id = ?
+              AND judge_contract_hash = ?
+            """,
+            (task_id, judge_contract_hash),
+        ).fetchone()
+        return {"hits": int(row["hits"]), "contract_hash": judge_contract_hash}
 ```
 
 - [ ] **Step 6: Run store tests**
@@ -698,6 +1181,8 @@ git commit -m "feat: add flywheel sqlite store"
 ### Task 3: Replace JudgeCache In Evaluation
 
 **Files:**
+- Create: `src/seektalent/resumes/__init__.py`
+- Create: `src/seektalent/resumes/snapshots.py`
 - Modify: `src/seektalent/evaluation.py`
 - Modify: `tests/test_evaluation.py`
 - Modify: `src/seektalent/cli.py`
@@ -726,18 +1211,32 @@ def test_resume_judge_cache_uses_flywheel_judge_contract(tmp_path: Path) -> None
     )
     contract = build_judge_contract_hash(
         judge_model_id="deepseek-v4-pro",
+        judge_protocol_family="openai_chat_completions_compatible",
+        judge_provider_label="bailian",
+        judge_endpoint_kind="openai-compatible",
+        structured_output_mode="strict_native_schema",
         judge_prompt_hash="prompt-hash",
         judge_policy_version="resume-judge-v1",
         label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+        judge_output_schema_hash="schema-hash",
+        reasoning_effort=None,
+        temperature=0.0,
     )
     store.record_judge_label(
         task_id=task_id,
         snapshot_sha256="snapshot-1",
         judge_model_id="deepseek-v4-pro",
+        judge_protocol_family="openai_chat_completions_compatible",
+        judge_provider_label="bailian",
+        judge_endpoint_kind="openai-compatible",
+        structured_output_mode="strict_native_schema",
         judge_prompt_hash="prompt-hash",
         judge_contract_hash=contract,
         judge_policy_version="resume-judge-v1",
         label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+        judge_output_schema_hash="schema-hash",
+        reasoning_effort=None,
+        temperature=0.0,
         score=3,
         rationale="Strong direct match.",
         label_payload={"score": 3, "rationale": "Strong direct match."},
@@ -753,7 +1252,56 @@ def test_resume_judge_cache_uses_flywheel_judge_contract(tmp_path: Path) -> None
     store.close()
 ```
 
-Replace `test_resume_judge_cache_uses_task_and_resume_without_model` with a test that expects a miss when prompt hash changes.
+Replace `test_resume_judge_cache_uses_task_and_resume_without_model` with a test that expects a miss when prompt hash changes. Add a cache metrics assertion in the same test file:
+
+```python
+def test_resume_judge_reports_flywheel_cache_hits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD", notes_text="")
+    store.upsert_resume_snapshot(
+        snapshot_sha256="snapshot-1",
+        source_resume_id="resume-1",
+        dedup_key="resume-1",
+        raw_payload={"resume_id": "resume-1"},
+        normalized_preview={"search_text": "agent"},
+    )
+    contract = build_judge_contract_hash(
+        judge_model_id="deepseek-v4-pro",
+        judge_protocol_family="openai_chat_completions_compatible",
+        judge_provider_label="bailian",
+        judge_endpoint_kind="openai-compatible",
+        structured_output_mode="strict_native_schema",
+        judge_prompt_hash="prompt-hash",
+        judge_policy_version="resume-judge-v1",
+        label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+        judge_output_schema_hash="schema-hash",
+        reasoning_effort=None,
+        temperature=0.0,
+    )
+    store.record_judge_label(
+        task_id=task_id,
+        snapshot_sha256="snapshot-1",
+        judge_model_id="deepseek-v4-pro",
+        judge_protocol_family="openai_chat_completions_compatible",
+        judge_provider_label="bailian",
+        judge_endpoint_kind="openai-compatible",
+        structured_output_mode="strict_native_schema",
+        judge_prompt_hash="prompt-hash",
+        judge_contract_hash=contract,
+        judge_policy_version="resume-judge-v1",
+        label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+        judge_output_schema_hash="schema-hash",
+        reasoning_effort=None,
+        temperature=0.0,
+        score=3,
+        rationale="Strong direct match.",
+        label_payload={"score": 3, "rationale": "Strong direct match."},
+        judge_prompt_text="judge prompt",
+    )
+    summary = store.judge_cache_summary(task_id=task_id, judge_contract_hash=contract)
+    assert summary == {"hits": 1, "contract_hash": contract}
+    store.close()
+```
 
 - [ ] **Step 2: Run focused eval tests and verify failure**
 
@@ -767,15 +1315,43 @@ Expected: FAIL until evaluation imports and APIs are updated.
 
 - [ ] **Step 3: Update evaluation task hash and judge contract helpers**
 
-In `src/seektalent/evaluation.py`, remove `JudgeCache`, `_cache_path`, `migrate_judge_assets`, and old cache schema helpers. Keep `snapshot_sha256`, but change `task_sha256` signature:
+Create `src/seektalent/resumes/__init__.py`:
+
+```python
+"""Resume source and snapshot helpers."""
+```
+
+Create `src/seektalent/resumes/snapshots.py` before changing evaluation:
+
+```python
+from __future__ import annotations
+
+from hashlib import sha256
+from typing import Any
+
+from seektalent.flywheel.store import canonical_json
+
+
+def canonical_resume_snapshot_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    return raw_payload
+
+
+def snapshot_sha256(raw_payload: dict[str, Any]) -> str:
+    return sha256(canonical_json(canonical_resume_snapshot_payload(raw_payload)).encode("utf-8")).hexdigest()
+```
+
+In `src/seektalent/evaluation.py`, remove `JudgeCache`, `_cache_path`, `migrate_judge_assets`, and old cache schema helpers. Move snapshot hashing out of evaluation into `seektalent.resumes.snapshots`, then import it from there. Change `task_sha256` signature:
 
 ```python
 from seektalent.flywheel.store import (
     FLYWHEEL_LABEL_SCHEMA_VERSION,
     FlywheelStore,
     build_judge_contract_hash,
+    canonical_json,
     task_sha256 as flywheel_task_sha256,
 )
+from seektalent.llm import resolve_stage_model_config
+from seektalent.resumes.snapshots import snapshot_sha256
 ```
 
 ```python
@@ -790,11 +1366,20 @@ Add:
 
 ```python
 def _judge_contract_hash(settings: AppSettings, prompt: LoadedPrompt) -> str:
+    config = resolve_stage_model_config(settings, stage="judge")
+    output_schema_hash = sha256(canonical_json(ResumeJudgeResult.model_json_schema()).encode("utf-8")).hexdigest()
     return build_judge_contract_hash(
-        judge_model_id=settings.judge_model_id,
+        judge_model_id=config.model_id,
+        judge_protocol_family=config.protocol_family,
+        judge_provider_label=config.provider_label,
+        judge_endpoint_kind=config.endpoint_kind,
+        structured_output_mode=config.structured_output_mode,
         judge_prompt_hash=prompt.sha256,
         judge_policy_version=JUDGE_POLICY_VERSION,
         label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+        judge_output_schema_hash=output_schema_hash,
+        reasoning_effort=config.reasoning_effort,
+        temperature=0.0,
     )
 ```
 
@@ -836,8 +1421,15 @@ class JudgeLabelWrite:
     task_id: str
     snapshot_sha256: str
     judge_model_id: str
+    judge_protocol_family: str
+    judge_provider_label: str
+    judge_endpoint_kind: str
+    structured_output_mode: str
     judge_prompt_hash: str
     judge_contract_hash: str
+    judge_output_schema_hash: str
+    reasoning_effort: str | None
+    temperature: float | None
     result: ResumeJudgeResult
     judge_prompt_text: str | None = None
     latency_ms: int | None = None
@@ -889,10 +1481,17 @@ for write in pending_cache_writes:
         task_id=write.task_id,
         snapshot_sha256=write.snapshot_sha256,
         judge_model_id=write.judge_model_id,
+        judge_protocol_family=write.judge_protocol_family,
+        judge_provider_label=write.judge_provider_label,
+        judge_endpoint_kind=write.judge_endpoint_kind,
+        structured_output_mode=write.structured_output_mode,
         judge_prompt_hash=write.judge_prompt_hash,
         judge_contract_hash=write.judge_contract_hash,
         judge_policy_version=JUDGE_POLICY_VERSION,
         label_schema_version=FLYWHEEL_LABEL_SCHEMA_VERSION,
+        judge_output_schema_hash=write.judge_output_schema_hash,
+        reasoning_effort=write.reasoning_effort,
+        temperature=write.temperature,
         score=write.result.score,
         rationale=write.result.rationale,
         label_payload=write.result.model_dump(mode="json"),
@@ -918,7 +1517,7 @@ Expected: PASS after removing old cache tests and replacing with flywheel tests.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/seektalent/evaluation.py src/seektalent/cli.py docs/outputs.md tests/test_evaluation.py
+git add src/seektalent/resumes src/seektalent/evaluation.py src/seektalent/cli.py docs/outputs.md tests/test_evaluation.py
 git commit -m "refactor: replace judge cache with flywheel labels"
 ```
 
@@ -929,6 +1528,7 @@ git commit -m "refactor: replace judge cache with flywheel labels"
 **Files:**
 - Modify: `src/seektalent/flywheel/store.py`
 - Create: `src/seektalent/flywheel/runtime.py`
+- Modify: `src/seektalent/resumes/snapshots.py`
 - Modify: `src/seektalent/models.py`
 - Modify: `src/seektalent/runtime/retrieval_runtime.py`
 - Modify: `src/seektalent/runtime/orchestrator.py`
@@ -1050,9 +1650,9 @@ class QueryResumeHit(BaseModel):
     was_new_to_pool: bool
     was_duplicate: bool
     scored_fit_bucket: FitBucket | None = None
-    overall_score: int | None = None
-    must_have_match_score: int | None = None
-    risk_score: int | None = None
+    overall_score: float | None = None
+    must_have_match_score: float | None = None
+    risk_score: float | None = None
     off_intent_reason_count: int = 0
     final_candidate_status: str | None = None
 ```
@@ -1066,10 +1666,10 @@ hit_sequence_no = len(query_resume_hits) + 1 if record_resume_hit is not None el
 snapshot_hash = candidate.snapshot_sha256 or snapshot_sha256(candidate.raw)
 ```
 
-Import `snapshot_sha256` from `seektalent.evaluation` until the hash helper is moved to a neutral module:
+Import `snapshot_sha256` from the neutral resume snapshot module:
 
 ```python
-from seektalent.evaluation import snapshot_sha256
+from seektalent.resumes.snapshots import snapshot_sha256
 ```
 
 Pass fields:
@@ -1126,8 +1726,8 @@ def build_run_query_rows(
                 "query_spec_schema_version": QUERY_SPEC_SCHEMA_VERSION,
                 "query_policy_version": query_policy_version,
                 "job_intent_fingerprint": job_intent_fingerprint,
-                "provider_name": "cts",
-                "rendered_provider_query": record.keyword_query,
+                "provider_name": str(spec.get("provider_name") or "cts"),
+                "rendered_provider_query": str(spec.get("rendered_provider_query") or record.keyword_query),
                 "keyword_query": record.keyword_query,
                 "query_terms_json": canonical_json(record.query_terms),
                 "filters_json": canonical_json(spec.get("provider_filters", {})) if isinstance(spec, dict) else "{}",
@@ -1138,7 +1738,6 @@ def build_run_query_rows(
                 "accepted_prf_term_family_id": None,
                 "fallback_reason": None,
                 "artifact_ref_id": None,
-                "created_at": "",
             }
         )
     return rows
@@ -1150,11 +1749,11 @@ def query_hit_rows_from_hits(hits: list[QueryResumeHit]) -> list[dict[str, Any]]
 
 - [ ] **Step 6: Extend `FlywheelStore` with run/query/hit methods**
 
-Add DDL for `artifact_refs`, `runs`, `run_queries`, and `query_resume_hits`. Add methods:
+Use the Task 2 DDL for `artifact_refs`, `runs`, `run_queries`, and `query_resume_hits`. Add methods:
 
 ```python
-def record_artifact_ref(self, *, artifact_kind: str, artifact_id: str, logical_name: str, content_sha256: str | None, schema_version: str | None) -> str
-def start_run(self, *, run_id: str, task_id: str, version: str | None, git_sha: str | None, artifact_ref_id: str | None, config_hash: str, config_payload: dict[str, Any], status: str, eval_enabled: bool, benchmark_id: str | None, benchmark_case_id: str | None) -> None
+def record_artifact_ref(self, *, artifact_kind: str, artifact_id: str, artifact_root: str, logical_name: str, relative_path: str | None, content_sha256: str | None, schema_version: str | None) -> str
+def start_run(self, *, run_id: str, task_id: str, version: str | None, git_sha: str | None, artifact_ref_id: str | None, artifact_root: str, config_hash: str, config_payload: dict[str, Any], status: str, eval_enabled: bool, benchmark_id: str | None, benchmark_case_id: str | None) -> None
 def complete_run(self, *, run_id: str, status: str, failure_summary: str | None = None) -> None
 def record_run_queries(self, rows: list[dict[str, object]]) -> None
 def record_query_resume_hits(self, rows: list[dict[str, object]]) -> None
@@ -1166,6 +1765,8 @@ Use one transaction per list method:
 with self.connect():
     self.connect().executemany(sql, values)
 ```
+
+Store-owned timestamps: row builders must not emit `created_at`. `FlywheelStore` fills `created_at`, `started_at`, `completed_at`, and `updated_at` inside write methods.
 
 - [ ] **Step 7: Wire runtime start and round hit recording**
 
@@ -1189,7 +1790,9 @@ At run start:
 manifest_ref_id = self.flywheel_store.record_artifact_ref(
     artifact_kind="run",
     artifact_id=tracer.run_id,
+    artifact_root=str(tracer.run_dir),
     logical_name="manifest.run",
+    relative_path="manifests/run_manifest.json",
     content_sha256=None,
     schema_version="v1",
 )
@@ -1199,6 +1802,7 @@ self.flywheel_store.start_run(
     version=None,
     git_sha=None,
     artifact_ref_id=manifest_ref_id,
+    artifact_root=str(tracer.run_dir),
     config_hash=json_sha256(self._build_public_run_config()),
     config_payload=self._build_public_run_config(),
     status="running",
@@ -1208,7 +1812,21 @@ self.flywheel_store.start_run(
 )
 ```
 
-At round end after `_write_query_resume_hits`, record hit rows and query rows. Use `run_state.retrieval_state.sent_query_history` and current `query_resume_hits`.
+At provider hit ingestion, upsert the resume snapshot before inserting the query hit:
+
+```python
+snapshot_payload = canonical_resume_snapshot_payload(candidate.raw)
+snapshot_hash = candidate.snapshot_sha256 or snapshot_sha256(snapshot_payload)
+self.flywheel_store.upsert_resume_snapshot(
+    snapshot_sha256=snapshot_hash,
+    source_resume_id=candidate.source_resume_id or candidate.resume_id,
+    dedup_key=candidate.dedup_key,
+    raw_payload=snapshot_payload,
+    normalized_preview={"search_text": candidate.search_text},
+)
+```
+
+At round end after `_write_query_resume_hits`, record query rows first, then query hit rows. Normal provider-returned hits must have `snapshot_sha256`; only hits without raw payload may set `snapshot_missing_reason`.
 
 - [ ] **Step 8: Run focused tests**
 
@@ -1223,7 +1841,7 @@ Expected: PASS.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/seektalent/flywheel/store.py src/seektalent/flywheel/runtime.py src/seektalent/models.py src/seektalent/runtime/retrieval_runtime.py src/seektalent/runtime/orchestrator.py tests/test_flywheel_runtime.py tests/test_runtime_audit.py
+git add src/seektalent/flywheel/store.py src/seektalent/flywheel/runtime.py src/seektalent/resumes/snapshots.py src/seektalent/models.py src/seektalent/runtime/retrieval_runtime.py src/seektalent/runtime/orchestrator.py tests/test_flywheel_runtime.py tests/test_runtime_audit.py
 git commit -m "feat: persist flywheel query hits"
 ```
 
@@ -1245,7 +1863,10 @@ git commit -m "feat: persist flywheel query hits"
 Add to `tests/test_flywheel_runtime.py`:
 
 ```python
+from seektalent.artifacts import ArtifactStore
 from seektalent.flywheel.outcomes import build_runtime_query_outcome_row
+from seektalent.flywheel.runtime import materialize_flywheel_run_artifacts
+from seektalent.flywheel.store import FlywheelStore
 from seektalent.models import QueryOutcomeClassification
 
 
@@ -1276,6 +1897,50 @@ def test_zero_recall_runtime_outcome_uses_null_precision_fields() -> None:
     assert row["risk_score_avg"] is None
     assert row["scored_resume_count"] == 0
     assert row["outcome_schema_version"] == "query-outcome-v1"
+
+
+def test_materialize_flywheel_run_artifacts_backfills_artifact_refs(tmp_path: Path) -> None:
+    artifact_store = ArtifactStore(tmp_path / "artifacts")
+    session = artifact_store.create_root(kind="run", display_name="run", producer="test")
+    store = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD", notes_text="")
+    store.start_run(
+        run_id=session.manifest.artifact_id,
+        task_id=task_id,
+        version="0.6.2",
+        git_sha="abc123",
+        artifact_ref_id=None,
+        artifact_root=str(session.root),
+        config_hash="config",
+        config_payload={},
+        status="completed",
+        eval_enabled=False,
+        benchmark_id=None,
+        benchmark_case_id=None,
+    )
+    store.record_query_outcomes([
+        build_runtime_query_outcome_row(
+            run_id=session.manifest.artifact_id,
+            query_instance_id="query-1",
+            query_fingerprint="fingerprint-1",
+            round_no=1,
+            lane_type="exploit",
+            provider_returned_count=0,
+            new_unique_resume_count=0,
+            duplicate_count=0,
+            scored_resume_count=0,
+            new_fit_count=0,
+            must_have_match_scores=[],
+            risk_scores=[],
+            off_intent_reason_count=0,
+            classification=QueryOutcomeClassification(primary_label="zero_recall", labels=["zero_recall"], reasons=[]),
+            thresholds_payload={},
+        )
+    ])
+    materialize_flywheel_run_artifacts(session=session, store=store, run_id=session.manifest.artifact_id)
+    rows = store.rows_for_run("query_outcomes", run_id=session.manifest.artifact_id)
+    assert rows[0]["artifact_ref_id"] is not None
+    assert (session.root / "flywheel/query_outcomes.jsonl").exists()
 ```
 
 - [ ] **Step 2: Run test and verify failure**
@@ -1362,13 +2027,12 @@ def build_runtime_query_outcome_row(
         "latency_ms": None,
         "cost_estimate_usd": None,
         "artifact_ref_id": None,
-        "created_at": "",
     }
 ```
 
-- [ ] **Step 4: Extend schema and store method**
+- [ ] **Step 4: Add store method for runtime outcomes**
 
-Add `query_outcomes` DDL to `FlywheelStore`, including JSON checks. Add:
+The `query_outcomes` table already exists from Task 2. Add the store method:
 
 ```python
 def record_query_outcomes(self, rows: list[dict[str, object]]) -> None:
@@ -1377,7 +2041,9 @@ def record_query_outcomes(self, rows: list[dict[str, object]]) -> None:
     now = utc_now()
     values = []
     for row in rows:
-        values.append({**row, "created_at": row.get("created_at") or now})
+        if "created_at" in row:
+            raise ValueError("created_at is owned by FlywheelStore")
+        values.append({**row, "created_at": now})
     with self.connect():
         self.connect().executemany(
             """
@@ -1414,10 +2080,33 @@ def record_query_outcomes(self, rows: list[dict[str, object]]) -> None:
 Add to `src/seektalent/flywheel/runtime.py`:
 
 ```python
+from hashlib import sha256
+
+RUN_MATERIALIZED_TABLES = {
+    "query_outcomes": "flywheel.query_outcomes",
+    "query_judge_outcomes": "flywheel.query_judge_outcomes",
+    "term_events": "flywheel.term_events",
+    "term_outcomes": "flywheel.term_outcomes",
+}
+
+
 def materialize_flywheel_run_artifacts(*, session, store, run_id: str) -> None:
-    query_outcomes = store.rows_for_run("query_outcomes", run_id=run_id)
-    if query_outcomes:
-        session.write_jsonl("flywheel.query_outcomes", query_outcomes)
+    for table, logical_name in RUN_MATERIALIZED_TABLES.items():
+        rows = store.rows_for_run(table, run_id=run_id)
+        if not rows:
+            continue
+        path = session.write_jsonl(logical_name, rows)
+        content_sha = sha256(path.read_bytes()).hexdigest()
+        artifact_ref_id = store.record_artifact_ref(
+            artifact_kind=session.manifest.artifact_kind,
+            artifact_id=session.manifest.artifact_id,
+            artifact_root=str(session.root),
+            logical_name=logical_name,
+            relative_path=str(path.relative_to(session.root)),
+            content_sha256=content_sha,
+            schema_version="v1",
+        )
+        store.attach_artifact_ref_to_run_rows(table=table, run_id=run_id, artifact_ref_id=artifact_ref_id)
 ```
 
 Add `rows_for_run(self, table: str, run_id: str) -> list[dict[str, object]]` to `FlywheelStore`, with a whitelist:
@@ -1431,9 +2120,22 @@ ALLOWED_RUN_ROW_TABLES = {
 }
 ```
 
+Add `attach_artifact_ref_to_run_rows(self, *, table: str, run_id: str, artifact_ref_id: str) -> None` using the same table whitelist.
+
 - [ ] **Step 6: Wire runtime outcome persistence**
 
-Use `latest_dispatch_outcomes` and scored query-outcome candidates in retrieval runtime. If the current return object does not expose enough details, add a compact `query_outcome_rows` list to the retrieval result and fill it when `register_dispatch_outcome` classifies a query. Persist those rows in `orchestrator.py` after scoring.
+Compute `query_outcomes` from persisted `query_resume_hits` after scoring enrichment. Runtime classification may provide the label decision, but denominator counts must come from the hit ledger:
+
+```python
+hits = self.flywheel_store.query_hits_for_run_round(run_id=tracer.run_id, round_no=round_no)
+outcome_rows = build_runtime_query_outcome_rows_from_hits(
+    run_id=tracer.run_id,
+    hits=hits,
+    classifications=latest_dispatch_outcomes,
+    thresholds_payload=self.settings.query_outcome_thresholds_payload(),
+)
+self.flywheel_store.record_query_outcomes(outcome_rows)
+```
 
 - [ ] **Step 7: Run focused tests**
 
@@ -1511,6 +2213,69 @@ def test_evaluate_run_writes_query_judge_outcomes(tmp_path: Path, monkeypatch: p
             }
         ],
     )
+    flywheel = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    task_id = flywheel.upsert_task(job_title="Agent Engineer", jd_text="JD text", notes_text="")
+    flywheel.upsert_resume_snapshot(
+        snapshot_sha256="snapshot-1",
+        source_resume_id="resume-1",
+        dedup_key="resume-1",
+        raw_payload={"resume_id": "resume-1", "skill": "agent"},
+        normalized_preview={"search_text": "agent"},
+    )
+    flywheel.start_run(
+        run_id=session.manifest.artifact_id,
+        task_id=task_id,
+        version="0.6.2",
+        git_sha="abc123",
+        artifact_ref_id=None,
+        artifact_root=str(session.root),
+        config_hash="config",
+        config_payload={},
+        status="completed",
+        eval_enabled=True,
+        benchmark_id=None,
+        benchmark_case_id=None,
+    )
+    flywheel.record_run_queries([
+        {
+            "run_id": session.manifest.artifact_id,
+            "round_no": 1,
+            "lane_type": "exploit",
+            "query_instance_id": "query-1",
+            "query_fingerprint": "fingerprint-1",
+            "query_role": "exploit",
+            "canonical_query_spec_json": "{}",
+            "query_spec_schema_version": "canonical-query-spec-v1",
+            "query_policy_version": "query-policy-v1",
+            "job_intent_fingerprint": "intent-1",
+            "provider_name": "cts",
+            "rendered_provider_query": "agent",
+            "keyword_query": "agent",
+            "query_terms_json": "[]",
+            "filters_json": "{}",
+            "artifact_ref_id": None,
+        }
+    ])
+    flywheel.record_query_resume_hits([
+        {
+            "run_id": session.manifest.artifact_id,
+            "query_instance_id": "query-1",
+            "query_fingerprint": "fingerprint-1",
+            "hit_sequence_no": 1,
+            "snapshot_sha256": "snapshot-1",
+            "snapshot_missing_reason": None,
+            "resume_id": "resume-1",
+            "round_no": 1,
+            "lane_type": "exploit",
+            "batch_no": 1,
+            "rank_in_query": 1,
+            "provider_name": "cts",
+            "was_new_to_pool": True,
+            "was_duplicate": False,
+            "final_candidate_status": "fit",
+        }
+    ])
+    flywheel.close()
 
     asyncio.run(
         evaluate_run(
@@ -1531,6 +2296,46 @@ def test_evaluate_run_writes_query_judge_outcomes(tmp_path: Path, monkeypatch: p
     finally:
         conn.close()
     assert count >= 1
+```
+
+Add a pure outcome test to `tests/test_flywheel_runtime.py`:
+
+```python
+from seektalent.flywheel.outcomes import build_query_judge_outcome_rows
+
+
+def test_query_judge_outcome_counts_only_new_hits_as_gain() -> None:
+    rows = build_query_judge_outcome_rows(
+        run_id="run-1",
+        task_id="task-1",
+        query_hits=[
+            {
+                "query_instance_id": "query-1",
+                "query_fingerprint": "fingerprint-1",
+                "snapshot_sha256": "snapshot-old",
+                "was_new_to_pool": False,
+                "was_duplicate": True,
+            },
+            {
+                "query_instance_id": "query-1",
+                "query_fingerprint": "fingerprint-1",
+                "snapshot_sha256": "snapshot-new",
+                "was_new_to_pool": True,
+                "was_duplicate": False,
+            },
+        ],
+        judged_by_snapshot={
+            "snapshot-old": {"score": 3},
+            "snapshot-new": {"score": 1},
+        },
+        judge_contract_hash="contract",
+        judge_model_id="deepseek-v4-pro",
+        judge_prompt_hash="prompt",
+        label_schema_version="judge-label-v1",
+        thresholds_payload={},
+    )
+    assert rows[0]["new_judge_positive_count"] == 0
+    assert rows[0]["judged_resume_count"] == 1
 ```
 
 - [ ] **Step 2: Run test and verify failure**
@@ -1574,10 +2379,23 @@ def build_query_judge_outcome_rows(
     threshold_hash = sha256(thresholds_json.encode("utf-8")).hexdigest()
     rows: list[dict[str, object]] = []
     for query_instance_id, hits in rows_by_query.items():
-        judged = [judged_by_snapshot[str(hit["snapshot_sha256"])] for hit in hits if str(hit["snapshot_sha256"]) in judged_by_snapshot]
-        positive_count = sum(1 for item in judged if int(item["score"]) >= 2)
-        positive_rate = positive_count / len(judged) if judged else None
-        labels = ["marginal_gain"] if positive_count else ["low_recall_high_precision"]
+        new_hits = [hit for hit in hits if hit.get("was_new_to_pool")]
+        judged_new_hits = [
+            judged_by_snapshot[str(hit["snapshot_sha256"])]
+            for hit in new_hits
+            if str(hit["snapshot_sha256"]) in judged_by_snapshot
+        ]
+        positive_count = sum(1 for item in judged_new_hits if int(item["score"]) >= 2)
+        positive_rate = positive_count / len(judged_new_hits) if judged_new_hits else None
+        if not judged_new_hits:
+            labels = ["judge_coverage_missing"]
+            reasons = ["no new query hits had judge labels"]
+        elif positive_count:
+            labels = ["marginal_gain"]
+            reasons = ["new judge-positive resumes joined to query hits"]
+        else:
+            labels = ["low_recall_high_precision"]
+            reasons = ["new query hits were judged but no positive label was found"]
         rows.append(
             {
                 "run_id": run_id,
@@ -1594,28 +2412,27 @@ def build_query_judge_outcome_rows(
                 "outcome_thresholds_json": thresholds_json,
                 "provider_returned_count": len(hits),
                 "new_unique_resume_count": sum(1 for hit in hits if hit.get("was_new_to_pool")),
-                "judged_resume_count": len(judged),
+                "judged_resume_count": len(judged_new_hits),
                 "new_judge_positive_count": positive_count,
-                "new_judge_near_positive_count": sum(1 for item in judged if int(item["score"]) == 2),
+                "new_judge_near_positive_count": sum(1 for item in judged_new_hits if int(item["score"]) == 2),
                 "judge_positive_rate": positive_rate,
                 "duplicate_count": sum(1 for hit in hits if hit.get("was_duplicate")),
                 "primary_label": labels[0],
                 "labels_json": canonical_json(labels),
-                "reasons_json": canonical_json(["judge labels joined to query hits"]),
+                "reasons_json": canonical_json(reasons),
                 "artifact_ref_id": None,
-                "created_at": "",
             }
         )
     return rows
 ```
 
-- [ ] **Step 4: Add store DDL and method**
+- [ ] **Step 4: Add store method for judge outcomes**
 
-Add `query_judge_outcomes` DDL and `record_query_judge_outcomes(rows)` to `FlywheelStore`.
+The `query_judge_outcomes` table already exists from Task 2. Add `record_query_judge_outcomes(rows)` to `FlywheelStore`; the store fills `created_at`.
 
 - [ ] **Step 5: Wire eval**
 
-After judge labels are recorded in `evaluate_run`, load query hits from the run artifact through `ArtifactResolver.resolve_many("round.*.retrieval.query_resume_hits")`, build `judged_by_snapshot`, call `build_query_judge_outcome_rows`, and write rows to store.
+After judge labels are recorded in `evaluate_run`, load query hits from `FlywheelStore.rows_for_run("query_resume_hits", run_id=run_id)` rather than reparsing run artifact files. Build `judged_by_snapshot`, call `build_query_judge_outcome_rows`, and write rows to store.
 
 - [ ] **Step 6: Materialize JSONL**
 
@@ -1662,6 +2479,11 @@ def test_rejected_prf_term_event_is_not_bound_to_generic_query() -> None:
         run_id="run-1",
         proposal_id="proposal-1",
         prf_decision_id="decision-1",
+        prf_candidate_artifact_ref_id="artifact-candidates",
+        prf_policy_decision_artifact_ref_id="artifact-policy",
+        prf_proposal_extractor_version="llm-prf-v1",
+        prf_familying_version="conservative-family-v1",
+        prf_gate_version="prf-gate-v1",
         term_surface="Agent工作流",
         term_family_id="feedback.agent-workflow",
         round_no=2,
@@ -1697,6 +2519,11 @@ def build_rejected_prf_term_event(
     run_id: str,
     proposal_id: str,
     prf_decision_id: str,
+    prf_candidate_artifact_ref_id: str | None,
+    prf_policy_decision_artifact_ref_id: str | None,
+    prf_proposal_extractor_version: str,
+    prf_familying_version: str,
+    prf_gate_version: str,
     term_surface: str,
     term_family_id: str,
     round_no: int,
@@ -1709,6 +2536,11 @@ def build_rejected_prf_term_event(
         "term_event_id": f"{proposal_id}:{term_family_id}",
         "proposal_id": proposal_id,
         "prf_decision_id": prf_decision_id,
+        "prf_candidate_artifact_ref_id": prf_candidate_artifact_ref_id,
+        "prf_policy_decision_artifact_ref_id": prf_policy_decision_artifact_ref_id,
+        "prf_proposal_extractor_version": prf_proposal_extractor_version,
+        "prf_familying_version": prf_familying_version,
+        "prf_gate_version": prf_gate_version,
         "candidate_query_fingerprint": None,
         "executed_query_instance_id": None,
         "selected_query_instance_id": None,
@@ -1723,15 +2555,24 @@ def build_rejected_prf_term_event(
         "supporting_resume_ids_json": canonical_json(supporting_resume_ids),
         "negative_resume_ids_json": canonical_json(negative_resume_ids),
         "artifact_ref_id": None,
-        "created_at": "",
     }
 ```
 
 Add `build_term_outcome_rows(term_events, runtime_outcomes, judge_outcomes)` that sets `execution_status` to `not_executed`, `executed_runtime`, or `executed_judge_joined`.
 
-- [ ] **Step 4: Add store DDL and methods**
+- [ ] **Step 4: Add store methods for term lineage**
 
-Add `term_events` and `term_outcomes` tables. Add:
+The term lineage tables already exist from Task 2. They must include PRF lineage columns for proposal artifacts and version vector:
+
+```text
+prf_candidate_artifact_ref_id
+prf_policy_decision_artifact_ref_id
+prf_proposal_extractor_version
+prf_familying_version
+prf_gate_version
+```
+
+Add:
 
 ```python
 def record_term_events(self, rows: list[dict[str, object]]) -> None
@@ -1811,6 +2652,7 @@ def test_dataset_export_is_deterministic(tmp_path: Path) -> None:
         version="0.6.2",
         git_sha="abc123",
         artifact_ref_id=None,
+        artifact_root=str(tmp_path / "artifacts/runs/run-1"),
         config_hash="config-hash",
         config_payload={"max_rounds": 3},
         status="completed",
@@ -1844,7 +2686,6 @@ def test_dataset_export_is_deterministic(tmp_path: Path) -> None:
                 "labels_json": json.dumps(["marginal_gain"]),
                 "reasons_json": json.dumps(["judge positive"]),
                 "artifact_ref_id": None,
-                "created_at": "",
             }
         ]
     )
@@ -1869,6 +2710,14 @@ def test_dataset_export_is_deterministic(tmp_path: Path) -> None:
     first_lines = (first.root / "flywheel/query_rewrite_samples.jsonl").read_text(encoding="utf-8").splitlines()
     second_lines = (second.root / "flywheel/query_rewrite_samples.jsonl").read_text(encoding="utf-8").splitlines()
     assert first_lines == second_lines
+    for name in [
+        "query_outcomes",
+        "query_judge_outcomes",
+        "term_events",
+        "term_outcomes",
+        "query_rewrite_samples",
+    ]:
+        assert (first.root / f"flywheel/{name}.jsonl").exists()
 ```
 
 - [ ] **Step 2: Run test and verify failure**
@@ -1920,6 +2769,7 @@ def export_query_rewriting_dataset(
     run_ids: list[str],
 ) -> DatasetExportResult:
     rows = store.query_rewrite_source_rows(run_ids=run_ids)
+    builder_config_hash = sha256(canonical_json(builder_config).encode("utf-8")).hexdigest()
     samples = []
     for row in rows:
         sample_payload = {
@@ -1928,7 +2778,32 @@ def export_query_rewriting_dataset(
             "dataset_version": dataset_version,
             "schema_version": QUERY_REWRITE_SAMPLE_SCHEMA_VERSION,
             "builder_version": DATASET_BUILDER_VERSION,
+            "builder_config_hash": builder_config_hash,
             "sample_basis": "judge_outcome",
+        }
+        input_payload = {
+            "job_title": row.get("job_title"),
+            "requirement_digest": row.get("task_sha256"),
+            "query_history": row.get("query_history", []),
+            "failed_terms": row.get("failed_terms", []),
+            "successful_terms": row.get("successful_terms", []),
+            "prf_evidence_summaries": row.get("prf_evidence_summaries", []),
+            "top_positive_signals": row.get("top_positive_signals", []),
+            "top_negative_signals": row.get("top_negative_signals", []),
+        }
+        target_payload = {
+            "select_terms": row.get("select_terms", []),
+            "suppress_terms": row.get("suppress_terms", []),
+            "rank_terms": row.get("rank_terms", []),
+            "primary_label": row["primary_label"],
+        }
+        reward_payload = {
+            "high_score_gain": row["new_judge_positive_count"],
+            "precision_gain": row["judge_positive_rate"],
+            "zero_recall_recovery": 1 if row["primary_label"] == "zero_recall_recovered" else 0,
+            "duplicate_penalty": row["duplicate_count"],
+            "broad_noise_penalty": 1 if row["primary_label"] == "broad_noise" else 0,
+            "drift_penalty": 1 if row["primary_label"] == "off_intent" else 0,
         }
         samples.append(
             {
@@ -1937,12 +2812,13 @@ def export_query_rewriting_dataset(
                 "run_id": row["run_id"],
                 "source_query_instance_ids_json": canonical_json([row["query_instance_id"]]),
                 "sample_basis": "judge_outcome",
-                "input_json": canonical_json({"query_fingerprint": row["query_fingerprint"]}),
-                "target_json": canonical_json({"primary_label": row["primary_label"]}),
-                "reward_json": canonical_json({"new_judge_positive_count": row["new_judge_positive_count"]}),
+                "input_json": canonical_json(input_payload),
+                "target_json": canonical_json(target_payload),
+                "reward_json": canonical_json(reward_payload),
                 "schema_version": QUERY_REWRITE_SAMPLE_SCHEMA_VERSION,
                 "dataset_version": dataset_version,
                 "builder_version": DATASET_BUILDER_VERSION,
+                "builder_config_hash": builder_config_hash,
             }
         )
     samples = sorted(samples, key=lambda item: item["sample_id"])
@@ -1951,19 +2827,38 @@ def export_query_rewriting_dataset(
         display_name="query rewriting dataset export",
         producer="FlywheelDatasetBuilder",
     )
+    source_artifact_refs = store.source_artifact_refs_for_runs(run_ids=run_ids)
+    for table, logical_name in {
+        "query_outcomes": "flywheel.query_outcomes",
+        "query_judge_outcomes": "flywheel.query_judge_outcomes",
+        "term_events": "flywheel.term_events",
+        "term_outcomes": "flywheel.term_outcomes",
+    }.items():
+        session.write_jsonl(logical_name, store.rows_for_runs(table, run_ids=run_ids))
     session.write_jsonl("flywheel.query_rewrite_samples", samples)
+    store.record_query_rewrite_samples(samples)
     content = "\n".join(canonical_json(item) for item in samples) + ("\n" if samples else "")
     digest = sha256(content.encode("utf-8")).hexdigest()
     manifest = {
         "dataset_version": dataset_version,
         "builder_version": DATASET_BUILDER_VERSION,
-        "builder_config_hash": sha256(canonical_json(builder_config).encode("utf-8")).hexdigest(),
+        "builder_config_hash": builder_config_hash,
         "row_count": len(samples),
         "sha256": digest,
     }
-    session.write_json("flywheel.dataset_export_manifest", manifest)
+    manifest_path = session.write_json("flywheel.dataset_export_manifest", manifest)
     session.finalize(status="completed")
+    manifest_ref_id = store.record_artifact_ref(
+        artifact_kind="export",
+        artifact_id=session.manifest.artifact_id,
+        artifact_root=str(session.root),
+        logical_name="flywheel.dataset_export_manifest",
+        relative_path=str(manifest_path.relative_to(session.root)),
+        content_sha256=sha256(manifest_path.read_bytes()).hexdigest(),
+        schema_version="v1",
+    )
     store.record_dataset_export(
+        export_id=session.manifest.artifact_id,
         dataset_name="query_rewriting",
         dataset_version=dataset_version,
         schema_version=QUERY_REWRITE_SAMPLE_SCHEMA_VERSION,
@@ -1971,9 +2866,12 @@ def export_query_rewriting_dataset(
         builder_config=builder_config,
         source_run_ids=run_ids,
         source_query="query_judge_outcomes",
-        source_artifact_refs=[],
+        source_db_sha256=sha256(store.path.read_bytes()).hexdigest(),
+        source_artifact_refs=source_artifact_refs,
         git_sha=None,
-        artifact_ref_id=None,
+        artifact_root=str(session.root),
+        output_path=str(session.root / "flywheel"),
+        artifact_ref_id=manifest_ref_id,
         row_count=len(samples),
         sha256_value=digest,
     )
@@ -1986,10 +2884,13 @@ Add:
 
 ```python
 def query_rewrite_source_rows(self, *, run_ids: list[str]) -> list[dict[str, object]]
-def record_dataset_export(self, *, dataset_name: str, dataset_version: str, schema_version: str, builder_version: str, builder_config: dict[str, Any], source_run_ids: list[str], source_query: str, source_artifact_refs: list[str], git_sha: str | None, artifact_ref_id: str | None, row_count: int, sha256_value: str) -> None
+def rows_for_runs(self, table: str, *, run_ids: list[str]) -> list[dict[str, object]]
+def source_artifact_refs_for_runs(self, *, run_ids: list[str]) -> list[str]
+def record_query_rewrite_samples(self, rows: list[dict[str, object]]) -> None
+def record_dataset_export(self, *, export_id: str, dataset_name: str, dataset_version: str, schema_version: str, builder_version: str, builder_config: dict[str, Any], source_run_ids: list[str], source_query: str, source_db_sha256: str, source_artifact_refs: list[str], git_sha: str | None, artifact_root: str, output_path: str, artifact_ref_id: str | None, row_count: int, sha256_value: str) -> None
 ```
 
-`query_rewrite_source_rows` must query `query_judge_outcomes` and sort by `run_id`, `query_instance_id`, `judge_contract_hash`.
+`query_rewrite_source_rows` must join `query_judge_outcomes`, `runs`, `tasks`, `run_queries`, and term outcome summaries so each row includes `job_title`, `task_sha256`, `query_history`, `failed_terms`, `successful_terms`, `prf_evidence_summaries`, `top_positive_signals`, `top_negative_signals`, `select_terms`, `suppress_terms`, and `rank_terms`. Sort by `run_id`, `query_instance_id`, `judge_contract_hash`.
 
 - [ ] **Step 5: Add CLI command**
 
@@ -2171,6 +3072,7 @@ def test_run_populates_flywheel_store_and_artifacts(tmp_path: Path) -> None:
 
     manifest = json.loads((tracer.run_dir / "manifests/run_manifest.json").read_text(encoding="utf-8"))
     assert "flywheel.query_outcomes" in manifest["logical_artifacts"]
+    assert "flywheel.term_events" in manifest["logical_artifacts"]
 ```
 
 - [ ] **Step 2: Run and verify failure or pass**
@@ -2188,10 +3090,37 @@ Expected: PASS if prior runtime tasks are complete. If it fails, fix only the mi
 In `tests/test_evaluation.py`, add an assertion to the eval test from Task 6:
 
 ```python
+session.write_jsonl("evaluation.replay_rows", [{"resume_id": "resume-1", "score": 3}])
 manifest = json.loads((session.root / "manifests/run_manifest.json").read_text(encoding="utf-8"))
 assert "evaluation.evaluation" in manifest["logical_artifacts"]
 assert "evaluation.replay_rows" in manifest["logical_artifacts"]
 assert "flywheel.query_judge_outcomes" in manifest["logical_artifacts"]
+```
+
+Add a benchmark metadata test to `tests/test_runtime_state_flow.py` using two small cases:
+
+```python
+def test_benchmark_case_runs_populate_flywheel_case_ids(tmp_path: Path) -> None:
+    store = FlywheelStore(tmp_path / "flywheel.sqlite3")
+    task_id = store.upsert_task(job_title="Agent Engineer", jd_text="JD", notes_text="")
+    for case_id in ["case-1", "case-2"]:
+        store.start_run(
+            run_id=f"run-{case_id}",
+            task_id=task_id,
+            version="0.6.2",
+            git_sha="abc123",
+            artifact_ref_id=None,
+            artifact_root=str(tmp_path / f"artifacts/runs/run-{case_id}"),
+            config_hash="config",
+            config_payload={},
+            status="completed",
+            eval_enabled=True,
+            benchmark_id="benchmark-0.6.2",
+            benchmark_case_id=case_id,
+        )
+    rows = store.rows_for_runs("runs", run_ids=["run-case-1", "run-case-2"])
+    assert {row["benchmark_case_id"] for row in rows} == {"case-1", "case-2"}
+    store.close()
 ```
 
 - [ ] **Step 4: Update outputs docs**
@@ -2264,6 +3193,14 @@ rg -n "flywheel/(query_outcomes|query_judge_outcomes|term_events|term_outcomes|q
 ```
 
 Expected: references only in `src/seektalent/artifacts/registry.py`, `src/seektalent/flywheel/`, and tests that assert registry behavior. Runtime code uses logical names, not hand-built filesystem paths.
+
+Run:
+
+```bash
+rg -n "run_dir / \"flywheel\"|session.root / \"flywheel\"|Path\\([^)]*flywheel" src/seektalent tests
+```
+
+Expected: references only in tests that inspect generated files, not in runtime or evaluation write paths.
 
 - [ ] **Step 2: Run focused test suite**
 
