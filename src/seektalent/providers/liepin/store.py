@@ -12,8 +12,16 @@ from seektalent.providers.liepin.security import hmac_provider_account_hash
 
 
 UNSAFE_PAYLOAD_KEYS = {
+    "auth",
+    "authHeader",
+    "auth_header",
+    "authorization",
     "authUrl",
     "auth_url",
+    "accountSubject",
+    "account_subject",
+    "browserContext",
+    "browser_context",
     "cdpUrl",
     "cdp_url",
     "cookie",
@@ -23,11 +31,19 @@ UNSAFE_PAYLOAD_KEYS = {
     "raw_payload",
     "providerPayload",
     "provider_payload",
+    "providerAccountSubject",
+    "provider_account_subject",
+    "observedProviderAccountSubject",
+    "observed_provider_account_subject",
+    "remoteDebuggingPort",
+    "remote_debugging_port",
     "debugWebsocketUrl",
     "debug_websocket_url",
     "playwright",
     "wsEndpoint",
     "ws_endpoint",
+    "workerBaseUrl",
+    "worker_base_url",
     "cookies",
     "storageState",
     "storage_state",
@@ -120,7 +136,6 @@ class LiepinStore:
         compliance_gate_ref: str,
     ) -> str:
         connection_id = f"conn_{uuid.uuid4().hex[:16]}"
-        observed_provider_account_subject = f"acct_subject_{uuid.uuid4().hex}"
         with self._connect() as conn:
             conn.execute(
                 """
@@ -138,7 +153,7 @@ class LiepinStore:
                     compliance_gate_ref,
                     "pending_login",
                     None,
-                    observed_provider_account_subject,
+                    None,
                     _now_iso(),
                 ),
             )
@@ -166,6 +181,29 @@ class LiepinStore:
             return None
         return LiepinConnectionRow(**dict(row))
 
+    def record_connection_account_subject(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        actor_id: str,
+        connection_id: str,
+        observed_provider_account_subject: str,
+    ) -> bool:
+        if not observed_provider_account_subject:
+            return False
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE liepin_connections
+                SET observed_provider_account_subject = ?, status = 'login_ready'
+                WHERE tenant_id = ? AND workspace_id = ? AND actor_id = ? AND connection_id = ?
+                  AND status = 'pending_login' AND provider_account_hash IS NULL
+                """,
+                (observed_provider_account_subject, tenant_id, workspace_id, actor_id, connection_id),
+            )
+        return cursor.rowcount == 1
+
     def bind_connection_account(
         self,
         *,
@@ -179,7 +217,7 @@ class LiepinStore:
         with self._connect() as conn:
             row = conn.execute(
                 """
-                SELECT compliance_gate_ref, observed_provider_account_subject
+                SELECT compliance_gate_ref, status, provider_account_hash, observed_provider_account_subject
                 FROM liepin_connections
                 WHERE tenant_id = ? AND workspace_id = ? AND actor_id = ? AND connection_id = ?
                 """,
@@ -189,7 +227,12 @@ class LiepinStore:
                 return None
             if row["compliance_gate_ref"] != gate_ref:
                 return None
-            account_hash = hmac_provider_account_hash(secret, row["observed_provider_account_subject"])
+            if row["status"] == "connected" and row["provider_account_hash"] is not None:
+                account_hash = row["provider_account_hash"]
+            elif row["status"] == "login_ready" and row["observed_provider_account_subject"]:
+                account_hash = hmac_provider_account_hash(secret, row["observed_provider_account_subject"])
+            else:
+                return None
             gate = conn.execute(
                 """
                 SELECT provider_account_hash, status
@@ -425,7 +468,7 @@ class LiepinStore:
                     compliance_gate_ref TEXT NOT NULL,
                     status TEXT NOT NULL,
                     provider_account_hash TEXT,
-                    observed_provider_account_subject TEXT NOT NULL,
+                    observed_provider_account_subject TEXT,
                     created_at TEXT NOT NULL
                 );
 
@@ -511,6 +554,8 @@ def _has_unsafe_payload(value: object) -> bool:
         return any(_has_unsafe_payload(child) for child in value)
     if isinstance(value, str):
         lowered = value.lower()
+        if "bearer " in lowered:
+            return True
         if any(
             marker in lowered
             for marker in [

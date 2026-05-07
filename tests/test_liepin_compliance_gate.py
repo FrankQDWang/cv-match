@@ -152,7 +152,25 @@ def test_pending_gate_allows_login_handoff_but_blocks_live_search_until_matching
         connection_id=connection_id,
     )
     assert connection is not None
+    assert connection.status == "pending_login"
+    assert connection.provider_account_hash is None
     assert not hasattr(connection, "observed_provider_account_subject")
+    not_ready = store.bind_connection_account(
+        gate_ref=gate_ref,
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        connection_id=connection_id,
+        secret="local-development",
+    )
+    assert not_ready is None
+    assert store.get_compliance_gate(
+        gate_ref=gate_ref,
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+    ).status == "pending_account_binding"
+
     wrong_scope = store.bind_connection_account(
         gate_ref=gate_ref,
         tenant_id="tenant-a",
@@ -162,6 +180,24 @@ def test_pending_gate_allows_login_handoff_but_blocks_live_search_until_matching
         secret="local-development",
     )
     assert wrong_scope is None
+
+    recorded = store.record_connection_account_subject(
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        connection_id=connection_id,
+        observed_provider_account_subject="internal-worker-observed-account-a",
+    )
+    assert recorded
+    ready = store.get_connection(
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        connection_id=connection_id,
+    )
+    assert ready is not None
+    assert ready.status == "login_ready"
+    assert ready.provider_account_hash is None
 
     approved_hash = store.bind_connection_account(
         gate_ref=gate_ref,
@@ -344,12 +380,20 @@ def test_event_ledger_rejects_raw_payloads_and_reads_bounded_batches(tmp_path: P
 def test_event_ledger_rejects_worker_browser_internals_and_keeps_domain_payloads(tmp_path: Path) -> None:
     store = LiepinStore(tmp_path / "liepin.sqlite3")
     unsafe_payloads = [
+        {"headers": {"Authorization": "Bearer secret-token"}},
+        {"providerAccountSubject": "raw-liepin-account"},
+        {"observedProviderAccountSubject": "raw-liepin-account"},
+        {"accountSubject": "raw-liepin-account"},
+        {"remoteDebuggingPort": 9222},
+        {"browserContext": "context-1"},
+        {"workerBaseUrl": "http://127.0.0.1:9999/internal"},
         {"debugWebsocketUrl": "ws://127.0.0.1:9222/devtools/browser/session"},
         {"browser": {"playwright": {"wsEndpoint": "wss://127.0.0.1/playwright/session"}}},
         {"handoff": {"authUrl": "https://www.liepin.com/login?token=secret"}},
         {"payload": {"providerPayload": {"candidate": "raw"}}},
         {"payload": {"raw_payload": {"candidate": "raw"}}},
         {"payload": {"cookie": "session=secret"}},
+        {"diagnostics": "Bearer secret-token"},
         {"diagnostics": ["cdp://browser/session"]},
     ]
 

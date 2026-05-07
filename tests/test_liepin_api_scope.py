@@ -148,6 +148,17 @@ def test_compliance_gate_bind_and_verify_api_flow_is_scoped_to_connection(tmp_pa
     assert pending_verify.status_code == 403
     assert "connection_not_bound" in pending_verify.text
 
+    not_ready_bind = client.post(
+        f"/api/liepin/compliance-gates/{gate_ref}/bind-account",
+        headers=API_HEADERS,
+        json={"connectionId": connection_id},
+    )
+    assert not_ready_bind.status_code == 403
+    assert "account binding failed" in not_ready_bind.text
+
+    store = LiepinStore(tmp_path / "liepin.sqlite3")
+    _record_login_ready(store, connection_id, "internal-worker-observed-account-a")
+
     bind_response = client.post(
         f"/api/liepin/compliance-gates/{gate_ref}/bind-account",
         headers=API_HEADERS,
@@ -319,6 +330,7 @@ def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: P
     gate_ref = _create_gate(client)
     connection_id = _create_connection(client, gate_ref)
     store = LiepinStore(tmp_path / "liepin.sqlite3")
+    _record_login_ready(store, connection_id, "internal-worker-observed-account-a")
     bound_hash = store.bind_connection_account(
         gate_ref=gate_ref,
         tenant_id="tenant-a",
@@ -399,6 +411,8 @@ def test_approved_gate_fresh_connection_cannot_verify_or_start_liepin_run(tmp_pa
     client = _client(tmp_path)
     gate_ref = _create_gate(client)
     bound_connection_id = _create_connection(client, gate_ref)
+    store = LiepinStore(tmp_path / "liepin.sqlite3")
+    _record_login_ready(store, bound_connection_id, "internal-worker-observed-account-a")
     bind_response = client.post(
         f"/api/liepin/compliance-gates/{gate_ref}/bind-account",
         headers=API_HEADERS,
@@ -438,6 +452,8 @@ def test_liepin_run_rejects_connection_and_gate_mismatch_with_same_account_hash(
     client = _client(tmp_path)
     gate_a = _create_gate(client)
     connection_a = _create_connection(client, gate_a)
+    store = LiepinStore(tmp_path / "liepin.sqlite3")
+    _record_login_ready(store, connection_a, "internal-worker-observed-account-a")
     bind_a = client.post(
         f"/api/liepin/compliance-gates/{gate_a}/bind-account",
         headers=API_HEADERS,
@@ -445,7 +461,6 @@ def test_liepin_run_rejects_connection_and_gate_mismatch_with_same_account_hash(
     )
     assert bind_a.status_code == 200
 
-    store = LiepinStore(tmp_path / "liepin.sqlite3")
     connection_a_row = store.get_connection(
         tenant_id="tenant-a",
         workspace_id="workspace-a",
@@ -501,6 +516,7 @@ def test_liepin_run_status_is_scoped_and_legacy_run_status_still_works(tmp_path:
     gate_ref = _create_gate(client)
     connection_id = _create_connection(client, gate_ref)
     store = LiepinStore(tmp_path / "liepin.sqlite3")
+    _record_login_ready(store, connection_id, "internal-worker-observed-account-a")
     bound_hash = store.bind_connection_account(
         gate_ref=gate_ref,
         tenant_id="tenant-a",
@@ -613,3 +629,13 @@ def _store_gate(**overrides: object):
     }
     data.update(overrides)
     return ComplianceGate.model_validate(data)
+
+
+def _record_login_ready(store: LiepinStore, connection_id: str, subject: str) -> None:
+    assert store.record_connection_account_subject(
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        connection_id=connection_id,
+        observed_provider_account_subject=subject,
+    )

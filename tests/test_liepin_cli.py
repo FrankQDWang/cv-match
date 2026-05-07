@@ -77,6 +77,37 @@ def test_liepin_compliance_gate_create_and_verify(capsys, tmp_path: Path) -> Non
         compliance_gate_ref=gate_ref,
     )
 
+    not_ready_bind = main(
+        [
+            "liepin-compliance-gate",
+            "bind-account",
+            "--gate-ref",
+            gate_ref,
+            "--tenant-id",
+            "tenant-a",
+            "--workspace-id",
+            "workspace-a",
+            "--actor-id",
+            "actor-a",
+            "--connection-id",
+            connection_id,
+            "--db-path",
+            str(db_path),
+            "--hmac-secret",
+            "local-development",
+        ]
+    )
+    assert not_ready_bind == 1
+    assert "account binding failed" in capsys.readouterr().err
+
+    assert store.record_connection_account_subject(
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        connection_id=connection_id,
+        observed_provider_account_subject="internal-worker-observed-account-a",
+    )
+
     bind_status = main(
         [
             "liepin-compliance-gate",
