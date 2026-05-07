@@ -46,11 +46,13 @@ describe("liepin worker boundary checker", () => {
         const { request: browserRequest } = browserContext;
         const { request: contextRequest } = context;
         const { request: playwrightRequest } = playwright;
+        const { ["request"]: guardedRequest } = page;
 
         await request.get("https://example.test");
         await browserRequest.post("https://example.test");
         await contextRequest.fetch("https://example.test");
         await playwrightRequest.newContext();
+        await guardedRequest.get("https://example.test");
       }
     `;
 
@@ -58,7 +60,7 @@ describe("liepin worker boundary checker", () => {
 
     expect(
       violations.filter((violation) => violation.rule === "playwright-bound-request")
-    ).toHaveLength(4);
+    ).toHaveLength(5);
   });
 
   it("rejects dynamic OpenCLI imports", () => {
@@ -66,13 +68,15 @@ describe("liepin worker boundary checker", () => {
       export async function run() {
         const opencli = await import("@opencli/sdk");
         const legacy = require("@opencli/sdk");
-        return [opencli, legacy];
+        const templateOpencli = await import(\`@opencli/sdk\`);
+        const templateLegacy = require(\`@opencli/sdk\`);
+        return [opencli, legacy, templateOpencli, templateLegacy];
       }
     `;
 
     const violations = findBoundaryViolationsInSource(source, "dynamic-opencli.ts");
 
-    expect(violations.filter((violation) => violation.rule === "opencli-import")).toHaveLength(2);
+    expect(violations.filter((violation) => violation.rule === "opencli-import")).toHaveLength(4);
   });
 
   it("allows normal browser automation without worker-side HTTP clients", () => {

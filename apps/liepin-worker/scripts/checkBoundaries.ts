@@ -283,10 +283,22 @@ function isRequestStringLiteral(expression: ts.Expression | undefined): boolean 
 
 function isRequestBindingElement(node: ts.BindingElement): boolean {
   if (node.propertyName !== undefined) {
-    return ts.isIdentifier(node.propertyName) && node.propertyName.text === "request";
+    return isRequestPropertyName(node.propertyName);
   }
 
   return ts.isIdentifier(node.name) && node.name.text === "request";
+}
+
+function isRequestPropertyName(propertyName: ts.PropertyName): boolean {
+  if (ts.isIdentifier(propertyName)) {
+    return propertyName.text === "request";
+  }
+
+  if (ts.isComputedPropertyName(propertyName)) {
+    return isRequestStringLiteral(propertyName.expression);
+  }
+
+  return false;
 }
 
 function isDestructuredFromBoundRequestOwner(node: ts.BindingElement): boolean {
@@ -301,10 +313,10 @@ function isDestructuredFromBoundRequestOwner(node: ts.BindingElement): boolean {
   );
 }
 
-function isOpenCliModuleName(node: ts.Node | undefined): node is ts.StringLiteral {
+function isOpenCliModuleName(node: ts.Node | undefined): boolean {
   return (
     node !== undefined &&
-    ts.isStringLiteral(node) &&
+    (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
     node.text.toLowerCase().includes("opencli")
   );
 }
