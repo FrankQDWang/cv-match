@@ -1,0 +1,16 @@
+{
+  "name": "seektalent-liepin-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "boundary-check": "bun -e \"console.error('boundary-check not implemented yet'); process.exit(1)\"",
+    "compatibility-gate": "bun -e \"console.error('compatibility-gate not implemented yet'); process.exit(1)\"",
+    "dev": "bun -e \"console.error('dev not implemented yet'); process.exit(1)\""
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.9.3"
+  }
+}
