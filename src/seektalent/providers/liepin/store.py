@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from seektalent.providers.liepin.compliance import ComplianceGate
 from seektalent.providers.liepin.models import LiepinConnectionRow, LiepinEventRow, LiepinRunRow, SubjectType
@@ -57,6 +59,79 @@ UNSAFE_PAYLOAD_KEYS = {
     "streamToken",
     "stream_token",
 }
+
+
+DetailAttemptState = Literal[
+    "approved_not_started",
+    "started",
+    "provider_page_loaded",
+    "detail_payload_seen",
+    "completed",
+    "blocked_by_risk_control",
+    "failed_before_consumption",
+    "failed_after_possible_consumption",
+    "unknown",
+]
+DetailConsumptionState = Literal["not_consumed", "consumed", "possibly_consumed", "unknown"]
+
+DETAIL_ATTEMPT_STATES = {
+    "approved_not_started",
+    "started",
+    "provider_page_loaded",
+    "detail_payload_seen",
+    "completed",
+    "blocked_by_risk_control",
+    "failed_before_consumption",
+    "failed_after_possible_consumption",
+    "unknown",
+}
+DETAIL_CONSUMPTION_STATES = {"not_consumed", "consumed", "possibly_consumed", "unknown"}
+DETAIL_ALLOWED_TRANSITIONS = {
+    "approved_not_started": {"started", "failed_before_consumption", "unknown"},
+    "started": {
+        "provider_page_loaded",
+        "detail_payload_seen",
+        "completed",
+        "blocked_by_risk_control",
+        "failed_before_consumption",
+        "failed_after_possible_consumption",
+        "unknown",
+    },
+    "provider_page_loaded": {
+        "detail_payload_seen",
+        "blocked_by_risk_control",
+        "failed_after_possible_consumption",
+        "unknown",
+    },
+    "detail_payload_seen": {"completed", "failed_after_possible_consumption", "unknown"},
+    "completed": set(),
+    "blocked_by_risk_control": set(),
+    "failed_before_consumption": set(),
+    "failed_after_possible_consumption": set(),
+    "unknown": set(),
+}
+
+
+@dataclass(frozen=True)
+class LiepinDetailAttemptRow:
+    attempt_id: str
+    tenant_id: str
+    workspace_id: str
+    actor_id: str
+    provider_account_hash: str
+    candidate_provider_id: str
+    idempotency_key: str
+    state: str
+    consumption_state: str
+    started_at: str | None
+    completed_at: str | None
+    worker_command_id: str | None
+    raw_evidence_ref: str | None
+    budget_date: str
+    provider_day_key: str
+    timezone: str
+    created_at: str
+    updated_at: str
 
 
 class LiepinStore:
@@ -454,6 +529,191 @@ class LiepinStore:
             return None
         return LiepinRunRow(**dict(row))
 
+    def reserve_detail_attempt(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        actor_id: str,
+        provider_account_hash: str,
+        candidate_provider_id: str,
+        budget_date: str,
+        provider_day_key: str,
+        timezone: str,
+        idempotency_key: str,
+    ) -> LiepinDetailAttemptRow:
+        if not all(
+            [
+                provider_account_hash,
+                candidate_provider_id,
+                budget_date,
+                provider_day_key,
+                timezone,
+                idempotency_key,
+            ]
+        ):
+            raise ValueError("Liepin detail reservation requires account, candidate, day, timezone, and key.")
+        attempt_id = f"detail_{uuid.uuid4().hex[:16]}"
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO liepin_detail_attempts (
+                    attempt_id, tenant_id, workspace_id, actor_id, provider_account_hash,
+                    candidate_provider_id, idempotency_key, state, consumption_state,
+                    budget_date, provider_day_key, timezone, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    attempt_id,
+                    tenant_id,
+                    workspace_id,
+                    actor_id,
+                    provider_account_hash,
+                    candidate_provider_id,
+                    idempotency_key,
+                    "approved_not_started",
+                    "not_consumed",
+                    budget_date,
+                    provider_day_key,
+                    timezone,
+                    now,
+                    now,
+                ),
+            )
+            row = _fetch_detail_attempt_by_key(
+                conn,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                actor_id=actor_id,
+                provider_account_hash=provider_account_hash,
+                budget_date=budget_date,
+                idempotency_key=idempotency_key,
+            )
+        if row is None:
+            raise RuntimeError("Liepin detail reservation was not persisted.")
+        return _detail_attempt_from_row(row)
+
+    def transition_detail_attempt(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        actor_id: str,
+        attempt_id: str,
+        state: DetailAttemptState,
+        consumption_state: DetailConsumptionState,
+        worker_command_id: str | None = None,
+        raw_evidence_ref: str | None = None,
+    ) -> LiepinDetailAttemptRow:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = _fetch_detail_attempt(
+                conn,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                actor_id=actor_id,
+                attempt_id=attempt_id,
+            )
+            if row is None:
+                raise ValueError("Liepin detail attempt not found.")
+            return _update_detail_attempt(
+                conn,
+                row=row,
+                state=state,
+                consumption_state=consumption_state,
+                worker_command_id=worker_command_id,
+                raw_evidence_ref=raw_evidence_ref,
+            )
+
+    def apply_detail_worker_response(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        actor_id: str,
+        attempt_id: str,
+        worker_response_id: str,
+        state: DetailAttemptState,
+        consumption_state: DetailConsumptionState,
+        worker_command_id: str | None = None,
+        raw_evidence_ref: str | None = None,
+    ) -> LiepinDetailAttemptRow:
+        if not worker_response_id:
+            raise ValueError("Liepin detail worker response requires a response id.")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            duplicate = conn.execute(
+                """
+                SELECT attempt_id
+                FROM liepin_detail_worker_responses
+                WHERE tenant_id = ? AND workspace_id = ? AND actor_id = ? AND worker_response_id = ?
+                """,
+                (tenant_id, workspace_id, actor_id, worker_response_id),
+            ).fetchone()
+            if duplicate is not None:
+                row = _fetch_detail_attempt(
+                    conn,
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    actor_id=actor_id,
+                    attempt_id=duplicate["attempt_id"],
+                )
+                if row is None:
+                    raise RuntimeError("Liepin detail worker response references a missing attempt.")
+                return _detail_attempt_from_row(row)
+            row = _fetch_detail_attempt(
+                conn,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                actor_id=actor_id,
+                attempt_id=attempt_id,
+            )
+            if row is None:
+                raise ValueError("Liepin detail attempt not found.")
+            updated = _update_detail_attempt(
+                conn,
+                row=row,
+                state=state,
+                consumption_state=consumption_state,
+                worker_command_id=worker_command_id,
+                raw_evidence_ref=raw_evidence_ref,
+            )
+            conn.execute(
+                """
+                INSERT INTO liepin_detail_worker_responses (
+                    tenant_id, workspace_id, actor_id, worker_response_id, attempt_id, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (tenant_id, workspace_id, actor_id, worker_response_id, attempt_id, _now_iso()),
+            )
+        return updated
+
+    def count_detail_budget_consumed(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        actor_id: str,
+        provider_account_hash: str,
+        provider_day_key: str,
+    ) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS consumed_count
+                FROM liepin_detail_attempts
+                WHERE tenant_id = ? AND workspace_id = ? AND actor_id = ?
+                  AND provider_account_hash = ? AND provider_day_key = ?
+                  AND consumption_state IN ('consumed', 'possibly_consumed', 'unknown')
+                """,
+                (tenant_id, workspace_id, actor_id, provider_account_hash, provider_day_key),
+            ).fetchone()
+        return int(row["consumed_count"])
+
     def append_event(
         self,
         *,
@@ -608,6 +868,69 @@ class LiepinStore:
 
                 CREATE INDEX IF NOT EXISTS idx_liepin_events_cleanup
                 ON liepin_events(created_at);
+
+                CREATE TABLE IF NOT EXISTS liepin_detail_attempts (
+                    attempt_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    provider_account_hash TEXT NOT NULL,
+                    candidate_provider_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    state TEXT NOT NULL CHECK(
+                        state IN (
+                            'approved_not_started',
+                            'started',
+                            'provider_page_loaded',
+                            'detail_payload_seen',
+                            'completed',
+                            'blocked_by_risk_control',
+                            'failed_before_consumption',
+                            'failed_after_possible_consumption',
+                            'unknown'
+                        )
+                    ),
+                    consumption_state TEXT NOT NULL CHECK(
+                        consumption_state IN ('not_consumed', 'consumed', 'possibly_consumed', 'unknown')
+                    ),
+                    started_at TEXT,
+                    completed_at TEXT,
+                    worker_command_id TEXT,
+                    raw_evidence_ref TEXT,
+                    budget_date TEXT NOT NULL,
+                    provider_day_key TEXT NOT NULL,
+                    timezone TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (
+                        tenant_id,
+                        workspace_id,
+                        actor_id,
+                        provider_account_hash,
+                        budget_date,
+                        idempotency_key
+                    )
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_liepin_detail_attempts_budget
+                ON liepin_detail_attempts(
+                    tenant_id,
+                    workspace_id,
+                    actor_id,
+                    provider_account_hash,
+                    provider_day_key,
+                    consumption_state
+                );
+
+                CREATE TABLE IF NOT EXISTS liepin_detail_worker_responses (
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    worker_response_id TEXT NOT NULL,
+                    attempt_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, workspace_id, actor_id, worker_response_id)
+                );
                 """
             )
             _ensure_columns(
@@ -647,6 +970,139 @@ def _gate_from_row(row: sqlite3.Row) -> ComplianceGate:
         raw_detail_retention_allowed_after_debug=bool(row["raw_detail_retention_allowed_after_debug"]),
         fixture_export_allowed=bool(row["fixture_export_allowed"]),
         policy_ref=row["policy_ref"],
+    )
+
+
+def _fetch_detail_attempt(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    actor_id: str,
+    attempt_id: str,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT *
+        FROM liepin_detail_attempts
+        WHERE tenant_id = ? AND workspace_id = ? AND actor_id = ? AND attempt_id = ?
+        """,
+        (tenant_id, workspace_id, actor_id, attempt_id),
+    ).fetchone()
+
+
+def _fetch_detail_attempt_by_key(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    actor_id: str,
+    provider_account_hash: str,
+    budget_date: str,
+    idempotency_key: str,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT *
+        FROM liepin_detail_attempts
+        WHERE tenant_id = ? AND workspace_id = ? AND actor_id = ?
+          AND provider_account_hash = ? AND budget_date = ? AND idempotency_key = ?
+        """,
+        (tenant_id, workspace_id, actor_id, provider_account_hash, budget_date, idempotency_key),
+    ).fetchone()
+
+
+def _update_detail_attempt(
+    conn: sqlite3.Connection,
+    *,
+    row: sqlite3.Row,
+    state: str,
+    consumption_state: str,
+    worker_command_id: str | None,
+    raw_evidence_ref: str | None,
+) -> LiepinDetailAttemptRow:
+    _validate_detail_transition(row["state"], state, consumption_state)
+    now = _now_iso()
+    started_at = row["started_at"]
+    if state == "started" and started_at is None:
+        started_at = now
+    completed_at = row["completed_at"]
+    if state == "completed" and completed_at is None:
+        completed_at = now
+    next_worker_command_id = worker_command_id if worker_command_id is not None else row["worker_command_id"]
+    next_raw_evidence_ref = raw_evidence_ref if raw_evidence_ref is not None else row["raw_evidence_ref"]
+    conn.execute(
+        """
+        UPDATE liepin_detail_attempts
+        SET state = ?,
+            consumption_state = ?,
+            started_at = ?,
+            completed_at = ?,
+            worker_command_id = ?,
+            raw_evidence_ref = ?,
+            updated_at = ?
+        WHERE attempt_id = ?
+        """,
+        (
+            state,
+            consumption_state,
+            started_at,
+            completed_at,
+            next_worker_command_id,
+            next_raw_evidence_ref,
+            now,
+            row["attempt_id"],
+        ),
+    )
+    updated = _fetch_detail_attempt(
+        conn,
+        tenant_id=row["tenant_id"],
+        workspace_id=row["workspace_id"],
+        actor_id=row["actor_id"],
+        attempt_id=row["attempt_id"],
+    )
+    if updated is None:
+        raise RuntimeError("Liepin detail attempt update lost its row.")
+    return _detail_attempt_from_row(updated)
+
+
+def _validate_detail_transition(current_state: str, next_state: str, consumption_state: str) -> None:
+    if next_state not in DETAIL_ATTEMPT_STATES:
+        raise ValueError(f"invalid Liepin detail attempt state: {next_state}")
+    if consumption_state not in DETAIL_CONSUMPTION_STATES:
+        raise ValueError(f"invalid Liepin detail consumption state: {consumption_state}")
+    if next_state not in DETAIL_ALLOWED_TRANSITIONS[current_state]:
+        raise ValueError(f"invalid Liepin detail attempt transition: {current_state} -> {next_state}")
+    if next_state == "completed" and consumption_state != "consumed":
+        raise ValueError("completed Liepin detail attempts must be consumed.")
+    if next_state == "failed_before_consumption" and consumption_state != "not_consumed":
+        raise ValueError("pre-consumption Liepin detail failures must not consume budget.")
+    if next_state == "failed_after_possible_consumption" and consumption_state != "possibly_consumed":
+        raise ValueError("post-dispatch Liepin detail failures must be possibly consumed.")
+    if next_state == "unknown" and consumption_state != "unknown":
+        raise ValueError("unknown Liepin detail attempts must use unknown consumption.")
+
+
+def _detail_attempt_from_row(row: sqlite3.Row) -> LiepinDetailAttemptRow:
+    return LiepinDetailAttemptRow(
+        attempt_id=row["attempt_id"],
+        tenant_id=row["tenant_id"],
+        workspace_id=row["workspace_id"],
+        actor_id=row["actor_id"],
+        provider_account_hash=row["provider_account_hash"],
+        candidate_provider_id=row["candidate_provider_id"],
+        idempotency_key=row["idempotency_key"],
+        state=row["state"],
+        consumption_state=row["consumption_state"],
+        started_at=row["started_at"],
+        completed_at=row["completed_at"],
+        worker_command_id=row["worker_command_id"],
+        raw_evidence_ref=row["raw_evidence_ref"],
+        budget_date=row["budget_date"],
+        provider_day_key=row["provider_day_key"],
+        timezone=row["timezone"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
     )
 
 
