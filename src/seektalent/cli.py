@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import threading
 from collections import deque
@@ -167,6 +168,7 @@ KNOWN_COMMANDS = {
     "update",
     "inspect",
     "liepin-compliance-gate",
+    "liepin-bun-compatibility-gate",
 }
 _NO_ARG_DEFAULT = object()
 
@@ -1550,6 +1552,21 @@ def _liepin_compliance_gate_verify_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _liepin_bun_compatibility_gate_command(args: argparse.Namespace) -> int:
+    del args
+    worker_dir = Path(__file__).resolve().parents[2] / "apps" / "liepin-worker"
+    return _run_liepin_bun_compatibility_gate_process(["bun", "run", "compatibility-gate"], cwd=worker_dir)
+
+
+def _run_liepin_bun_compatibility_gate_process(command: list[str], *, cwd: Path) -> int:
+    try:
+        completed = subprocess.run(command, cwd=cwd, check=False)
+    except FileNotFoundError:
+        print("validation failed: Bun executable not found for liepin compatibility gate", file=sys.stderr)
+        return 1
+    return completed.returncode
+
+
 def _liepin_cli_db_path(args: argparse.Namespace) -> Path:
     if args.db_path is not None:
         return Path(args.db_path)
@@ -1800,6 +1817,12 @@ def build_exec_parser() -> argparse.ArgumentParser:
     gate_verify_parser.add_argument("--purpose", default="search")
     gate_verify_parser.add_argument("--db-path")
     gate_verify_parser.set_defaults(handler=_liepin_compliance_gate_command)
+
+    liepin_bun_gate_parser = subparsers.add_parser(
+        "liepin-bun-compatibility-gate",
+        help="Run the local Bun Playwright compatibility gate without live Liepin access.",
+    )
+    liepin_bun_gate_parser.set_defaults(handler=_liepin_bun_compatibility_gate_command)
     return parser
 
 

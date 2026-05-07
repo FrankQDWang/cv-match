@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import seektalent.cli as cli
 from seektalent.cli import main
 from seektalent.providers.liepin.store import LiepinStore
 
@@ -369,6 +370,26 @@ def test_liepin_compliance_gate_bind_rejects_denied_and_expired_gates(capsys, tm
         )
         assert verify_status == 1
         assert status in capsys.readouterr().err
+
+
+def test_liepin_bun_compatibility_gate_command(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_runner(command: list[str], *, cwd: Path) -> int:
+        calls.append({"command": command, "cwd": cwd})
+        return 7
+
+    monkeypatch.setattr(cli, "_run_liepin_bun_compatibility_gate_process", fake_runner, raising=False)
+
+    status = main(["liepin-bun-compatibility-gate"])
+
+    assert status == 7
+    assert calls == [
+        {
+            "command": ["bun", "run", "compatibility-gate"],
+            "cwd": Path(cli.__file__).resolve().parents[2] / "apps" / "liepin-worker",
+        }
+    ]
 
 
 def _gate_for_cli(org_name: str, *, status: str = "pending_account_binding"):
