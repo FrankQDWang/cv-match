@@ -58,6 +58,14 @@ class ProviderSnapshot:
     redaction_state: str
     score_evidence_source: str
 
+    def privacy_metadata(self) -> dict[str, str]:
+        return {
+            "pii_classification": self.pii_classification,
+            "retention_policy": self.retention_policy,
+            "access_scope": self.access_scope,
+            "redaction_state": self.redaction_state,
+        }
+
 
 @dataclass(frozen=True)
 class SearchResult:

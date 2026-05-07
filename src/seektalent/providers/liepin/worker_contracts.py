@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from typing import Literal
 
 from pydantic import BaseModel
@@ -42,6 +43,40 @@ class RedactedWorkerDiagnostics(BaseModel):
     message: str
     stdout: Literal["[redacted]"] | None = None
     stderr: Literal["[redacted]"] | None = None
+
+
+class LiepinWorkerCandidateCard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, Any]
+    normalized_text: str
+    provider_subject_id: str | None = None
+    provider_listing_id: str | None = None
+    synthetic_candidate_fingerprint: str
+    identity_confidence: str
+    extraction_source: Literal["worker_card"]
+    extractor_version: str
+    pii_classification: str
+    retention_policy: str
+    access_scope: str
+    redaction_state: str
+
+
+class LiepinWorkerCandidateDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, Any]
+    normalized_text: str
+    provider_subject_id: str | None = None
+    provider_listing_id: str | None = None
+    synthetic_candidate_fingerprint: str
+    identity_confidence: str
+    extraction_source: Literal["worker_detail"]
+    extractor_version: str
+    pii_classification: str
+    retention_policy: str
+    access_scope: str
+    redaction_state: str
 
 
 def decode_worker_health(payload: dict[str, object]) -> WorkerHealth:

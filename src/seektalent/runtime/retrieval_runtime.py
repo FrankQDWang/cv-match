@@ -756,6 +756,11 @@ class RetrievalRuntime:
             )
             for rank_in_batch, candidate in enumerate(fetch_result.candidates, start=1):
                 provider_rank = rank_offset + rank_in_batch
+                provider_snapshot = (
+                    fetch_result.provider_snapshots[rank_in_batch - 1]
+                    if rank_in_batch <= len(fetch_result.provider_snapshots)
+                    else None
+                )
                 if record_provider_return is not None:
                     record_provider_return(
                         ProviderReturnedCandidate(
@@ -770,6 +775,7 @@ class RetrievalRuntime:
                             provider_page_no=page,
                             provider_fetch_no=attempt_no,
                             attempt_no=attempt_no,
+                            provider_snapshot=provider_snapshot,
                         )
                     )
                 was_new_to_pool = candidate.dedup_key not in local_seen_keys and candidate.resume_id not in seen_resume_ids

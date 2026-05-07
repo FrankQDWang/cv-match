@@ -160,10 +160,18 @@ def build_resume_document_row(
     first_seen_query_instance_id: str | None,
     first_seen_stage_id: str | None,
     first_seen_artifact_ref_id: str | None,
+    provider_privacy_metadata: dict[str, Any] | None = None,
+    retention_policy: str | None = None,
 ) -> dict[str, Any]:
     searchable_text = normalized_text.strip()
     has_searchable_text = bool(searchable_text)
     canonical_raw_payload = canonical_json(raw_payload)
+    sensitivity_json = {
+        "contains_pii": True,
+        "contains_external_text": True,
+    }
+    if provider_privacy_metadata:
+        sensitivity_json["liepin_snapshot"] = provider_privacy_metadata
     return {
         "resume_doc_id": resume_doc_id,
         "tenant_id": tenant_id,
@@ -211,16 +219,13 @@ def build_resume_document_row(
         "source_terms_ref": None,
         "pii_classification_version": PII_CLASSIFICATION_VERSION,
         "redaction_status": "unredacted",
-        "sensitivity_json": {
-            "contains_pii": True,
-            "contains_external_text": True,
-        },
+        "sensitivity_json": sensitivity_json,
         "content_trust_level": "untrusted_external",
         "contains_prompt_like_text": detect_prompt_like_text(searchable_text)
         or detect_prompt_like_text(canonical_raw_payload),
         "llm_sanitization_version": None,
         "llm_ingestion_policy": "quote_as_data_only",
-        "retention_policy": DEFAULT_RETENTION_POLICY,
+        "retention_policy": retention_policy or DEFAULT_RETENTION_POLICY,
         "schema_version": RESUME_DOC_SCHEMA_VERSION,
     }
 

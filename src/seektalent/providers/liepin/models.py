@@ -5,6 +5,9 @@ from typing import Literal
 
 
 SubjectType = Literal["connection", "run"]
+LiepinIdentityConfidence = Literal["provider_subject_id", "synthetic_fingerprint"]
+LiepinExtractionSource = Literal["worker_card", "worker_detail"]
+LiepinScoreEvidenceSource = Literal["card_only", "detail_enriched"]
 
 
 @dataclass(frozen=True)

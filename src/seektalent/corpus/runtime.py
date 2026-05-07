@@ -7,6 +7,7 @@ from hashlib import sha256
 from typing import Any
 
 from seektalent.artifacts import ArtifactSession, atomic_write_text, safe_artifact_path
+from seektalent.core.retrieval.provider_contract import ProviderSnapshot
 from seektalent.corpus.documents import build_observation_row, build_resume_document_row, build_resume_subject_row
 from seektalent.resumes.snapshots import snapshot_sha256 as build_snapshot_sha256
 from seektalent.storage.json import sha256_json
@@ -45,6 +46,7 @@ class ProviderReturnedCandidate:
     provider_page_no: int
     provider_fetch_no: int
     attempt_no: int
+    provider_snapshot: ProviderSnapshot | None = None
 
 
 def write_raw_payload_artifact(
@@ -123,6 +125,14 @@ def _candidate_raw_payload(candidate: Any) -> dict[str, Any]:
     raise ValueError("provider candidate must expose a raw payload")
 
 
+def _payload_for_provider_return(returned: ProviderReturnedCandidate) -> dict[str, Any]:
+    if returned.provider_snapshot is not None:
+        return returned.provider_snapshot.raw_payload
+    if returned.provider_name == "liepin":
+        raise ValueError("Liepin provider results require ProviderSnapshot")
+    return _candidate_raw_payload(returned.candidate)
+
+
 def _candidate_text_attr(candidate: Any, attr: str) -> str | None:
     value = getattr(candidate, attr, None)
     return value if isinstance(value, str) and value else None
@@ -140,8 +150,26 @@ def _provider_candidate_id(candidate: Any, raw_payload: dict[str, Any]) -> str |
     )
 
 
+def _returned_provider_candidate_id(returned: ProviderReturnedCandidate, raw_payload: dict[str, Any]) -> str | None:
+    if returned.provider_snapshot is not None:
+        return returned.provider_snapshot.provider_subject_id
+    return _provider_candidate_id(returned.candidate, raw_payload)
+
+
 def _snapshot_hash(candidate: Any, raw_payload: dict[str, Any]) -> str:
     return _candidate_text_attr(candidate, "snapshot_sha256") or build_snapshot_sha256(raw_payload)
+
+
+def _provider_privacy_metadata(snapshot: ProviderSnapshot | None) -> dict[str, Any] | None:
+    if snapshot is None or snapshot.provider_name != "liepin":
+        return None
+    return snapshot.privacy_metadata()
+
+
+def _normalized_text(candidate: Any, snapshot: ProviderSnapshot | None) -> str:
+    if snapshot is not None:
+        return snapshot.normalized_text
+    return _candidate_text_attr(candidate, "search_text") or ""
 
 
 def record_corpus_provider_results(
@@ -159,7 +187,7 @@ def record_corpus_provider_results(
 
     for returned in returned_candidates:
         candidate = returned.candidate
-        raw_payload = _candidate_raw_payload(candidate)
+        raw_payload = _payload_for_provider_return(returned)
         snapshot_hash = _snapshot_hash(candidate, raw_payload)
         raw_artifact = write_raw_payload_artifact(
             session=session,
@@ -171,7 +199,7 @@ def record_corpus_provider_results(
             store=store,
             logical_name=raw_artifact.logical_name,
         )
-        provider_candidate_id = _provider_candidate_id(candidate, raw_payload)
+        provider_candidate_id = _returned_provider_candidate_id(returned, raw_payload)
         source_resume_id = _candidate_text_attr(candidate, "source_resume_id") or _raw_text_value(
             raw_payload,
             "source_resume_id",
@@ -204,11 +232,17 @@ def record_corpus_provider_results(
                 raw_payload_artifact_ref_id=raw_artifact_ref_id,
                 raw_payload_sha256=raw_artifact.content_sha256,
                 raw_payload_size_bytes=raw_artifact.size_bytes,
-                normalized_text=_candidate_text_attr(candidate, "search_text") or "",
+                normalized_text=_normalized_text(candidate, returned.provider_snapshot),
                 first_seen_run_id=run_id,
                 first_seen_query_instance_id=returned.query_instance_id,
                 first_seen_stage_id=returned.stage_id,
                 first_seen_artifact_ref_id=raw_artifact_ref_id,
+                provider_privacy_metadata=_provider_privacy_metadata(returned.provider_snapshot),
+                retention_policy=(
+                    returned.provider_snapshot.retention_policy
+                    if returned.provider_snapshot is not None and returned.provider_snapshot.provider_name == "liepin"
+                    else None
+                ),
             )
         )
         observation = build_observation_row(
