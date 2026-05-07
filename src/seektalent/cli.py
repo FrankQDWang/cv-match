@@ -391,6 +391,12 @@ def _missing_cts_env_vars(settings: AppSettings) -> list[str]:
     ]
 
 
+def _missing_active_provider_env_vars(settings: AppSettings) -> list[str]:
+    if settings.provider_name == "cts":
+        return _missing_cts_env_vars(settings)
+    return []
+
+
 def _missing_credentials_message(*, missing_provider: list[str], missing_cts: list[str]) -> str:
     missing = [*missing_provider, *missing_cts]
     return (
@@ -894,7 +900,7 @@ def _run_command(args: argparse.Namespace) -> int:
     settings = _build_settings(args)
     _reject_mock_cts(settings)
     missing_provider = _missing_provider_env_vars(settings)
-    missing_cts = _missing_cts_env_vars(settings)
+    missing_cts = _missing_active_provider_env_vars(settings)
     if missing_provider or missing_cts:
         raise ValueError(
             _missing_credentials_message(
@@ -955,7 +961,7 @@ def _benchmark_command(args: argparse.Namespace) -> int:
         settings = _build_settings(args)
         _reject_mock_cts(settings)
         missing_provider = _missing_provider_env_vars(settings)
-        missing_cts = _missing_cts_env_vars(settings)
+        missing_cts = _missing_active_provider_env_vars(settings)
         if missing_provider or missing_cts:
             raise ValueError(
                 _missing_credentials_message(
@@ -1261,6 +1267,8 @@ def _provider_credentials_check(settings: AppSettings | None) -> DoctorCheck:
 
 def _cts_credentials_check(settings: AppSettings | None) -> DoctorCheck:
     assert settings is not None
+    if settings.provider_name != "cts":
+        return DoctorCheck("cts_credentials", True, f"CTS credentials are not required for provider {settings.provider_name}.")
     missing = _missing_cts_env_vars(settings)
     if missing:
         return DoctorCheck(

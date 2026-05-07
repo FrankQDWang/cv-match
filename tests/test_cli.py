@@ -45,6 +45,22 @@ def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SEEKTALENT_CTS_TENANT_SECRET", "cts-secret")
 
 
+def _clear_cts_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SEEKTALENT_CTS_TENANT_KEY", raising=False)
+    monkeypatch.delenv("SEEKTALENT_CTS_TENANT_SECRET", raising=False)
+
+
+def _liepin_fake_fixture_env() -> str:
+    return "\n".join(
+        [
+            "SEEKTALENT_TEXT_LLM_API_KEY=test-key",
+            "SEEKTALENT_PROVIDER_NAME=liepin",
+            "SEEKTALENT_LIEPIN_WORKER_MODE=fake_fixture",
+            "SEEKTALENT_LIEPIN_ALLOW_FAKE_FIXTURE_WORKER=true",
+        ]
+    ) + "\n"
+
+
 def _evaluation_result() -> EvaluationResult:
     return EvaluationResult(
         run_id="run-1",
@@ -554,6 +570,25 @@ def test_doctor_fails_for_missing_real_cts_credentials(
     assert main(["doctor", "--env-file", str(env_file)]) == 1
 
     assert "FAIL cts_credentials" in capsys.readouterr().out
+
+
+def test_doctor_liepin_provider_does_not_require_cts_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _clear_cts_env(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(_liepin_fake_fixture_env(), encoding="utf-8")
+
+    assert main(["doctor", "--env-file", str(env_file), "--output-dir", str(tmp_path / "runs"), "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    cts_check = next(item for item in payload["checks"] if item["name"] == "cts_credentials")
+    assert payload["ok"] is True
+    assert cts_check["ok"] is True
+    assert "SEEKTALENT_CTS_TENANT_KEY" not in cts_check["message"]
+    assert "SEEKTALENT_CTS_TENANT_SECRET" not in cts_check["message"]
 
 
 def test_doctor_rejects_mock_cts_from_env_file(
@@ -1077,6 +1112,48 @@ def test_benchmark_settings_migration_failure_still_emits_failed_rows_with_child
             "case_id": "agent_jd_001",
         }
     ]
+
+
+def test_benchmark_liepin_provider_preflight_does_not_require_cts_credentials(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_cts_env(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(_liepin_fake_fixture_env(), encoding="utf-8")
+    benchmark_file = tmp_path / "agent_jds.jsonl"
+    benchmark_file.write_text(
+        json.dumps({"jd_id": "agent_jd_001", "job_title": "A", "job_description": "JD A"}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    providers: list[str] = []
+
+    def fake_run_match(*, settings=None, **kwargs) -> MatchRunResult:
+        providers.append(settings.provider_name)
+        return _result_from_case_session(kwargs["artifact_session"], include_evaluation=False)
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+
+    assert (
+        main(
+            [
+                "benchmark",
+                "--jds-file",
+                str(benchmark_file),
+                "--env-file",
+                str(env_file),
+                "--output-dir",
+                str(tmp_path / "runs"),
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert providers == ["liepin"]
+    assert payload["runs"][0]["status"] == "succeeded"
 
 
 def test_benchmark_json_directory_reports_included_files(
@@ -1730,6 +1807,45 @@ def test_run_fails_fast_with_missing_environment_variables(
     assert "SEEKTALENT_TEXT_LLM_API_KEY" in error
     assert "SEEKTALENT_CTS_TENANT_KEY" in error
     assert "SEEKTALENT_CTS_TENANT_SECRET" in error
+
+
+def test_run_liepin_provider_does_not_require_cts_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    _clear_cts_env(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(_liepin_fake_fixture_env(), encoding="utf-8")
+    providers: list[str] = []
+
+    def fake_run_match(**kwargs) -> MatchRunResult:
+        providers.append(kwargs["settings"].provider_name)
+        return _result(tmp_path)
+
+    monkeypatch.setattr("seektalent.cli.run_match", fake_run_match)
+
+    assert (
+        main(
+            [
+                "run",
+                "--job-title",
+                "Python Engineer",
+                "--jd",
+                "JD",
+                "--env-file",
+                str(env_file),
+                "--output-dir",
+                str(tmp_path / "runs"),
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert providers == ["liepin"]
+    assert "SEEKTALENT_CTS_TENANT_KEY" not in captured.err
+    assert "SEEKTALENT_CTS_TENANT_SECRET" not in captured.err
 
 
 def test_run_rejects_mock_cts_flag(capsys: pytest.CaptureFixture[str]) -> None:
