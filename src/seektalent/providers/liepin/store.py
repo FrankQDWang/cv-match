@@ -565,6 +565,8 @@ def _has_unsafe_payload(value: object) -> bool:
             "authorization:" in lowered
             or "bearer " in lowered
             or lowered.startswith("basic ")
+            or lowered.startswith("token ")
+            or lowered.startswith("digest ")
             or "authorization basic " in lowered
         ):
             return True
