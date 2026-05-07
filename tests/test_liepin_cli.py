@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from seektalent.cli import main
-from seektalent.providers.liepin.security import hmac_provider_account_hash
 from seektalent.providers.liepin.store import LiepinStore
 
 
@@ -28,6 +27,18 @@ def test_liepin_compliance_gate_create_and_verify(capsys, tmp_path: Path) -> Non
             "14",
             "--deletion-path",
             "settings/delete",
+            "--org-name",
+            "Acme Recruiting",
+            "--org-domain",
+            "acme.example",
+            "--search-keyword",
+            "python",
+            "--pii-policy",
+            "candidate recruiting lawful basis",
+            "--operator-id",
+            "operator-a",
+            "--operator-name",
+            "Ops Owner",
             "--db-path",
             str(db_path),
         ]
@@ -64,7 +75,6 @@ def test_liepin_compliance_gate_create_and_verify(capsys, tmp_path: Path) -> Non
         workspace_id="workspace-a",
         actor_id="actor-a",
         compliance_gate_ref=gate_ref,
-        provider_account_identity_hint="liepin-user-a",
     )
 
     bind_status = main(
@@ -90,9 +100,15 @@ def test_liepin_compliance_gate_create_and_verify(capsys, tmp_path: Path) -> Non
     assert bind_status == 0
     bind_output = capsys.readouterr().out
     assert "approved" in bind_output
-    assert "liepin-user-a" not in bind_output
+    assert connection_id not in bind_output
 
-    provider_account_hash = hmac_provider_account_hash("local-development", "liepin-user-a")
+    provider_account_hash = store.get_connection(
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        connection_id=connection_id,
+    ).account_binding_hash
+    assert provider_account_hash is not None
     verify_status = main(
         [
             "liepin-compliance-gate",

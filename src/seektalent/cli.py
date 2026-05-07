@@ -1472,21 +1472,15 @@ def _liepin_compliance_gate_create_command(args: argparse.Namespace) -> int:
         tenant_id=args.tenant_id,
         workspace_id=args.workspace_id,
         actor_id=args.actor_id,
-        provider_account_hash=None,
-        status="pending_account_binding",
-        candidate_personal_info_processing_basis=args.processing_basis,
-        personal_information_processor=args.personal_information_processor,
-        operator_audit_owner=args.operator_audit_owner,
-        account_holder_authorized=True,
-        human_initiated_recruiting=True,
-        allowed_purposes=[args.purpose],
-        retention_policy=args.retention_policy,
-        deletion_sla_days=args.deletion_sla_days,
-        deletion_path=args.deletion_path,
-        raw_payload_access_scope=args.raw_payload_access_scope,
-        raw_detail_retention_allowed_after_debug=False,
-        fixture_export_allowed=False,
-        policy_ref=args.policy_ref,
+        org_name=args.org_name,
+        org_domain=args.org_domain,
+        approved_purposes=[args.purpose],
+        search_keywords=args.search_keyword,
+        retention_days=args.deletion_sla_days,
+        pii_policy=args.pii_policy,
+        operator_id=args.operator_id,
+        operator_name=args.operator_name,
+        created_at=_now_iso(),
     )
     if not gate.allows_connection_handoff(purpose=args.purpose):
         print("validation failed: policy requirements not satisfied", file=sys.stderr)
@@ -1532,7 +1526,7 @@ def _liepin_compliance_gate_verify_command(args: argparse.Namespace) -> int:
     if gate is None:
         print("validation failed: gate not found", file=sys.stderr)
         return 1
-    reason = gate.denial_reason(provider_account_hash=args.provider_account_hash, purpose=args.purpose)
+    reason = gate.denial_reason(account_binding_hash=args.provider_account_hash, purpose=args.purpose)
     if reason is not None:
         print(f"validation failed: {reason}", file=sys.stderr)
         return 1
@@ -1752,23 +1746,13 @@ def build_exec_parser() -> argparse.ArgumentParser:
     gate_create_parser.add_argument("--policy-ref", required=True)
     gate_create_parser.add_argument("--deletion-sla-days", type=int, required=True)
     gate_create_parser.add_argument("--deletion-path", required=True)
+    gate_create_parser.add_argument("--org-name", required=True)
+    gate_create_parser.add_argument("--org-domain", required=True)
+    gate_create_parser.add_argument("--search-keyword", action="append", required=True)
+    gate_create_parser.add_argument("--pii-policy", required=True)
+    gate_create_parser.add_argument("--operator-id", required=True)
+    gate_create_parser.add_argument("--operator-name", required=True)
     gate_create_parser.add_argument("--db-path")
-    gate_create_parser.add_argument(
-        "--processing-basis",
-        default="candidate recruiting authorization or documented recruiting lawful basis",
-    )
-    gate_create_parser.add_argument("--personal-information-processor", default="SeekTalent local operator")
-    gate_create_parser.add_argument("--operator-audit-owner", default="recruiting-ops")
-    gate_create_parser.add_argument(
-        "--retention-policy",
-        default="run_debug_short",
-        choices=["run_debug_short", "workspace_recruiting_record", "forbidden_persist"],
-    )
-    gate_create_parser.add_argument(
-        "--raw-payload-access-scope",
-        default="run_only",
-        choices=["run_only", "workspace", "admin_only"],
-    )
     gate_create_parser.set_defaults(handler=_liepin_compliance_gate_command)
 
     gate_bind_parser = liepin_gate_subparsers.add_parser(

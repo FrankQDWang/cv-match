@@ -15,7 +15,7 @@ class LiepinConnectionRow:
     actor_id: str
     compliance_gate_ref: str
     status: str
-    provider_account_hash: str | None
+    account_binding_hash: str | None
 
 
 @dataclass(frozen=True)

@@ -12,8 +12,8 @@ from typing import Literal
 StreamSubjectType = Literal["connection", "run"]
 
 
-def hmac_provider_account_hash(secret: str, provider_account_identity_hint: str) -> str:
-    identity = provider_account_identity_hint.strip().lower()
+def hmac_provider_account_hash(secret: str, account_identity: str) -> str:
+    identity = account_identity.strip().lower()
     digest = hmac.new(secret.encode("utf-8"), identity.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"hmac-sha256:{digest}"
 

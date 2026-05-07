@@ -7,6 +7,7 @@ import re
 import threading
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -193,26 +194,19 @@ def create_app(registry: RunRegistry, settings: AppSettings | None = None) -> Fa
         request: LiepinComplianceGateCreateRequest,
         scope: LiepinScope = Depends(require_liepin_scope),
     ) -> LiepinComplianceGateResponse:
-        status = "approved" if request.providerAccountHash else "pending_account_binding"
         gate = ComplianceGate(
             tenant_id=scope.tenant_id,
             workspace_id=scope.workspace_id,
             actor_id=scope.actor_id,
-            provider_account_hash=request.providerAccountHash,
-            status=status,
-            candidate_personal_info_processing_basis=request.candidatePersonalInfoProcessingBasis,
-            personal_information_processor=request.personalInformationProcessor,
-            operator_audit_owner=request.operatorAuditOwner,
-            account_holder_authorized=request.accountHolderAuthorized,
-            human_initiated_recruiting=request.humanInitiatedRecruiting,
-            allowed_purposes=request.allowedPurposes,
-            retention_policy=request.retentionPolicy,
-            deletion_sla_days=request.deletionSlaDays,
-            deletion_path=request.deletionPath,
-            raw_payload_access_scope=request.rawPayloadAccessScope,
-            raw_detail_retention_allowed_after_debug=request.rawDetailRetentionAllowedAfterDebug,
-            fixture_export_allowed=request.fixtureExportAllowed,
-            policy_ref=request.policyRef,
+            org_name=request.orgName,
+            org_domain=request.orgDomain,
+            approved_purposes=request.approvedPurposes,
+            search_keywords=request.searchKeywords,
+            retention_days=request.retentionDays,
+            pii_policy=request.piiPolicy,
+            operator_id=request.operatorId,
+            operator_name=request.operatorName,
+            created_at=_now_iso(),
         )
         if not gate.allows_connection_handoff(purpose="search"):
             raise HTTPException(status_code=403, detail="Liepin compliance gate does not satisfy live-search policy.")
@@ -254,7 +248,6 @@ def create_app(registry: RunRegistry, settings: AppSettings | None = None) -> Fa
             workspace_id=scope.workspace_id,
             actor_id=scope.actor_id,
             compliance_gate_ref=request.complianceGateRef,
-            provider_account_identity_hint=request.providerAccountIdentityHint,
         )
         connection = store.get_connection(
             tenant_id=scope.tenant_id,
@@ -393,7 +386,7 @@ def create_app(registry: RunRegistry, settings: AppSettings | None = None) -> Fa
             )
             if gate is None:
                 raise HTTPException(status_code=404, detail="Compliance gate not found.")
-            if not gate.allows_live_search(provider_account_hash=connection.provider_account_hash, purpose="search"):
+            if not gate.allows_live_search(account_binding_hash=connection.account_binding_hash, purpose="search"):
                 raise HTTPException(status_code=403, detail="Liepin compliance gate does not allow live search.")
             run_id = store.create_run(
                 tenant_id=scope.tenant_id,
@@ -532,8 +525,9 @@ def _gate_response(gate_ref: str, gate: ComplianceGate) -> LiepinComplianceGateR
         workspaceId=gate.workspace_id,
         actorId=gate.actor_id,
         status=gate.status,
-        allowedPurposes=gate.allowed_purposes,
-        policyRef=gate.policy_ref,
+        approvedPurposes=gate.approved_purposes,
+        orgName=gate.org_name,
+        orgDomain=gate.org_domain,
     )
 
 
@@ -556,7 +550,7 @@ def _scope_from_stream_cookie(
     subject_id: str,
     request: Request,
 ) -> LiepinScope:
-    if any(name.lower() in {"token", "stream_token", "streamtoken"} for name in request.query_params):
+    if any("token" in name.lower() for name in request.query_params):
         raise HTTPException(status_code=400, detail="Stream tokens are not accepted in URL query parameters.")
     if token is None:
         raise HTTPException(status_code=401, detail="Missing stream token cookie.")
@@ -580,7 +574,6 @@ async def _event_generator(
     after_sequence: int,
 ):
     sequence = after_sequence
-    idle_polls = 0
     while not await request.is_disconnected():
         rows = store.iter_events_after(
             tenant_id=scope.tenant_id,
@@ -592,7 +585,6 @@ async def _event_generator(
             limit=100,
         )
         if rows:
-            idle_polls = 0
             for row in rows:
                 sequence = row.sequence
                 yield {
@@ -600,11 +592,14 @@ async def _event_generator(
                     "event": row.event_name,
                     "data": json.dumps(row.payload, sort_keys=True, separators=(",", ":")),
                 }
+                if row.event_name == "stream_end":
+                    return
             continue
-        idle_polls += 1
-        if idle_polls >= 2:
-            return
         await asyncio.sleep(0.25)
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _sequence_from_header(last_event_id: str | None) -> int:

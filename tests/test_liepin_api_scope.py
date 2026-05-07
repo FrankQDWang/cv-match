@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import anyio
 from fastapi.testclient import TestClient
 
 from seektalent.providers.liepin.store import LiepinStore
-from seektalent_ui.server import RunRegistry, create_app
+from seektalent_ui.server import LiepinScope, RunRegistry, _event_generator, create_app
 from tests.settings_factory import make_settings
 
 
@@ -30,20 +32,14 @@ def _client(tmp_path: Path) -> TestClient:
 
 def _gate_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
-        "providerAccountHash": "account-hash-a",
-        "candidatePersonalInfoProcessingBasis": "candidate consent or recruiting legitimate interest",
-        "personalInformationProcessor": "SeekTalent local operator",
-        "operatorAuditOwner": "recruiting-ops",
-        "accountHolderAuthorized": True,
-        "humanInitiatedRecruiting": True,
-        "allowedPurposes": ["search"],
-        "retentionPolicy": "run_debug_short",
-        "deletionSlaDays": 14,
-        "deletionPath": "settings/delete-liepin-run",
-        "rawPayloadAccessScope": "run_only",
-        "rawDetailRetentionAllowedAfterDebug": False,
-        "fixtureExportAllowed": False,
-        "policyRef": "policy-live-search-v1",
+        "orgName": "Acme Recruiting",
+        "orgDomain": "acme.example",
+        "approvedPurposes": ["search"],
+        "searchKeywords": ["python", "backend"],
+        "retentionDays": 14,
+        "piiPolicy": "candidate recruiting lawful basis",
+        "operatorId": "operator-a",
+        "operatorName": "Ops Owner",
     }
     payload.update(overrides)
     return payload
@@ -63,7 +59,7 @@ def _create_connection(client: TestClient, gate_ref: str, headers: dict[str, str
     response = client.post(
         "/api/liepin/connections",
         headers=headers or API_HEADERS,
-        json={"complianceGateRef": gate_ref, "providerAccountIdentityHint": "liepin-user-a"},
+        json={"complianceGateRef": gate_ref},
     )
     assert response.status_code == 201, response.text
     return response.json()["connectionId"]
@@ -101,7 +97,7 @@ def test_compliance_gate_and_connection_reads_are_workspace_scoped(tmp_path: Pat
 
 def test_login_url_returns_domain_handoff_without_worker_internals(tmp_path: Path) -> None:
     client = _client(tmp_path)
-    gate_ref = _create_gate(client, providerAccountHash=None)
+    gate_ref = _create_gate(client)
     connection_id = _create_connection(client, gate_ref)
 
     response = client.post(f"/api/liepin/connections/{connection_id}/login-url", headers=API_HEADERS)
@@ -118,6 +114,20 @@ def test_login_url_returns_domain_handoff_without_worker_internals(tmp_path: Pat
     assert "worker" not in forbidden
     assert "storage" not in forbidden
     assert "token" not in forbidden
+
+
+def test_connection_create_rejects_external_provider_account_identity_hints(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    gate_ref = _create_gate(client)
+
+    response = client.post(
+        "/api/liepin/connections",
+        headers=API_HEADERS,
+        json={"complianceGateRef": gate_ref, "providerAccountIdentityHint": "raw-account-id"},
+    )
+
+    assert response.status_code == 400
+    assert "providerAccountIdentityHint" in response.text
 
 
 def test_connection_stream_token_cookie_and_scoped_sse_events(tmp_path: Path) -> None:
@@ -154,6 +164,15 @@ def test_connection_stream_token_cookie_and_scoped_sse_events(tmp_path: Path) ->
         event_name="connection_status",
         payload={"status": "connected", "connectionId": connection_id},
     )
+    store.append_event(
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        subject_type="connection",
+        subject_id=connection_id,
+        event_name="stream_end",
+        payload={"reason": "test_complete"},
+    )
 
     event_response = client.get(f"/api/liepin/connections/{connection_id}/events")
     assert event_response.status_code == 200
@@ -170,6 +189,9 @@ def test_connection_stream_token_cookie_and_scoped_sse_events(tmp_path: Path) ->
     query_token = client.get(f"/api/liepin/connections/{connection_id}/events?stream_token=abc")
     assert query_token.status_code == 400
 
+    cookie_name_query_token = client.get(f"/api/liepin/connections/{connection_id}/events?liepin_stream_token=abc")
+    assert cookie_name_query_token.status_code == 400
+
 
 def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: Path) -> None:
     client = _client(tmp_path)
@@ -182,6 +204,15 @@ def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: P
 
     gate_ref = _create_gate(client)
     connection_id = _create_connection(client, gate_ref)
+    store = LiepinStore(tmp_path / "liepin.sqlite3")
+    bound_hash = store.bind_connection_account(
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        connection_id=connection_id,
+        secret="local-development",
+    )
+    assert bound_hash is not None
     run_response = client.post(
         "/api/runs",
         headers=API_HEADERS,
@@ -201,7 +232,6 @@ def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: P
     assert f"Path=/api/runs/{run_id}/events" in token_response.headers["set-cookie"]
     assert "streamToken" not in token_response.text
 
-    store = LiepinStore(tmp_path / "liepin.sqlite3")
     store.append_event(
         tenant_id="tenant-a",
         workspace_id="workspace-a",
@@ -220,6 +250,15 @@ def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: P
         event_name="search_progress",
         payload={"seen": 3, "accepted": 1, "artifactRefs": ["artifact:summary"]},
     )
+    store.append_event(
+        tenant_id="tenant-a",
+        workspace_id="workspace-a",
+        actor_id="actor-a",
+        subject_type="run",
+        subject_id=run_id,
+        event_name="stream_end",
+        payload={"reason": "test_complete"},
+    )
 
     events = client.get(f"/api/runs/{run_id}/events")
     assert events.status_code == 200
@@ -236,3 +275,35 @@ def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: P
 
     query_token = client.get(f"/api/runs/{run_id}/events?token=abc")
     assert query_token.status_code == 400
+
+    cookie_name_query_token = client.get(f"/api/runs/{run_id}/events?liepin_stream_token=abc")
+    assert cookie_name_query_token.status_code == 400
+
+
+def test_idle_event_generator_keeps_stream_open_without_busy_loop(tmp_path: Path) -> None:
+    store = LiepinStore(tmp_path / "liepin.sqlite3")
+
+    class FakeRequest:
+        app = SimpleNamespace(state=SimpleNamespace())
+
+        async def is_disconnected(self) -> bool:
+            return False
+
+    async def assert_idle_stream_waits() -> None:
+        generator = _event_generator(
+            request=FakeRequest(),
+            store=store,
+            scope=LiepinScope(tenant_id="tenant-a", workspace_id="workspace-a", actor_id="actor-a"),
+            subject_type="run",
+            subject_id="run-a",
+            after_sequence=0,
+        )
+        with anyio.move_on_after(0.6) as cancel_scope:
+            try:
+                await generator.__anext__()
+            except StopAsyncIteration as exc:
+                raise AssertionError("idle SSE generator stopped before client disconnect") from exc
+        assert cancel_scope.cancel_called
+        await generator.aclose()
+
+    anyio.run(assert_idle_stream_waits)

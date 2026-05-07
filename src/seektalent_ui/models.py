@@ -124,20 +124,14 @@ class RunStatusResponse(BaseModel):
 class LiepinComplianceGateCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    providerAccountHash: str | None = None
-    candidatePersonalInfoProcessingBasis: str
-    personalInformationProcessor: str
-    operatorAuditOwner: str
-    accountHolderAuthorized: bool
-    humanInitiatedRecruiting: bool
-    allowedPurposes: list[str]
-    retentionPolicy: Literal["run_debug_short", "workspace_recruiting_record", "forbidden_persist"]
-    deletionSlaDays: int
-    deletionPath: str
-    rawPayloadAccessScope: Literal["run_only", "workspace", "admin_only"]
-    rawDetailRetentionAllowedAfterDebug: bool
-    fixtureExportAllowed: bool
-    policyRef: str
+    orgName: str
+    orgDomain: str
+    approvedPurposes: list[str]
+    searchKeywords: list[str]
+    retentionDays: int
+    piiPolicy: str
+    operatorId: str
+    operatorName: str
 
 
 class LiepinComplianceGateResponse(BaseModel):
@@ -148,15 +142,15 @@ class LiepinComplianceGateResponse(BaseModel):
     workspaceId: str
     actorId: str
     status: Literal["pending_account_binding", "approved", "denied", "expired"]
-    allowedPurposes: list[str]
-    policyRef: str
+    approvedPurposes: list[str]
+    orgName: str
+    orgDomain: str
 
 
 class LiepinConnectionCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     complianceGateRef: str
-    providerAccountIdentityHint: str | None = None
 
 
 class LiepinConnectionResponse(BaseModel):

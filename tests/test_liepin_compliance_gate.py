@@ -12,64 +12,81 @@ def _gate(**overrides: object) -> ComplianceGate:
         "tenant_id": "tenant-a",
         "workspace_id": "workspace-a",
         "actor_id": "actor-a",
-        "provider_account_hash": "account-hash-a",
-        "status": "approved",
-        "candidate_personal_info_processing_basis": "consent",
-        "personal_information_processor": "SeekTalent",
-        "operator_audit_owner": "ops-owner",
-        "account_holder_authorized": True,
-        "human_initiated_recruiting": True,
-        "allowed_purposes": ["search"],
-        "retention_policy": "run_debug_short",
-        "deletion_sla_days": 14,
-        "deletion_path": "settings/delete",
-        "raw_payload_access_scope": "run_only",
-        "raw_detail_retention_allowed_after_debug": False,
-        "fixture_export_allowed": False,
-        "policy_ref": "policy-v1",
+        "org_name": "Acme Recruiting",
+        "org_domain": "acme.example",
+        "approved_purposes": ["search"],
+        "search_keywords": ["python", "backend"],
+        "retention_days": 14,
+        "pii_policy": "candidate recruiting lawful basis",
+        "operator_id": "operator-a",
+        "operator_name": "Ops Owner",
+        "created_at": "2026-05-07T00:00:00+00:00",
+        "approved_at": "2026-05-07T00:00:01+00:00",
+        "account_binding_hash": "account-hash-a",
     }
     data.update(overrides)
     return ComplianceGate.model_validate(data)
 
 
-def test_live_search_requires_authorization_human_initiation_and_exact_search_purpose() -> None:
-    assert _gate().allows_live_search(provider_account_hash="account-hash-a", purpose="search")
-    assert not _gate(account_holder_authorized=False).allows_live_search(
-        provider_account_hash="account-hash-a", purpose="search"
+def test_compliance_gate_uses_task2_contract_fields_and_rejects_old_provider_hash_shape() -> None:
+    gate = _gate()
+    assert gate.org_name == "Acme Recruiting"
+    assert gate.org_domain == "acme.example"
+    assert gate.approved_purposes == ["search"]
+    assert gate.search_keywords == ["python", "backend"]
+    assert gate.retention_days == 14
+    assert gate.pii_policy == "candidate recruiting lawful basis"
+    assert gate.operator_id == "operator-a"
+    assert gate.operator_name == "Ops Owner"
+    assert gate.created_at == "2026-05-07T00:00:00+00:00"
+    assert gate.approved_at == "2026-05-07T00:00:01+00:00"
+    assert gate.account_binding_hash == "account-hash-a"
+
+    try:
+        _gate(provider_account_hash="old-field")
+    except ValueError as exc:
+        assert "provider_account_hash" in str(exc)
+    else:
+        raise AssertionError("old provider_account_hash field was accepted")
+
+
+def test_live_search_requires_exact_approved_purpose_and_account_binding() -> None:
+    assert _gate().allows_live_search(account_binding_hash="account-hash-a", purpose="search")
+    assert not _gate(approved_purposes=["research"]).allows_live_search(
+        account_binding_hash="account-hash-a", purpose="search"
     )
-    assert not _gate(human_initiated_recruiting=False).allows_live_search(
-        provider_account_hash="account-hash-a", purpose="search"
+    assert not _gate(approved_purposes=["research-search"]).allows_live_search(
+        account_binding_hash="account-hash-a", purpose="search"
     )
-    assert not _gate(allowed_purposes=["research"]).allows_live_search(
-        provider_account_hash="account-hash-a", purpose="search"
+    assert not _gate(account_binding_hash="different").allows_live_search(
+        account_binding_hash="account-hash-a", purpose="search"
     )
-    assert not _gate(allowed_purposes=["search-preview"]).allows_live_search(
-        provider_account_hash="account-hash-a", purpose="search"
+    assert not _gate(account_binding_hash=None).allows_live_search(
+        account_binding_hash="account-hash-a", purpose="search"
     )
+    assert not _gate(approved_at=None).allows_live_search(account_binding_hash="account-hash-a", purpose="search")
 
 
 def test_gate_requires_personal_information_controls() -> None:
     required_fields = [
-        "candidate_personal_info_processing_basis",
-        "personal_information_processor",
-        "operator_audit_owner",
-        "deletion_path",
-        "policy_ref",
+        "org_name",
+        "org_domain",
+        "pii_policy",
+        "operator_id",
+        "operator_name",
     ]
     for field_name in required_fields:
         gate = _gate(**{field_name: ""})
-        assert not gate.allows_live_search(provider_account_hash="account-hash-a", purpose="search")
+        assert not gate.allows_live_search(account_binding_hash="account-hash-a", purpose="search")
 
-    assert not _gate(deletion_sla_days=0).allows_live_search(provider_account_hash="account-hash-a", purpose="search")
-    assert not _gate(raw_detail_retention_allowed_after_debug=True).allows_live_search(
-        provider_account_hash="account-hash-a", purpose="search"
-    )
+    assert not _gate(retention_days=0).allows_live_search(account_binding_hash="account-hash-a", purpose="search")
+    assert not _gate(search_keywords=[]).allows_live_search(account_binding_hash="account-hash-a", purpose="search")
 
 
 def test_pending_gate_allows_login_handoff_but_blocks_live_search_until_matching_account_bound(tmp_path: Path) -> None:
     store = LiepinStore(tmp_path / "liepin.sqlite3")
     gate_ref = store.create_compliance_gate(
-        _gate(provider_account_hash=None, status="pending_account_binding"),
+        _gate(account_binding_hash=None, approved_at=None),
         purpose="search",
     )
     pending = store.get_compliance_gate(
@@ -80,14 +97,13 @@ def test_pending_gate_allows_login_handoff_but_blocks_live_search_until_matching
     )
     assert pending is not None
     assert pending.allows_connection_handoff(purpose="search")
-    assert not pending.allows_live_search(provider_account_hash="account-hash-a", purpose="search")
+    assert not pending.allows_live_search(account_binding_hash="account-hash-a", purpose="search")
 
     connection_id = store.create_connection(
         tenant_id="tenant-a",
         workspace_id="workspace-a",
         actor_id="actor-a",
         compliance_gate_ref=gate_ref,
-        provider_account_identity_hint="liepin-user-a",
     )
     wrong_scope = store.bind_connection_account(
         tenant_id="tenant-a",
@@ -105,7 +121,7 @@ def test_pending_gate_allows_login_handoff_but_blocks_live_search_until_matching
         connection_id=connection_id,
         secret="local-development",
     )
-    assert approved_hash == hmac_provider_account_hash("local-development", "liepin-user-a")
+    assert approved_hash == hmac_provider_account_hash("local-development", connection_id)
     approved = store.get_compliance_gate(
         gate_ref=gate_ref,
         tenant_id="tenant-a",
@@ -114,13 +130,13 @@ def test_pending_gate_allows_login_handoff_but_blocks_live_search_until_matching
     )
     assert approved is not None
     assert approved.status == "approved"
-    assert approved.allows_live_search(provider_account_hash=approved_hash, purpose="search")
-    assert not approved.allows_live_search(provider_account_hash="wrong-account-hash", purpose="search")
+    assert approved.allows_live_search(account_binding_hash=approved_hash, purpose="search")
+    assert not approved.allows_live_search(account_binding_hash="wrong-account-hash", purpose="search")
 
 
 def test_store_parses_allowed_purposes_as_json_not_sql_like(tmp_path: Path) -> None:
     store = LiepinStore(tmp_path / "liepin.sqlite3")
-    gate_ref = store.create_compliance_gate(_gate(allowed_purposes=["research-search"]), purpose="research-search")
+    gate_ref = store.create_compliance_gate(_gate(approved_purposes=["research-search"]), purpose="research-search")
     gate = store.get_compliance_gate(
         gate_ref=gate_ref,
         tenant_id="tenant-a",
@@ -128,8 +144,8 @@ def test_store_parses_allowed_purposes_as_json_not_sql_like(tmp_path: Path) -> N
         actor_id="actor-a",
     )
     assert gate is not None
-    assert gate.allowed_purposes == ["research-search"]
-    assert not gate.allows_live_search(provider_account_hash="account-hash-a", purpose="search")
+    assert gate.approved_purposes == ["research-search"]
+    assert not gate.allows_live_search(account_binding_hash="account-hash-a", purpose="search")
 
 
 def test_event_ledger_rejects_raw_payloads_and_reads_bounded_batches(tmp_path: Path) -> None:
