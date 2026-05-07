@@ -121,12 +121,16 @@ class ManagedLiepinWorkerRuntime:
             command,
             cwd=str(self.worker_package_dir),
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             text=True,
         )
 
-        self._wait_for_health(base_url=base_url, on_event=on_event)
+        try:
+            self._wait_for_health(base_url=base_url, on_event=on_event)
+        except LiepinWorkerModeError:
+            self.stop()
+            raise
         self._handle = LiepinWorkerRuntimeHandle(internal_base_url=base_url, host=host, port=port)
         return self._handle
 

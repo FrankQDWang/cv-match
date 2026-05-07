@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from socket import socket
 from typing import Any
@@ -44,6 +45,16 @@ class ProcessFactory:
         return self.process
 
 
+class SequencedProcessFactory:
+    def __init__(self, processes: list[RecordingProcess]) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.processes = processes
+
+    def __call__(self, command: list[str], **kwargs: Any) -> RecordingProcess:
+        self.calls.append({"command": command, **kwargs})
+        return self.processes[len(self.calls) - 1]
+
+
 class HttpGet:
     def __init__(self, *responses: dict[str, object] | Exception) -> None:
         self.responses = list(responses)
@@ -86,6 +97,8 @@ def test_managed_local_worker_starts_bun_selects_port_and_waits_for_health(tmp_p
     assert handle.internal_base_url.startswith("http://127.0.0.1:")
     assert handle.port > 0
     assert process_factory.calls[0]["command"][0] == "/usr/local/bin/bun"
+    assert process_factory.calls[0]["stdout"] is subprocess.DEVNULL
+    assert process_factory.calls[0]["stderr"] is subprocess.DEVNULL
     assert process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_WORKER_AUTH_TOKEN"] == "worker-token"
     assert http_get.calls == [
         {
@@ -145,6 +158,37 @@ def test_startup_timeout_records_domain_event_before_search_dispatch(tmp_path: P
         runtime.ensure_started(on_event=lambda name, payload: events.append((name, payload)))
 
     assert events == [("worker_start_timeout", {"mode": "managed_local", "setup_status": "timeout"})]
+
+
+def test_startup_timeout_stops_worker_and_retry_starts_fresh_process(tmp_path: Path) -> None:
+    settings = make_settings(
+        liepin_worker_mode="managed_local",
+        liepin_worker_startup_timeout_seconds=0.1,
+    )
+    first_process = RecordingProcess()
+    second_process = RecordingProcess()
+    process_factory = SequencedProcessFactory([first_process, second_process])
+    runtime = ManagedLiepinWorkerRuntime(
+        settings,
+        worker_package_dir=_package_dir(tmp_path),
+        bun_executable="/usr/local/bin/bun",
+        process_factory=process_factory,
+        http_get=HttpGet({"status": "starting"}, {"status": "ok", "workerVersion": "test-worker"}),
+        monotonic=iter([0.0, 0.2, 1.0]).__next__,
+        sleep=lambda _: None,
+    )
+
+    with pytest.raises(LiepinWorkerModeError, match="worker_start_timeout"):
+        runtime.ensure_started()
+
+    assert first_process.terminated is True
+    assert runtime._process is None
+    assert runtime._handle is None
+
+    runtime.ensure_started()
+
+    assert len(process_factory.calls) == 2
+    assert second_process.terminated is False
 
 
 def test_missing_bun_or_worker_package_reports_prerequisite_without_node_fallback(tmp_path: Path) -> None:
