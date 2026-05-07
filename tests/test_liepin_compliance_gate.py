@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sqlite3
 from pathlib import Path
 
 from seektalent.providers.liepin.compliance import ComplianceGate
@@ -329,6 +331,66 @@ def test_store_parses_allowed_purposes_as_json_not_sql_like(tmp_path: Path) -> N
     assert not gate.allows_live_search(provider_account_hash="account-hash-a", purpose="search")
 
 
+def test_store_create_run_rechecks_gate_policy_before_insert(tmp_path: Path) -> None:
+    db_path = tmp_path / "liepin.sqlite3"
+    store = LiepinStore(db_path)
+
+    for field_name, value in [
+        ("status", "denied"),
+        ("status", "expired"),
+        ("allowed_purposes_json", json.dumps(["research"])),
+        ("account_holder_authorized", 0),
+    ]:
+        gate_ref = store.create_compliance_gate(
+            tenant_id="tenant-a",
+            workspace_id="workspace-a",
+            actor_id="actor-a",
+            gate=_gate(provider_account_hash=None, status="pending_account_binding"),
+            purpose="search",
+        )
+        connection_id = store.create_connection(
+            tenant_id="tenant-a",
+            workspace_id="workspace-a",
+            actor_id="actor-a",
+            compliance_gate_ref=gate_ref,
+        )
+        assert store.record_connection_account_subject(
+            tenant_id="tenant-a",
+            workspace_id="workspace-a",
+            actor_id="actor-a",
+            connection_id=connection_id,
+            observed_provider_account_subject=f"internal-worker-observed-account-{field_name}-{value}",
+        )
+        account_hash = store.bind_connection_account(
+            gate_ref=gate_ref,
+            tenant_id="tenant-a",
+            workspace_id="workspace-a",
+            actor_id="actor-a",
+            connection_id=connection_id,
+            secret="local-development",
+        )
+        assert account_hash is not None
+
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                f"UPDATE liepin_compliance_gates SET {field_name} = ? WHERE gate_ref = ?",
+                (value, gate_ref),
+            )
+
+        try:
+            store.create_run(
+                tenant_id="tenant-a",
+                workspace_id="workspace-a",
+                actor_id="actor-a",
+                connection_id=connection_id,
+                compliance_gate_ref=gate_ref,
+            )
+        except ValueError as exc:
+            assert "compliance gate" in str(exc)
+        else:
+            raise AssertionError(f"run was inserted after gate policy changed: {field_name}={value!r}")
+
+
 def test_event_ledger_rejects_raw_payloads_and_reads_bounded_batches(tmp_path: Path) -> None:
     store = LiepinStore(tmp_path / "liepin.sqlite3")
     first = store.append_event(
@@ -402,6 +464,11 @@ def test_event_ledger_rejects_worker_browser_internals_and_keeps_domain_payloads
         {"diagnostics": "remote debugging port 9222"},
         {"diagnostics": "browserContext=context-1"},
         {"diagnostics": "http://127.0.0.1:9222/json/version"},
+        {"diagnostics": "Authorization: Basic abc"},
+        {"diagnostics": "internal-worker-observed-account-a"},
+        {"diagnostics": "provider account subject raw-liepin-account"},
+        {"diagnostics": "providerAccountSubject=raw-liepin-account"},
+        {"diagnostics": "observedProviderAccountSubject=raw-liepin-account"},
     ]
 
     for payload in unsafe_payloads:

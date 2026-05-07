@@ -283,7 +283,7 @@ class LiepinStore:
             connection = conn.execute(
                 """
                 SELECT c.provider_account_hash AS connection_provider_account_hash,
-                       g.provider_account_hash AS gate_provider_account_hash
+                       g.*
                 FROM liepin_connections AS c
                 JOIN liepin_compliance_gates AS g
                   ON g.gate_ref = c.compliance_gate_ref
@@ -300,9 +300,15 @@ class LiepinStore:
                 raise ValueError("Liepin connection does not belong to compliance gate.")
             if (
                 connection["connection_provider_account_hash"] is None
-                or connection["connection_provider_account_hash"] != connection["gate_provider_account_hash"]
+                or connection["connection_provider_account_hash"] != connection["provider_account_hash"]
             ):
                 raise ValueError("Liepin connection is not bound to the compliance gate account.")
+            gate = _gate_from_row(connection)
+            if not gate.allows_live_search(
+                provider_account_hash=connection["connection_provider_account_hash"],
+                purpose="search",
+            ):
+                raise ValueError("Liepin compliance gate does not allow live search.")
             conn.execute(
                 """
                 INSERT INTO liepin_runs (
@@ -559,10 +565,15 @@ def _has_unsafe_payload(value: object) -> bool:
         if any(
             marker in lowered
             for marker in [
+                "authorization: basic",
                 "browsercontext=",
                 "cdp://",
                 "devtools/browser",
+                "internal-worker-observed-account",
+                "observedprovideraccountsubject",
                 "devtools/page",
+                "provider account subject",
+                "provideraccountsubject",
                 "remote debugging port",
                 "storage_state",
                 "rawproviderpayload",
