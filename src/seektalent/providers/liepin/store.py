@@ -559,17 +559,26 @@ def _has_unsafe_payload(value: object) -> bool:
         if any(
             marker in lowered
             for marker in [
+                "browsercontext=",
                 "cdp://",
+                "devtools/browser",
+                "devtools/page",
+                "remote debugging port",
                 "storage_state",
                 "rawproviderpayload",
                 "raw_provider_payload",
                 "providerpayload",
                 "provider_payload",
+                "workerurl=",
             ]
         ):
             return True
-        if lowered.startswith(("ws://", "wss://")) and (
-            "devtools/browser" in lowered or "playwright" in lowered
+        if lowered.startswith(("ws://", "wss://")) and any(
+            marker in lowered for marker in ["devtools/browser", "devtools/page", "playwright"]
+        ):
+            return True
+        if ("127.0.0.1" in lowered or "localhost" in lowered) and any(
+            marker in lowered for marker in [":9222", "/json/version", "/devtools/", "/internal", ":9999"]
         ):
             return True
         if "liepin.com" in lowered and any(marker in lowered for marker in ["token=", "cookie=", "auth=", "sid="]):

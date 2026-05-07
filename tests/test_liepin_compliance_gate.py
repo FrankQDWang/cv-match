@@ -395,6 +395,13 @@ def test_event_ledger_rejects_worker_browser_internals_and_keeps_domain_payloads
         {"payload": {"cookie": "session=secret"}},
         {"diagnostics": "Bearer secret-token"},
         {"diagnostics": ["cdp://browser/session"]},
+        {"url": "http://127.0.0.1:9222/json/version"},
+        {"url": "ws://127.0.0.1:9222/devtools/page/abc"},
+        {"url": "http://127.0.0.1:9999/internal"},
+        {"diagnostics": "workerUrl=http://127.0.0.1:9999/internal/health"},
+        {"diagnostics": "remote debugging port 9222"},
+        {"diagnostics": "browserContext=context-1"},
+        {"diagnostics": "http://127.0.0.1:9222/json/version"},
     ]
 
     for payload in unsafe_payloads:
