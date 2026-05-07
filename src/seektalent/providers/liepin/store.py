@@ -557,9 +557,26 @@ class LiepinStore:
         now = _now_iso()
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            existing = _fetch_detail_attempt_by_key(
+                conn,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                actor_id=actor_id,
+                provider_account_hash=provider_account_hash,
+                budget_date=budget_date,
+                idempotency_key=idempotency_key,
+            )
+            if existing is not None:
+                _validate_detail_reservation_replay(
+                    existing,
+                    candidate_provider_id=candidate_provider_id,
+                    provider_day_key=provider_day_key,
+                    timezone=timezone,
+                )
+                return _detail_attempt_from_row(existing)
             conn.execute(
                 """
-                INSERT OR IGNORE INTO liepin_detail_attempts (
+                INSERT INTO liepin_detail_attempts (
                     attempt_id, tenant_id, workspace_id, actor_id, provider_account_hash,
                     candidate_provider_id, idempotency_key, state, consumption_state,
                     budget_date, provider_day_key, timezone, created_at, updated_at
@@ -1066,6 +1083,27 @@ def _update_detail_attempt(
     return _detail_attempt_from_row(updated)
 
 
+def _validate_detail_reservation_replay(
+    row: sqlite3.Row,
+    *,
+    candidate_provider_id: str,
+    provider_day_key: str,
+    timezone: str,
+) -> None:
+    mismatched_fields = [
+        field_name
+        for field_name, expected in [
+            ("candidate_provider_id", candidate_provider_id),
+            ("provider_day_key", provider_day_key),
+            ("timezone", timezone),
+        ]
+        if row[field_name] != expected
+    ]
+    if mismatched_fields:
+        fields = ", ".join(mismatched_fields)
+        raise ValueError(f"Liepin detail idempotency replay mismatch: {fields}")
+
+
 def _validate_detail_transition(current_state: str, next_state: str, consumption_state: str) -> None:
     if next_state not in DETAIL_ATTEMPT_STATES:
         raise ValueError(f"invalid Liepin detail attempt state: {next_state}")
@@ -1073,6 +1111,10 @@ def _validate_detail_transition(current_state: str, next_state: str, consumption
         raise ValueError(f"invalid Liepin detail consumption state: {consumption_state}")
     if next_state not in DETAIL_ALLOWED_TRANSITIONS[current_state]:
         raise ValueError(f"invalid Liepin detail attempt transition: {current_state} -> {next_state}")
+    if consumption_state not in _valid_consumption_states_for_detail_state(next_state):
+        raise ValueError(
+            f"invalid Liepin detail state/consumption pair: {next_state} + {consumption_state}"
+        )
     if next_state == "completed" and consumption_state != "consumed":
         raise ValueError("completed Liepin detail attempts must be consumed.")
     if next_state == "failed_before_consumption" and consumption_state != "not_consumed":
@@ -1081,6 +1123,16 @@ def _validate_detail_transition(current_state: str, next_state: str, consumption
         raise ValueError("post-dispatch Liepin detail failures must be possibly consumed.")
     if next_state == "unknown" and consumption_state != "unknown":
         raise ValueError("unknown Liepin detail attempts must use unknown consumption.")
+
+
+def _valid_consumption_states_for_detail_state(state: str) -> set[str]:
+    if state == "completed":
+        return {"consumed"}
+    if state == "failed_after_possible_consumption":
+        return {"possibly_consumed"}
+    if state == "unknown":
+        return {"unknown"}
+    return {"not_consumed"}
 
 
 def _detail_attempt_from_row(row: sqlite3.Row) -> LiepinDetailAttemptRow:

@@ -47,6 +47,40 @@ def test_reserve_detail_attempt_is_idempotent_and_persists_day_keys(tmp_path: Pa
     assert first.timezone == "Asia/Shanghai"
 
 
+@pytest.mark.parametrize(
+    ("field_name", "override"),
+    [
+        ("candidate_provider_id", "candidate-2"),
+        ("provider_day_key", "liepin:account-hash-a:other-day"),
+        ("timezone", "UTC"),
+    ],
+)
+def test_reserve_detail_attempt_rejects_idempotency_replay_input_mismatches(
+    tmp_path: Path,
+    field_name: str,
+    override: str,
+) -> None:
+    store = _store(tmp_path)
+    request = {
+        "tenant_id": TENANT,
+        "workspace_id": WORKSPACE,
+        "actor_id": ACTOR,
+        "provider_account_hash": ACCOUNT,
+        "candidate_provider_id": "candidate-1",
+        "budget_date": "2026-05-07",
+        "provider_day_key": "liepin:account-hash-a:2026-05-07",
+        "timezone": "Asia/Shanghai",
+        "idempotency_key": "open:candidate-1",
+    }
+    first = store.reserve_detail_attempt(**request)
+
+    replay = {**request, field_name: override}
+    with pytest.raises(ValueError, match="idempotency replay mismatch"):
+        store.reserve_detail_attempt(**replay)
+
+    assert store.reserve_detail_attempt(**request) == first
+
+
 def test_consumed_count_resets_by_provider_day_and_counts_uncertain_consumption(tmp_path: Path) -> None:
     store = _store(tmp_path)
     _complete(store, "candidate-1", "2026-05-07", "liepin:account-hash-a:2026-05-07", "consumed")
@@ -237,6 +271,92 @@ def test_invalid_transition_rejects_completed_directly_from_approved_not_started
             consumption_state="consumed",
             raw_evidence_ref="artifact:detail",
         )
+
+
+@pytest.mark.parametrize("state", ["started", "provider_page_loaded", "detail_payload_seen"])
+@pytest.mark.parametrize("consumption_state", ["consumed", "possibly_consumed", "unknown"])
+def test_in_progress_state_rejects_budget_consuming_consumption_states(
+    tmp_path: Path,
+    state: str,
+    consumption_state: str,
+) -> None:
+    store = _store(tmp_path)
+    attempt = _reserve(store, f"candidate-{state}-{consumption_state}")
+    if state in {"provider_page_loaded", "detail_payload_seen"}:
+        store.transition_detail_attempt(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            attempt_id=attempt.attempt_id,
+            state="started",
+            consumption_state="not_consumed",
+            worker_command_id=f"cmd-{state}",
+        )
+    if state == "detail_payload_seen":
+        store.transition_detail_attempt(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            attempt_id=attempt.attempt_id,
+            state="provider_page_loaded",
+            consumption_state="not_consumed",
+        )
+
+    with pytest.raises(ValueError, match="invalid Liepin detail state/consumption pair"):
+        store.transition_detail_attempt(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            attempt_id=attempt.attempt_id,
+            state=state,
+            consumption_state=consumption_state,
+            worker_command_id=f"cmd-{state}",
+        )
+
+    assert (
+        store.count_detail_budget_consumed(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            provider_account_hash=ACCOUNT,
+            provider_day_key="liepin:account-hash-a:2026-05-07",
+        )
+        == 0
+    )
+
+
+def test_valid_terminal_and_conservative_consumption_pairs_still_work(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    valid_pairs = [
+        ("candidate-completed", "completed", "consumed"),
+        ("candidate-after", "failed_after_possible_consumption", "possibly_consumed"),
+        ("candidate-unknown", "unknown", "unknown"),
+        ("candidate-before", "failed_before_consumption", "not_consumed"),
+        ("candidate-blocked", "blocked_by_risk_control", "not_consumed"),
+    ]
+
+    for candidate_provider_id, state, consumption_state in valid_pairs:
+        attempt = _reserve(store, candidate_provider_id)
+        store.transition_detail_attempt(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            attempt_id=attempt.attempt_id,
+            state="started",
+            consumption_state="not_consumed",
+            worker_command_id=f"cmd-{candidate_provider_id}",
+        )
+        updated = store.transition_detail_attempt(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            attempt_id=attempt.attempt_id,
+            state=state,
+            consumption_state=consumption_state,
+            raw_evidence_ref=f"artifact:{candidate_provider_id}",
+        )
+        assert updated.state == state
+        assert updated.consumption_state == consumption_state
 
 
 def _store(tmp_path: Path) -> LiepinStore:
