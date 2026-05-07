@@ -30,6 +30,8 @@ The browser worker is an execution boundary. It must not own business ranking, L
 
 V1 uses managed Chromium through Playwright as the production browser path. Lightweight alternative browsers such as Lightpanda are not part of V1. They may be revisited later for fixture replay or low-risk headless extraction, but they must not be required for login, Liepin search, detail opening, risk-control handling, or acceptance.
 
+V1 uses Bun as the production runner for the TypeScript worker. Performance is a primary product requirement, and the implementation should not silently downgrade the worker to Node.js. If a concrete Playwright/CDP dependency blocks Bun in live smoke, the implementation must stop and surface the blocker rather than changing the runtime decision. Node.js may only be used as an explicit diagnostic comparison path, not as the V1 production baseline.
+
 V1 is a closed-loop connector, not only a browser scraper. A successful run must leave enough evidence to answer:
 
 - did the user connection work;
@@ -48,6 +50,8 @@ The first implementation should be API-first and UI-later:
 - do not implement the web UI in this rollout;
 - keep the worker usable by a future Vite + TanStack web UI;
 - keep the API usable by another client without coupling to that client's runtime.
+
+The user-action contract is intentionally narrow: the only required user action is logging into Liepin inside the managed browser session. Users must not need to install an extension, run a local daemon, export cookies, paste tokens, configure Playwright, or understand the connector worker.
 
 ## Why This Is The Performance-Oriented Choice
 
@@ -69,7 +73,7 @@ Performance should therefore come from product policy and execution discipline:
 6. Keep concurrency conservative and account-safe.
 7. Treat CAPTCHA, login expiry, and verification as user-action states, not retry loops.
 
-Bun/TypeScript is still the preferred worker stack because it is lightweight for web/browser automation, fits the future Vite/TanStack UI stack, and keeps browser-facing code close to the JS ecosystem. The design should keep a thin process boundary so the same worker code can be run under Node if a specific Playwright dependency is not stable under Bun.
+Bun/TypeScript is the V1 worker stack because it is lightweight for web/browser automation, fits the future Vite/TanStack UI stack, and keeps browser-facing code close to the JS ecosystem. The design should keep the worker behind a thin process/API boundary so runtime issues can be isolated, measured, and escalated without moving browser or business logic into Python.
 
 The primary extraction optimization is browser-assisted API extraction: while Chromium drives the authenticated Liepin page, the worker observes network responses and parses provider JSON when it is available. DOM extraction is the fallback, not the first choice.
 
@@ -97,13 +101,35 @@ This design does not implement:
 - personalized memory;
 - Lightpanda or another non-Chromium browser as the V1 production path;
 - full production dashboards and alerting;
+- Node.js as the V1 production worker runtime;
 - migration of Python scoring, PRF, corpus, flywheel, or eval logic to TypeScript.
+
+## Compliance Gate
+
+Live Liepin connector runs process recruiter account data and candidate personal information. V1 must fail closed unless the caller has passed an explicit compliance gate.
+
+The compliance gate must record:
+
+- the tenant and workspace;
+- the actor or client initiating the run;
+- confirmation that the Liepin account holder authorized assisted retrieval through this connector;
+- confirmation that the run is account-holder initiated human-in-the-loop recruiting work, not bulk data resale, enrichment, or unrelated profiling;
+- allowed purposes;
+- retention policy;
+- deletion path;
+- access scope for raw payloads and normalized snapshots;
+- whether fixture export is allowed;
+- approval or policy reference for other-department or customer API use.
+
+The live connector must not run when this gate is missing or denied. Fixture, CI, benchmark, and replay assets must not contain real candidate-identifying information unless a separate approved redaction policy marks them fixture-safe.
 
 ## Components
 
 ### 1. Liepin Connector API
 
 The backend should expose an API surface that is stable enough for both our future UI and external clients.
+
+Every API request must be authenticated and scoped to `tenant_id` and `workspace_id`. Connections, runs, events, artifacts, and results must belong to the caller's workspace. Results APIs should return selected candidate summaries and artifact references by default; raw provider payload access must require a separate protected asset path and audit entry.
 
 Initial API shape:
 
@@ -115,7 +141,7 @@ GET /liepin/connections/{connection_id}
   return login/session/risk-control status
 
 POST /liepin/connections/{connection_id}/login-url
-  return a URL or session handle for the user to log in
+  return a controlled browser view URL or local handoff token for the user to log in
 
 POST /runs
   submit a SeekTalent run using provider=liepin
@@ -139,6 +165,17 @@ The API must not expose raw browser internals. Browser status should be domain-l
 - `daily_detail_budget_exhausted`
 - `temporarily_rate_limited`
 - `failed`
+
+Login sessions must expose domain-level controls, not browser internals:
+
+- `connection_id`
+- `browser_view_url` or local handoff token
+- `expires_at`
+- `status_event_stream`
+- allowed origin or client ID
+- revoke endpoint
+
+The API must not expose CDP endpoints, remote debugging ports, Playwright debug websocket URLs, raw browser contexts, or arbitrary browser control to external clients.
 
 ### 2. Bun/TypeScript Browser Worker
 
@@ -177,6 +214,23 @@ Execution rule:
 5. Use DOM extraction only when network payloads are absent, incomplete, or encrypted in a way the worker cannot safely decode.
 
 This is not a standalone reverse-engineered API client. The worker must not bypass the managed browser session or replay authenticated requests outside the session policy. Network extraction is allowed because it is attached to the visible browser workflow and preserves the same login, risk-control, and account-safety boundary.
+
+Allowed in V1 production:
+
+- `page.goto`, click, fill, wait, and other visible browser workflow actions;
+- passive observation of requests and responses triggered by those page actions;
+- parsing response bodies that were triggered by the managed browser workflow;
+- DOM fallback on the loaded page when network payloads are missing or incomplete.
+
+Forbidden in V1 production:
+
+- direct Liepin API calls using browser cookies;
+- Playwright `page.request`, `browserContext.request`, or equivalent `APIRequestContext` calls to Liepin endpoints;
+- replaying captured provider requests outside browser navigation;
+- generating provider API signatures, tokens, or encrypted parameters;
+- modifying headers to defeat risk control;
+- proxy rotation, fingerprint spoofing, stealth plugins, or anti-bot evasion tooling;
+- saving raw request headers or auth-bearing URLs into artifacts or fixtures.
 
 Network extraction artifacts should record:
 
@@ -233,7 +287,75 @@ The ledger owns provider/account operational facts:
 
 `CorpusStore` remains the document asset store. It saves card/detail snapshots and observations. The connector ledger answers "should we spend a detail open"; the corpus answers "what documents have we seen and saved."
 
-### 7. Corpus Integration
+Detail opens must be transactional and idempotent.
+
+`DetailOpenAttempt` records:
+
+- `attempt_id`
+- `idempotency_key`
+- `tenant_id`
+- `workspace_id`
+- `provider_name`
+- `account_hash`
+- `run_id`
+- `query_instance_id`
+- `provider_candidate_identity`
+- `identity_confidence`
+- `approved_by_policy_ref`
+- `worker_command_id`
+- `state`
+- `consumption_state`
+- `started_at`
+- `completed_at`
+- `raw_evidence_ref`
+
+Allowed `state` values:
+
+- `approved_not_started`
+- `started`
+- `provider_page_loaded`
+- `detail_payload_seen`
+- `completed`
+- `blocked_by_risk_control`
+- `failed_before_consumption`
+- `failed_after_possible_consumption`
+- `unknown`
+
+Allowed `consumption_state` values:
+
+- `not_consumed`
+- `consumed`
+- `possibly_consumed`
+- `unknown`
+
+Rules:
+
+- Python reserves budget before dispatching `open_details`.
+- `open_details` must be idempotent by `idempotency_key`.
+- duplicate worker responses are applied once.
+- worker crash after dispatch marks the attempt `possibly_consumed` unless there is evidence that Liepin did not consume a detail view.
+- `possibly_consumed` and `unknown` are treated as consumed until manually reconciled.
+- conservative accounting is preferred over accidentally opening the same candidate again.
+
+### 7. Provider Candidate Identity
+
+The connector must not assume every Liepin card exposes a stable person ID.
+
+V1 should track three identity levels:
+
+- `provider_subject_id`: stable Liepin candidate/resume/person identifier when available;
+- `provider_listing_id`: listing, card, URL, or detail-page identifier tied to the current result;
+- `synthetic_candidate_fingerprint`: conservative fingerprint from visible card fields such as masked name, title, experience, education, location, recent company mask, and provider-specific stable hints.
+
+Each identity record must include `identity_confidence`:
+
+- `stable_provider_id`
+- `strong_card_fingerprint`
+- `weak_card_fingerprint`
+
+Weak fingerprints must not drive hard duplicate suppression. They may only trigger conservative downgrade, manual review, or a lower priority detail-open decision.
+
+### 8. Corpus Integration
 
 Every Liepin provider-returned card should be saved as a provider snapshot. Detail pages should be saved as richer snapshots or detail observations.
 
@@ -248,6 +370,15 @@ The corpus row must distinguish:
 - whether the snapshot is sufficient for scoring or only for dedupe/search preview.
 
 Raw Liepin payloads remain untrusted external content and must be treated as quoted data when sent to LLMs.
+
+Liepin snapshots must also carry privacy and access metadata:
+
+- `pii_classification`: `card_minimal`, `resume_detail`, `contact_sensitive`, or `unknown`;
+- `retention_policy`: `run_debug_short`, `workspace_recruiting_record`, or `forbidden_persist`;
+- `access_scope`: `run_only`, `workspace`, or `admin_only`;
+- `redaction_state`: `raw_encrypted`, `normalized_redacted`, `fixture_safe`, or `not_fixture_safe`.
+
+Raw detail payloads are protected corpus assets. Fixture export must fail closed unless the snapshot is explicitly `fixture_safe`.
 
 ## Data Flow
 
@@ -372,6 +503,17 @@ Pass condition:
 
 - the run summary can explain whether details improved quality, whether the provider produced useful new candidates, and which lane contributed them.
 
+Card-only and detail-enriched evidence must be scored and stored separately:
+
+- `card_scorecard`
+- `detail_scorecard`
+- `score_delta`
+- `detail_open_reason`
+- `detail_open_policy_version`
+- `score_evidence_source`: `card_only` or `detail_enriched`
+
+PRF and flywheel metrics must distinguish card-only evidence from detail-enriched evidence. A lane should not receive credit merely because detail budget was spent on candidates from that lane.
+
 ### 6. Asset Loop
 
 Purpose: make the run auditable after the browser worker exits.
@@ -392,7 +534,7 @@ Pass condition:
 
 ### 7. Replay Loop
 
-Purpose: test parser and mapping changes without live Liepin access.
+Purpose: test parser, mapping, policy, and traceability changes without live Liepin access.
 
 Outputs:
 
@@ -405,6 +547,25 @@ Outputs:
 Pass condition:
 
 - CI can verify extraction, mapping, and budget policy without a live Liepin account.
+
+Replay does not prove:
+
+- current Liepin search freshness;
+- login session availability;
+- risk-control behavior;
+- whether opening a detail page consumes account quota;
+- whether provider network shapes have changed since the fixture was captured.
+
+Fixture export must remove or tokenize:
+
+- names;
+- phone, email, WeChat, and other contact handles;
+- company/person identifiers unless synthetic;
+- resume free text that can identify a person;
+- cookies, tokens, auth headers, storageState, CDP URLs, debug websocket URLs;
+- exact provider URLs with sensitive IDs unless tokenized.
+
+Fixture export must fail closed when redaction cannot prove the fixture is safe.
 
 ## Risk-Control And Account Safety
 
@@ -435,6 +596,44 @@ Rules:
 - store provider account identity only as a stable hash for budget and audit purposes;
 - do not include connector secrets in fixture replay files;
 - allow explicit session revocation from the API.
+
+SessionStore V1 minimum:
+
+- encrypted at rest;
+- scoped by tenant, workspace, connection, and provider account;
+- local development store separated from production store;
+- no session state in artifacts, corpus, flywheel, logs, traces, fixtures, or benchmark assets;
+- no cookies, tokens, auth headers, storageState, CDP URLs, or debug websocket URLs in ordinary run output;
+- explicit revoke deletes cookies, storageState, and related connector session records;
+- session store key ID may be recorded, but secret material must not be recorded;
+- provider account identity uses keyed HMAC, not an unsalted hash.
+
+Provider account identity:
+
+```text
+provider_account_hash = HMAC_SHA256(connector_secret, provider_account_stable_id)
+```
+
+Plain account IDs, mobile numbers, emails, and login names must not be used as artifact IDs, corpus fields, or metric labels.
+
+## Artifact Boundary
+
+Connector artifacts must use logical names through the existing ArtifactStore boundary, not ad hoc paths.
+
+Minimum logical artifacts:
+
+- `round.XX.retrieval.liepin_connection_status`
+- `round.XX.retrieval.liepin_search_requests`
+- `round.XX.retrieval.liepin_card_extraction`
+- `round.XX.retrieval.liepin_detail_open_plan`
+- `round.XX.retrieval.liepin_detail_open_results`
+- `round.XX.retrieval.liepin_extraction_fixtures`
+- `round.XX.retrieval.liepin_connector_metrics`
+- `runtime.liepin_connection_events`
+- `assets.provider_snapshots.liepin.cards`
+- `assets.provider_snapshots.liepin.details`
+
+Raw payload artifact refs point to protected corpus assets. They are not ordinary JSON dumps and must not be copied into fixture or benchmark artifacts without redaction approval.
 
 ## Performance Strategy
 
@@ -484,12 +683,17 @@ Expected failures should become explicit states:
 - login expired -> `needs_user_action`;
 - verification required -> `needs_user_action`;
 - detail budget exhausted -> continue with card-level results;
+- compliance gate missing or denied -> do not start live connector;
 - expected network payload missing -> use DOM fallback and record extraction source;
+- fixture redaction failed -> do not export fixture;
 - page structure changed -> parser health failure with saved fixture;
 - temporary rate limit -> stop provider calls and record status;
-- worker crashed -> run can resume from saved corpus/ledger/artifacts in a future resumability rollout.
+- worker crashed before detail dispatch -> retry command if idempotency permits;
+- worker crashed after detail dispatch -> mark detail attempt `possibly_consumed`.
 
 Retries should be bounded and only used where they reduce transient browser flakiness. They must not bypass user-action states or consume detail budget repeatedly.
+
+V1 does not implement full run resumability. It must implement command-level idempotency for search and detail-open commands so partial failures do not corrupt the ledger or spend detail budget twice.
 
 ## Testing And Harness
 
@@ -499,11 +703,14 @@ The first implementation plan should include:
 2. Fixture replay tests for network-response card extraction and detail extraction.
 3. DOM fallback tests for missing or incomplete network payloads.
 4. Detail-budget tests proving duplicate candidates are not reopened.
-5. Corpus tests proving card and detail payloads are saved as provider snapshots.
-6. Quality-loop tests proving detail-enriched candidates can be compared with card-only candidates.
-7. Traceability tests proving a final candidate links back to query, payload, extraction source, corpus snapshot, and detail-open decision.
-8. Risk-state tests for logged-out, needs-user-action, and budget-exhausted states.
-9. A small live smoke command gated behind explicit local credentials/session setup.
+5. Detail-open idempotency tests proving uncertain consumption is treated as consumed.
+6. Corpus tests proving card and detail payloads are saved as protected provider snapshots.
+7. Fixture-redaction tests proving unsafe fixtures fail closed.
+8. Quality-loop tests proving detail-enriched candidates can be compared with card-only candidates without merging evidence sources.
+9. Traceability tests proving a final candidate links back to query, payload, extraction source, corpus snapshot, and detail-open decision.
+10. API scope tests proving connections, events, results, and artifacts are tenant/workspace scoped.
+11. Risk-state tests for logged-out, needs-user-action, and budget-exhausted states.
+12. A small live smoke command gated behind explicit compliance and session setup.
 
 The live command should be manual-only. CI should use fixture replay.
 
@@ -512,29 +719,42 @@ The live command should be manual-only. CI should use fixture replay.
 Recommended order:
 
 1. Add provider selection config for `cts` vs `liepin`.
-2. Add connector API client and Python adapter with fake worker fixtures.
-3. Add connector run status/events and the verified-loop summary shape.
-4. Add detail-open ledger and policy.
-5. Add Bun/TypeScript Chromium worker skeleton with fixture replay.
-6. Add network-response extraction harness and DOM fallback fixtures.
-7. Add live session login and card search.
-8. Add selective detail opening.
-9. Add quality-loop summary and traceability checks.
-10. Run one JD end-to-end with low budgets.
-11. Only after live behavior is stable, design the Vite/TanStack UI.
+2. Add compliance, API scope, session-secret, and artifact logical-name boundaries.
+3. Add connector API client and Python adapter with fake worker fixtures.
+4. Add connector run status/events and the verified-loop summary shape.
+5. Add detail-open ledger, provider candidate identity, and idempotency policy.
+6. Add Bun/TypeScript Chromium worker skeleton with fixture replay.
+7. Add network-response extraction harness, DOM fallback fixtures, and redaction checks.
+8. Add live session login and card search behind compliance gate.
+9. Add selective detail opening with low budgets and command idempotency.
+10. Add quality-loop summary and traceability checks.
+11. Run one JD end-to-end with low budgets.
+12. Only after live behavior is stable, design the Vite/TanStack UI.
 
 ## Acceptance Criteria
 
 - Python remains the source of truth for query planning, scoring, PRF, corpus, flywheel, and detail-open policy.
-- Bun/TypeScript worker only executes Chromium browser/session/page operations, network capture, extraction, and detail-open commands.
+- Bun/TypeScript worker is the V1 production worker runtime and only executes Chromium browser/session/page operations, network capture, extraction, and detail-open commands.
 - Lightpanda or another non-Chromium engine is not required for V1.
 - No browser extension is required.
 - No local Chrome profile or local user cookies are read.
+- The user only needs to log into Liepin in the managed browser session; no extension, local daemon, cookie export, token paste, or runtime configuration is required.
+- Live connector runs require a passing compliance gate.
+- API requests are authenticated and tenant/workspace scoped.
 - Worker extraction prefers authenticated network payloads and uses DOM extraction as fallback.
+- No production code path uses Playwright `APIRequestContext` or equivalent direct HTTP client calls to Liepin endpoints.
+- No cookies, tokens, auth headers, storageState, CDP URLs, or debug websocket URLs appear in artifacts, logs, traces, or fixtures.
+- Login sessions expose controlled browser view or handoff state, not raw CDP/Playwright control.
 - All provider-returned Liepin cards are saved to CorpusStore.
 - Detail pages are opened only when Python approves them.
 - Repeated candidates do not consume detail budget again.
+- Detail-open attempts are recorded before worker execution and are idempotent.
+- Unknown or possible detail consumption is treated as consumed.
 - Budget exhaustion does not fail the whole run.
+- Raw detail payloads are protected corpus assets.
+- Fixture export fails closed unless redaction policy passes.
+- Card-only and detail-enriched scorecards are stored separately.
+- PRF and flywheel metrics distinguish card-only evidence from detail-enriched evidence.
 - A final candidate can be traced back to query, provider payload, extraction source, corpus snapshot, and detail-open decision.
 - Run output can explain connection status, search count, extraction source distribution, detail-open usage, quality outcome, and failure reasons.
 - Fixture replay can test extraction without live Liepin access.
