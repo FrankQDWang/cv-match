@@ -124,7 +124,9 @@ def _validated_provider_snapshots_for_candidates(
                 f"candidate={candidate.dedup_key}, snapshot={snapshot.synthetic_candidate_fingerprint}"
             )
         snapshot_payload_hash = sha256_json(snapshot.raw_payload)
-        if candidate.snapshot_sha256 and candidate.snapshot_sha256 != snapshot_payload_hash:
+        if not candidate.snapshot_sha256:
+            raise ValueError("Liepin provider candidate snapshot hash is required")
+        if candidate.snapshot_sha256 != snapshot_payload_hash:
             raise ValueError(
                 "Liepin provider snapshot payload hash mismatch: "
                 f"candidate={candidate.snapshot_sha256}, snapshot={snapshot_payload_hash}"
