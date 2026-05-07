@@ -671,6 +671,8 @@ class LiepinStore:
                 (tenant_id, workspace_id, actor_id, worker_response_id),
             ).fetchone()
             if duplicate is not None:
+                if duplicate["attempt_id"] != attempt_id:
+                    raise ValueError("Liepin detail worker response attempt mismatch.")
                 row = _fetch_detail_attempt(
                     conn,
                     tenant_id=tenant_id,

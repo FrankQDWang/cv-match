@@ -164,6 +164,72 @@ def test_duplicate_worker_response_is_applied_once(tmp_path: Path) -> None:
     )
 
 
+def test_duplicate_worker_response_id_rejects_different_attempt(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    first = _reserve(store, "candidate-1")
+    second = _reserve(store, "candidate-2")
+    for attempt, worker_command_id in [(first, "cmd-1"), (second, "cmd-2")]:
+        store.transition_detail_attempt(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            attempt_id=attempt.attempt_id,
+            state="started",
+            consumption_state="not_consumed",
+            worker_command_id=worker_command_id,
+        )
+
+    completed = store.apply_detail_worker_response(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        actor_id=ACTOR,
+        attempt_id=first.attempt_id,
+        worker_response_id="worker-response-reused",
+        state="completed",
+        consumption_state="consumed",
+        worker_command_id="cmd-1",
+        raw_evidence_ref="artifact:detail-1",
+    )
+
+    with pytest.raises(ValueError, match="worker response attempt mismatch"):
+        store.apply_detail_worker_response(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            attempt_id=second.attempt_id,
+            worker_response_id="worker-response-reused",
+            state="completed",
+            consumption_state="consumed",
+            worker_command_id="cmd-2",
+            raw_evidence_ref="artifact:detail-2",
+        )
+
+    assert (
+        store.apply_detail_worker_response(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            attempt_id=first.attempt_id,
+            worker_response_id="worker-response-reused",
+            state="failed_after_possible_consumption",
+            consumption_state="possibly_consumed",
+            worker_command_id="cmd-1",
+            raw_evidence_ref="artifact:conflicting-duplicate",
+        )
+        == completed
+    )
+    assert (
+        store.count_detail_budget_consumed(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            provider_account_hash=ACCOUNT,
+            provider_day_key="liepin:account-hash-a:2026-05-07",
+        )
+        == 1
+    )
+
+
 def test_blocked_risk_control_records_evidence_without_completion(tmp_path: Path) -> None:
     store = _store(tmp_path)
     attempt = _reserve(store, "candidate-risk")
