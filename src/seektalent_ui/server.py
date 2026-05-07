@@ -373,6 +373,7 @@ def create_app(registry: RunRegistry, settings: AppSettings | None = None) -> Fa
     @app.post("/api/liepin/connections/{connection_id}/stream-token", status_code=204)
     def create_connection_stream_token(
         connection_id: str,
+        request: Request,
         response: Response,
         scope: LiepinScope = Depends(require_liepin_scope),
     ) -> Response:
@@ -398,7 +399,7 @@ def create_app(registry: RunRegistry, settings: AppSettings | None = None) -> Fa
             max_age=60,
             httponly=True,
             samesite="lax",
-            secure=False,
+            secure=_stream_cookie_secure(request),
             path=f"/api/liepin/connections/{connection_id}/events",
         )
         response.status_code = 204
@@ -502,6 +503,7 @@ def create_app(registry: RunRegistry, settings: AppSettings | None = None) -> Fa
     @app.post("/api/runs/{run_id}/stream-token", status_code=204)
     def create_run_stream_token(
         run_id: str,
+        request: Request,
         response: Response,
         scope: LiepinScope = Depends(require_liepin_scope),
     ) -> Response:
@@ -527,7 +529,7 @@ def create_app(registry: RunRegistry, settings: AppSettings | None = None) -> Fa
             max_age=60,
             httponly=True,
             samesite="lax",
-            secure=False,
+            secure=_stream_cookie_secure(request),
             path=f"/api/runs/{run_id}/events",
         )
         response.status_code = 204
@@ -709,6 +711,11 @@ def _sequence_from_header(last_event_id: str | None) -> int:
         return max(0, int(last_event_id))
     except ValueError:
         return 0
+
+
+def _stream_cookie_secure(request: Request) -> bool:
+    host = (request.url.hostname or "testserver").strip("[]").lower()
+    return host not in {"localhost", "127.0.0.1", "::1", "testserver"}
 
 
 def _liepin_run_status(status: str) -> RunStatus:

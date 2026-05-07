@@ -268,6 +268,7 @@ def test_connection_stream_token_cookie_and_scoped_sse_events(tmp_path: Path) ->
     assert "liepin_stream_token=" in set_cookie
     assert "HttpOnly" in set_cookie
     assert f"Path=/api/liepin/connections/{connection_id}/events" in set_cookie
+    assert "Secure" not in set_cookie
     assert "unit-api-token" not in set_cookie
 
     store = LiepinStore(tmp_path / "liepin.sqlite3")
@@ -317,6 +318,14 @@ def test_connection_stream_token_cookie_and_scoped_sse_events(tmp_path: Path) ->
     cookie_name_query_token = client.get(f"/api/liepin/connections/{connection_id}/events?liepin_stream_token=abc")
     assert cookie_name_query_token.status_code == 400
 
+    non_local_client = _client(tmp_path)
+    non_local_token_response = non_local_client.post(
+        f"/api/liepin/connections/{connection_id}/stream-token",
+        headers={**API_HEADERS, "Host": "app.example.test"},
+    )
+    assert non_local_token_response.status_code == 204
+    assert "Secure" in non_local_token_response.headers["set-cookie"]
+
 
 def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: Path) -> None:
     client = _client(tmp_path)
@@ -357,6 +366,7 @@ def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: P
     token_response = client.post(f"/api/runs/{run_id}/stream-token", headers=API_HEADERS)
     assert token_response.status_code == 204
     assert f"Path=/api/runs/{run_id}/events" in token_response.headers["set-cookie"]
+    assert "Secure" not in token_response.headers["set-cookie"]
     assert "streamToken" not in token_response.text
 
     store.append_event(
@@ -405,6 +415,14 @@ def test_run_stream_token_events_results_and_liepin_gate_enforcement(tmp_path: P
 
     cookie_name_query_token = client.get(f"/api/runs/{run_id}/events?liepin_stream_token=abc")
     assert cookie_name_query_token.status_code == 400
+
+    non_local_client = _client(tmp_path)
+    non_local_token_response = non_local_client.post(
+        f"/api/runs/{run_id}/stream-token",
+        headers={**API_HEADERS, "Host": "app.example.test"},
+    )
+    assert non_local_token_response.status_code == 204
+    assert "Secure" in non_local_token_response.headers["set-cookie"]
 
 
 def test_approved_gate_fresh_connection_cannot_verify_or_start_liepin_run(tmp_path: Path) -> None:

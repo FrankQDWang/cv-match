@@ -568,6 +568,8 @@ def _has_unsafe_payload(value: object) -> bool:
             or lowered.startswith("token ")
             or lowered.startswith("digest ")
             or "authorization basic " in lowered
+            or "authorization token " in lowered
+            or "authorization digest " in lowered
         ):
             return True
         if any(
@@ -599,6 +601,8 @@ def _has_unsafe_payload(value: object) -> bool:
         if ("127.0.0.1" in lowered or "localhost" in lowered) and any(
             marker in lowered for marker in [":9222", "/json/version", "/devtools/", "/internal", ":9999"]
         ):
+            return True
+        if ":9222" in lowered and any(marker in lowered for marker in ["/json/version", "/devtools/"]):
             return True
         if "worker" in lowered and "/internal" in lowered:
             return True

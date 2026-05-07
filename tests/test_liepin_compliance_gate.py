@@ -482,6 +482,9 @@ def test_event_ledger_rejects_worker_browser_internals_and_keeps_domain_payloads
         {"diagnostics": "Authorization: Digest abc"},
         {"diagnostics": "Token abc"},
         {"diagnostics": "Digest abc"},
+        {"diagnostics": "Authorization Token abc"},
+        {"diagnostics": "Authorization Digest abc"},
+        {"diagnostics": "http://10.0.0.5:9222/json/version"},
         {"diagnostics": "http://worker-service/internal/health"},
         {"diagnostics": "https://worker.example/internal/health"},
     ]
