@@ -133,6 +133,31 @@ describe("liepin bun compatibility gate", () => {
     expect(message).toContain("[REDACTED]");
   });
 
+  it("redacts prefixed structured failure output", async () => {
+    const unsafeOutput =
+      'Error: {"headers":{"cookie":"sid=prefixed-cookie-secret","authorization":"Bearer prefixed-auth-secret"},"storageState":{"cookies":[{"value":"prefixed-storage-secret"}]}}';
+
+    let message = "";
+    try {
+      await runCompatibilityGate({
+        verifyBrowserChecks: false,
+        commandRunner: async () => {
+          throw new Error(unsafeOutput);
+        },
+      });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).not.toContain("prefixed-cookie-secret");
+    expect(message).not.toContain("prefixed-auth-secret");
+    expect(message).not.toContain("prefixed-storage-secret");
+    expect(message).not.toContain("cookie");
+    expect(message).not.toContain("authorization");
+    expect(message).not.toContain("storageState");
+    expect(message).toContain("[REDACTED]");
+  });
+
   it("names the Chromium setup command when browser binaries are missing", () => {
     expect(chromiumSetupFailureMessage(new Error("Executable does not exist"))).toContain(
       "bunx playwright install chromium"

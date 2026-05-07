@@ -334,6 +334,10 @@ function sanitizeOutputLine(line: string): string {
   if (parsed !== undefined) {
     return JSON.stringify(redactFixturePayload(parsed).payload);
   }
+  const embedded = redactEmbeddedJsonPayload(line);
+  if (embedded !== line) {
+    return embedded;
+  }
 
   const headerMatch = line.match(/^\s*(cookie|authorization|auth)\s*:\s*(.*)$/i);
   if (headerMatch) {
@@ -359,6 +363,22 @@ function parseJsonLine(line: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+function redactEmbeddedJsonPayload(line: string): string {
+  for (const marker of ["{", "["]) {
+    const index = line.indexOf(marker);
+    if (index === -1) {
+      continue;
+    }
+    try {
+      JSON.parse(line.slice(index).trim());
+      return `${line.slice(0, index)}${REDACTED_VALUE}`;
+    } catch {
+      continue;
+    }
+  }
+  return line;
 }
 
 function redactFailureText(value: string): string {
