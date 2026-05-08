@@ -1,3 +1,5 @@
+import { redactFixturePayload } from "./redaction";
+
 export const EXTRACTOR_VERSION = "liepin-passive-extractor-v1" as const;
 
 export type ExtractionSource = "network" | "dom_fallback";
@@ -24,6 +26,7 @@ export type WorkerCandidateDetail = WorkerCandidateCard & {
 
 export type DomFallbackExtraction = {
   cards: WorkerCandidateCard[];
+  repairHtml: string;
   selectorHealth: {
     cardSelector: boolean;
     idSelector: boolean;
@@ -34,6 +37,7 @@ export type DomFallbackExtraction = {
 export type WorkerCardExtractionResult = {
   extractionSource: ExtractionSource;
   cards: WorkerCandidateCard[];
+  repairHtml?: string;
   selectorHealth?: DomFallbackExtraction["selectorHealth"];
 };
 
@@ -106,6 +110,7 @@ export function extractWorkerCards(options: {
   return {
     extractionSource: "dom_fallback",
     cards: fallback.cards.filter(isCompleteCard),
+    repairHtml: fallback.repairHtml,
     selectorHealth: fallback.selectorHealth,
   };
 }
@@ -153,12 +158,18 @@ export function extractCardsFromDomFallback(html: string): DomFallbackExtraction
 
   return {
     cards,
+    repairHtml: redactedRepairHtml(html),
     selectorHealth: {
       cardSelector: cardFragments.length > 0,
       idSelector: cards.every((card) => card.providerCandidateId.length > 0),
       titleSelector: cards.every((card) => !card.missingFields.includes("title")),
     },
   };
+}
+
+function redactedRepairHtml(html: string): string {
+  const redacted = redactFixturePayload(html).payload;
+  return typeof redacted === "string" ? redacted : "";
 }
 
 function buildCard(

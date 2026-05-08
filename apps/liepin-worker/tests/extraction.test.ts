@@ -100,6 +100,26 @@ describe("liepin worker extraction", () => {
     expect(result.cards[0]?.searchableText).toContain("Data Platform Engineer");
   });
 
+  it("records redacted DOM fallback repair HTML", () => {
+    const fallbackHtml = `${String(cardsDomHtml)}
+      <aside>
+        <a href="https://www.liepin.com/profile?token=raw-auth-secret">debug</a>
+        contact: raw-contact@example.test 13800138000
+      </aside>`;
+
+    const result = extractWorkerCards({
+      networkArtifacts: [],
+      fallbackHtml,
+    });
+
+    expect(result.extractionSource).toBe("dom_fallback");
+    expect(result.repairHtml).toContain("candidate-card");
+    expect(result.repairHtml).toContain("dom-cand-redacted-1");
+    expect(result.repairHtml).not.toContain("raw-auth-secret");
+    expect(result.repairHtml).not.toContain("raw-contact@example.test");
+    expect(result.repairHtml).not.toContain("13800138000");
+  });
+
   it("prefers complete network cards over DOM fallback cards", () => {
     const result = extractWorkerCards({
       networkArtifacts: [
