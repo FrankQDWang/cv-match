@@ -17,6 +17,10 @@ type PageLike = {
   off(event: "response", handler: (response: ResponseLike) => void): void;
 };
 
+type CaptureOptions = {
+  postActionCaptureMs?: number;
+};
+
 export type CapturedResponseRecord = {
   url: string;
   status: number;
@@ -56,9 +60,11 @@ const VOLATILE_QUERY_KEYS = new Set([
 
 export async function captureResponsesDuringAction(
   page: PageLike,
-  visibleAction: () => Promise<void>
+  visibleAction: () => Promise<void>,
+  options: CaptureOptions = {}
 ): Promise<CapturedResponseRecord[]> {
   const pending: Array<Promise<CapturedResponseRecord | null>> = [];
+  const postActionCaptureMs = options.postActionCaptureMs ?? 10;
 
   const onResponse = (response: ResponseLike): void => {
     pending.push(candidateCaptureRecord(response));
@@ -67,6 +73,9 @@ export async function captureResponsesDuringAction(
   page.on("response", onResponse);
   try {
     await visibleAction();
+    if (postActionCaptureMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, postActionCaptureMs));
+    }
   } finally {
     page.off("response", onResponse);
   }
@@ -126,10 +135,7 @@ export function tokenizeAuthBearingUrl(rawUrl: string): string {
   try {
     const parsed = new URL(rawUrl);
     const query = [...parsed.searchParams.entries()]
-      .map(([key, value]) => {
-        const safeValue = AUTH_QUERY_KEYS.has(key.toLowerCase()) ? REDACTED_VALUE : value;
-        return `${encodeURIComponent(key)}=${safeValue}`;
-      })
+      .map(([key]) => `${encodeURIComponent(key)}=${REDACTED_VALUE}`)
       .join("&");
     return `${parsed.origin}${parsed.pathname}${query ? `?${query}` : ""}${parsed.hash}`;
   } catch {
@@ -146,7 +152,9 @@ export function endpointFingerprint(rawUrl: string, method = "GET"): string {
         return !VOLATILE_QUERY_KEYS.has(normalizedKey) && !AUTH_QUERY_KEYS.has(normalizedKey);
       })
       .sort(([left], [right]) => left.localeCompare(right));
-    const query = new URLSearchParams(keptParams).toString();
+    const query = keptParams
+      .map(([key]) => `${encodeURIComponent(key)}=${REDACTED_VALUE}`)
+      .join("&");
     const path = `${parsed.host}${parsed.pathname}`;
 
     return `${method.toUpperCase()} ${query ? `${path}?${query}` : path}`;
@@ -162,7 +170,10 @@ export function responseShapeHash(payload: unknown): string {
 
 function shapeOf(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.length === 0 ? [] : [shapeOf(value[0])];
+    if (value.length === 0) {
+      return [];
+    }
+    return [mergeShapes(value.map((entry) => shapeOf(entry)))];
   }
 
   if (value !== null && typeof value === "object") {
@@ -174,6 +185,54 @@ function shapeOf(value: unknown): unknown {
   }
 
   return typeof value;
+}
+
+function mergeShapes(shapes: unknown[]): unknown {
+  const uniqueShapes = uniqueByJson(shapes);
+  if (uniqueShapes.length === 1) {
+    return uniqueShapes[0];
+  }
+
+  if (shapes.every(isShapeObject)) {
+    const entries = new Map<string, unknown[]>();
+    for (const shape of shapes) {
+      for (const [key, value] of Object.entries(shape as Record<string, unknown>)) {
+        entries.set(key, [...(entries.get(key) ?? []), value]);
+      }
+    }
+
+    return Object.fromEntries(
+      [...entries.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, values]) => [key, mergeShapes(values)])
+    );
+  }
+
+  if (shapes.every((shape) => Array.isArray(shape))) {
+    const nested = shapes.flatMap((shape) => shape as unknown[]);
+    return nested.length === 0 ? [] : [mergeShapes(nested)];
+  }
+
+  return uniqueShapes.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+}
+
+function uniqueByJson(values: unknown[]): unknown[] {
+  const seen = new Set<string>();
+  const unique: unknown[] = [];
+
+  for (const value of values) {
+    const key = JSON.stringify(value);
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(value);
+    }
+  }
+
+  return unique;
+}
+
+function isShapeObject(value: unknown): boolean {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function isCandidatePayload(payload: unknown): boolean {

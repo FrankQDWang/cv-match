@@ -89,8 +89,28 @@ describe("passive network capture", () => {
 
     expect(page.attachedEvents).toEqual(["response"]);
     expect(captured).toHaveLength(1);
-    expect(captured[0]?.url).toContain("page=1");
+    expect(captured[0]?.url).toContain("page=[REDACTED]");
     expect(page.responseHandlers).toHaveLength(0);
+  });
+
+  it("keeps candidate responses emitted shortly after the visible action resolves", async () => {
+    const page = new FakePage();
+
+    const captured = await captureResponsesDuringAction(page, async () => {
+      setTimeout(() => {
+        page.emitResponse(
+          new FakeResponse({
+            url: "https://www.liepin.com/api/cards?page=1",
+            jsonBody: { data: { cards: [{ candidateId: "cand-redacted-1" }] } },
+          })
+        );
+      }, 0);
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.redactedFixture.payload.data.cards[0].candidateId).toBe(
+      "cand-redacted-1"
+    );
   });
 
   it("tokenizes auth-bearing URLs and never stores request or response headers", async () => {
@@ -102,7 +122,7 @@ describe("passive network capture", () => {
     );
 
     expect(record.url).toBe(
-      "https://www.liepin.com/api/detail?candidateId=cand-redacted-1&token=[REDACTED]&signature=[REDACTED]&ts=999"
+      "https://www.liepin.com/api/detail?candidateId=[REDACTED]&token=[REDACTED]&signature=[REDACTED]&ts=[REDACTED]"
     );
     expect(JSON.stringify(record)).not.toContain("secret");
     expect(JSON.stringify(record)).not.toContain("Authorization");
@@ -156,6 +176,29 @@ describe("passive network capture", () => {
     expect(serialized).not.toContain("candidate@example.test");
   });
 
+  it("redacts query values from captured URLs and endpoint fingerprints", async () => {
+    const record = await tokenizedCaptureRecord(
+      new FakeResponse({
+        url:
+          "https://www.liepin.com/api/cards?keyword=raw-contact@example.test&phone=13800138000&email=person@example.test&secret=url-secret&page=1&timestamp=999",
+        jsonBody: { data: { cards: [{ candidateId: "cand-redacted-1" }] } },
+      })
+    );
+
+    expect(record.url).toBe(
+      "https://www.liepin.com/api/cards?keyword=[REDACTED]&phone=[REDACTED]&email=[REDACTED]&secret=[REDACTED]&page=[REDACTED]&timestamp=[REDACTED]"
+    );
+    expect(record.endpointFingerprint).toBe(
+      "GET www.liepin.com/api/cards?email=[REDACTED]&keyword=[REDACTED]&page=[REDACTED]&phone=[REDACTED]&secret=[REDACTED]"
+    );
+
+    const serialized = JSON.stringify(record);
+    expect(serialized).not.toContain("raw-contact@example.test");
+    expect(serialized).not.toContain("13800138000");
+    expect(serialized).not.toContain("person@example.test");
+    expect(serialized).not.toContain("url-secret");
+  });
+
   it("ignores non-json and unrelated json responses while keeping candidate payloads", async () => {
     const page = new FakePage();
 
@@ -196,7 +239,7 @@ describe("passive network capture", () => {
       endpointFingerprint(
         "https://www.liepin.com/api/cards?page=3&timestamp=123456&signature=abc&nonce=n1&keyword=python"
       )
-    ).toBe("GET www.liepin.com/api/cards?keyword=python&page=3");
+    ).toBe("GET www.liepin.com/api/cards?keyword=[REDACTED]&page=[REDACTED]");
   });
 
   it("builds stable response shape hashes from structure instead of volatile values", () => {
@@ -224,5 +267,30 @@ describe("passive network capture", () => {
     });
 
     expect(first).toBe(second);
+  });
+
+  it("includes fields from later array elements in response shape hashes", () => {
+    const withoutLaterField = responseShapeHash({
+      data: {
+        cards: [
+          { candidateId: "cand-redacted-1", title: "Backend Engineer" },
+          { candidateId: "cand-redacted-2", title: "ML Engineer" },
+        ],
+      },
+    });
+    const withLaterField = responseShapeHash({
+      data: {
+        cards: [
+          { candidateId: "cand-redacted-1", title: "Backend Engineer" },
+          {
+            candidateId: "cand-redacted-2",
+            title: "ML Engineer",
+            location: "Shanghai",
+          },
+        ],
+      },
+    });
+
+    expect(withLaterField).not.toBe(withoutLaterField);
   });
 });
