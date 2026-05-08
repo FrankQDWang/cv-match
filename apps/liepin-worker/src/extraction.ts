@@ -1,0 +1,198 @@
+export const EXTRACTOR_VERSION = "liepin-passive-extractor-v1" as const;
+
+export type ExtractionSource = "network" | "dom_fallback";
+
+export type PrivacyMetadata = {
+  redactionPolicyVersion: string;
+  containsDirectContact: boolean;
+};
+
+export type WorkerCandidateCard = {
+  provider: "liepin";
+  providerCandidateId: string;
+  extractionSource: ExtractionSource;
+  extractorVersion: typeof EXTRACTOR_VERSION;
+  rawPayload: unknown;
+  searchableText: string;
+  privacy: PrivacyMetadata;
+  missingFields: string[];
+};
+
+export type WorkerCandidateDetail = WorkerCandidateCard & {
+  providerDetailId: string;
+};
+
+export type DomFallbackExtraction = {
+  cards: WorkerCandidateCard[];
+  selectorHealth: {
+    cardSelector: boolean;
+    idSelector: boolean;
+    titleSelector: boolean;
+  };
+};
+
+type RedactedFixture = {
+  manifest?: {
+    redaction_policy_version?: string;
+  };
+  data?: {
+    cards?: unknown[];
+    detail?: unknown;
+  };
+};
+
+type CandidatePayload = {
+  candidateId?: unknown;
+  detailId?: unknown;
+  title?: unknown;
+  company?: unknown;
+  location?: unknown;
+  skills?: unknown;
+  summary?: unknown;
+  experience?: unknown;
+  education?: unknown;
+};
+
+const DEFAULT_REDACTION_POLICY_VERSION = "unknown";
+const CONTACT_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|(?<!\d)1[3-9]\d{9}(?!\d)/i;
+
+export function extractCardsFromNetwork(fixture: RedactedFixture): WorkerCandidateCard[] {
+  return (fixture.data?.cards ?? []).map((card) =>
+    buildCard(card as CandidatePayload, "network", privacyFromFixture(fixture))
+  );
+}
+
+export function extractDetailFromNetwork(fixture: RedactedFixture): WorkerCandidateDetail {
+  const detail = (fixture.data?.detail ?? {}) as CandidatePayload;
+  const card = buildCard(detail, "network", privacyFromFixture(fixture));
+  const providerDetailId = stringValue(detail.detailId);
+
+  return {
+    ...card,
+    providerDetailId,
+    missingFields: [...card.missingFields, ...missingWhenEmpty(providerDetailId, "detailId")],
+  };
+}
+
+export function extractCardsFromDomFallback(html: string): DomFallbackExtraction {
+  const cardFragments = matchAll(
+    html,
+    /<article\b[^>]*class=["'][^"']*\bcandidate-card\b[^"']*["'][^>]*>[\s\S]*?<\/article>/gi
+  );
+
+  const cards = cardFragments.map((fragment) => {
+    const providerCandidateId = attrValue(fragment, "data-candidate-id");
+    const title = textForClass(fragment, "candidate-title");
+    const company = textForClass(fragment, "candidate-company");
+    const skills = matchAll(fragment, /<li[^>]*>([\s\S]*?)<\/li>/gi).map(cleanText);
+    const rawPayload = { providerCandidateId, title, company, skills };
+
+    return buildCard(
+      {
+        candidateId: providerCandidateId,
+        title,
+        company,
+        skills,
+      },
+      "dom_fallback",
+      {
+        redactionPolicyVersion: "liepin-fixture-redaction-v1",
+        containsDirectContact: CONTACT_PATTERN.test(html),
+      },
+      rawPayload
+    );
+  });
+
+  return {
+    cards,
+    selectorHealth: {
+      cardSelector: cardFragments.length > 0,
+      idSelector: cards.every((card) => card.providerCandidateId.length > 0),
+      titleSelector: cards.every((card) => !card.missingFields.includes("title")),
+    },
+  };
+}
+
+function buildCard(
+  payload: CandidatePayload,
+  extractionSource: ExtractionSource,
+  privacy: PrivacyMetadata,
+  rawPayload: unknown = payload
+): WorkerCandidateCard {
+  const providerCandidateId = stringValue(payload.candidateId);
+  const title = stringValue(payload.title);
+  const company = stringValue(payload.company);
+  const location = stringValue(payload.location);
+  const skills = stringArray(payload.skills);
+  const textParts = [
+    title,
+    company,
+    location,
+    ...skills,
+    stringValue(payload.summary),
+    stringValue(payload.experience),
+    stringValue(payload.education),
+  ];
+
+  return {
+    provider: "liepin",
+    providerCandidateId,
+    extractionSource,
+    extractorVersion: EXTRACTOR_VERSION,
+    rawPayload,
+    searchableText: normalizeSearchableText(textParts),
+    privacy,
+    missingFields: [
+      ...missingWhenEmpty(providerCandidateId, "candidateId"),
+      ...missingWhenEmpty(title, "title"),
+    ],
+  };
+}
+
+function privacyFromFixture(fixture: RedactedFixture): PrivacyMetadata {
+  return {
+    redactionPolicyVersion:
+      fixture.manifest?.redaction_policy_version ?? DEFAULT_REDACTION_POLICY_VERSION,
+    containsDirectContact: CONTACT_PATTERN.test(JSON.stringify(fixture)),
+  };
+}
+
+function normalizeSearchableText(parts: string[]): string {
+  return parts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((entry) => (typeof entry === "string" ? [entry] : []))
+    : [];
+}
+
+function missingWhenEmpty(value: string, field: string): string[] {
+  return value.length === 0 ? [field] : [];
+}
+
+function matchAll(value: string, pattern: RegExp): string[] {
+  return [...value.matchAll(pattern)].map((match) => match[1] ?? match[0] ?? "");
+}
+
+function attrValue(fragment: string, attribute: string): string {
+  const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = fragment.match(new RegExp(`${escapedAttribute}=["']([^"']+)["']`, "i"));
+  return cleanText(match?.[1] ?? "");
+}
+
+function textForClass(fragment: string, className: string): string {
+  const escapedClass = className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = fragment.match(
+    new RegExp(`<[^>]*class=["'][^"']*\\b${escapedClass}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/[^>]+>`, "i")
+  );
+  return cleanText(match?.[1] ?? "");
+}
+
+function cleanText(value: string): string {
+  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
