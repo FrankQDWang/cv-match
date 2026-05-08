@@ -73,7 +73,7 @@ export function createWorkerFetchHandler(options: WorkerFetchOptions): (request:
       if (request.method === "POST" && url.pathname === "/internal/search/cards") {
         const body = await readJsonObject(request);
         const connectionId = stringValue(body.connectionId, "connectionId");
-        const sessionStatus = await statusFor(options, connectionId);
+        const sessionStatus = await statusFor(options, connectionId, sessionScopeFromBody(body));
         if (sessionStatus.status !== "ready") {
           return json({ error: { code: "session_not_ready", status: sessionStatus.status } }, 409);
         }
@@ -173,6 +173,23 @@ function sessionScopeFromQuery(url: URL): SessionScope | undefined {
     return undefined;
   }
   return { tenantId, workspaceId, providerAccountHash, connectionId };
+}
+
+function sessionScopeFromBody(body: Record<string, unknown>): SessionScope | undefined {
+  if (
+    typeof body.tenantId !== "string" ||
+    typeof body.workspaceId !== "string" ||
+    typeof body.providerAccountHash !== "string" ||
+    typeof body.connectionId !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    tenantId: body.tenantId,
+    workspaceId: body.workspaceId,
+    providerAccountHash: body.providerAccountHash,
+    connectionId: body.connectionId,
+  };
 }
 
 async function readJsonObject(request: Request): Promise<Record<string, unknown>> {

@@ -226,6 +226,41 @@ describe("internal Liepin worker server", () => {
     });
   });
 
+  it("checks stored session readiness for card search using the full request scope", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "liepin-worker-search-status-"));
+    const store = new EncryptedSessionStore(rootDir, {
+      keyId: "env-key",
+      keyMaterial: "env-test-key-material",
+    });
+    await store.writeStorageState(SCOPE, { cookies: [{ name: "lt", value: "secret" }], origins: [] });
+    const handler = createWorkerFetchHandlerFromEnv({
+      SEEKTALENT_LIEPIN_WORKER_AUTH_TOKEN: AUTH_TOKEN,
+      SEEKTALENT_LIEPIN_SESSION_STORE_DIR: rootDir,
+      SEEKTALENT_LIEPIN_SESSION_STORE_KEY_ID: "env-key",
+      SEEKTALENT_LIEPIN_SESSION_STORE_KEY: "env-test-key-material",
+    });
+
+    const ready = await handler(
+      new Request("http://127.0.0.1/internal/search/cards", {
+        method: "POST",
+        headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+        body: JSON.stringify({ ...SCOPE, keywordQuery: "python" }),
+      })
+    );
+    const missing = await handler(
+      new Request("http://127.0.0.1/internal/search/cards", {
+        method: "POST",
+        headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+        body: JSON.stringify({ ...SCOPE, connectionId: "missing-conn", keywordQuery: "python" }),
+      })
+    );
+
+    expect(ready.status).toBe(501);
+    expect(await ready.json()).toEqual({ error: { code: "search_not_implemented" } });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toEqual({ error: { code: "session_not_ready", status: "missing" } });
+  });
+
   it("requires a preapproved idempotency key for detail open and rejects budget decisions", async () => {
     const handler = createWorkerFetchHandler({
       authToken: AUTH_TOKEN,

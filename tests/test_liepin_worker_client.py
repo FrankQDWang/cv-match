@@ -297,7 +297,51 @@ def test_default_http_json_decodes_worker_json_error_without_leaking_internals(
 
     assert error.value.setup_status == "session_not_ready"
     assert "session_not_ready" in str(error.value)
-    assert "Login required" in str(error.value)
+    assert "Liepin worker session is not ready." in str(error.value)
+    assert "Login required" not in str(error.value)
     assert "127.0.0.1" not in str(error.value)
     assert "secret" not in str(error.value)
     assert "storage" not in str(error.value).lower()
+
+
+def test_default_http_json_replaces_unknown_worker_error_strings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unsafe_code = "http://127.0.0.1:8123/cdp?token=secret"
+    unsafe_message = "storageState=/tmp/secret.json cookie=lt-secret cdp=ws://127.0.0.1:9222/devtools"
+
+    def raise_http_error(*args: object, **kwargs: object) -> object:
+        raise HTTPError(
+            "http://127.0.0.1:8123/internal/search/cards?token=secret",
+            409,
+            "Conflict",
+            {},
+            io.BytesIO(
+                (
+                    '{"error":{"code":'
+                    f"{unsafe_code!r},"
+                    '"message":'
+                    f"{unsafe_message!r}"
+                    "}}"
+                ).replace("'", '"').encode()
+            ),
+        )
+
+    monkeypatch.setattr(liepin_client_module.urllib_request, "urlopen", raise_http_error)
+
+    with pytest.raises(LiepinWorkerModeError) as error:
+        _default_http_json(
+            "POST",
+            "http://127.0.0.1:8123/internal/search/cards?token=secret",
+            headers={"Authorization": "Bearer worker-token"},
+            json_body={"connectionId": "conn-1"},
+            timeout=1.0,
+        )
+
+    rendered = str(error.value)
+    assert error.value.setup_status == "worker_request_failed"
+    assert "Liepin worker request failed." in rendered
+    assert unsafe_code not in rendered
+    assert unsafe_message not in rendered
+    for unsafe_fragment in ("127.0.0.1", "secret", "storage", "cookie", "cdp", "devtools"):
+        assert unsafe_fragment not in rendered.lower()

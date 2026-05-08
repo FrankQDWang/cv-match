@@ -263,8 +263,18 @@ def _session_status_url(
 
 
 def _worker_mode_error_from_http_error(error: HTTPError) -> LiepinWorkerModeError:
-    code = "worker_http_error"
-    message = "Liepin worker request failed."
+    safe_worker_errors = {
+        "session_not_ready": "Liepin worker session is not ready.",
+        "search_not_implemented": "Liepin worker search is not implemented.",
+        "invalid_worker_request": "Liepin worker rejected the request.",
+        "not_found": "Liepin worker endpoint was not found.",
+        "worker_auth_required": "Liepin worker authentication is required.",
+        "worker_auth_forbidden": "Liepin worker authentication was rejected.",
+        "missing_preapproved_idempotency_key": "Liepin worker requires a preapproved idempotency key.",
+        "unapproved_idempotency_key": "Liepin worker rejected the idempotency key.",
+        "budget_decision_not_allowed_in_worker": "Liepin worker rejected an unsupported budget field.",
+    }
+    code = "worker_request_failed"
     try:
         decoded = json.loads(error.read().decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
@@ -272,9 +282,7 @@ def _worker_mode_error_from_http_error(error: HTTPError) -> LiepinWorkerModeErro
     if isinstance(decoded, dict) and isinstance(decoded.get("error"), dict):
         error_payload = decoded["error"]
         raw_code = error_payload.get("code")
-        raw_message = error_payload.get("message")
-        if isinstance(raw_code, str) and raw_code:
+        if isinstance(raw_code, str) and raw_code in safe_worker_errors:
             code = raw_code
-        if isinstance(raw_message, str) and raw_message:
-            message = raw_message
+    message = safe_worker_errors.get(code, "Liepin worker request failed.")
     return LiepinWorkerModeError(f"{code}: {message}", setup_status=code)
