@@ -317,6 +317,12 @@ class ResumeScorer:
                 draft=draft,
                 resume_id=candidate.resume_id,
                 source_round=candidate.source_round or context.round_no,
+                score_evidence_source=candidate.score_evidence_source,
+                card_scorecard_ref=candidate.card_scorecard_ref,
+                detail_scorecard_ref=candidate.detail_scorecard_ref,
+                score_delta=candidate.score_delta,
+                detail_open_reason=candidate.detail_open_reason,
+                detail_open_policy_version=candidate.detail_open_policy_version,
             )
             put_cached_json(
                 self.settings,
@@ -481,6 +487,12 @@ def _materialize_scored_candidate(
     draft: ScoredCandidateDraft,
     resume_id: str,
     source_round: int,
+    score_evidence_source: str | None = None,
+    card_scorecard_ref: str | None = None,
+    detail_scorecard_ref: str | None = None,
+    score_delta: int | None = None,
+    detail_open_reason: str | None = None,
+    detail_open_policy_version: str | None = None,
 ) -> ScoredCandidate:
     return ScoredCandidate(
         resume_id=resume_id,
@@ -500,6 +512,12 @@ def _materialize_scored_candidate(
         negative_signals=draft.negative_signals,
         strengths=_derived_strengths(draft),
         weaknesses=_derived_weaknesses(draft),
+        score_evidence_source=score_evidence_source,
+        card_scorecard_ref=card_scorecard_ref,
+        detail_scorecard_ref=detail_scorecard_ref,
+        score_delta=score_delta,
+        detail_open_reason=detail_open_reason,
+        detail_open_policy_version=detail_open_policy_version,
     )
 
 

@@ -768,6 +768,12 @@ class NormalizedResume(BaseModel):
     missing_fields: list[str] = Field(default_factory=list)
     normalization_notes: list[str] = Field(default_factory=list)
     source_round: int | None = None
+    score_evidence_source: str | None = None
+    card_scorecard_ref: str | None = None
+    detail_scorecard_ref: str | None = None
+    score_delta: int | None = None
+    detail_open_reason: str | None = None
+    detail_open_policy_version: str | None = None
 
     def compact_summary(self) -> str:
         parts = [

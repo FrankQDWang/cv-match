@@ -333,7 +333,23 @@ def normalize_resume(candidate: ResumeCandidate) -> NormalizedResume:
         missing_fields=missing_fields,
         normalization_notes=normalization_notes,
         source_round=candidate.source_round,
+        score_evidence_source=_safe_raw_string(raw, "score_evidence_source"),
+        card_scorecard_ref=_safe_raw_string(raw, "card_scorecard_ref"),
+        detail_scorecard_ref=_safe_raw_string(raw, "detail_scorecard_ref"),
+        score_delta=_safe_raw_int(raw, "score_delta"),
+        detail_open_reason=_safe_raw_string(raw, "detail_open_reason"),
+        detail_open_policy_version=_safe_raw_string(raw, "detail_open_policy_version"),
     )
+
+
+def _safe_raw_string(raw: dict[str, object], key: str) -> str | None:
+    value = raw.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _safe_raw_int(raw: dict[str, object], key: str) -> int | None:
+    value = raw.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 __all__ = ["normalize_resume"]

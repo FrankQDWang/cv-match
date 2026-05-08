@@ -161,6 +161,7 @@ class LiepinProviderAdapter:
             already_opened_provider_ids=detail_context.already_opened_provider_ids,
             already_seen_weak_fingerprints=detail_context.already_seen_weak_fingerprints,
             min_card_value_score=detail_context.min_card_value_score,
+            score_metadata_by_candidate_id=detail_context.score_metadata_by_candidate_id,
         )
         result = SearchResult(
             candidates=[item.candidate for item in loop_result.detail_candidates],
@@ -188,6 +189,7 @@ class _LiepinDetailContext:
     min_card_value_score: float
     already_opened_provider_ids: set[str]
     already_seen_weak_fingerprints: set[str]
+    score_metadata_by_candidate_id: dict[str, dict[str, object]]
 
 
 def _live_scope_from_request(request: SearchRequest) -> _LiepinLiveScope:
@@ -226,6 +228,7 @@ def _detail_context_from_request(request: SearchRequest) -> _LiepinDetailContext
             request,
             "liepin_detail_already_seen_weak_fingerprints_json",
         ),
+        score_metadata_by_candidate_id=_optional_score_metadata_context(request),
     )
 
 
@@ -299,6 +302,33 @@ def _optional_string_set_context(request: SearchRequest, key: str) -> set[str]:
     if not isinstance(payload, list):
         raise LiepinWorkerModeError(f"Liepin detail context requires list {key}.")
     return {item.strip() for item in payload if isinstance(item, str) and item.strip()}
+
+
+def _optional_score_metadata_context(request: SearchRequest) -> dict[str, dict[str, object]]:
+    raw = _string_context(request, "liepin_detail_score_metadata_json")
+    if raw is None:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise LiepinWorkerModeError("Liepin detail context has invalid liepin_detail_score_metadata_json.") from exc
+    if not isinstance(payload, dict):
+        raise LiepinWorkerModeError("Liepin detail context requires object liepin_detail_score_metadata_json.")
+    metadata: dict[str, dict[str, object]] = {}
+    for candidate_id, item in payload.items():
+        if not isinstance(candidate_id, str) or not candidate_id.strip() or not isinstance(item, dict):
+            continue
+        safe_item: dict[str, object] = {}
+        for key in ("card_scorecard_ref", "detail_scorecard_ref"):
+            value = item.get(key)
+            if isinstance(value, str) and value:
+                safe_item[key] = value
+        score_delta = item.get("score_delta")
+        if isinstance(score_delta, int) and not isinstance(score_delta, bool):
+            safe_item["score_delta"] = score_delta
+        if safe_item:
+            metadata[candidate_id.strip()] = safe_item
+    return metadata
 
 
 def _required_payload_string(payload: dict[str, object], key: str) -> str:

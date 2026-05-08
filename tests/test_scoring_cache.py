@@ -11,11 +11,13 @@ from seektalent.models import (
     HardConstraintSlots,
     NormalizedResume,
     PreferenceSlots,
+    ResumeCandidate,
     ScoredCandidate,
     ScoredCandidateDraft,
     ScoringContext,
     ScoringPolicy,
 )
+from seektalent.normalization import normalize_resume
 from seektalent.prompting import LoadedPrompt
 from seektalent.runtime.exact_llm_cache import get_cached_json, put_cached_json
 from seektalent.scoring.scorer import ResumeScorer, scoring_cache_key
@@ -162,6 +164,62 @@ def test_scoring_cache_miss_calls_provider_and_stores_result(
     cache_key = scoring_cache_key(settings, prompt, context, user_prompt)
     cached = get_cached_json(settings, namespace="scoring", key=cache_key)
     assert cached == scored[0].model_dump(mode="json")
+
+
+def test_scoring_propagates_safe_score_metadata_from_resume_candidate_raw(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    prompt = _prompt()
+    candidate = ResumeCandidate(
+        resume_id="resume-detail-1",
+        dedup_key="resume-detail-1",
+        source_round=2,
+        search_text="Python backend engineer",
+        raw={
+            "title": "Python Engineer",
+            "company": "Example Co",
+            "skills": ["python", "retrieval"],
+            "score_evidence_source": "detail_enriched",
+            "card_scorecard_ref": "artifact:scorecards/card/resume-detail-1.json",
+            "detail_scorecard_ref": "artifact:scorecards/detail/resume-detail-1.json",
+            "score_delta": 11,
+            "detail_open_reason": "detail_budget_available",
+            "detail_open_policy_version": "detail-policy-v1",
+            "detail_scorecard": {"raw": "must-not-propagate"},
+        },
+    )
+    context = _context().model_copy(update={"normalized_resume": normalize_resume(candidate), "round_no": 2})
+    scorer = ResumeScorer(settings, prompt)
+
+    async def fake_score_one_live(*, prompt: str, agent):  # noqa: ANN001
+        del prompt, agent
+        return _draft(), _provider_usage()
+
+    monkeypatch.setattr(scorer, "_score_one_live", fake_score_one_live)
+
+    tracer = RunTracer(tmp_path / "runs")
+    try:
+        scored, failures = asyncio.run(
+            scorer._score_candidates_parallel(
+                contexts=[context],
+                tracer=tracer,
+                agent=cast(Any, object()),
+            )
+        )
+    finally:
+        tracer.close()
+
+    assert failures == []
+    scorecard = scored[0]
+    assert scorecard.score_evidence_source == "detail_enriched"
+    assert scorecard.card_scorecard_ref == "artifact:scorecards/card/resume-detail-1.json"
+    assert scorecard.detail_scorecard_ref == "artifact:scorecards/detail/resume-detail-1.json"
+    assert scorecard.score_delta == 11
+    assert scorecard.detail_open_reason == "detail_budget_available"
+    assert scorecard.detail_open_policy_version == "detail-policy-v1"
+    assert "detail_scorecard" not in scorecard.model_dump(mode="json")
 
 
 def test_scoring_cache_hit_skips_provider_and_writes_snapshot(

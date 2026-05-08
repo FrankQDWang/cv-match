@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from seektalent.corpus.runtime import ProviderReturnedCandidate
@@ -48,6 +48,7 @@ async def execute_liepin_detail_open_plan(
     already_seen_weak_fingerprints: set[str] | None = None,
     min_card_value_score: float = 0.0,
     record_provider_return: Callable[[ProviderReturnedCandidate], None] | None = None,
+    score_metadata_by_candidate_id: dict[str, dict[str, object]] | None = None,
 ) -> LiepinDetailOpenLoopResult:
     consumed = store.count_detail_budget_consumed(
         tenant_id=tenant_id,
@@ -74,6 +75,7 @@ async def execute_liepin_detail_open_plan(
 
     attempts: list[LiepinDetailAttemptRow] = []
     request_items: list[LiepinDetailOpenRequestItem] = []
+    detail_open_reason_by_key: dict[str, str] = {}
     for decision in plan.decisions:
         if decision.action != "open_detail":
             continue
@@ -92,6 +94,7 @@ async def execute_liepin_detail_open_plan(
             idempotency_key=idempotency_key,
         )
         attempts.append(attempt)
+        detail_open_reason_by_key[idempotency_key] = decision.reason
         request_items.append(
             LiepinDetailOpenRequestItem(
                 request_id=f"detail:{candidate.candidate_id}",
@@ -132,6 +135,15 @@ async def execute_liepin_detail_open_plan(
 
     detail_candidates: list[LiepinMappedCandidate] = []
     attempts_by_key = {attempt.idempotency_key: attempt for attempt in attempts}
+    _validate_worker_response_keys(
+        store=store,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        attempts=attempts,
+        worker_command_id=worker_command_id,
+        response_keys=[result.idempotency_key for result in response.results],
+    )
     for result in response.results:
         attempt = attempts_by_key[result.idempotency_key]
         mapped = _apply_worker_detail_result(
@@ -145,6 +157,9 @@ async def execute_liepin_detail_open_plan(
             query_instance_id=query_instance_id,
             query_fingerprint=query_fingerprint,
             record_provider_return=record_provider_return,
+            detail_open_reason=detail_open_reason_by_key.get(result.idempotency_key),
+            detail_open_policy_version=detail_open_policy_version,
+            score_metadata=(score_metadata_by_candidate_id or {}).get(attempt.candidate_provider_id, {}),
         )
         if mapped is not None:
             detail_candidates.append(mapped)
@@ -175,6 +190,35 @@ def build_detail_scorecard_metadata(
     )
 
 
+def _validate_worker_response_keys(
+    *,
+    store: LiepinStore,
+    tenant_id: str,
+    workspace_id: str,
+    actor_id: str,
+    attempts: list[LiepinDetailAttemptRow],
+    worker_command_id: str,
+    response_keys: list[str],
+) -> None:
+    expected_keys = {attempt.idempotency_key for attempt in attempts}
+    response_key_set = set(response_keys)
+    has_duplicates = len(response_keys) != len(response_key_set)
+    if response_key_set == expected_keys and not has_duplicates:
+        return
+    for attempt in attempts:
+        store.transition_detail_attempt(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            attempt_id=attempt.attempt_id,
+            state="unknown",
+            consumption_state="possibly_consumed",
+            worker_command_id=worker_command_id,
+            raw_evidence_ref="worker:detail-response-mismatch-after-dispatch",
+        )
+    raise ValueError("Liepin detail worker response mismatch after dispatch.")
+
+
 def _apply_worker_detail_result(
     *,
     store: LiepinStore,
@@ -187,6 +231,9 @@ def _apply_worker_detail_result(
     query_instance_id: str,
     query_fingerprint: str,
     record_provider_return: Callable[[ProviderReturnedCandidate], None] | None,
+    detail_open_reason: str | None,
+    detail_open_policy_version: str,
+    score_metadata: dict[str, object],
 ) -> LiepinMappedCandidate | None:
     if result.diagnostics.page_loaded:
         store.transition_detail_attempt(
@@ -214,7 +261,12 @@ def _apply_worker_detail_result(
     if result.status == "completed":
         if result.candidate is None:
             raise ValueError("completed Liepin detail result requires a candidate payload")
-        mapped = map_liepin_worker_detail(result.candidate, raw_payload_artifact_ref=result.raw_evidence_ref)
+        mapped = _with_detail_score_metadata(
+            map_liepin_worker_detail(result.candidate, raw_payload_artifact_ref=result.raw_evidence_ref),
+            detail_open_reason=detail_open_reason,
+            detail_open_policy_version=detail_open_policy_version,
+            score_metadata=score_metadata,
+        )
         _record_provider_return(
             mapped=mapped,
             run_id=run_id,
@@ -249,6 +301,27 @@ def _apply_worker_detail_result(
         raw_evidence_ref=result.raw_evidence_ref,
     )
     return None
+
+
+def _with_detail_score_metadata(
+    mapped: LiepinMappedCandidate,
+    *,
+    detail_open_reason: str | None,
+    detail_open_policy_version: str,
+    score_metadata: dict[str, object],
+) -> LiepinMappedCandidate:
+    raw = dict(mapped.candidate.raw)
+    if detail_open_reason:
+        raw["detail_open_reason"] = detail_open_reason
+    raw["detail_open_policy_version"] = detail_open_policy_version
+    for key in ("card_scorecard_ref", "detail_scorecard_ref"):
+        value = score_metadata.get(key)
+        if isinstance(value, str) and value:
+            raw[key] = value
+    score_delta = score_metadata.get("score_delta")
+    if isinstance(score_delta, int) and not isinstance(score_delta, bool):
+        raw["score_delta"] = score_delta
+    return replace(mapped, candidate=mapped.candidate.model_copy(update={"raw": raw}))
 
 
 def _terminal_state_for_worker_status(status: str) -> tuple[str, str]:

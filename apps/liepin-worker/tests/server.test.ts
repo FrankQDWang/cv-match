@@ -273,6 +273,7 @@ describe("internal Liepin worker server", () => {
   it("opens details from Python-approved body requests and returns the full response shape", async () => {
     const handler = createWorkerFetchHandler({
       authToken: AUTH_TOKEN,
+      detailOpenKeyApproved: (key) => key === "open:candidate-1",
       detailOpenHandler: async (body) => {
         const detailRequest = body.requests[0]!;
         return {
@@ -355,13 +356,44 @@ describe("internal Liepin worker server", () => {
     ]);
   });
 
+  it("does not open details when no approval verifier is configured", async () => {
+    let handlerCalled = false;
+    const handler = createWorkerFetchHandler({
+      authToken: AUTH_TOKEN,
+      detailOpenHandler: async (body) => {
+        void body;
+        handlerCalled = true;
+        return { workerCommandId: "cmd-1", results: [] };
+      },
+    });
+
+    const response = await handler(
+      new Request("http://127.0.0.1/internal/details/open", {
+        method: "POST",
+        headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+        body: JSON.stringify({
+          workerCommandId: "cmd-1",
+          requests: [{ requestId: "r1", attemptId: "a1", idempotencyKey: "open:candidate-1", candidateId: "c1" }],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: { code: "detail_open_approval_not_configured" } });
+    expect(handlerCalled).toBe(false);
+  });
+
   it("rejects detail body budget fields and unapproved body idempotency keys", async () => {
     const handler = createWorkerFetchHandler({
       authToken: AUTH_TOKEN,
       sessionStatus: { connectionId: "conn-1", status: "ready", fixtureOnly: false },
       detailOpenKeyApproved: (key) => key === "detail-approved",
-      detailOpenHandler: async (body) => ({ workerCommandId: String(body.workerCommandId), results: [] }),
+      detailOpenHandler: async (body) => {
+        handlerCalls += 1;
+        return { workerCommandId: String(body.workerCommandId), results: [] };
+      },
     });
+    let handlerCalls = 0;
 
     const unapprovedKey = await handler(
       new Request("http://127.0.0.1/internal/details/open", {
@@ -375,6 +407,7 @@ describe("internal Liepin worker server", () => {
     );
     expect(unapprovedKey.status).toBe(403);
     expect(await unapprovedKey.json()).toEqual({ error: { code: "unapproved_idempotency_key" } });
+    expect(handlerCalls).toBe(0);
 
     const approvedKey = await handler(
       new Request("http://127.0.0.1/internal/details/open", {
@@ -404,12 +437,9 @@ describe("internal Liepin worker server", () => {
   });
 
   it("fails closed for detail open when no browser opener is configured", async () => {
-    const rootDir = await mkdtemp(join(tmpdir(), "liepin-worker-no-detail-opener-"));
-    const handler = createWorkerFetchHandlerFromEnv({
-      SEEKTALENT_LIEPIN_WORKER_AUTH_TOKEN: AUTH_TOKEN,
-      SEEKTALENT_LIEPIN_SESSION_STORE_DIR: rootDir,
-      SEEKTALENT_LIEPIN_SESSION_STORE_KEY_ID: "env-key",
-      SEEKTALENT_LIEPIN_SESSION_STORE_KEY: "env-test-key-material",
+    const handler = createWorkerFetchHandler({
+      authToken: AUTH_TOKEN,
+      detailOpenKeyApproved: (key) => key === "detail-approved",
     });
 
     const response = await handler(

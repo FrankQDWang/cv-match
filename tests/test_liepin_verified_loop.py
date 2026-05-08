@@ -48,6 +48,94 @@ class CrashingWorker:
         raise RuntimeError("browser died after click")
 
 
+def test_detail_loop_marks_reserved_attempt_unknown_when_worker_response_is_partial(tmp_path: Path) -> None:
+    store = LiepinStore(tmp_path / "liepin.sqlite3")
+    worker = RecordingWorker(LiepinDetailOpenResponse(worker_command_id="cmd-partial", results=[]))
+
+    with pytest.raises(ValueError, match="detail worker response mismatch"):
+        asyncio.run(
+            execute_liepin_detail_open_plan(
+                store=store,
+                worker_client=worker,
+                card_candidates=[
+                    LiepinCardCandidate(
+                        candidate_id="candidate-missing",
+                        stable_provider_id="candidate-missing",
+                        weak_fingerprint="weak-missing",
+                        card_value_score=91,
+                    )
+                ],
+                tenant_id=TENANT,
+                workspace_id=WORKSPACE,
+                actor_id=ACTOR,
+                provider_account_hash=ACCOUNT,
+                budget_date="2026-05-07",
+                provider_day_key="liepin:account-hash-a:2026-05-07",
+                timezone="Asia/Shanghai",
+                daily_detail_budget=3,
+                detail_open_policy_version="detail-policy-v1",
+                run_id="run-1",
+                query_instance_id="query-1",
+                query_fingerprint="fingerprint-1",
+            )
+        )
+
+    attempt_id = worker.requests[0].requests[0].attempt_id
+    assert _attempt_state(store, attempt_id) == ("unknown", "possibly_consumed")
+
+
+def test_detail_loop_marks_reserved_attempt_unknown_when_worker_response_has_unexpected_key(tmp_path: Path) -> None:
+    store = LiepinStore(tmp_path / "liepin.sqlite3")
+    worker = RecordingWorker(
+        LiepinDetailOpenResponse(
+            worker_command_id="cmd-unexpected",
+            results=[
+                LiepinDetailOpenResult(
+                    request_id="detail:other",
+                    attempt_id="other",
+                    idempotency_key="open:other",
+                    status="failed_after_possible_consumption",
+                    worker_response_id="worker-response-other",
+                    worker_command_id="cmd-unexpected",
+                    raw_evidence_ref="worker://details/other.json",
+                    diagnostics=LiepinDetailWorkerDiagnostics(page_loaded=True, payload_seen=False),
+                )
+            ],
+        )
+    )
+
+    with pytest.raises(ValueError, match="detail worker response mismatch"):
+        asyncio.run(
+            execute_liepin_detail_open_plan(
+                store=store,
+                worker_client=worker,
+                card_candidates=[
+                    LiepinCardCandidate(
+                        candidate_id="candidate-expected",
+                        stable_provider_id="candidate-expected",
+                        weak_fingerprint="weak-expected",
+                        card_value_score=91,
+                    )
+                ],
+                tenant_id=TENANT,
+                workspace_id=WORKSPACE,
+                actor_id=ACTOR,
+                provider_account_hash=ACCOUNT,
+                budget_date="2026-05-07",
+                provider_day_key="liepin:account-hash-a:2026-05-07",
+                timezone="Asia/Shanghai",
+                daily_detail_budget=3,
+                detail_open_policy_version="detail-policy-v1",
+                run_id="run-1",
+                query_instance_id="query-1",
+                query_fingerprint="fingerprint-1",
+            )
+        )
+
+    attempt_id = worker.requests[0].requests[0].attempt_id
+    assert _attempt_state(store, attempt_id) == ("unknown", "possibly_consumed")
+
+
 def test_detail_loop_reserves_before_dispatch_and_records_completed_corpus_return(tmp_path: Path) -> None:
     store = LiepinStore(tmp_path / "liepin.sqlite3")
     returned: list[ProviderReturnedCandidate] = []

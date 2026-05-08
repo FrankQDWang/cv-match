@@ -98,8 +98,11 @@ export function createWorkerFetchHandler(options: WorkerFetchOptions): (request:
           return json({ error: { code: "budget_decision_not_allowed_in_worker" } }, 400);
         }
         const detailOpenBody = detailOpenRequestBody(body);
+        if (options.detailOpenKeyApproved === undefined) {
+          return json({ error: { code: "detail_open_approval_not_configured" } }, 403);
+        }
         for (const item of detailOpenBody.requests) {
-          if (options.detailOpenKeyApproved !== undefined && options.detailOpenKeyApproved(item.idempotencyKey) !== true) {
+          if (options.detailOpenKeyApproved(item.idempotencyKey) !== true) {
             return json({ error: { code: "unapproved_idempotency_key" } }, 403);
           }
         }

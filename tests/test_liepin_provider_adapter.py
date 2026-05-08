@@ -190,6 +190,16 @@ def _detail_context(gate_ref: str, connection_id: str, **overrides: str) -> dict
         liepin_detail_provider_day_key="liepin:account-hash-a:2026-05-08",
         liepin_detail_timezone="Asia/Shanghai",
         liepin_detail_open_policy_version="detail-policy-v1",
+        liepin_detail_score_metadata_json=json.dumps(
+            {
+                "candidate-1": {
+                    "card_scorecard_ref": "artifact:scorecards/card/candidate-1.json",
+                    "detail_scorecard_ref": "artifact:scorecards/detail/candidate-1.json",
+                    "score_delta": 9,
+                    "detail_scorecard": {"raw": "must-not-propagate"},
+                }
+            }
+        ),
     )
     context.update(overrides)
     return context
@@ -404,6 +414,12 @@ def test_detail_fetch_executes_open_plan_and_returns_mapped_detail_results(tmp_p
     assert result.raw_candidate_count == 1
     assert result.candidates[0].raw["score_evidence_source"] == "detail_enriched"
     assert result.candidates[0].raw["raw_payload_artifact_ref"] == "worker://details/candidate-1.json"
+    assert result.candidates[0].raw["detail_open_reason"] == "detail_budget_available"
+    assert result.candidates[0].raw["detail_open_policy_version"] == "detail-policy-v1"
+    assert result.candidates[0].raw["card_scorecard_ref"] == "artifact:scorecards/card/candidate-1.json"
+    assert result.candidates[0].raw["detail_scorecard_ref"] == "artifact:scorecards/detail/candidate-1.json"
+    assert result.candidates[0].raw["score_delta"] == 9
+    assert "detail_scorecard" not in result.candidates[0].raw
     assert result.provider_snapshots[0].payload_kind == "detail"
     assert result.provider_snapshots[0].score_evidence_source == "detail_enriched"
     assert result.request_payload["liepin_detail_open_plan_ref"] == "artifact:detail-plan"
