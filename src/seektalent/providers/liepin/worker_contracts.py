@@ -102,6 +102,7 @@ class LiepinDetailOpenRequestItem(BaseModel):
     request_id: str = Field(alias="requestId")
     attempt_id: str = Field(alias="attemptId")
     idempotency_key: str = Field(alias="idempotencyKey")
+    approval_key: str = Field(alias="approvalKey")
     candidate_id: str = Field(alias="candidateId")
     detail_url: str | None = Field(default=None, alias="detailUrl")
 
@@ -113,6 +114,7 @@ class LiepinDetailOpenRequest(BaseModel):
     workspace_id: str = Field(alias="workspaceId")
     provider_account_hash: str = Field(alias="providerAccountHash")
     connection_id: str = Field(alias="connectionId")
+    provider_day_key: str = Field(alias="providerDayKey")
     worker_command_id: str = Field(alias="workerCommandId")
     requests: list[LiepinDetailOpenRequestItem]
 

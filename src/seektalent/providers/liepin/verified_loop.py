@@ -11,6 +11,7 @@ from seektalent.providers.liepin.policy import (
     LiepinDetailOpenPlan,
     build_detail_open_plan,
 )
+from seektalent.providers.liepin.security import issue_detail_open_approval_key
 from seektalent.providers.liepin.store import LiepinDetailAttemptRow, LiepinStore
 from seektalent.providers.liepin.worker_contracts import (
     LiepinDetailOpenRequest,
@@ -42,6 +43,7 @@ async def execute_liepin_detail_open_plan(
     timezone: str,
     daily_detail_budget: int,
     detail_open_policy_version: str,
+    detail_open_approval_secret: str,
     run_id: str,
     query_instance_id: str,
     query_fingerprint: str,
@@ -98,11 +100,22 @@ async def execute_liepin_detail_open_plan(
         if attempt.state != "approved_not_started":
             continue
         detail_open_reason_by_key[idempotency_key] = decision.reason
+        approval_key = issue_detail_open_approval_key(
+            secret=detail_open_approval_secret,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            provider_account_hash=provider_account_hash,
+            connection_id=connection_id,
+            provider_day_key=provider_day_key,
+            candidate_id=candidate_provider_id,
+            idempotency_key=idempotency_key,
+        )
         request_items.append(
             LiepinDetailOpenRequestItem(
                 request_id=f"detail:{candidate.candidate_id}",
                 attempt_id=attempt.attempt_id,
                 idempotency_key=idempotency_key,
+                approval_key=approval_key,
                 candidate_id=candidate_provider_id,
                 detail_url=candidate.detail_url,
             )
@@ -116,6 +129,7 @@ async def execute_liepin_detail_open_plan(
         workspace_id=workspace_id,
         provider_account_hash=provider_account_hash,
         connection_id=connection_id,
+        provider_day_key=provider_day_key,
         worker_command_id=worker_command_id,
         requests=request_items,
     )
@@ -137,7 +151,7 @@ async def execute_liepin_detail_open_plan(
     try:
         response = await worker_client.open_details(worker_request)
     except Exception:
-        for attempt in attempts:
+        for attempt in dispatch_attempts:
             store.transition_detail_attempt(
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,

@@ -370,7 +370,11 @@ def test_detail_fetch_requires_detail_open_plan_before_worker_calls(tmp_path: Pa
 
 
 def test_detail_fetch_executes_open_plan_and_returns_mapped_detail_results(tmp_path: Path) -> None:
-    settings = make_settings(provider_name="liepin", liepin_worker_mode="managed_local")
+    settings = make_settings(
+        provider_name="liepin",
+        liepin_worker_mode="managed_local",
+        liepin_detail_open_approval_secret="unit-detail-approval-secret",
+    )
     store, gate_ref, connection_id = _live_store(tmp_path)
     worker = RecordingWorkerClient(
         detail_response=LiepinDetailOpenResponse(
@@ -411,6 +415,8 @@ def test_detail_fetch_executes_open_plan_and_returns_mapped_detail_results(tmp_p
     assert len(worker.detail_requests) == 1
     detail_request = worker.detail_requests[0]
     assert detail_request.requests[0].idempotency_key == "open:candidate-1"
+    assert detail_request.requests[0].approval_key.startswith("detail-open:v1:")
+    assert detail_request.provider_day_key == "liepin:account-hash-a:2026-05-08"
     assert result.raw_candidate_count == 1
     assert result.candidates[0].raw["score_evidence_source"] == "detail_enriched"
     assert result.candidates[0].raw["raw_payload_artifact_ref"] == "worker://details/candidate-1.json"
@@ -437,6 +443,24 @@ def test_detail_fetch_missing_required_context_blocks_before_detail_dispatch(tmp
         asyncio.run(
             adapter.search(
                 _request(fetch_mode="detail", provider_context=context),
+                round_no=2,
+                trace_id="trace-detail",
+            )
+        )
+
+    assert worker.calls == ["ensure_ready", "session_status"]
+
+
+def test_detail_fetch_requires_approval_secret_before_detail_dispatch(tmp_path: Path) -> None:
+    settings = make_settings(provider_name="liepin", liepin_worker_mode="managed_local")
+    store, gate_ref, connection_id = _live_store(tmp_path)
+    worker = RecordingWorkerClient()
+    adapter = LiepinProviderAdapter(settings, worker_client=worker, store=store)
+
+    with pytest.raises(LiepinWorkerModeError, match="approval secret"):
+        asyncio.run(
+            adapter.search(
+                _request(fetch_mode="detail", provider_context=_detail_context(gate_ref, connection_id)),
                 round_no=2,
                 trace_id="trace-detail",
             )

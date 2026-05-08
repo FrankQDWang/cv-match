@@ -24,6 +24,7 @@ export type DetailOpenRequest = {
   requestId: string;
   attemptId: string;
   idempotencyKey: string;
+  approvalKey?: string;
   candidateId: string;
   detailUrl?: string;
 };

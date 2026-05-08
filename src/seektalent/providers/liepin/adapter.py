@@ -156,6 +156,9 @@ class LiepinProviderAdapter:
             timezone=detail_context.timezone,
             daily_detail_budget=detail_context.daily_budget,
             detail_open_policy_version=detail_context.open_policy_version,
+            detail_open_approval_secret=_required_detail_open_approval_secret(
+                self.settings.liepin_detail_open_approval_secret
+            ),
             run_id=trace_id,
             query_instance_id=request.provider_context.get("query_instance_id", trace_id),
             query_fingerprint=request.provider_context.get("query_fingerprint", trace_id),
@@ -231,6 +234,12 @@ def _detail_context_from_request(request: SearchRequest) -> _LiepinDetailContext
         ),
         score_metadata_by_candidate_id=_optional_score_metadata_context(request),
     )
+
+
+def _required_detail_open_approval_secret(secret: str | None) -> str:
+    if not secret:
+        raise LiepinWorkerModeError("Liepin detail fetch requires a detail-open approval secret.")
+    return secret
 
 
 def _detail_candidates_from_context(request: SearchRequest) -> list[LiepinCardCandidate]:

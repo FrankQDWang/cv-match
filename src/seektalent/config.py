@@ -296,6 +296,7 @@ class AppSettings(BaseSettings):
     liepin_session_store_dir: str = ".seektalent/liepin_sessions"
     liepin_session_store_key_id: str = "local-development"
     liepin_api_token: str = "local-development-liepin-api-token"
+    liepin_detail_open_approval_secret: str | None = None
     liepin_default_daily_detail_budget: int = 20
     liepin_live_enabled: bool = False
 

@@ -10,6 +10,7 @@ from typing import Literal
 
 
 StreamSubjectType = Literal["connection", "run"]
+DETAIL_OPEN_APPROVAL_PREFIX = "detail-open:v1:"
 
 
 def hmac_provider_account_hash(secret: str, account_identity: str) -> str:
@@ -90,6 +91,34 @@ def read_stream_token_payload(token: str, *, secret: str) -> dict[str, object] |
     if int(payload.get("exp", 0)) < int(time.time()):
         return None
     return payload
+
+
+def issue_detail_open_approval_key(
+    *,
+    secret: str,
+    tenant_id: str,
+    workspace_id: str,
+    provider_account_hash: str,
+    connection_id: str,
+    provider_day_key: str,
+    candidate_id: str,
+    idempotency_key: str,
+) -> str:
+    if not secret:
+        raise ValueError("Liepin detail-open approval secret is required.")
+    payload = {
+        "v": 1,
+        "tenantId": tenant_id,
+        "workspaceId": workspace_id,
+        "providerAccountHash": provider_account_hash,
+        "connectionId": connection_id,
+        "providerDayKey": provider_day_key,
+        "candidateId": candidate_id,
+        "idempotencyKey": idempotency_key,
+    }
+    encoded_payload = _encode_json(payload)
+    signature = _sign(secret, encoded_payload)
+    return f"{DETAIL_OPEN_APPROVAL_PREFIX}{encoded_payload}.{signature}"
 
 
 def _encode_json(payload: dict[str, object]) -> str:

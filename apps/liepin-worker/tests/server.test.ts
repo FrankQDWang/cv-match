@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,12 +9,42 @@ import { EncryptedSessionStore, type SessionScope } from "../src/sessionStore";
 
 const AUTH_TOKEN = "unit-worker-token";
 const AUTH_HEADERS = { Authorization: `Bearer ${AUTH_TOKEN}` };
+const DETAIL_APPROVAL_SECRET = "unit-detail-approval-secret";
+const PROVIDER_DAY_KEY = "liepin:acct-hash:2026-05-07";
 const SCOPE: SessionScope = {
   tenantId: "tenant-a",
   workspaceId: "workspace-a",
   providerAccountHash: "acct-hash",
   connectionId: "conn-1",
 };
+
+function detailApprovalKey(input: {
+  tenantId: string;
+  workspaceId: string;
+  providerAccountHash: string;
+  connectionId: string;
+  providerDayKey: string;
+  candidateId: string;
+  idempotencyKey: string;
+}): string {
+  const payload = {
+    v: 1,
+    tenantId: input.tenantId,
+    workspaceId: input.workspaceId,
+    providerAccountHash: input.providerAccountHash,
+    connectionId: input.connectionId,
+    providerDayKey: input.providerDayKey,
+    candidateId: input.candidateId,
+    idempotencyKey: input.idempotencyKey,
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(sortObjectKeys(payload)), "utf8").toString("base64url");
+  const signature = createHmac("sha256", DETAIL_APPROVAL_SECRET).update(encodedPayload).digest("base64url");
+  return `detail-open:v1:${encodedPayload}.${signature}`;
+}
+
+function sortObjectKeys(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(payload).sort(([left], [right]) => left.localeCompare(right)));
+}
 
 describe("internal Liepin worker server", () => {
   it("allows only loopback hosts for the direct Bun entrypoint", () => {
@@ -283,6 +314,7 @@ describe("internal Liepin worker server", () => {
       SEEKTALENT_LIEPIN_SESSION_STORE_DIR: rootDir,
       SEEKTALENT_LIEPIN_SESSION_STORE_KEY_ID: "env-key",
       SEEKTALENT_LIEPIN_SESSION_STORE_KEY: "env-test-key-material",
+      SEEKTALENT_LIEPIN_DETAIL_OPEN_APPROVAL_SECRET: DETAIL_APPROVAL_SECRET,
       SEEKTALENT_LIEPIN_WORKER_TEST_ALLOW_DATA_DETAIL_URLS: "1",
     });
     const detailUrl = `data:text/html;charset=utf-8,${encodeURIComponent(`
@@ -293,18 +325,48 @@ describe("internal Liepin worker server", () => {
       </article>
     `)}`;
 
-    const response = await handler(
+    const unsigned = await handler(
       new Request("http://127.0.0.1/internal/details/open", {
         method: "POST",
         headers: { ...AUTH_HEADERS, "content-type": "application/json" },
         body: JSON.stringify({
           ...SCOPE,
+          providerDayKey: PROVIDER_DAY_KEY,
           workerCommandId: "cmd-env",
           requests: [
             {
               requestId: "request-env",
               attemptId: "attempt-env",
               idempotencyKey: "open:env-candidate-1",
+              candidateId: "env-candidate-1",
+              detailUrl,
+            },
+          ],
+        }),
+      })
+    );
+    expect(unsigned.status).toBe(403);
+    expect(await unsigned.json()).toEqual({ error: { code: "unapproved_idempotency_key" } });
+
+    const response = await handler(
+      new Request("http://127.0.0.1/internal/details/open", {
+        method: "POST",
+        headers: { ...AUTH_HEADERS, "content-type": "application/json" },
+        body: JSON.stringify({
+          ...SCOPE,
+          providerDayKey: PROVIDER_DAY_KEY,
+          workerCommandId: "cmd-env",
+          requests: [
+            {
+              requestId: "request-env",
+              attemptId: "attempt-env",
+              idempotencyKey: "open:env-candidate-1",
+              approvalKey: detailApprovalKey({
+                ...SCOPE,
+                providerDayKey: PROVIDER_DAY_KEY,
+                candidateId: "env-candidate-1",
+                idempotencyKey: "open:env-candidate-1",
+              }),
               candidateId: "env-candidate-1",
               detailUrl,
             },
@@ -336,7 +398,7 @@ describe("internal Liepin worker server", () => {
   it("opens details from Python-approved body requests and returns the full response shape", async () => {
     const handler = createWorkerFetchHandler({
       authToken: AUTH_TOKEN,
-      detailOpenKeyApproved: (key) => key === "open:candidate-1",
+      detailOpenKeyApproved: (_body, request) => request.idempotencyKey === "open:candidate-1",
       detailOpenHandler: async (body) => {
         const detailRequest = body.requests[0]!;
         return {
@@ -450,7 +512,7 @@ describe("internal Liepin worker server", () => {
     const handler = createWorkerFetchHandler({
       authToken: AUTH_TOKEN,
       sessionStatus: { connectionId: "conn-1", status: "ready", fixtureOnly: false },
-      detailOpenKeyApproved: (key) => key === "detail-approved",
+      detailOpenKeyApproved: (_body, request) => request.idempotencyKey === "detail-approved",
       detailOpenHandler: async (body) => {
         handlerCalls += 1;
         return { workerCommandId: String(body.workerCommandId), results: [] };
@@ -502,7 +564,7 @@ describe("internal Liepin worker server", () => {
   it("fails closed for detail open when no browser opener is configured", async () => {
     const handler = createWorkerFetchHandler({
       authToken: AUTH_TOKEN,
-      detailOpenKeyApproved: (key) => key === "detail-approved",
+      detailOpenKeyApproved: (_body, request) => request.idempotencyKey === "detail-approved",
     });
 
     const response = await handler(

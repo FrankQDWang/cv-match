@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { chromium, type BrowserContextOptions } from "playwright";
 
@@ -18,7 +18,7 @@ type WorkerFetchOptions = {
   authToken: string;
   sessionStore?: EncryptedSessionStore;
   sessionStatus?: SessionStatusResponse;
-  detailOpenKeyApproved?: (idempotencyKey: string) => boolean;
+  detailOpenKeyApproved?: (body: DetailOpenRequestBody, request: DetailOpenRequestBody["requests"][number]) => boolean;
   detailOpenHandler?: (body: DetailOpenRequestBody) => Promise<object>;
   handoffTokenFactory?: () => string;
   now?: () => Date;
@@ -29,11 +29,13 @@ type DetailOpenRequestBody = {
   workspaceId?: string;
   providerAccountHash?: string;
   connectionId?: string;
+  providerDayKey?: string;
   workerCommandId: string;
   requests: Array<{
     requestId: string;
     attemptId: string;
     idempotencyKey: string;
+    approvalKey?: string;
     candidateId: string;
     detailUrl?: string;
   }>;
@@ -109,7 +111,7 @@ export function createWorkerFetchHandler(options: WorkerFetchOptions): (request:
           return json({ error: { code: "detail_open_approval_not_configured" } }, 403);
         }
         for (const item of detailOpenBody.requests) {
-          if (options.detailOpenKeyApproved(item.idempotencyKey) !== true) {
+          if (options.detailOpenKeyApproved(detailOpenBody, item) !== true) {
             return json({ error: { code: "unapproved_idempotency_key" } }, 403);
           }
         }
@@ -136,15 +138,21 @@ export function createWorkerFetchHandlerFromEnv(env: Record<string, string | und
     throw new Error("Missing Liepin session store directory environment.");
   }
   const sessionStore = new EncryptedSessionStore(sessionStoreDir, loadSessionStoreKeyFromEnv(env));
-  return createWorkerFetchHandler({
+  const detailOpenApprovalSecret =
+    env.liepin_detail_open_approval_secret ?? env.SEEKTALENT_LIEPIN_DETAIL_OPEN_APPROVAL_SECRET;
+  const options: WorkerFetchOptions = {
     authToken,
     sessionStore,
-    detailOpenKeyApproved: isApprovedDetailOpenKey,
     detailOpenHandler: createProductionDetailOpenHandler(sessionStore, {
       allowDataDetailUrls:
         env.NODE_ENV === "test" && env.SEEKTALENT_LIEPIN_WORKER_TEST_ALLOW_DATA_DETAIL_URLS === "1",
     }),
-  });
+  };
+  if (detailOpenApprovalSecret) {
+    options.detailOpenKeyApproved = (body, request) =>
+      isApprovedDetailOpenRequest(body, request, detailOpenApprovalSecret);
+  }
+  return createWorkerFetchHandler(options);
 }
 
 function createProductionDetailOpenHandler(
@@ -183,8 +191,56 @@ function detailOpenSessionScope(body: DetailOpenRequestBody): SessionScope {
   };
 }
 
-function isApprovedDetailOpenKey(idempotencyKey: string): boolean {
-  return idempotencyKey.startsWith("open:") && idempotencyKey.length <= 260 && !/\s/.test(idempotencyKey);
+function isApprovedDetailOpenRequest(
+  body: DetailOpenRequestBody,
+  request: DetailOpenRequestBody["requests"][number],
+  secret: string,
+): boolean {
+  if (!request.approvalKey || request.approvalKey.length > 1024 || /\s/.test(request.approvalKey)) {
+    return false;
+  }
+  if (!request.idempotencyKey.startsWith("open:") || request.idempotencyKey.length > 260 || /\s/.test(request.idempotencyKey)) {
+    return false;
+  }
+  const prefix = "detail-open:v1:";
+  if (!request.approvalKey.startsWith(prefix)) {
+    return false;
+  }
+  const token = request.approvalKey.slice(prefix.length);
+  const parts = token.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return false;
+  }
+  const encodedPayload = parts[0];
+  const signature = parts[1];
+  const expectedSignature = createHmac("sha256", secret).update(encodedPayload).digest("base64url");
+  if (!constantTimeEqual(signature, expectedSignature)) {
+    return false;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as Record<string, unknown>;
+    return (
+      payload.v === 1 &&
+      payload.tenantId === body.tenantId &&
+      payload.workspaceId === body.workspaceId &&
+      payload.providerAccountHash === body.providerAccountHash &&
+      payload.connectionId === body.connectionId &&
+      payload.providerDayKey === body.providerDayKey &&
+      payload.candidateId === request.candidateId &&
+      payload.idempotencyKey === request.idempotencyKey
+    );
+  } catch {
+    return false;
+  }
+}
+
+function constantTimeEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
 function detailUrlForRequest(
@@ -337,10 +393,14 @@ function detailOpenRequestBody(body: Record<string, unknown>): DetailOpenRequest
         idempotencyKey: stringValue(entry.idempotencyKey, "idempotencyKey"),
         candidateId: stringValue(entry.candidateId, "candidateId"),
       };
-      if (typeof entry.detailUrl === "string" && entry.detailUrl.trim()) {
-        return { ...requestItem, detailUrl: entry.detailUrl.trim() };
+      const parsedItem = { ...requestItem };
+      if (typeof entry.approvalKey === "string" && entry.approvalKey.trim()) {
+        Object.assign(parsedItem, { approvalKey: entry.approvalKey.trim() });
       }
-      return requestItem;
+      if (typeof entry.detailUrl === "string" && entry.detailUrl.trim()) {
+        return { ...parsedItem, detailUrl: entry.detailUrl.trim() };
+      }
+      return parsedItem;
     }),
   };
   if (typeof body.tenantId === "string") {
@@ -354,6 +414,9 @@ function detailOpenRequestBody(body: Record<string, unknown>): DetailOpenRequest
   }
   if (typeof body.connectionId === "string") {
     parsed.connectionId = body.connectionId;
+  }
+  if (typeof body.providerDayKey === "string") {
+    parsed.providerDayKey = body.providerDayKey;
   }
   return parsed;
 }

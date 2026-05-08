@@ -28,6 +28,7 @@ WORKSPACE = "workspace-a"
 ACTOR = "actor-a"
 ACCOUNT = "account-hash-a"
 CONNECTION = "conn-a"
+APPROVAL_SECRET = "unit-detail-approval-secret"
 
 
 class RecordingWorker:
@@ -76,6 +77,7 @@ def test_detail_loop_marks_reserved_attempt_unknown_when_worker_response_is_part
                 timezone="Asia/Shanghai",
                 daily_detail_budget=3,
                 detail_open_policy_version="detail-policy-v1",
+                detail_open_approval_secret=APPROVAL_SECRET,
                 run_id="run-1",
                 query_instance_id="query-1",
                 query_fingerprint="fingerprint-1",
@@ -129,6 +131,7 @@ def test_detail_loop_marks_reserved_attempt_unknown_when_worker_response_has_une
                 timezone="Asia/Shanghai",
                 daily_detail_budget=3,
                 detail_open_policy_version="detail-policy-v1",
+                detail_open_approval_secret=APPROVAL_SECRET,
                 run_id="run-1",
                 query_instance_id="query-1",
                 query_fingerprint="fingerprint-1",
@@ -183,6 +186,7 @@ def test_detail_loop_marks_reserved_attempt_unknown_when_completed_result_has_no
                 timezone="Asia/Shanghai",
                 daily_detail_budget=3,
                 detail_open_policy_version="detail-policy-v1",
+                detail_open_approval_secret=APPROVAL_SECRET,
                 run_id="run-1",
                 query_instance_id="query-1",
                 query_fingerprint="fingerprint-1",
@@ -240,6 +244,7 @@ def test_detail_loop_reserves_before_dispatch_and_records_completed_corpus_retur
             timezone="Asia/Shanghai",
             daily_detail_budget=3,
             detail_open_policy_version="detail-policy-v1",
+            detail_open_approval_secret=APPROVAL_SECRET,
             run_id="run-1",
             query_instance_id="query-1",
             query_fingerprint="fingerprint-1",
@@ -251,6 +256,9 @@ def test_detail_loop_reserves_before_dispatch_and_records_completed_corpus_retur
     dispatched = worker.requests[0]
     assert dispatched.requests[0].attempt_id.startswith("detail_")
     assert dispatched.requests[0].idempotency_key == "open:candidate-1"
+    assert dispatched.requests[0].approval_key.startswith("detail-open:v1:")
+    assert dispatched.requests[0].approval_key != dispatched.requests[0].idempotency_key
+    assert dispatched.provider_day_key == "liepin:account-hash-a:2026-05-07"
     assert _attempt_state(store, dispatched.requests[0].attempt_id) == ("completed", "consumed")
     assert result.detail_candidates[0].candidate.raw["score_evidence_source"] == "detail_enriched"
     assert result.detail_candidates[0].candidate.raw["raw_payload_artifact_ref"] == "worker://details/candidate-1.json"
@@ -299,6 +307,7 @@ def test_detail_loop_replay_of_completed_attempt_does_not_reopen_detail(tmp_path
         "timezone": "Asia/Shanghai",
         "daily_detail_budget": 3,
         "detail_open_policy_version": "detail-policy-v1",
+        "detail_open_approval_secret": APPROVAL_SECRET,
         "run_id": "run-1",
         "query_instance_id": "query-1",
         "query_fingerprint": "fingerprint-1",
@@ -312,6 +321,74 @@ def test_detail_loop_replay_of_completed_attempt_does_not_reopen_detail(tmp_path
     assert replay_worker.requests == []
     assert replay_result.detail_candidates == []
     assert _attempt_state(store, first_attempt_id) == ("completed", "consumed")
+
+
+def test_detail_loop_mixed_replay_crash_marks_only_dispatched_attempt_unknown(tmp_path: Path) -> None:
+    store = LiepinStore(tmp_path / "liepin.sqlite3")
+    worker_response = LiepinDetailOpenResponse(
+        worker_command_id="cmd-1",
+        results=[
+            LiepinDetailOpenResult(
+                request_id="detail:candidate-1",
+                attempt_id="placeholder",
+                idempotency_key="open:candidate-1",
+                status="completed",
+                worker_response_id="worker-response-1",
+                worker_command_id="cmd-1",
+                raw_evidence_ref="worker://details/candidate-1.json",
+                diagnostics=LiepinDetailWorkerDiagnostics(page_loaded=True, payload_seen=True),
+                candidate=_worker_detail(),
+            )
+        ],
+    )
+    first_worker = RecordingWorker(worker_response)
+    crashing_worker = CrashingWorker()
+    request = {
+        "store": store,
+        "card_candidates": [
+            LiepinCardCandidate(
+                candidate_id="candidate-1",
+                stable_provider_id="candidate-1",
+                weak_fingerprint="weak-1",
+                card_value_score=91,
+            )
+        ],
+        "tenant_id": TENANT,
+        "workspace_id": WORKSPACE,
+        "actor_id": ACTOR,
+        "connection_id": CONNECTION,
+        "provider_account_hash": ACCOUNT,
+        "budget_date": "2026-05-07",
+        "provider_day_key": "liepin:account-hash-a:2026-05-07",
+        "timezone": "Asia/Shanghai",
+        "daily_detail_budget": 3,
+        "detail_open_policy_version": "detail-policy-v1",
+        "detail_open_approval_secret": APPROVAL_SECRET,
+        "run_id": "run-1",
+        "query_instance_id": "query-1",
+        "query_fingerprint": "fingerprint-1",
+    }
+
+    asyncio.run(execute_liepin_detail_open_plan(worker_client=first_worker, **request))
+    first_attempt_id = first_worker.requests[0].requests[0].attempt_id
+    request["card_candidates"] = [
+        *request["card_candidates"],
+        LiepinCardCandidate(
+            candidate_id="candidate-2",
+            stable_provider_id="candidate-2",
+            weak_fingerprint="weak-2",
+            card_value_score=92,
+        ),
+    ]
+
+    with pytest.raises(RuntimeError, match="browser died"):
+        asyncio.run(execute_liepin_detail_open_plan(worker_client=crashing_worker, **request))
+
+    assert len(crashing_worker.requests) == 1
+    dispatched_requests = crashing_worker.requests[0].requests
+    assert [item.candidate_id for item in dispatched_requests] == ["candidate-2"]
+    assert _attempt_state(store, first_attempt_id) == ("completed", "consumed")
+    assert _attempt_state(store, dispatched_requests[0].attempt_id) == ("unknown", "possibly_consumed")
 
 
 def test_detail_loop_marks_unknown_crash_after_dispatch_as_possibly_consumed(tmp_path: Path) -> None:
@@ -341,6 +418,7 @@ def test_detail_loop_marks_unknown_crash_after_dispatch_as_possibly_consumed(tmp
                 timezone="Asia/Shanghai",
                 daily_detail_budget=3,
                 detail_open_policy_version="detail-policy-v1",
+                detail_open_approval_secret=APPROVAL_SECRET,
                 run_id="run-1",
                 query_instance_id="query-1",
                 query_fingerprint="fingerprint-1",

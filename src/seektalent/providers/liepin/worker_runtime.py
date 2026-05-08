@@ -38,7 +38,7 @@ class LiepinWorkerRuntimeHandle:
 
 
 class ManagedLiepinWorkerRuntime:
-    _shared: dict[tuple[str, int, str, str, str, str, str], "ManagedLiepinWorkerRuntime"] = {}
+    _shared: dict[tuple[str, int, str, str, str, str, str, str], "ManagedLiepinWorkerRuntime"] = {}
 
     def __init__(
         self,
@@ -81,6 +81,7 @@ class ManagedLiepinWorkerRuntime:
             settings.liepin_worker_port,
             str(package_dir.resolve()),
             _stable_secret_identity(settings.liepin_api_token),
+            _stable_secret_identity(settings.liepin_detail_open_approval_secret or ""),
             str(settings.resolve_workspace_path(settings.liepin_session_store_dir)),
             settings.liepin_session_store_key_id,
             _stable_secret_identity(os.environ.get("SEEKTALENT_LIEPIN_SESSION_STORE_KEY", "")),
@@ -134,6 +135,10 @@ class ManagedLiepinWorkerRuntime:
             "SEEKTALENT_LIEPIN_SESSION_STORE_KEY_ID": self.settings.liepin_session_store_key_id,
             "SEEKTALENT_LIEPIN_SESSION_STORE_KEY": session_store_key,
         }
+        if self.settings.liepin_detail_open_approval_secret:
+            env["SEEKTALENT_LIEPIN_DETAIL_OPEN_APPROVAL_SECRET"] = (
+                self.settings.liepin_detail_open_approval_secret
+            )
         self._process = self.process_factory(
             command,
             cwd=str(self.worker_package_dir),
