@@ -141,6 +141,61 @@ describe("internal Liepin worker server", () => {
     await expect(store.readStorageState(SCOPE)).rejects.toThrow("not found");
   });
 
+  it("builds the production handler from env and reports encrypted session status by scope", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "liepin-worker-env-status-"));
+    const store = new EncryptedSessionStore(rootDir, {
+      keyId: "env-key",
+      keyMaterial: "env-test-key-material",
+    });
+    await store.writeStorageState(SCOPE, { cookies: [{ name: "lt", value: "secret" }], origins: [] });
+    const handler = createWorkerFetchHandlerFromEnv({
+      SEEKTALENT_LIEPIN_WORKER_AUTH_TOKEN: AUTH_TOKEN,
+      SEEKTALENT_LIEPIN_SESSION_STORE_DIR: rootDir,
+      SEEKTALENT_LIEPIN_SESSION_STORE_KEY_ID: "env-key",
+      SEEKTALENT_LIEPIN_SESSION_STORE_KEY: "env-test-key-material",
+    });
+    const query = new URLSearchParams({
+      tenantId: SCOPE.tenantId,
+      workspaceId: SCOPE.workspaceId,
+      providerAccountHash: SCOPE.providerAccountHash,
+      connectionId: SCOPE.connectionId,
+    });
+
+    const ready = await handler(
+      new Request(`http://127.0.0.1/internal/session/status?${query.toString()}`, { headers: AUTH_HEADERS })
+    );
+    const missing = await handler(
+      new Request(
+        `http://127.0.0.1/internal/session/status?${query.toString().replace("conn-1", "missing-conn")}`,
+        { headers: AUTH_HEADERS }
+      )
+    );
+
+    expect(ready.status).toBe(200);
+    const readyPayload = await ready.json();
+    expect(readyPayload).toEqual({
+      connectionId: "conn-1",
+      status: "ready",
+      providerAccountHash: "acct-hash",
+      fixtureOnly: false,
+    });
+    expectLowercaseJson(JSON.stringify(readyPayload).toLowerCase()).not.toContainAny([
+      "path",
+      "storage",
+      "cookie",
+      "secret",
+      "env-test-key-material",
+    ]);
+
+    expect(missing.status).toBe(200);
+    expect(await missing.json()).toEqual({
+      connectionId: "missing-conn",
+      status: "missing",
+      providerAccountHash: "acct-hash",
+      fixtureOnly: false,
+    });
+  });
+
   it("fails closed when production handler env is missing session key material", () => {
     expect(() =>
       createWorkerFetchHandlerFromEnv({

@@ -45,7 +45,7 @@ export function createWorkerFetchHandler(options: WorkerFetchOptions): (request:
 
       if (request.method === "GET" && url.pathname === "/internal/session/status") {
         const connectionId = url.searchParams.get("connectionId") ?? options.sessionStatus?.connectionId ?? "default";
-        return json({ ...statusFor(options, connectionId) });
+        return json({ ...(await statusFor(options, connectionId, sessionScopeFromQuery(url))) });
       }
 
       if (request.method === "POST" && url.pathname === "/internal/session/login-handoff") {
@@ -73,7 +73,7 @@ export function createWorkerFetchHandler(options: WorkerFetchOptions): (request:
       if (request.method === "POST" && url.pathname === "/internal/search/cards") {
         const body = await readJsonObject(request);
         const connectionId = stringValue(body.connectionId, "connectionId");
-        const sessionStatus = statusFor(options, connectionId);
+        const sessionStatus = await statusFor(options, connectionId);
         if (sessionStatus.status !== "ready") {
           return json({ error: { code: "session_not_ready", status: sessionStatus.status } }, 409);
         }
@@ -128,12 +128,51 @@ function authorize(request: Request, authToken: string): Response | null {
   return null;
 }
 
-function statusFor(options: WorkerFetchOptions, connectionId: string): SessionStatusResponse {
+async function statusFor(
+  options: WorkerFetchOptions,
+  connectionId: string,
+  scope?: SessionScope,
+): Promise<SessionStatusResponse> {
+  if (options.sessionStatus !== undefined) {
+    return {
+      ...DEFAULT_SESSION_STATUS,
+      ...options.sessionStatus,
+      connectionId,
+    };
+  }
+  if (options.sessionStore !== undefined && scope !== undefined) {
+    try {
+      await options.sessionStore.readStorageState(scope);
+      return {
+        connectionId,
+        status: "ready",
+        providerAccountHash: scope.providerAccountHash,
+        fixtureOnly: false,
+      };
+    } catch {
+      return {
+        connectionId,
+        status: "missing",
+        providerAccountHash: scope.providerAccountHash,
+        fixtureOnly: false,
+      };
+    }
+  }
   return {
     ...DEFAULT_SESSION_STATUS,
-    ...options.sessionStatus,
     connectionId,
   };
+}
+
+function sessionScopeFromQuery(url: URL): SessionScope | undefined {
+  const tenantId = url.searchParams.get("tenantId");
+  const workspaceId = url.searchParams.get("workspaceId");
+  const providerAccountHash = url.searchParams.get("providerAccountHash");
+  const connectionId = url.searchParams.get("connectionId");
+  if (!tenantId || !workspaceId || !providerAccountHash || !connectionId) {
+    return undefined;
+  }
+  return { tenantId, workspaceId, providerAccountHash, connectionId };
 }
 
 async function readJsonObject(request: Request): Promise<Record<string, unknown>> {

@@ -165,6 +165,7 @@ def test_managed_local_worker_passes_session_store_env_without_overwriting_key_m
 
 
 def test_managed_local_runtime_is_reused_within_process(tmp_path: Path) -> None:
+    ManagedLiepinWorkerRuntime.reset_shared()
     settings = make_settings(liepin_worker_mode="managed_local", liepin_worker_port=0)
     process_factory = ProcessFactory()
     http_get = HttpGet({"status": "ok", "workerVersion": "test-worker"})
@@ -191,6 +192,68 @@ def test_managed_local_runtime_is_reused_within_process(tmp_path: Path) -> None:
 
     assert first is second
     assert len(process_factory.calls) == 1
+    ManagedLiepinWorkerRuntime.reset_shared()
+
+
+def test_shared_runtime_cache_separates_auth_and_session_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ManagedLiepinWorkerRuntime.reset_shared()
+    package_dir = _package_dir(tmp_path)
+    first_process_factory = ProcessFactory()
+    second_process_factory = ProcessFactory()
+    first_settings = make_settings(
+        liepin_worker_mode="managed_local",
+        liepin_worker_port=0,
+        liepin_api_token="worker-token-a",
+        liepin_session_store_dir=str(tmp_path / "sessions-a"),
+        liepin_session_store_key_id="key-a",
+    )
+    second_settings = make_settings(
+        liepin_worker_mode="managed_local",
+        liepin_worker_port=0,
+        liepin_api_token="worker-token-b",
+        liepin_session_store_dir=str(tmp_path / "sessions-b"),
+        liepin_session_store_key_id="key-b",
+    )
+
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_SESSION_STORE_KEY", "session-key-a")
+    first = ManagedLiepinWorkerRuntime.shared(
+        first_settings,
+        worker_package_dir=package_dir,
+        bun_executable="/usr/local/bin/bun",
+        process_factory=first_process_factory,
+        http_get=HttpGet({"status": "ok", "workerVersion": "test-worker"}),
+        sleep=lambda _: None,
+    )
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_SESSION_STORE_KEY", "session-key-b")
+    second = ManagedLiepinWorkerRuntime.shared(
+        second_settings,
+        worker_package_dir=package_dir,
+        bun_executable="/usr/local/bin/bun",
+        process_factory=second_process_factory,
+        http_get=HttpGet({"status": "ok", "workerVersion": "test-worker"}),
+        sleep=lambda _: None,
+    )
+
+    assert first is not second
+
+    first.ensure_started()
+    second.ensure_started()
+
+    assert first_process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_WORKER_AUTH_TOKEN"] == "worker-token-a"
+    assert second_process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_WORKER_AUTH_TOKEN"] == "worker-token-b"
+    assert first_process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_SESSION_STORE_DIR"] == str(
+        tmp_path / "sessions-a"
+    )
+    assert second_process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_SESSION_STORE_DIR"] == str(
+        tmp_path / "sessions-b"
+    )
+    assert first_process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_SESSION_STORE_KEY_ID"] == "key-a"
+    assert second_process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_SESSION_STORE_KEY_ID"] == "key-b"
+    assert first_process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_SESSION_STORE_KEY"] == "session-key-a"
+    assert second_process_factory.calls[0]["env"]["SEEKTALENT_LIEPIN_SESSION_STORE_KEY"] == "session-key-b"
+    ManagedLiepinWorkerRuntime.reset_shared()
 
 
 def test_startup_timeout_records_domain_event_before_search_dispatch(tmp_path: Path) -> None:
@@ -268,6 +331,23 @@ def test_missing_bun_or_worker_package_reports_prerequisite_without_node_fallbac
     )
     with pytest.raises(LiepinWorkerModeError, match="worker package"):
         missing_package.ensure_started()
+
+
+def test_managed_local_worker_rejects_non_loopback_bind_host_before_spawning_bun(tmp_path: Path) -> None:
+    settings = make_settings(liepin_worker_mode="managed_local", liepin_worker_host="0.0.0.0")
+    process_factory = ProcessFactory()
+    runtime = ManagedLiepinWorkerRuntime(
+        settings,
+        worker_package_dir=_package_dir(tmp_path),
+        bun_executable="/usr/local/bin/bun",
+        process_factory=process_factory,
+    )
+
+    with pytest.raises(LiepinWorkerModeError) as error:
+        runtime.ensure_started()
+
+    assert error.value.setup_status == "non_loopback_bind_host"
+    assert process_factory.calls == []
 
 
 def test_worker_crash_records_failed_event_and_redacts_output(tmp_path: Path) -> None:

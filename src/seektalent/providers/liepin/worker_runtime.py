@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import atexit
+import hashlib
+import ipaddress
 import json
 import os
 import shutil
@@ -36,7 +38,7 @@ class LiepinWorkerRuntimeHandle:
 
 
 class ManagedLiepinWorkerRuntime:
-    _shared: dict[tuple[str, int, str], "ManagedLiepinWorkerRuntime"] = {}
+    _shared: dict[tuple[str, int, str, str, str, str, str], "ManagedLiepinWorkerRuntime"] = {}
 
     def __init__(
         self,
@@ -56,6 +58,7 @@ class ManagedLiepinWorkerRuntime:
         self.http_get = http_get or _default_http_get
         self.monotonic = monotonic
         self.sleep = sleep
+        self.session_store_key = os.environ.get("SEEKTALENT_LIEPIN_SESSION_STORE_KEY")
         self._process: Any | None = None
         self._handle: LiepinWorkerRuntimeHandle | None = None
         atexit.register(self.stop)
@@ -73,7 +76,15 @@ class ManagedLiepinWorkerRuntime:
         sleep: Callable[[float], None] = time.sleep,
     ) -> "ManagedLiepinWorkerRuntime":
         package_dir = worker_package_dir or settings.project_root / "apps" / "liepin-worker"
-        key = (settings.liepin_worker_host, settings.liepin_worker_port, str(package_dir.resolve()))
+        key = (
+            settings.liepin_worker_host,
+            settings.liepin_worker_port,
+            str(package_dir.resolve()),
+            _stable_secret_identity(settings.liepin_api_token),
+            str(settings.resolve_workspace_path(settings.liepin_session_store_dir)),
+            settings.liepin_session_store_key_id,
+            _stable_secret_identity(os.environ.get("SEEKTALENT_LIEPIN_SESSION_STORE_KEY", "")),
+        )
         runtime = cls._shared.get(key)
         if runtime is None:
             runtime = cls(
@@ -99,7 +110,7 @@ class ManagedLiepinWorkerRuntime:
             return self._handle
 
         self._validate_prerequisites()
-        session_store_key = _require_session_store_key()
+        session_store_key = _require_session_store_key(self.session_store_key)
         host = self.settings.liepin_worker_host
         port = self._resolve_port(host)
         base_url = f"http://{host}:{port}"
@@ -158,6 +169,11 @@ class ManagedLiepinWorkerRuntime:
             raise LiepinWorkerModeError(
                 "Missing Bun executable required for liepin managed_local worker.",
                 setup_status="missing_bun",
+            )
+        if not _is_loopback_host(self.settings.liepin_worker_host):
+            raise LiepinWorkerModeError(
+                "Liepin managed_local worker must bind to a loopback host.",
+                setup_status="non_loopback_bind_host",
             )
         if not self.worker_package_dir.exists() or not (self.worker_package_dir / "package.json").exists():
             raise LiepinWorkerModeError(
@@ -241,14 +257,24 @@ def _port_is_available(host: str, port: int) -> bool:
     return True
 
 
-def _require_session_store_key() -> str:
-    session_store_key = os.environ.get("SEEKTALENT_LIEPIN_SESSION_STORE_KEY")
+def _require_session_store_key(session_store_key: str | None) -> str:
     if not session_store_key:
         raise LiepinWorkerModeError(
             "Missing SEEKTALENT_LIEPIN_SESSION_STORE_KEY required for liepin managed_local session store.",
             setup_status="missing_session_store_key",
         )
     return session_store_key
+
+
+def _stable_secret_identity(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _is_loopback_host(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host == "localhost"
 
 
 def _default_http_get(url: str, *, headers: dict[str, str], timeout: float) -> dict[str, object]:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 from typing import Callable, Protocol
+from urllib.error import HTTPError
 from urllib import parse
 from urllib import request as urllib_request
 
@@ -77,12 +78,25 @@ class ManagedLocalLiepinWorkerClient:
     async def ensure_ready(self, *, on_event: EventCallback | None = None) -> None:
         self.runtime.ensure_started(on_event=on_event)
 
-    async def session_status(self, *, connection_id: str) -> SessionStatus:
+    async def session_status(
+        self,
+        *,
+        connection_id: str,
+        tenant: str | None = None,
+        workspace: str | None = None,
+        provider_account_hash: str | None = None,
+    ) -> SessionStatus:
         base_url = self._internal_base_url()
         return decode_session_status(
             self._request_json(
                 "GET",
-                f"{base_url}/internal/session/status?connectionId={parse.quote(connection_id)}",
+                _session_status_url(
+                    base_url,
+                    connection_id=connection_id,
+                    tenant=tenant,
+                    workspace=workspace,
+                    provider_account_hash=provider_account_hash,
+                ),
             )
         )
 
@@ -143,11 +157,24 @@ class ExternalHttpLiepinWorkerClient:
         if health.status != "ok":
             raise LiepinWorkerModeError("Liepin external worker is not ready.", setup_status=health.status)
 
-    async def session_status(self, *, connection_id: str) -> SessionStatus:
+    async def session_status(
+        self,
+        *,
+        connection_id: str,
+        tenant: str | None = None,
+        workspace: str | None = None,
+        provider_account_hash: str | None = None,
+    ) -> SessionStatus:
         return decode_session_status(
             self._request_json(
                 "GET",
-                f"{self.base_url}/internal/session/status?connectionId={parse.quote(connection_id)}",
+                _session_status_url(
+                    self.base_url,
+                    connection_id=connection_id,
+                    tenant=tenant,
+                    workspace=workspace,
+                    provider_account_hash=provider_account_hash,
+                ),
             )
         )
 
@@ -206,9 +233,48 @@ def _default_http_json(
         data = json.dumps(json_body).encode("utf-8")
         request_headers["Content-Type"] = "application/json"
     req = urllib_request.Request(url, data=data, headers=request_headers, method=method)
-    with urllib_request.urlopen(req, timeout=timeout) as response:
-        payload = response.read().decode("utf-8")
+    try:
+        with urllib_request.urlopen(req, timeout=timeout) as response:
+            payload = response.read().decode("utf-8")
+    except HTTPError as error:
+        raise _worker_mode_error_from_http_error(error) from error
     decoded: Any = json.loads(payload)
     if not isinstance(decoded, dict):
         raise ValueError("Liepin worker response must be a JSON object")
     return decoded
+
+
+def _session_status_url(
+    base_url: str,
+    *,
+    connection_id: str,
+    tenant: str | None,
+    workspace: str | None,
+    provider_account_hash: str | None,
+) -> str:
+    query = {"connectionId": connection_id}
+    if tenant is not None:
+        query["tenantId"] = tenant
+    if workspace is not None:
+        query["workspaceId"] = workspace
+    if provider_account_hash is not None:
+        query["providerAccountHash"] = provider_account_hash
+    return f"{base_url}/internal/session/status?{parse.urlencode(query)}"
+
+
+def _worker_mode_error_from_http_error(error: HTTPError) -> LiepinWorkerModeError:
+    code = "worker_http_error"
+    message = "Liepin worker request failed."
+    try:
+        decoded = json.loads(error.read().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        decoded = None
+    if isinstance(decoded, dict) and isinstance(decoded.get("error"), dict):
+        error_payload = decoded["error"]
+        raw_code = error_payload.get("code")
+        raw_message = error_payload.get("message")
+        if isinstance(raw_code, str) and raw_code:
+            code = raw_code
+        if isinstance(raw_message, str) and raw_message:
+            message = raw_message
+    return LiepinWorkerModeError(f"{code}: {message}", setup_status=code)

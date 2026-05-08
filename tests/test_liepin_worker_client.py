@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import io
 from types import SimpleNamespace
 from typing import Any
+from urllib.error import HTTPError
 
 import pytest
 from pydantic import ValidationError
 
+from seektalent.providers.liepin import client as liepin_client_module
 from seektalent.core.retrieval.provider_contract import SearchRequest
 from seektalent.providers.liepin.client import (
     ExternalHttpLiepinWorkerClient,
     FakeLiepinWorkerClient,
     LiepinWorkerModeError,
     ManagedLocalLiepinWorkerClient,
+    _default_http_json,
     build_liepin_worker_client,
 )
 from seektalent.providers.liepin.worker_contracts import (
@@ -264,3 +268,36 @@ def test_managed_local_client_uses_runtime_internal_base_url_for_http_calls() ->
     assert status.status == "login_required"
     assert http_json.calls[0]["url"] == "http://127.0.0.1:4567/internal/session/status?connectionId=conn-1"
     assert http_json.calls[0]["headers"] == {"Authorization": "Bearer worker-token"}
+
+
+def test_default_http_json_decodes_worker_json_error_without_leaking_internals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_http_error(*args: object, **kwargs: object) -> object:
+        raise HTTPError(
+            "http://127.0.0.1:8123/internal/session/status?token=secret",
+            409,
+            "Conflict",
+            {},
+            io.BytesIO(
+                b'{"error":{"code":"session_not_ready","message":"Login required","workerBaseUrl":"http://127.0.0.1:8123","storageStatePath":"/tmp/secret.json","cookies":["secret"]}}'
+            ),
+        )
+
+    monkeypatch.setattr(liepin_client_module.urllib_request, "urlopen", raise_http_error)
+
+    with pytest.raises(LiepinWorkerModeError) as error:
+        _default_http_json(
+            "GET",
+            "http://127.0.0.1:8123/internal/session/status?token=secret",
+            headers={"Authorization": "Bearer worker-token"},
+            json_body=None,
+            timeout=1.0,
+        )
+
+    assert error.value.setup_status == "session_not_ready"
+    assert "session_not_ready" in str(error.value)
+    assert "Login required" in str(error.value)
+    assert "127.0.0.1" not in str(error.value)
+    assert "secret" not in str(error.value)
+    assert "storage" not in str(error.value).lower()
