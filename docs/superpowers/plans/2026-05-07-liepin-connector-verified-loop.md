@@ -1242,7 +1242,7 @@ git commit -m "feat: add liepin manual verification commands"
 - Modify: `tests/test_liepin_boundaries.py`
 - Modify: `apps/liepin-worker/scripts/checkBoundaries.ts`
 
-- [ ] **Step 1: Add final guard assertions**
+- [x] **Step 1: Add final guard assertions**
 
 Guards must prove:
 
@@ -1260,7 +1260,7 @@ Guards must prove:
 - fake fixture mode is not reachable when `liepin_live_enabled=True`;
 - card/detail score evidence source appears in flywheel rows when detail enrichment exists.
 
-- [ ] **Step 2: Run all focused checks**
+- [x] **Step 2: Run all focused checks**
 
 ```bash
 uv run pytest tests/test_liepin_boundary_preflight.py tests/test_liepin_api_scope.py tests/test_liepin_compliance_gate.py tests/test_liepin_session_store.py tests/test_liepin_detail_ledger.py tests/test_liepin_detail_policy.py tests/test_liepin_worker_client.py tests/test_liepin_provider_mapping.py tests/test_liepin_corpus_integration.py tests/test_liepin_provider_adapter.py tests/test_liepin_detail_integration.py tests/test_liepin_verified_loop.py tests/test_liepin_cli.py tests/test_liepin_boundaries.py -q
@@ -1269,7 +1269,7 @@ cd apps/liepin-worker && bun ci && bunx playwright install chromium && bun test 
 
 Expected: all focused tests pass.
 
-- [ ] **Step 3: Run full Python suite**
+- [x] **Step 3: Run full Python suite**
 
 ```bash
 uv run pytest -q
@@ -1277,7 +1277,7 @@ uv run pytest -q
 
 Expected: all tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/test_liepin_boundaries.py apps/liepin-worker/scripts/checkBoundaries.ts
