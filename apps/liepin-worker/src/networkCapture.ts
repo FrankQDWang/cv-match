@@ -21,6 +21,8 @@ type CaptureOptions = {
   postActionCaptureMs?: number;
 };
 
+const DEFAULT_POST_ACTION_CAPTURE_MS = 1000;
+
 export type CapturedResponseRecord = {
   url: string;
   status: number;
@@ -64,7 +66,7 @@ export async function captureResponsesDuringAction(
   options: CaptureOptions = {}
 ): Promise<CapturedResponseRecord[]> {
   const pending: Array<Promise<CapturedResponseRecord | null>> = [];
-  const postActionCaptureMs = options.postActionCaptureMs ?? 10;
+  const postActionCaptureMs = options.postActionCaptureMs ?? DEFAULT_POST_ACTION_CAPTURE_MS;
 
   const onResponse = (response: ResponseLike): void => {
     pending.push(candidateCaptureRecord(response));

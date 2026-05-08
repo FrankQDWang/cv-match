@@ -71,14 +71,18 @@ describe("passive network capture", () => {
   it("uses page response events and only keeps responses produced during a visible action", async () => {
     const page = new FakePage();
 
-    const captured = await captureResponsesDuringAction(page, async () => {
-      page.emitResponse(
-        new FakeResponse({
-          url: "https://www.liepin.com/api/cards?page=1&timestamp=111",
-          jsonBody: { data: { list: [{ candidateId: "cand-redacted-1" }] } },
-        })
-      );
-    });
+    const captured = await captureResponsesDuringAction(
+      page,
+      async () => {
+        page.emitResponse(
+          new FakeResponse({
+            url: "https://www.liepin.com/api/cards?page=1&timestamp=111",
+            jsonBody: { data: { list: [{ candidateId: "cand-redacted-1" }] } },
+          })
+        );
+      },
+      { postActionCaptureMs: 0 }
+    );
 
     page.emitResponse(
       new FakeResponse({
@@ -96,6 +100,30 @@ describe("passive network capture", () => {
   it("keeps candidate responses emitted shortly after the visible action resolves", async () => {
     const page = new FakePage();
 
+    const captured = await captureResponsesDuringAction(
+      page,
+      async () => {
+        setTimeout(() => {
+          page.emitResponse(
+            new FakeResponse({
+              url: "https://www.liepin.com/api/cards?page=1",
+              jsonBody: { data: { cards: [{ candidateId: "cand-redacted-1" }] } },
+            })
+          );
+        }, 0);
+      },
+      { postActionCaptureMs: 5 }
+    );
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.redactedFixture.payload.data.cards[0].candidateId).toBe(
+      "cand-redacted-1"
+    );
+  });
+
+  it("keeps default passive capture open long enough for delayed candidate responses", async () => {
+    const page = new FakePage();
+
     const captured = await captureResponsesDuringAction(page, async () => {
       setTimeout(() => {
         page.emitResponse(
@@ -104,13 +132,10 @@ describe("passive network capture", () => {
             jsonBody: { data: { cards: [{ candidateId: "cand-redacted-1" }] } },
           })
         );
-      }, 0);
+      }, 25);
     });
 
     expect(captured).toHaveLength(1);
-    expect(captured[0]?.redactedFixture.payload.data.cards[0].candidateId).toBe(
-      "cand-redacted-1"
-    );
   });
 
   it("tokenizes auth-bearing URLs and never stores request or response headers", async () => {
@@ -202,31 +227,35 @@ describe("passive network capture", () => {
   it("ignores non-json and unrelated json responses while keeping candidate payloads", async () => {
     const page = new FakePage();
 
-    const captured = await captureResponsesDuringAction(page, async () => {
-      page.emitResponse(
-        new FakeResponse({
-          url: "https://www.liepin.com/search",
-          jsonBody: undefined,
-          jsonError: new Error("not json"),
-        })
-      );
-      page.emitResponse(
-        new FakeResponse({
-          url: "https://www.liepin.com/api/metrics",
-          jsonBody: { ok: true, event: "page-view" },
-        })
-      );
-      page.emitResponse(
-        new FakeResponse({
-          url: "https://www.liepin.com/api/cards?page=1",
-          jsonBody: {
-            data: {
-              cards: [{ candidateId: "cand-redacted-1", title: "Backend Engineer" }],
+    const captured = await captureResponsesDuringAction(
+      page,
+      async () => {
+        page.emitResponse(
+          new FakeResponse({
+            url: "https://www.liepin.com/search",
+            jsonBody: undefined,
+            jsonError: new Error("not json"),
+          })
+        );
+        page.emitResponse(
+          new FakeResponse({
+            url: "https://www.liepin.com/api/metrics",
+            jsonBody: { ok: true, event: "page-view" },
+          })
+        );
+        page.emitResponse(
+          new FakeResponse({
+            url: "https://www.liepin.com/api/cards?page=1",
+            jsonBody: {
+              data: {
+                cards: [{ candidateId: "cand-redacted-1", title: "Backend Engineer" }],
+              },
             },
-          },
-        })
-      );
-    });
+          })
+        );
+      },
+      { postActionCaptureMs: 0 }
+    );
 
     expect(captured).toHaveLength(1);
     expect(captured[0]?.redactedFixture.payload.data.cards[0].candidateId).toBe(
