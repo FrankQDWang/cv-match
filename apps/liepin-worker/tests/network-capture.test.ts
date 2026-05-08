@@ -35,17 +35,20 @@ type FakeResponseOptions = {
   url: string;
   jsonBody: unknown;
   status?: number;
+  jsonError?: Error;
 };
 
 class FakeResponse {
   private readonly responseUrl: string;
   private readonly jsonBody: unknown;
   private readonly responseStatus: number;
+  private readonly jsonError: Error | undefined;
 
   constructor(options: FakeResponseOptions) {
     this.responseUrl = options.url;
     this.jsonBody = options.jsonBody;
     this.responseStatus = options.status ?? 200;
+    this.jsonError = options.jsonError;
   }
 
   url(): string {
@@ -57,6 +60,9 @@ class FakeResponse {
   }
 
   async json(): Promise<unknown> {
+    if (this.jsonError) {
+      throw this.jsonError;
+    }
     return this.jsonBody;
   }
 }
@@ -101,6 +107,88 @@ describe("passive network capture", () => {
     expect(JSON.stringify(record)).not.toContain("secret");
     expect(JSON.stringify(record)).not.toContain("Authorization");
     expect(JSON.stringify(record)).not.toContain("Cookie");
+  });
+
+  it("writes artifact metadata and redacted fixture payloads without raw auth-like fields", async () => {
+    const record = await tokenizedCaptureRecord(
+      new FakeResponse({
+        url: "https://www.liepin.com/api/cards?page=1&token=url-secret",
+        jsonBody: {
+          headers: {
+            Authorization: "Bearer header-secret",
+            Cookie: "session=cookie-secret",
+          },
+          token: "body-token-secret",
+          data: {
+            cards: [
+              {
+                candidateId: "cand-redacted-1",
+                title: "Backend Engineer",
+                email: "candidate@example.test",
+              },
+            ],
+          },
+        },
+      })
+    );
+
+    expect(record).toMatchObject({
+      extractorVersion: "liepin-passive-extractor-v1",
+      extractionSource: "network",
+      missingFields: [],
+      redactedFixture: {
+        manifest: {
+          redaction_policy_version: "liepin-fixture-redaction-v1",
+          redaction_passed: true,
+          unsafe_reasons: [],
+        },
+      },
+    });
+    expect(record.redactedFixture.payload.headers).toBe("[REDACTED]");
+    expect(record.redactedFixture.payload.token).toBe("[REDACTED]");
+    expect(record.redactedFixture.payload.data.cards[0].email).toBe("[REDACTED]");
+
+    const serialized = JSON.stringify(record);
+    expect(serialized).not.toContain("url-secret");
+    expect(serialized).not.toContain("header-secret");
+    expect(serialized).not.toContain("cookie-secret");
+    expect(serialized).not.toContain("body-token-secret");
+    expect(serialized).not.toContain("candidate@example.test");
+  });
+
+  it("ignores non-json and unrelated json responses while keeping candidate payloads", async () => {
+    const page = new FakePage();
+
+    const captured = await captureResponsesDuringAction(page, async () => {
+      page.emitResponse(
+        new FakeResponse({
+          url: "https://www.liepin.com/search",
+          jsonBody: undefined,
+          jsonError: new Error("not json"),
+        })
+      );
+      page.emitResponse(
+        new FakeResponse({
+          url: "https://www.liepin.com/api/metrics",
+          jsonBody: { ok: true, event: "page-view" },
+        })
+      );
+      page.emitResponse(
+        new FakeResponse({
+          url: "https://www.liepin.com/api/cards?page=1",
+          jsonBody: {
+            data: {
+              cards: [{ candidateId: "cand-redacted-1", title: "Backend Engineer" }],
+            },
+          },
+        })
+      );
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.redactedFixture.payload.data.cards[0].candidateId).toBe(
+      "cand-redacted-1"
+    );
   });
 
   it("strips volatile query params from endpoint fingerprints", () => {

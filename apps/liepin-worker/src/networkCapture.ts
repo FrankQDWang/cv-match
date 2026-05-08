@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { REDACTED_VALUE } from "./redaction";
+import { EXTRACTOR_VERSION } from "./extraction";
+import { REDACTED_VALUE, type RedactionResult, redactFixturePayload } from "./redaction";
 
 type ResponseLike = {
   url(): string;
@@ -21,7 +22,10 @@ export type CapturedResponseRecord = {
   status: number;
   endpointFingerprint: string;
   responseShapeHash: string;
-  body: unknown;
+  extractorVersion: typeof EXTRACTOR_VERSION;
+  extractionSource: "network";
+  missingFields: string[];
+  redactedFixture: RedactionResult;
 };
 
 const AUTH_QUERY_KEYS = new Set([
@@ -54,10 +58,10 @@ export async function captureResponsesDuringAction(
   page: PageLike,
   visibleAction: () => Promise<void>
 ): Promise<CapturedResponseRecord[]> {
-  const pending: Array<Promise<CapturedResponseRecord>> = [];
+  const pending: Array<Promise<CapturedResponseRecord | null>> = [];
 
   const onResponse = (response: ResponseLike): void => {
-    pending.push(tokenizedCaptureRecord(response));
+    pending.push(candidateCaptureRecord(response));
   };
 
   page.on("response", onResponse);
@@ -67,7 +71,8 @@ export async function captureResponsesDuringAction(
     page.off("response", onResponse);
   }
 
-  return Promise.all(pending);
+  const settled = await Promise.all(pending);
+  return settled.filter((record): record is CapturedResponseRecord => record !== null);
 }
 
 export async function tokenizedCaptureRecord(
@@ -76,13 +81,44 @@ export async function tokenizedCaptureRecord(
   const body = await response.json();
   const method = response.request?.().method?.() ?? "GET";
   const rawUrl = response.url();
+  const redactedFixture = redactFixturePayload(body);
 
   return {
     url: tokenizeAuthBearingUrl(rawUrl),
     status: response.status(),
     endpointFingerprint: endpointFingerprint(rawUrl, method),
     responseShapeHash: responseShapeHash(body),
-    body,
+    extractorVersion: EXTRACTOR_VERSION,
+    extractionSource: "network",
+    missingFields: missingFieldsForCandidatePayload(body),
+    redactedFixture,
+  };
+}
+
+async function candidateCaptureRecord(response: ResponseLike): Promise<CapturedResponseRecord | null> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return null;
+  }
+
+  if (!isCandidatePayload(body)) {
+    return null;
+  }
+
+  const method = response.request?.().method?.() ?? "GET";
+  const rawUrl = response.url();
+
+  return {
+    url: tokenizeAuthBearingUrl(rawUrl),
+    status: response.status(),
+    endpointFingerprint: endpointFingerprint(rawUrl, method),
+    responseShapeHash: responseShapeHash(body),
+    extractorVersion: EXTRACTOR_VERSION,
+    extractionSource: "network",
+    missingFields: missingFieldsForCandidatePayload(body),
+    redactedFixture: redactFixturePayload(body),
   };
 }
 
@@ -138,4 +174,77 @@ function shapeOf(value: unknown): unknown {
   }
 
   return typeof value;
+}
+
+function isCandidatePayload(payload: unknown): boolean {
+  if (payload === null || typeof payload !== "object") {
+    return false;
+  }
+
+  const data = objectValue(payload, "data");
+  const cards = data ? arrayValue(data, "cards") ?? arrayValue(data, "list") : undefined;
+  if (cards !== undefined) {
+    return cards.some((card) => stringProperty(card, "candidateId").length > 0);
+  }
+
+  const detail = data ? objectValue(data, "detail") : undefined;
+  return detail !== undefined && stringProperty(detail, "candidateId").length > 0;
+}
+
+function missingFieldsForCandidatePayload(payload: unknown): string[] {
+  const missing = new Set<string>();
+  const data = objectValue(payload, "data");
+  const cards = data ? arrayValue(data, "cards") ?? arrayValue(data, "list") : undefined;
+  const detail = data ? objectValue(data, "detail") : undefined;
+
+  if (cards !== undefined) {
+    for (const card of cards) {
+      addMissingCandidateFields(card, missing);
+    }
+  } else if (detail !== undefined) {
+    addMissingCandidateFields(detail, missing);
+    if (stringProperty(detail, "detailId").length === 0) {
+      missing.add("detailId");
+    }
+  }
+
+  return [...missing].sort();
+}
+
+function addMissingCandidateFields(value: unknown, missing: Set<string>): void {
+  if (stringProperty(value, "candidateId").length === 0) {
+    missing.add("candidateId");
+  }
+  if (stringProperty(value, "title").length === 0) {
+    missing.add("title");
+  }
+}
+
+function objectValue(value: unknown, key: string): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object") {
+    return undefined;
+  }
+
+  const entry = (value as Record<string, unknown>)[key];
+  return entry !== null && typeof entry === "object" && !Array.isArray(entry)
+    ? (entry as Record<string, unknown>)
+    : undefined;
+}
+
+function arrayValue(value: unknown, key: string): unknown[] | undefined {
+  if (value === null || typeof value !== "object") {
+    return undefined;
+  }
+
+  const entry = (value as Record<string, unknown>)[key];
+  return Array.isArray(entry) ? entry : undefined;
+}
+
+function stringProperty(value: unknown, key: string): string {
+  if (value === null || typeof value !== "object") {
+    return "";
+  }
+
+  const entry = (value as Record<string, unknown>)[key];
+  return typeof entry === "string" ? entry.trim() : "";
 }

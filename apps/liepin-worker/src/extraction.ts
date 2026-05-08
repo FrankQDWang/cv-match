@@ -31,12 +31,27 @@ export type DomFallbackExtraction = {
   };
 };
 
+export type WorkerCardExtractionResult = {
+  extractionSource: ExtractionSource;
+  cards: WorkerCandidateCard[];
+  selectorHealth?: DomFallbackExtraction["selectorHealth"];
+};
+
+type NetworkArtifact = {
+  extractionSource?: string;
+  redactedFixture?: {
+    payload?: RedactedFixture;
+    manifest?: unknown;
+  };
+};
+
 type RedactedFixture = {
   manifest?: {
     redaction_policy_version?: string;
   };
   data?: {
     cards?: unknown[];
+    list?: unknown[];
     detail?: unknown;
   };
 };
@@ -57,9 +72,36 @@ const DEFAULT_REDACTION_POLICY_VERSION = "unknown";
 const CONTACT_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|(?<!\d)1[3-9]\d{9}(?!\d)/i;
 
 export function extractCardsFromNetwork(fixture: RedactedFixture): WorkerCandidateCard[] {
-  return (fixture.data?.cards ?? []).map((card) =>
+  return (fixture.data?.cards ?? fixture.data?.list ?? []).map((card) =>
     buildCard(card as CandidatePayload, "network", privacyFromFixture(fixture))
   );
+}
+
+export function extractWorkerCards(options: {
+  networkArtifacts: NetworkArtifact[];
+  fallbackHtml: string;
+}): WorkerCardExtractionResult {
+  const networkCards = options.networkArtifacts
+    .filter((artifact) => artifact.extractionSource === "network")
+    .flatMap((artifact) => {
+      const fixture = artifact.redactedFixture?.payload;
+      return fixture ? extractCardsFromNetwork(fixture) : [];
+    })
+    .filter(isCompleteCard);
+
+  if (networkCards.length > 0) {
+    return {
+      extractionSource: "network",
+      cards: networkCards,
+    };
+  }
+
+  const fallback = extractCardsFromDomFallback(options.fallbackHtml);
+  return {
+    extractionSource: "dom_fallback",
+    cards: fallback.cards.filter(isCompleteCard),
+    selectorHealth: fallback.selectorHealth,
+  };
 }
 
 export function extractDetailFromNetwork(fixture: RedactedFixture): WorkerCandidateDetail {
@@ -173,6 +215,10 @@ function stringArray(value: unknown): string[] {
 
 function missingWhenEmpty(value: string, field: string): string[] {
   return value.length === 0 ? [field] : [];
+}
+
+function isCompleteCard(card: WorkerCandidateCard): boolean {
+  return card.missingFields.length === 0;
 }
 
 function matchAll(value: string, pattern: RegExp): string[] {

@@ -8,6 +8,7 @@ import {
   extractCardsFromDomFallback,
   extractCardsFromNetwork,
   extractDetailFromNetwork,
+  extractWorkerCards,
 } from "../src/extraction";
 
 describe("liepin worker extraction", () => {
@@ -77,5 +78,50 @@ describe("liepin worker extraction", () => {
       },
     });
     expect(result.cards[0]?.searchableText).toContain("Data Platform Engineer");
+  });
+
+  it("prefers complete network cards over DOM fallback cards", () => {
+    const result = extractWorkerCards({
+      networkArtifacts: [
+        {
+          extractionSource: "network",
+          redactedFixture: {
+            payload: cardsNetworkFixture,
+            manifest: cardsNetworkFixture.manifest,
+          },
+        },
+      ],
+      fallbackHtml: String(cardsDomHtml),
+    });
+
+    expect(result.extractionSource).toBe("network");
+    expect(result.cards).toHaveLength(2);
+    expect(result.cards[0]?.providerCandidateId).toBe("cand-redacted-1");
+    expect(result.cards[0]?.extractionSource).toBe("network");
+  });
+
+  it("uses DOM fallback when network artifacts do not contain complete cards", () => {
+    const result = extractWorkerCards({
+      networkArtifacts: [
+        {
+          extractionSource: "network",
+          redactedFixture: {
+            payload: {
+              manifest: cardsNetworkFixture.manifest,
+              data: {
+                cards: [{ candidateId: "cand-redacted-incomplete" }],
+              },
+            },
+            manifest: cardsNetworkFixture.manifest,
+          },
+        },
+      ],
+      fallbackHtml: String(cardsDomHtml),
+    });
+
+    expect(result.extractionSource).toBe("dom_fallback");
+    expect(result.cards).toHaveLength(1);
+    expect(result.cards[0]?.providerCandidateId).toBe("dom-cand-redacted-1");
+    expect(result.cards[0]?.extractionSource).toBe("dom_fallback");
   });
 });
