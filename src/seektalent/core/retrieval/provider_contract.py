@@ -37,6 +37,7 @@ class SearchRequest:
     fetch_mode: FetchMode
     page_size: int
     provider_filters: dict[str, ConstraintValue] = field(default_factory=dict)
+    provider_context: dict[str, str] = field(default_factory=dict)
     cursor: str | None = None
 
 

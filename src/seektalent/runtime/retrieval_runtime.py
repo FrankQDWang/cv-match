@@ -211,6 +211,7 @@ def build_logical_query_state(
     source_plan_version: str,
     provider_filters: dict[str, ConstraintValue],
     location_execution_plan: LocationExecutionPlan,
+    provider_name: str = "cts",
 ) -> LogicalQueryState:
     keyword_query = serialize_keyword_query(query_terms)
     spec = CanonicalQuerySpec(
@@ -226,7 +227,7 @@ def build_logical_query_state(
         provider_filters=provider_filters,
         boolean_template="required_plus_optional",
         rendered_provider_query=keyword_query,
-        provider_name="cts",
+        provider_name=provider_name,
         source_plan_version=source_plan_version,
     )
     query_fingerprint = build_query_fingerprint(

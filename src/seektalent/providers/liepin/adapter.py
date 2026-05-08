@@ -13,6 +13,25 @@ from seektalent.providers.liepin.client import LiepinWorkerClient
 from seektalent.providers.liepin.client import LiepinWorkerModeError
 from seektalent.providers.liepin.models import LiepinConnectionRow
 from seektalent.providers.liepin.store import LiepinStore
+from seektalent.storage.json import sha256_json
+
+
+UNSAFE_CANDIDATE_RAW_KEYS = {
+    "auth",
+    "cdpUrl",
+    "cookies",
+    "providerPayload",
+    "rawPayload",
+    "rawProviderPayload",
+    "raw_provider_payload",
+    "storageState",
+    "token",
+    "workerBaseUrl",
+}
+
+
+class LiepinDetailOpenPlanRequired(LiepinWorkerModeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -55,17 +74,21 @@ class LiepinProviderAdapter:
     async def search(self, request: SearchRequest, *, round_no: int, trace_id: str) -> SearchResult:
         if self.worker_client is None:
             raise LiepinWorkerModeError("Liepin provider search requires an explicit worker client.")
-        if request.fetch_mode == "detail" and _string_filter(request, "liepin_detail_open_plan_ref") is None:
-            raise ValueError("Liepin detail fetch requires a detail-open plan before worker dispatch.")
+        if request.fetch_mode == "detail" and _string_context(request, "liepin_detail_open_plan_ref") is None:
+            raise LiepinDetailOpenPlanRequired("Liepin detail fetch requires a detail-open plan before worker dispatch.")
         if self.settings.liepin_worker_mode in {"managed_local", "external_http"}:
             scope = _live_scope_from_request(request)
             connection = self._enforce_live_compliance(scope)
+            await self.worker_client.ensure_ready(on_event=self.worker_event_callback)
             await self._require_ready_session(
                 scope=scope,
                 provider_account_hash=connection.provider_account_hash,
             )
-        await self.worker_client.ensure_ready(on_event=self.worker_event_callback)
-        return await self.worker_client.search(request, round_no=round_no, trace_id=trace_id)
+        else:
+            await self.worker_client.ensure_ready(on_event=self.worker_event_callback)
+        result = await self.worker_client.search(request, round_no=round_no, trace_id=trace_id)
+        _validate_liepin_search_result(result)
+        return result
 
     def _enforce_live_compliance(self, scope: _LiepinLiveScope) -> LiepinConnectionRow:
         if self.store is None:
@@ -109,11 +132,11 @@ class LiepinProviderAdapter:
 
 
 def _live_scope_from_request(request: SearchRequest) -> _LiepinLiveScope:
-    tenant_id = _required_string_filter(request, "liepin_tenant_id")
-    workspace_id = _required_string_filter(request, "liepin_workspace_id")
-    actor_id = _required_string_filter(request, "liepin_actor_id")
-    connection_id = _required_string_filter(request, "liepin_connection_id")
-    compliance_gate_ref = _required_string_filter(request, "liepin_compliance_gate_ref")
+    tenant_id = _required_string_context(request, "liepin_tenant_id")
+    workspace_id = _required_string_context(request, "liepin_workspace_id")
+    actor_id = _required_string_context(request, "liepin_actor_id")
+    connection_id = _required_string_context(request, "liepin_connection_id")
+    compliance_gate_ref = _required_string_context(request, "liepin_compliance_gate_ref")
     return _LiepinLiveScope(
         tenant_id=tenant_id,
         workspace_id=workspace_id,
@@ -123,15 +146,59 @@ def _live_scope_from_request(request: SearchRequest) -> _LiepinLiveScope:
     )
 
 
-def _required_string_filter(request: SearchRequest, key: str) -> str:
-    value = _string_filter(request, key)
+def _required_string_context(request: SearchRequest, key: str) -> str:
+    value = _string_context(request, key)
     if value is None:
         raise LiepinWorkerModeError(f"Liepin live provider search requires {key}.")
     return value
 
 
-def _string_filter(request: SearchRequest, key: str) -> str | None:
-    value = request.provider_filters.get(key)
+def _string_context(request: SearchRequest, key: str) -> str | None:
+    value = request.provider_context.get(key)
     if isinstance(value, str) and value.strip():
         return value.strip()
+    return None
+
+
+def _validate_liepin_search_result(result: SearchResult) -> None:
+    if len(result.provider_snapshots) != len(result.candidates):
+        raise LiepinWorkerModeError(
+            "Liepin provider snapshot count mismatch: "
+            f"candidates={len(result.candidates)}, snapshots={len(result.provider_snapshots)}"
+        )
+    for candidate, snapshot in zip(result.candidates, result.provider_snapshots, strict=True):
+        if snapshot.provider_name != "liepin":
+            raise LiepinWorkerModeError(
+                "Liepin provider snapshot provider mismatch: "
+                f"expected=liepin, snapshot={snapshot.provider_name}"
+            )
+        if snapshot.synthetic_candidate_fingerprint != candidate.dedup_key:
+            raise LiepinWorkerModeError(
+                "Liepin provider snapshot fingerprint mismatch: "
+                f"candidate={candidate.dedup_key}, snapshot={snapshot.synthetic_candidate_fingerprint}"
+            )
+        snapshot_payload_hash = sha256_json(snapshot.raw_payload)
+        if candidate.snapshot_sha256 != snapshot_payload_hash:
+            raise LiepinWorkerModeError(
+                "Liepin provider snapshot payload hash mismatch: "
+                f"candidate={candidate.snapshot_sha256}, snapshot={snapshot_payload_hash}"
+            )
+        unsafe_key = _unsafe_candidate_raw_key(candidate.raw)
+        if unsafe_key is not None:
+            raise LiepinWorkerModeError(f"Liepin unsafe candidate raw key rejected: {unsafe_key}.")
+
+
+def _unsafe_candidate_raw_key(value: object) -> str | None:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if isinstance(key, str) and key in UNSAFE_CANDIDATE_RAW_KEYS:
+                return key
+            unsafe_key = _unsafe_candidate_raw_key(nested)
+            if unsafe_key is not None:
+                return unsafe_key
+    if isinstance(value, list):
+        for nested in value:
+            unsafe_key = _unsafe_candidate_raw_key(nested)
+            if unsafe_key is not None:
+                return unsafe_key
     return None

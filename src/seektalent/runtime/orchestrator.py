@@ -1232,6 +1232,7 @@ class WorkflowRuntime:
         if self._active_flywheel_run_id != tracer.run_id:
             return
 
+        provider_name = getattr(self.provider, "name", self.settings.provider_name)
         canonical_query_specs: dict[str, dict[str, object]] = {}
         for query in cts_queries:
             if query.query_instance_id is None or query.query_instance_id in canonical_query_specs:
@@ -1243,7 +1244,7 @@ class WorkflowRuntime:
                 "keyword_query": query.keyword_query,
                 "provider_filters": query.native_filters,
                 "rendered_provider_query": query.keyword_query,
-                "provider_name": "cts",
+                "provider_name": provider_name,
                 "page": query.page,
                 "page_size": query.page_size,
             }
@@ -2433,6 +2434,7 @@ class WorkflowRuntime:
         llm_prf_grounding_artifact_ref: str | None = None,
     ) -> tuple[list[LogicalQueryState], SecondLaneDecision]:
         del title_anchor_terms
+        provider_name = getattr(self.provider, "name", self.settings.provider_name)
         exploit_query_state = build_logical_query_state(
             run_id=run_id,
             round_no=round_no,
@@ -2442,6 +2444,7 @@ class WorkflowRuntime:
             source_plan_version=source_plan_version,
             provider_filters=retrieval_plan.projected_provider_filters,
             location_execution_plan=retrieval_plan.location_execution_plan,
+            provider_name=provider_name,
         )
         query_states = [exploit_query_state]
         second_lane_decision, second_lane_query_state = build_second_lane_decision(
@@ -2459,6 +2462,7 @@ class WorkflowRuntime:
             llm_prf_call_artifact_ref=llm_prf_call_artifact_ref,
             llm_prf_candidates_artifact_ref=llm_prf_candidates_artifact_ref,
             llm_prf_grounding_artifact_ref=llm_prf_grounding_artifact_ref,
+            provider_name=provider_name,
         )
         if second_lane_query_state is not None:
             query_states.append(second_lane_query_state)

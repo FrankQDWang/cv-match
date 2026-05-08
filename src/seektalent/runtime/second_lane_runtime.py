@@ -41,6 +41,7 @@ def build_second_lane_decision(
     llm_prf_call_artifact_ref: str | None = None,
     llm_prf_candidates_artifact_ref: str | None = None,
     llm_prf_grounding_artifact_ref: str | None = None,
+    provider_name: str = "cts",
 ) -> tuple[SecondLaneDecision, LogicalQueryState | None]:
     llm_prf_metadata = {
         "prf_probe_proposal_backend": prf_probe_proposal_backend,
@@ -76,6 +77,7 @@ def build_second_lane_decision(
             source_plan_version=source_plan_version,
             provider_filters=retrieval_plan.projected_provider_filters,
             location_execution_plan=retrieval_plan.location_execution_plan,
+            provider_name=provider_name,
         )
         return (
             SecondLaneDecision(
@@ -130,6 +132,7 @@ def build_second_lane_decision(
         source_plan_version=source_plan_version,
         provider_filters=retrieval_plan.projected_provider_filters,
         location_execution_plan=retrieval_plan.location_execution_plan,
+        provider_name=provider_name,
     )
     return (
         SecondLaneDecision(

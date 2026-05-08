@@ -28,6 +28,7 @@ class RetrievalService:
         round_no: int,
         trace_id: str,
         fetch_mode: FetchMode = "summary",
+        provider_context: dict[str, str] | None = None,
         cursor: str | None = None,
     ) -> SearchResult:
         request = SearchRequest(
@@ -36,6 +37,7 @@ class RetrievalService:
             keyword_query=keyword_query,
             adapter_notes=adapter_notes,
             provider_filters=provider_filters,
+            provider_context=provider_context or {},
             runtime_constraints=runtime_constraints,
             fetch_mode=fetch_mode,
             page_size=page_size,

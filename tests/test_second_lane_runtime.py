@@ -188,3 +188,39 @@ def test_build_logical_query_state_fingerprint_changes_with_filters_and_location
 
     assert changed_filters_state.query_fingerprint != base_state.query_fingerprint
     assert changed_location_state.query_fingerprint != base_state.query_fingerprint
+
+
+def test_build_logical_query_state_fingerprint_uses_provider_name() -> None:
+    location_plan = build_location_execution_plan(
+        allowed_locations=["shanghai"],
+        preferred_locations=["shanghai"],
+        round_no=2,
+        target_new=6,
+    )
+
+    cts_state = build_logical_query_state(
+        run_id="run-a",
+        round_no=2,
+        lane_type="exploit",
+        query_terms=["python", "ranking"],
+        job_intent_fingerprint="job-1",
+        source_plan_version="2",
+        provider_filters={"city": "上海"},
+        location_execution_plan=location_plan,
+        provider_name="cts",
+    )
+    liepin_state = build_logical_query_state(
+        run_id="run-a",
+        round_no=2,
+        lane_type="exploit",
+        query_terms=["python", "ranking"],
+        job_intent_fingerprint="job-1",
+        source_plan_version="2",
+        provider_filters={"city": "上海"},
+        location_execution_plan=location_plan,
+        provider_name="liepin",
+    )
+
+    assert cts_state.query_fingerprint
+    assert liepin_state.query_fingerprint
+    assert liepin_state.query_fingerprint != cts_state.query_fingerprint
