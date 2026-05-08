@@ -1125,8 +1125,8 @@ def _validate_detail_transition(current_state: str, next_state: str, consumption
         raise ValueError("pre-consumption Liepin detail failures must not consume budget.")
     if next_state == "failed_after_possible_consumption" and consumption_state != "possibly_consumed":
         raise ValueError("post-dispatch Liepin detail failures must be possibly consumed.")
-    if next_state == "unknown" and consumption_state != "unknown":
-        raise ValueError("unknown Liepin detail attempts must use unknown consumption.")
+    if next_state == "unknown" and consumption_state not in {"unknown", "possibly_consumed"}:
+        raise ValueError("unknown Liepin detail attempts must use unknown or possibly_consumed consumption.")
 
 
 def _valid_consumption_states_for_detail_state(state: str) -> set[str]:
@@ -1135,7 +1135,7 @@ def _valid_consumption_states_for_detail_state(state: str) -> set[str]:
     if state == "failed_after_possible_consumption":
         return {"possibly_consumed"}
     if state == "unknown":
-        return {"unknown"}
+        return {"unknown", "possibly_consumed"}
     return {"not_consumed"}
 
 

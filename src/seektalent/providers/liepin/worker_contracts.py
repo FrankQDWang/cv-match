@@ -13,6 +13,14 @@ from seektalent.providers.liepin.models import LiepinPiiClassification
 from seektalent.providers.liepin.models import LiepinRedactionState
 from seektalent.providers.liepin.models import LiepinRetentionPolicy
 
+DetailOpenStatus = Literal[
+    "completed",
+    "blocked_by_risk_control",
+    "failed_before_consumption",
+    "failed_after_possible_consumption",
+    "unknown",
+]
+
 
 class LiepinWorkerModeError(RuntimeError):
     def __init__(self, message: str, *, setup_status: str | None = None) -> None:
@@ -88,6 +96,52 @@ class LiepinWorkerCandidateDetail(BaseModel):
     redaction_state: LiepinRedactionState
 
 
+class LiepinDetailOpenRequestItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    request_id: str = Field(alias="requestId")
+    attempt_id: str = Field(alias="attemptId")
+    idempotency_key: str = Field(alias="idempotencyKey")
+    candidate_id: str = Field(alias="candidateId")
+
+
+class LiepinDetailOpenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    worker_command_id: str = Field(alias="workerCommandId")
+    requests: list[LiepinDetailOpenRequestItem]
+
+
+class LiepinDetailWorkerDiagnostics(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    page_loaded: bool = Field(default=False, alias="pageLoaded")
+    payload_seen: bool = Field(default=False, alias="payloadSeen")
+    extraction_source: Literal["network", "dom_fallback"] | None = Field(default=None, alias="extractionSource")
+    messages: list[str] = Field(default_factory=list)
+
+
+class LiepinDetailOpenResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    request_id: str = Field(alias="requestId")
+    attempt_id: str = Field(alias="attemptId")
+    idempotency_key: str = Field(alias="idempotencyKey")
+    status: DetailOpenStatus
+    worker_response_id: str = Field(alias="workerResponseId")
+    worker_command_id: str = Field(alias="workerCommandId")
+    raw_evidence_ref: str | None = Field(default=None, alias="rawEvidenceRef")
+    diagnostics: LiepinDetailWorkerDiagnostics
+    candidate: LiepinWorkerCandidateDetail | None = None
+
+
+class LiepinDetailOpenResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    worker_command_id: str = Field(alias="workerCommandId")
+    results: list[LiepinDetailOpenResult]
+
+
 def decode_worker_health(payload: dict[str, object]) -> WorkerHealth:
     return WorkerHealth.model_validate(payload)
 
@@ -102,3 +156,7 @@ def decode_login_handoff(payload: dict[str, object]) -> LoginHandoff:
 
 def decode_redacted_diagnostics(payload: dict[str, object]) -> RedactedWorkerDiagnostics:
     return RedactedWorkerDiagnostics.model_validate(payload)
+
+
+def decode_detail_open_response(payload: dict[str, object]) -> LiepinDetailOpenResponse:
+    return LiepinDetailOpenResponse.model_validate(payload)

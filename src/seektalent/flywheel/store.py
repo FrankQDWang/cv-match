@@ -30,6 +30,12 @@ def task_sha256(*, job_title: str, jd: str, notes: str) -> str:
     return sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+def _add_column_if_missing(conn: sqlite3.Connection, table_name: str, column_name: str, column_type: str) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})")}
+    if column_name not in existing:
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+
 def build_judge_contract_hash(
     *,
     judge_model_id: str,
@@ -180,6 +186,7 @@ _SCHEMA_STATEMENTS = [
         risk_score REAL,
         off_intent_reason_count INTEGER NOT NULL DEFAULT 0,
         final_candidate_status TEXT,
+        score_evidence_source TEXT,
         created_at TEXT NOT NULL,
         CHECK(snapshot_sha256 IS NOT NULL OR snapshot_missing_reason IS NOT NULL),
         PRIMARY KEY (run_id, query_instance_id, hit_sequence_no),
@@ -416,6 +423,7 @@ class FlywheelStore:
         strict_suffix = self._strict_suffix(conn)
         for statement in _SCHEMA_STATEMENTS:
             conn.execute(statement.format(strict=strict_suffix))
+        _add_column_if_missing(conn, "query_resume_hits", "score_evidence_source", "TEXT")
         conn.execute(
             """
             INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)
@@ -702,6 +710,7 @@ class FlywheelStore:
                 row.get("risk_score"),
                 row.get("off_intent_reason_count") or 0,
                 row.get("final_candidate_status"),
+                row.get("score_evidence_source"),
                 now,
             )
             for row in rows
@@ -718,8 +727,9 @@ class FlywheelStore:
                     provider_fetch_no, provider_score_if_any, dedup_key,
                     was_new_to_pool, was_duplicate, scored_fit_bucket,
                     overall_score, must_have_match_score, risk_score,
-                    off_intent_reason_count, final_candidate_status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    off_intent_reason_count, final_candidate_status,
+                    score_evidence_source, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id, query_instance_id, hit_sequence_no) DO UPDATE SET
                     query_fingerprint = excluded.query_fingerprint,
                     snapshot_sha256 = excluded.snapshot_sha256,
@@ -744,7 +754,8 @@ class FlywheelStore:
                     must_have_match_score = excluded.must_have_match_score,
                     risk_score = excluded.risk_score,
                     off_intent_reason_count = excluded.off_intent_reason_count,
-                    final_candidate_status = excluded.final_candidate_status
+                    final_candidate_status = excluded.final_candidate_status,
+                    score_evidence_source = excluded.score_evidence_source
                 """,
                 values,
             )

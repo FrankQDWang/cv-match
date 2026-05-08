@@ -91,7 +91,19 @@ def build_runtime_query_outcome_rows_from_hits(
     for query_instance_id, query_hits in sorted(hits_by_query.items()):
         provider_returned_count = len(query_hits)
         new_hits = [hit for hit in query_hits if bool(hit.get("was_new_to_pool"))]
-        scored_hits = [hit for hit in new_hits if hit.get("scored_fit_bucket") is not None]
+        evidence_missing_hits = [
+            hit
+            for hit in new_hits
+            if hit.get("provider_name") == "liepin"
+            and hit.get("scored_fit_bucket") is not None
+            and not hit.get("score_evidence_source")
+        ]
+        scored_hits = [
+            hit
+            for hit in new_hits
+            if hit.get("scored_fit_bucket") is not None
+            and (hit.get("provider_name") != "liepin" or bool(hit.get("score_evidence_source")))
+        ]
         must_have_scores = [
             float(hit["must_have_match_score"]) for hit in scored_hits if hit.get("must_have_match_score") is not None
         ]
@@ -111,6 +123,23 @@ def build_runtime_query_outcome_rows_from_hits(
             off_intent_reason_count=off_intent_reason_count,
             thresholds=thresholds,
         )
+        evidence_sources = sorted(
+            {str(hit["score_evidence_source"]) for hit in scored_hits if hit.get("score_evidence_source")}
+        )
+        if evidence_sources or evidence_missing_hits:
+            labels = list(classification.labels)
+            reasons = list(classification.reasons)
+            labels.extend(f"score_evidence:{source}" for source in evidence_sources)
+            reasons.extend(f"score evidence source: {source}" for source in evidence_sources)
+            if evidence_missing_hits:
+                labels.append("score_evidence_source_missing")
+                reasons.append("Liepin scored hits without score_evidence_source were excluded from lane scoring")
+            classification = classification.model_copy(
+                update={
+                    "labels": sorted(set(labels)),
+                    "reasons": reasons,
+                }
+            )
         first_hit = query_hits[0]
         rows.append(
             build_runtime_query_outcome_row(

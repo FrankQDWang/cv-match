@@ -1190,6 +1190,8 @@ class WorkflowRuntime:
             hit.risk_score = scorecard.risk_score
             hit.off_intent_reason_count = len(scorecard.negative_signals)
             hit.final_candidate_status = "fit" if scorecard.fit_bucket == "fit" else "not_fit"
+            if scorecard.score_evidence_source is not None:
+                hit.score_evidence_source = scorecard.score_evidence_source
         tracer.write_json(
             f"round.{round_no:02d}.retrieval.query_resume_hits",
             [item.model_dump(mode="json") for item in query_resume_hits],

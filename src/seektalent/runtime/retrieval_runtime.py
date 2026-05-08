@@ -61,6 +61,11 @@ def _provider_score_if_any(candidate: ResumeCandidate) -> float | None:
     return None
 
 
+def _score_evidence_source(candidate: ResumeCandidate) -> str | None:
+    value = candidate.raw.get("score_evidence_source")
+    return value if isinstance(value, str) and value else None
+
+
 def _provider_name_for_service(retrieval_service: object) -> str:
     provider = getattr(retrieval_service, "provider", None)
     provider_name = getattr(provider, "name", None)
@@ -839,6 +844,7 @@ class RetrievalRuntime:
                             provider_fetch_no=attempt_no,
                             provider_score_if_any=_provider_score_if_any(candidate),
                             dedup_key=candidate.dedup_key,
+                            score_evidence_source=_score_evidence_source(candidate),
                             was_new_to_pool=was_new_to_pool,
                             was_duplicate=not was_new_to_pool,
                         )

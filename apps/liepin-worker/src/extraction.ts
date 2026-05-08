@@ -34,6 +34,16 @@ export type DomFallbackExtraction = {
   };
 };
 
+export type DetailDomFallbackExtraction = {
+  detail: WorkerCandidateDetail;
+  repairHtml: string;
+  selectorHealth: {
+    detailSelector: boolean;
+    idSelector: boolean;
+    titleSelector: boolean;
+  };
+};
+
 export type WorkerCardExtractionResult = {
   extractionSource: ExtractionSource;
   cards: WorkerCandidateCard[];
@@ -124,6 +134,54 @@ export function extractDetailFromNetwork(fixture: RedactedFixture): WorkerCandid
     ...card,
     providerDetailId,
     missingFields: [...card.missingFields, ...missingWhenEmpty(providerDetailId, "detailId")],
+  };
+}
+
+export function extractDetailFromDomFallback(html: string, candidateId?: string): DetailDomFallbackExtraction {
+  const detailFragments = matchAll(
+    html,
+    /<article\b[^>]*class=["'][^"']*\bcandidate-detail\b[^"']*["'][^>]*>[\s\S]*?<\/article>/gi
+  );
+  const fragment =
+    detailFragments.find((entry) => !candidateId || attrValue(entry, "data-candidate-id") === candidateId) ??
+    detailFragments[0] ??
+    "";
+  const providerCandidateId = attrValue(fragment, "data-candidate-id");
+  const providerDetailId = attrValue(fragment, "data-detail-id") || providerCandidateId;
+  const title = textForClass(fragment, "candidate-title");
+  const company = textForClass(fragment, "candidate-company");
+  const summary = textForClass(fragment, "candidate-summary");
+  const skills = matchAll(fragment, /<li[^>]*>([\s\S]*?)<\/li>/gi).map(cleanText);
+  const rawPayload = { providerCandidateId, providerDetailId, title, company, summary, skills };
+  const card = buildCard(
+    {
+      candidateId: providerCandidateId,
+      detailId: providerDetailId,
+      title,
+      company,
+      summary,
+      skills,
+    },
+    "dom_fallback",
+    {
+      redactionPolicyVersion: "liepin-fixture-redaction-v1",
+      containsDirectContact: CONTACT_PATTERN.test(html),
+    },
+    rawPayload
+  );
+
+  return {
+    detail: {
+      ...card,
+      providerDetailId,
+      missingFields: [...card.missingFields, ...missingWhenEmpty(providerDetailId, "detailId")],
+    },
+    repairHtml: redactedRepairHtml(html),
+    selectorHealth: {
+      detailSelector: detailFragments.length > 0,
+      idSelector: providerCandidateId.length > 0,
+      titleSelector: title.length > 0,
+    },
   };
 }
 

@@ -13,9 +13,12 @@ from pydantic import ValidationError
 from seektalent.config import AppSettings
 from seektalent.core.retrieval.provider_contract import SearchRequest
 from seektalent.core.retrieval.provider_contract import SearchResult
+from seektalent.providers.liepin.worker_contracts import LiepinDetailOpenRequest
+from seektalent.providers.liepin.worker_contracts import LiepinDetailOpenResponse
 from seektalent.providers.liepin.worker_contracts import LiepinWorkerModeError
 from seektalent.providers.liepin.worker_contracts import LoginHandoff
 from seektalent.providers.liepin.worker_contracts import SessionStatus
+from seektalent.providers.liepin.worker_contracts import decode_detail_open_response
 from seektalent.providers.liepin.worker_contracts import decode_login_handoff
 from seektalent.providers.liepin.worker_contracts import decode_session_status
 from seektalent.providers.liepin.worker_contracts import decode_worker_health
@@ -30,6 +33,8 @@ class LiepinWorkerClient(Protocol):
     async def ensure_ready(self, *, on_event: EventCallback | None = None) -> None: ...
 
     async def search(self, request: SearchRequest, *, round_no: int, trace_id: str) -> SearchResult: ...
+
+    async def open_details(self, request: LiepinDetailOpenRequest) -> LiepinDetailOpenResponse: ...
 
 
 class FakeLiepinWorkerClient:
@@ -63,6 +68,9 @@ class FakeLiepinWorkerClient:
             },
             raw_candidate_count=0,
         )
+
+    async def open_details(self, request: LiepinDetailOpenRequest) -> LiepinDetailOpenResponse:
+        raise LiepinWorkerModeError("Fake Liepin fixture worker does not open live detail pages.")
 
 
 class ManagedLocalLiepinWorkerClient:
@@ -119,6 +127,18 @@ class ManagedLocalLiepinWorkerClient:
     async def search(self, request: SearchRequest, *, round_no: int, trace_id: str) -> SearchResult:
         await self.ensure_ready()
         raise NotImplementedError("Liepin worker search is implemented in a later task.")
+
+    async def open_details(self, request: LiepinDetailOpenRequest) -> LiepinDetailOpenResponse:
+        await self.ensure_ready()
+        base_url = self._internal_base_url()
+        return _decode_worker_response(
+            decode_detail_open_response,
+            self._request_json(
+                "POST",
+                f"{base_url}/internal/details/open",
+                json_body=request.model_dump(mode="json", by_alias=True),
+            ),
+        )
 
     def _internal_base_url(self) -> str:
         handle = self.runtime.ensure_started()
@@ -200,6 +220,16 @@ class ExternalHttpLiepinWorkerClient:
 
     async def search(self, request: SearchRequest, *, round_no: int, trace_id: str) -> SearchResult:
         raise NotImplementedError("External Liepin worker search is implemented in a later task.")
+
+    async def open_details(self, request: LiepinDetailOpenRequest) -> LiepinDetailOpenResponse:
+        return _decode_worker_response(
+            decode_detail_open_response,
+            self._request_json(
+                "POST",
+                f"{self.base_url}/internal/details/open",
+                json_body=request.model_dump(mode="json", by_alias=True),
+            ),
+        )
 
     def _request_json(
         self,
