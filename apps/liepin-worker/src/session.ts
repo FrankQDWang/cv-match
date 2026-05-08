@@ -23,6 +23,13 @@ export type LoginHandoff = {
   status_event_stream: string;
 };
 
+export type InternalLoginHandoff = {
+  connectionId: string;
+  handoffToken: string;
+  loginUrl: "https://www.liepin.com/";
+  expiresAt: string;
+};
+
 export function createLoginHandoff(request: LoginHandoffRequest): LoginHandoff {
   return {
     connection_id: request.connectionId,
@@ -30,6 +37,15 @@ export function createLoginHandoff(request: LoginHandoffRequest): LoginHandoff {
     browser_view_url: null,
     expires_at: formatUtcZ(request.expiresAt),
     status_event_stream: `/api/liepin/connections/${request.connectionId}/events`,
+  };
+}
+
+export function createInternalLoginHandoff(request: LoginHandoffRequest): InternalLoginHandoff {
+  return {
+    connectionId: request.connectionId,
+    handoffToken: request.handoffToken,
+    loginUrl: "https://www.liepin.com/",
+    expiresAt: formatUtcZ(request.expiresAt),
   };
 }
 

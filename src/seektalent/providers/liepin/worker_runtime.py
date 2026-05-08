@@ -50,7 +50,7 @@ class ManagedLiepinWorkerRuntime:
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.settings = settings
-        self.worker_package_dir = worker_package_dir or settings.project_root / "workers/liepin"
+        self.worker_package_dir = worker_package_dir or settings.project_root / "apps" / "liepin-worker"
         self.bun_executable = shutil.which("bun") if bun_executable is _DEFAULT_BUN else bun_executable
         self.process_factory = process_factory or subprocess.Popen
         self.http_get = http_get or _default_http_get
@@ -72,7 +72,7 @@ class ManagedLiepinWorkerRuntime:
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> "ManagedLiepinWorkerRuntime":
-        package_dir = worker_package_dir or settings.project_root / "workers/liepin"
+        package_dir = worker_package_dir or settings.project_root / "apps" / "liepin-worker"
         key = (settings.liepin_worker_host, settings.liepin_worker_port, str(package_dir.resolve()))
         runtime = cls._shared.get(key)
         if runtime is None:

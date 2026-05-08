@@ -8,13 +8,13 @@ import {
 describe("liepin worker harness", () => {
   it("loads the shared worker contracts", () => {
     const response: LiepinWorkerHealthResponse = {
-      ok: true,
-      contractVersion: WORKER_CONTRACT_VERSION,
+      status: "ok",
+      workerVersion: WORKER_CONTRACT_VERSION,
     };
 
     expect(response).toEqual({
-      ok: true,
-      contractVersion: "liepin-worker-v1",
+      status: "ok",
+      workerVersion: "liepin-worker-v1",
     });
   });
 });

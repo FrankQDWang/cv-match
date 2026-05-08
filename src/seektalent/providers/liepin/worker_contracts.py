@@ -21,14 +21,14 @@ class LiepinWorkerModeError(RuntimeError):
 
 
 class WorkerHealth(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     status: Literal["ok", "starting"]
     worker_version: str | None = Field(default=None, alias="workerVersion")
 
 
 class SessionStatus(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     connection_id: str = Field(alias="connectionId")
     status: Literal["missing", "login_required", "ready", "revoked"]
@@ -37,14 +37,17 @@ class SessionStatus(BaseModel):
 
 
 class LoginHandoff(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     connection_id: str = Field(alias="connectionId")
+    handoff_token: str = Field(alias="handoffToken")
     login_url: str = Field(alias="loginUrl")
     expires_at: str = Field(alias="expiresAt")
 
 
 class RedactedWorkerDiagnostics(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     code: str
     message: str
     stdout: Literal["[redacted]"] | None = None

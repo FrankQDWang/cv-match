@@ -1,0 +1,174 @@
+import { randomUUID } from "node:crypto";
+
+import { WORKER_CONTRACT_VERSION } from "./contracts";
+import { createInternalLoginHandoff } from "./session";
+import { EncryptedSessionStore, type SessionScope } from "./sessionStore";
+
+type SessionStatusResponse = {
+  connectionId: string;
+  status: "missing" | "login_required" | "ready" | "revoked";
+  providerAccountHash?: string;
+  fixtureOnly: boolean;
+};
+
+type WorkerFetchOptions = {
+  authToken: string;
+  sessionStore?: EncryptedSessionStore;
+  sessionStatus?: SessionStatusResponse;
+  handoffTokenFactory?: () => string;
+  now?: () => Date;
+};
+
+const DEFAULT_SESSION_STATUS: SessionStatusResponse = {
+  connectionId: "default",
+  status: "login_required",
+  fixtureOnly: false,
+};
+
+export function createWorkerFetchHandler(options: WorkerFetchOptions): (request: Request) => Promise<Response> {
+  return async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/internal/")) {
+      return json({ error: { code: "not_found" } }, 404);
+    }
+
+    const authResponse = authorize(request, options.authToken);
+    if (authResponse !== null) {
+      return authResponse;
+    }
+
+    try {
+      if (request.method === "GET" && url.pathname === "/internal/health") {
+        return json({ status: "ok", workerVersion: WORKER_CONTRACT_VERSION });
+      }
+
+      if (request.method === "GET" && url.pathname === "/internal/session/status") {
+        const connectionId = url.searchParams.get("connectionId") ?? options.sessionStatus?.connectionId ?? "default";
+        return json({ ...statusFor(options, connectionId) });
+      }
+
+      if (request.method === "POST" && url.pathname === "/internal/session/login-handoff") {
+        const body = await readJsonObject(request);
+        const connectionId = stringValue(body.connectionId, "connectionId");
+        const now = options.now?.() ?? new Date();
+        const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+        return json(
+          createInternalLoginHandoff({
+            connectionId,
+            handoffToken: options.handoffTokenFactory?.() ?? randomUUID(),
+            expiresAt,
+          })
+        );
+      }
+
+      if (request.method === "POST" && url.pathname === "/internal/session/revoke") {
+        const scope = await readSessionScope(request);
+        if (options.sessionStore !== undefined) {
+          await options.sessionStore.revoke(scope);
+        }
+        return json({ connectionId: scope.connectionId, status: "revoked" });
+      }
+
+      if (request.method === "POST" && url.pathname === "/internal/search/cards") {
+        const body = await readJsonObject(request);
+        const connectionId = stringValue(body.connectionId, "connectionId");
+        const sessionStatus = statusFor(options, connectionId);
+        if (sessionStatus.status !== "ready") {
+          return json({ error: { code: "session_not_ready", status: sessionStatus.status } }, 409);
+        }
+        return json({ error: { code: "search_not_implemented" } }, 501);
+      }
+
+      if (request.method === "POST" && url.pathname === "/internal/details/open") {
+        const body = await readJsonObject(request);
+        const idempotencyKey = request.headers.get("x-idempotency-key");
+        if (!idempotencyKey) {
+          return json({ error: { code: "missing_preapproved_idempotency_key" } }, 400);
+        }
+        if (containsBudgetField(body)) {
+          return json({ error: { code: "budget_decision_not_allowed_in_worker" } }, 400);
+        }
+        return json({ status: "accepted", idempotencyKey });
+      }
+    } catch {
+      return json({ error: { code: "invalid_worker_request" } }, 400);
+    }
+
+    return json({ error: { code: "not_found" } }, 404);
+  };
+}
+
+function authorize(request: Request, authToken: string): Response | null {
+  const header = request.headers.get("authorization");
+  if (!header) {
+    return json({ error: { code: "worker_auth_required" } }, 401);
+  }
+  if (header !== `Bearer ${authToken}`) {
+    return json({ error: { code: "worker_auth_forbidden" } }, 403);
+  }
+  return null;
+}
+
+function statusFor(options: WorkerFetchOptions, connectionId: string): SessionStatusResponse {
+  return {
+    ...DEFAULT_SESSION_STATUS,
+    ...options.sessionStatus,
+    connectionId,
+  };
+}
+
+async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
+  const body = await request.json();
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new Error("Expected JSON object body.");
+  }
+  return body as Record<string, unknown>;
+}
+
+async function readSessionScope(request: Request): Promise<SessionScope> {
+  const body = await readJsonObject(request);
+  return {
+    tenantId: stringValue(body.tenantId, "tenantId"),
+    workspaceId: stringValue(body.workspaceId, "workspaceId"),
+    providerAccountHash: stringValue(body.providerAccountHash, "providerAccountHash"),
+    connectionId: stringValue(body.connectionId, "connectionId"),
+  };
+}
+
+function stringValue(value: unknown, fieldName: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`Missing ${fieldName}.`);
+  }
+  return value;
+}
+
+function containsBudgetField(body: Record<string, unknown>): boolean {
+  return Object.keys(body).some((key) => key.toLowerCase().includes("budget"));
+}
+
+function json(payload: object, status = 200): Response {
+  return Response.json(payload, { status });
+}
+
+if (import.meta.main) {
+  const host = argValue("--host") ?? process.env.SEEKTALENT_LIEPIN_WORKER_HOST ?? "127.0.0.1";
+  const port = Number(argValue("--port") ?? process.env.SEEKTALENT_LIEPIN_WORKER_PORT ?? "8123");
+  const authToken = process.env.SEEKTALENT_LIEPIN_WORKER_AUTH_TOKEN;
+  if (!authToken) {
+    throw new Error("Missing SEEKTALENT_LIEPIN_WORKER_AUTH_TOKEN.");
+  }
+
+  Bun.serve({
+    hostname: host,
+    port,
+    fetch: createWorkerFetchHandler({ authToken }),
+  });
+}
+
+function argValue(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  if (index === -1) {
+    return undefined;
+  }
+  return process.argv[index + 1];
+}
