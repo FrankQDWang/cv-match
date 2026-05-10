@@ -824,6 +824,37 @@ textarea:focus {
   font-size: 10px;
 }
 
+.detail-ledger-strip {
+  padding-top: 2px;
+}
+
+.source-policy-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-strong);
+}
+
+.source-policy-control span {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.source-policy-control select {
+  min-width: 96px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+}
+
 .source-warning {
   margin: 0;
   color: var(--rose-text);
@@ -1331,6 +1362,15 @@ textarea:focus {
   font-size: 12px;
 }
 
+.candidate-action-message {
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-strong);
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
 .why-box {
   display: flex;
   gap: 8px;
@@ -1339,6 +1379,60 @@ textarea:focus {
   border-radius: 4px;
   background: var(--surface);
   color: var(--text-soft);
+  font-size: 11px;
+}
+
+.detail-request-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.detail-request-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-request-list li {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-strong);
+}
+
+.detail-request-list li > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.detail-request-list strong {
+  font-size: 12px;
+}
+
+.detail-request-list span {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.detail-request-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.primary-action.compact,
+.secondary-link.compact {
+  min-height: 26px;
+  padding: 0 8px;
   font-size: 11px;
 }
 

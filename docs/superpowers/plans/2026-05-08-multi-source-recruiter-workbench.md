@@ -1418,13 +1418,15 @@ Apply these invariants inside the M0-M6 slices. Do not complete Task 0.5 as a st
 
   Preserve redaction and boundary checks. Do not expose cookies, tokens, storage state, or raw provider payloads.
 
-- [ ] **Step 5: Store and expose safe provider actions**
+- [x] **Step 5: Store and expose safe provider actions**
 
-  Add a workbench candidate action route only if it can be scoped and safe:
+Add a workbench candidate action route only if it can be scoped and safe:
 
-  - `POST /api/workbench/sessions/{session_id}/candidates/{candidate_id}/provider-actions/open`;
+- `POST /api/workbench/sessions/{session_id}/candidates/{candidate_id}/provider-actions/open`;
 
-  V1 response should be a safe action descriptor, not raw browser internals. If a Liepin detail URL may be auth-bearing in practice, return an instruction to open through the managed browser connection instead of returning the URL to arbitrary clients.
+V1 response should be a safe action descriptor, not raw browser internals. If a Liepin detail URL may be auth-bearing in practice, return an instruction to open through the managed browser connection instead of returning the URL to arbitrary clients.
+
+M5 implementation note: card-only Liepin evidence now returns `detail_open_required` instead of a managed-browser action. The safe action descriptor is available only for existing detail evidence or an already reserved/used workbench detail ledger row.
 
 ## Task 5: Replace The Frontend With The Workbench UI
 
@@ -1523,7 +1525,7 @@ Apply these invariants inside the M0-M6 slices. Do not complete Task 0.5 as a st
   - Liepin card evidence appears in candidate queue;
   - no detail ledger row is consumed by card-level search alone.
 
-- [ ] **Step 5: Slice 5, Liepin detail ledger and safe provider action**
+- [x] **Step 5: Slice 5, Liepin detail ledger and safe provider action**
 
   Implement:
 
@@ -1543,6 +1545,14 @@ Apply these invariants inside the M0-M6 slices. Do not complete Task 0.5 as a st
   - detail action respects backend lease;
   - known safe deeplink does not consume budget;
   - managed-browser-only action does not return raw auth-bearing URL.
+
+  M5 implementation note:
+
+  - workbench owns `detail_open_requests`, `detail_open_ledger`, source-run detail counters, and per-session Liepin detail policy;
+  - `human_confirm` is the default, while `bypass_confirm` skips only per-candidate confirmation and still uses backend lease/budget checks;
+  - one active `leased` detail row per `connection_id` is enforced in code and by a partial unique index;
+  - provider child-attempt dispatch is represented as a redacted `external_write_intents` row created in the same workbench transaction as the ledger lease; direct worker consumption of that outbox remains the next integration boundary;
+  - frontend source cards expose detail counters and policy control, candidate cards request detail, and the right rail shows a session-scoped approval queue.
 
 - [ ] **Step 6: Slice 6, visual parity pass**
 

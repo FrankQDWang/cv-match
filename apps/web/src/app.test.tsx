@@ -60,6 +60,8 @@ function session(overrides: Partial<WorkbenchSession> = {}): WorkbenchSession {
         authState: 'not_required',
         cardsScannedCount: 0,
         uniqueCandidatesCount: 0,
+        detailOpenUsedCount: 0,
+        detailOpenBlockedCount: 0,
         warningCode: null,
         warningMessage: null,
       },
@@ -70,6 +72,8 @@ function session(overrides: Partial<WorkbenchSession> = {}): WorkbenchSession {
         authState: 'login_required',
         cardsScannedCount: 0,
         uniqueCandidatesCount: 0,
+        detailOpenUsedCount: 0,
+        detailOpenBlockedCount: 0,
         warningCode: 'login_required',
         warningMessage: 'Liepin login is not connected yet.',
       },
@@ -83,6 +87,8 @@ function session(overrides: Partial<WorkbenchSession> = {}): WorkbenchSession {
         authState: 'not_required',
         cardsScannedCount: 0,
         uniqueCandidatesCount: 0,
+        detailOpenUsedCount: 0,
+        detailOpenBlockedCount: 0,
         warningCode: null,
         warningMessage: null,
       },
@@ -94,6 +100,8 @@ function session(overrides: Partial<WorkbenchSession> = {}): WorkbenchSession {
         authState: 'login_required',
         cardsScannedCount: 0,
         uniqueCandidatesCount: 0,
+        detailOpenUsedCount: 0,
+        detailOpenBlockedCount: 0,
         warningCode: 'login_required',
         warningMessage: 'Liepin login is not connected yet.',
       },
@@ -238,6 +246,22 @@ function candidateQueueResponse(items = [candidateReviewItem()]) {
   return jsonResponse({ items });
 }
 
+function detailOpenRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    requestId: 'dor-1',
+    sessionId: 'session-1',
+    reviewItemId: 'review-liepin',
+    status: 'pending',
+    detailOpenMode: 'human_confirm',
+    blockedReason: null,
+    ledger: null,
+    providerAction: null,
+    createdAt: '2026-05-09T00:05:00Z',
+    updatedAt: '2026-05-09T00:05:00Z',
+    ...overrides,
+  };
+}
+
 function liepinConnection(overrides: Partial<WorkbenchSourceConnection> = {}): WorkbenchSourceConnection {
   return {
     connectionId: overrides.connectionId ?? 'conn-liepin-1',
@@ -270,6 +294,17 @@ function renderWorkbench(path: string, handler: RouteHandler) {
     } catch (error) {
       if (/^\/api\/workbench\/sessions\/[^/]+\/candidates(?:\/[^/]+)?$/.test(url)) {
         return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url.startsWith('/api/workbench/detail-open-requests')) {
+        return Promise.resolve(jsonResponse({ requests: [] }));
+      }
+      if (/^\/api\/workbench\/sessions\/[^/]+\/source-runs\/liepin\/policy$/.test(url)) {
+        return Promise.resolve(jsonResponse({
+          sessionId: 'session-1',
+          sourceKind: 'liepin',
+          detailOpenMode: 'human_confirm',
+          updatedAt: '2026-05-09T00:00:00Z',
+        }));
       }
       throw error;
     }
@@ -869,6 +904,69 @@ describe('workbench routes', () => {
     expect(liepin).toHaveTextContent('连接猎聘后可加入本次检索。');
   });
 
+  it('shows Liepin detail counters and updates the session detail policy', async () => {
+    const currentSession = session({
+      requirementTriage: triage({ status: 'approved', approvedAt: '2026-05-09T00:02:00Z' }),
+      sourceCards: [
+        {
+          ...session().sourceCards[0],
+        },
+        {
+          ...session().sourceCards[1],
+          status: 'completed',
+          authState: 'not_required',
+          connectionId: 'conn-liepin-1',
+          connectionStatus: 'connected',
+          connectionWarningCode: null,
+          connectionWarningMessage: null,
+          detailOpenUsedCount: 7,
+          detailOpenBlockedCount: 2,
+        },
+      ],
+    });
+    const policyRequests: Array<{ headers: Headers; body: unknown }> = [];
+
+    renderWorkbench('/sessions/session-1', (url, init) => {
+      if (url === '/api/auth/me') {
+        return jsonResponse({ user }, { headers: { 'X-CSRF-Token': 'csrf-token' } });
+      }
+      if (url === '/api/workbench/sessions') {
+        return jsonResponse({ sessions: [currentSession] });
+      }
+      if (url === '/api/workbench/sessions/session-1') {
+        return jsonResponse(currentSession);
+      }
+      if (url === '/api/workbench/sessions/session-1/source-runs/liepin/policy' && init.method === 'PUT') {
+        policyRequests.push({
+          headers: new Headers(init.headers),
+          body: JSON.parse(String(init.body)),
+        });
+        return jsonResponse({
+          sessionId: 'session-1',
+          sourceKind: 'liepin',
+          detailOpenMode: 'bypass_confirm',
+          updatedAt: '2026-05-09T00:06:00Z',
+        });
+      }
+      if (url.startsWith('/api/workbench/events?after_seq=0')) {
+        return eventsResponse();
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+
+    const liepin = await screen.findByTestId('source-card-liepin');
+    expect(liepin).toHaveTextContent('DETAIL');
+    expect(liepin).toHaveTextContent('7');
+    expect(liepin).toHaveTextContent('BLOCK');
+    expect(liepin).toHaveTextContent('2');
+
+    await userEvent.selectOptions(within(liepin).getByLabelText('详情模式'), 'bypass_confirm');
+
+    await waitFor(() => expect(policyRequests).toHaveLength(1));
+    expect(policyRequests[0].headers.get('X-CSRF-Token')).toBe('csrf-token');
+    expect(policyRequests[0].body).toEqual({ detailOpenMode: 'bypass_confirm' });
+  });
+
   it('renders real candidate review queue with source badges and evidence level', async () => {
     renderWorkbench('/sessions/session-1', (url) => {
       if (url === '/api/auth/me') {
@@ -897,6 +995,132 @@ describe('workbench routes', () => {
     expect(card).toHaveTextContent('final');
     expect(card).toHaveTextContent('FastAPI / retrieval systems');
     expect(card).toHaveTextContent('benchmark depth unclear');
+  });
+
+  it('opens Liepin provider actions and creates detail requests from candidate cards', async () => {
+    const requests: Array<{ url: string; body?: unknown; headers: Headers }> = [];
+    const liepinCandidate = candidateReviewItem({
+      reviewItemId: 'review-liepin',
+      sourceBadges: ['Liepin'],
+      evidenceLevel: 'detail',
+      evidence: [
+        {
+          evidenceId: 'evidence-liepin',
+          sourceRunId: 'src-liepin',
+          sourceKind: 'liepin',
+          evidenceLevel: 'detail',
+          score: null,
+          fitBucket: 'card',
+          matchedMustHaves: ['FastAPI'],
+          matchedPreferences: [],
+          missingRisks: ['Detail page not opened yet.'],
+          strengths: [],
+          weaknesses: [],
+          createdAt: '2026-05-09T00:04:00Z',
+        },
+      ],
+    });
+
+    renderWorkbench('/sessions/session-1', (url, init) => {
+      if (url === '/api/auth/me') {
+        return jsonResponse({ user }, { headers: { 'X-CSRF-Token': 'csrf-token' } });
+      }
+      if (url === '/api/workbench/sessions') {
+        return jsonResponse({ sessions: [session()] });
+      }
+      if (url === '/api/workbench/sessions/session-1') {
+        return jsonResponse(session());
+      }
+      if (url === '/api/workbench/sessions/session-1/candidates') {
+        return candidateQueueResponse([liepinCandidate]);
+      }
+      if (url === '/api/workbench/sessions/session-1/candidates/review-liepin/provider-actions/open') {
+        requests.push({ url, headers: new Headers(init.headers) });
+        return jsonResponse({
+          actionKind: 'managed_browser',
+          sourceKind: 'liepin',
+          connectionId: 'conn-liepin-1',
+          reviewItemId: 'review-liepin',
+          budgetImpact: 'none',
+          message: 'Open an already-known Liepin detail view in the managed browser without reserving another budget slot.',
+        });
+      }
+      if (url === '/api/workbench/sessions/session-1/candidates/review-liepin/detail-open-requests') {
+        requests.push({
+          url,
+          body: JSON.parse(String(init.body)),
+          headers: new Headers(init.headers),
+        });
+        return jsonResponse(detailOpenRequest(), { status: 202 });
+      }
+      if (url.startsWith('/api/workbench/events?after_seq=0')) {
+        return eventsResponse();
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+
+    const card = await screen.findByTestId('candidate-card-review-liepin');
+    await userEvent.click(within(card).getByRole('button', { name: 'Open Liepin' }));
+
+    expect(await within(card).findByText(/without reserving another budget slot/i)).toBeInTheDocument();
+    await userEvent.click(within(card).getByRole('button', { name: 'Request detail' }));
+
+    await waitFor(() => expect(requests.map((request) => request.url)).toContain('/api/workbench/sessions/session-1/candidates/review-liepin/detail-open-requests'));
+    expect(requests.every((request) => request.headers.get('X-CSRF-Token') === 'csrf-token')).toBe(true);
+    expect(requests.find((request) => request.body)?.body).toEqual({ idempotencyKey: 'detail:review-liepin' });
+    expect(await within(card).findByText('Detail request is waiting for approval.')).toBeInTheDocument();
+  });
+
+  it('renders the detail approval queue and approves pending detail requests', async () => {
+    const approveRequests: string[] = [];
+
+    renderWorkbench('/sessions/session-1', (url, init) => {
+      if (url === '/api/auth/me') {
+        return jsonResponse({ user }, { headers: { 'X-CSRF-Token': 'csrf-token' } });
+      }
+      if (url === '/api/workbench/sessions') {
+        return jsonResponse({ sessions: [session()] });
+      }
+      if (url === '/api/workbench/sessions/session-1') {
+        return jsonResponse(session());
+      }
+      if (url === '/api/workbench/detail-open-requests?session_id=session-1') {
+        return jsonResponse({ requests: [detailOpenRequest()] });
+      }
+      if (url === '/api/workbench/detail-open-requests/dor-1/approve') {
+        approveRequests.push(new Headers(init.headers).get('X-CSRF-Token') ?? '');
+        return jsonResponse(
+          detailOpenRequest({
+            status: 'approved',
+            ledger: {
+              ledgerId: 'dol-1',
+              status: 'leased',
+              budgetDay: '2026-05-09',
+              leaseExpiresAt: '2026-05-09T00:15:00Z',
+            },
+            providerAction: {
+              actionKind: 'managed_browser',
+              sourceKind: 'liepin',
+              connectionId: 'conn-liepin-1',
+              reviewItemId: 'review-liepin',
+              budgetImpact: 'reserved',
+              message: 'Detail view lease is reserved. Continue in the managed Liepin browser.',
+            },
+          }),
+        );
+      }
+      if (url.startsWith('/api/workbench/events?after_seq=0')) {
+        return eventsResponse();
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+
+    expect(await screen.findByText('详情审批')).toBeInTheDocument();
+    expect(await screen.findByText('pending')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => expect(approveRequests).toEqual(['csrf-token']));
   });
 
   it('updates candidate review action and note through the API', async () => {
@@ -1415,6 +1639,8 @@ describe('workbench routes', () => {
           authState: 'not_required',
           cardsScannedCount: 0,
           uniqueCandidatesCount: 0,
+          detailOpenUsedCount: 0,
+          detailOpenBlockedCount: 0,
           warningCode: null,
           warningMessage: '<script>alert("source")</script>',
         },

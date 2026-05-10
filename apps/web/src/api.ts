@@ -6,8 +6,12 @@ import type {
   WorkbenchCandidateReviewItem,
   WorkbenchCandidateReviewItemUpdateInput,
   WorkbenchCandidateReviewQueueResponse,
+  WorkbenchDetailOpenRequest,
+  WorkbenchDetailOpenRequestListResponse,
+  WorkbenchDetailOpenRequestStatus,
   WorkbenchEventListResponse,
   WorkbenchLiepinLoginHandoffResponse,
+  WorkbenchProviderAction,
   WorkbenchRequirementTriage,
   WorkbenchRequirementTriageInput,
   WorkbenchSession,
@@ -15,6 +19,8 @@ import type {
   WorkbenchSettingsResponse,
   WorkbenchSourceConnection,
   WorkbenchSourceConnectionListResponse,
+  WorkbenchSourceRunPolicy,
+  WorkbenchDetailOpenMode,
   WorkbenchSourceRunStartResponse,
 } from './types';
 
@@ -56,6 +62,17 @@ export type WorkbenchApi = {
   updateRequirementTriage(sessionId: string, input: WorkbenchRequirementTriageInput): Promise<WorkbenchRequirementTriage>;
   approveRequirementTriage(sessionId: string): Promise<WorkbenchRequirementTriage>;
   startSourceRun(sessionId: string, input: StartWorkbenchSourceRunInput): Promise<WorkbenchSourceRunStartResponse>;
+  getLiepinSourceRunPolicy(sessionId: string): Promise<WorkbenchSourceRunPolicy>;
+  updateLiepinSourceRunPolicy(sessionId: string, detailOpenMode: WorkbenchDetailOpenMode): Promise<WorkbenchSourceRunPolicy>;
+  openCandidateProviderAction(sessionId: string, reviewItemId: string): Promise<WorkbenchProviderAction>;
+  createDetailOpenRequest(
+    sessionId: string,
+    reviewItemId: string,
+    input: { idempotencyKey?: string },
+  ): Promise<WorkbenchDetailOpenRequest>;
+  listDetailOpenRequests(sessionId?: string, status?: WorkbenchDetailOpenRequestStatus): Promise<WorkbenchDetailOpenRequestListResponse>;
+  approveDetailOpenRequest(requestId: string): Promise<WorkbenchDetailOpenRequest>;
+  rejectDetailOpenRequest(requestId: string, reason: string): Promise<WorkbenchDetailOpenRequest>;
   listEvents(afterSeq?: number): Promise<WorkbenchEventListResponse>;
   settings(): Promise<WorkbenchSettingsResponse>;
   listSourceConnections(): Promise<WorkbenchSourceConnectionListResponse>;
@@ -179,6 +196,63 @@ export function createWorkbenchApi(): WorkbenchApi {
         {
           method: 'POST',
           body: JSON.stringify(input),
+        },
+      );
+    },
+    getLiepinSourceRunPolicy(sessionId) {
+      return request<WorkbenchSourceRunPolicy>(
+        `/api/workbench/sessions/${encodeURIComponent(sessionId)}/source-runs/liepin/policy`,
+      );
+    },
+    updateLiepinSourceRunPolicy(sessionId, detailOpenMode) {
+      return request<WorkbenchSourceRunPolicy>(
+        `/api/workbench/sessions/${encodeURIComponent(sessionId)}/source-runs/liepin/policy`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ detailOpenMode }),
+        },
+      );
+    },
+    openCandidateProviderAction(sessionId, reviewItemId) {
+      return request<WorkbenchProviderAction>(
+        `/api/workbench/sessions/${encodeURIComponent(sessionId)}/candidates/${encodeURIComponent(reviewItemId)}/provider-actions/open`,
+        { method: 'POST' },
+      );
+    },
+    createDetailOpenRequest(sessionId, reviewItemId, input) {
+      return request<WorkbenchDetailOpenRequest>(
+        `/api/workbench/sessions/${encodeURIComponent(sessionId)}/candidates/${encodeURIComponent(reviewItemId)}/detail-open-requests`,
+        {
+          method: 'POST',
+          body: JSON.stringify(input),
+        },
+      );
+    },
+    listDetailOpenRequests(sessionId, status) {
+      const params = new URLSearchParams();
+      if (sessionId) {
+        params.set('session_id', sessionId);
+      }
+      if (status) {
+        params.set('status', status);
+      }
+      const query = params.toString();
+      return request<WorkbenchDetailOpenRequestListResponse>(
+        `/api/workbench/detail-open-requests${query ? `?${query}` : ''}`,
+      );
+    },
+    approveDetailOpenRequest(requestId) {
+      return request<WorkbenchDetailOpenRequest>(
+        `/api/workbench/detail-open-requests/${encodeURIComponent(requestId)}/approve`,
+        { method: 'POST' },
+      );
+    },
+    rejectDetailOpenRequest(requestId, reason) {
+      return request<WorkbenchDetailOpenRequest>(
+        `/api/workbench/detail-open-requests/${encodeURIComponent(requestId)}/reject`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
         },
       );
     },

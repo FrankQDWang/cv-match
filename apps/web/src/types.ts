@@ -27,6 +27,17 @@ export type WorkbenchTriageStatus = 'draft' | 'approved';
 export type WorkbenchJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 export type WorkbenchCandidateReviewStatus = 'new' | 'promising' | 'rejected';
 export type WorkbenchCandidateEvidenceLevel = 'card' | 'detail' | 'final';
+export type WorkbenchDetailOpenMode = 'human_confirm' | 'bypass_confirm';
+export type WorkbenchDetailOpenRequestStatus = 'pending' | 'approved' | 'rejected' | 'bypassed' | 'blocked' | 'expired';
+export type WorkbenchDetailOpenLedgerStatus =
+  | 'planned'
+  | 'leased'
+  | 'opened'
+  | 'skipped'
+  | 'blocked'
+  | 'failed'
+  | 'maybe_used';
+export type WorkbenchProviderActionBudgetImpact = 'none' | 'reserved';
 export type WorkbenchSourceConnectionStatus =
   | 'login_required'
   | 'login_in_progress'
@@ -66,6 +77,8 @@ export type WorkbenchSourceRun = {
   authState: WorkbenchAuthState;
   cardsScannedCount: number;
   uniqueCandidatesCount: number;
+  detailOpenUsedCount: number;
+  detailOpenBlockedCount: number;
   warningCode: string | null;
   warningMessage: string | null;
 };
@@ -161,6 +174,46 @@ export type WorkbenchSourceRunStartResponse = {
   sourceKind: SourceKind;
   status: WorkbenchSourceStatus;
   job: WorkbenchSourceRunJob;
+};
+
+export type WorkbenchSourceRunPolicy = {
+  sessionId: string;
+  sourceKind: 'liepin';
+  detailOpenMode: WorkbenchDetailOpenMode;
+  updatedAt: string;
+};
+
+export type WorkbenchDetailOpenLedger = {
+  ledgerId: string;
+  status: WorkbenchDetailOpenLedgerStatus;
+  budgetDay: string;
+  leaseExpiresAt: string | null;
+};
+
+export type WorkbenchProviderAction = {
+  actionKind: 'managed_browser';
+  sourceKind: 'liepin';
+  connectionId: string;
+  reviewItemId: string;
+  budgetImpact: WorkbenchProviderActionBudgetImpact;
+  message: string;
+};
+
+export type WorkbenchDetailOpenRequest = {
+  requestId: string;
+  sessionId: string;
+  reviewItemId: string;
+  status: WorkbenchDetailOpenRequestStatus;
+  detailOpenMode: WorkbenchDetailOpenMode;
+  blockedReason: string | null;
+  ledger: WorkbenchDetailOpenLedger | null;
+  providerAction: WorkbenchProviderAction | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkbenchDetailOpenRequestListResponse = {
+  requests: WorkbenchDetailOpenRequest[];
 };
 
 export type WorkbenchEvent = {

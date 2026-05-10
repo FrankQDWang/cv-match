@@ -258,6 +258,10 @@ WorkbenchTriageStatus = Literal["draft", "approved"]
 WorkbenchJobStatus = Literal["queued", "running", "completed", "failed"]
 WorkbenchCandidateReviewStatus = Literal["new", "promising", "rejected"]
 WorkbenchCandidateEvidenceLevel = Literal["card", "detail", "final"]
+WorkbenchDetailOpenMode = Literal["human_confirm", "bypass_confirm"]
+WorkbenchDetailOpenRequestStatus = Literal["pending", "approved", "rejected", "bypassed", "blocked", "expired"]
+WorkbenchDetailOpenLedgerStatus = Literal["planned", "leased", "opened", "skipped", "blocked", "failed", "maybe_used"]
+WorkbenchProviderActionBudgetImpact = Literal["none", "reserved"]
 WorkbenchSourceConnectionStatus = Literal[
     "login_required",
     "login_in_progress",
@@ -288,6 +292,8 @@ class WorkbenchSourceRunResponse(BaseModel):
     warningMessage: str | None = None
     cardsScannedCount: int = 0
     uniqueCandidatesCount: int = 0
+    detailOpenUsedCount: int = 0
+    detailOpenBlockedCount: int = 0
 
 
 class WorkbenchRequirementTriageUpdateRequest(BaseModel):
@@ -336,6 +342,8 @@ class WorkbenchSourceCardResponse(BaseModel):
     warningMessage: str | None = None
     cardsScannedCount: int = 0
     uniqueCandidatesCount: int = 0
+    detailOpenUsedCount: int = 0
+    detailOpenBlockedCount: int = 0
     connectionId: str | None = None
     connectionStatus: WorkbenchSourceConnectionStatus | None = None
     connectionWarningCode: str | None = None
@@ -442,6 +450,74 @@ class WorkbenchSourceRunStartResponse(BaseModel):
     sourceKind: SourceKind
     status: WorkbenchSourceStatus
     job: WorkbenchSourceRunJobResponse
+
+
+class WorkbenchSourceRunPolicyUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    detailOpenMode: WorkbenchDetailOpenMode
+
+
+class WorkbenchSourceRunPolicyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sessionId: str
+    sourceKind: Literal["liepin"]
+    detailOpenMode: WorkbenchDetailOpenMode
+    updatedAt: str
+
+
+class WorkbenchDetailOpenRequestCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotencyKey: str | None = Field(default=None, max_length=128)
+
+
+class WorkbenchDetailOpenRejectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(default="", max_length=500)
+
+
+class WorkbenchDetailOpenLedgerResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ledgerId: str
+    status: WorkbenchDetailOpenLedgerStatus
+    budgetDay: str
+    leaseExpiresAt: str | None = None
+
+
+class WorkbenchProviderActionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actionKind: Literal["managed_browser"]
+    sourceKind: Literal["liepin"]
+    connectionId: str
+    reviewItemId: str
+    budgetImpact: WorkbenchProviderActionBudgetImpact
+    message: str
+
+
+class WorkbenchDetailOpenRequestResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requestId: str
+    sessionId: str
+    reviewItemId: str
+    status: WorkbenchDetailOpenRequestStatus
+    detailOpenMode: WorkbenchDetailOpenMode
+    blockedReason: str | None = None
+    ledger: WorkbenchDetailOpenLedgerResponse | None = None
+    providerAction: WorkbenchProviderActionResponse | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class WorkbenchDetailOpenRequestListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requests: list[WorkbenchDetailOpenRequestResponse]
 
 
 class WorkbenchEventResponse(BaseModel):

@@ -29,10 +29,17 @@ from seektalent_ui.models import (
     WorkbenchCandidateReviewItemResponse,
     WorkbenchCandidateReviewItemUpdateRequest,
     WorkbenchCandidateReviewQueueResponse,
+    WorkbenchDetailOpenRequestStatus,
+    WorkbenchDetailOpenRejectRequest,
+    WorkbenchDetailOpenRequestCreateRequest,
+    WorkbenchDetailOpenRequestListResponse,
+    WorkbenchDetailOpenRequestResponse,
+    WorkbenchDetailOpenLedgerResponse,
     WorkbenchLiepinLoginHandoffResponse,
     WorkbenchLiepinLoginRelayInputRequest,
     WorkbenchLoginRequest,
     WorkbenchMeResponse,
+    WorkbenchProviderActionResponse,
     WorkbenchRequirementTriageResponse,
     WorkbenchRequirementTriageUpdateRequest,
     WorkbenchSessionCreateRequest,
@@ -43,6 +50,8 @@ from seektalent_ui.models import (
     WorkbenchSourceCardResponse,
     WorkbenchSourceConnectionListResponse,
     WorkbenchSourceConnectionResponse,
+    WorkbenchSourceRunPolicyResponse,
+    WorkbenchSourceRunPolicyUpdateRequest,
     WorkbenchSourceRunJobResponse,
     WorkbenchSourceRunResponse,
     WorkbenchSourceRunStartRequest,
@@ -54,11 +63,15 @@ from seektalent_ui.workbench_store import (
     BootstrapAlreadyCompleteError,
     WorkbenchCandidateEvidence,
     WorkbenchCandidateReviewItem,
+    WorkbenchDetailOpenLedger,
+    WorkbenchDetailOpenRequest,
+    WorkbenchProviderAction,
     WorkbenchRequirementTriage,
     WorkbenchSession,
     WorkbenchSourceConnection,
     WorkbenchSourceRun,
     WorkbenchSourceRunJob,
+    WorkbenchSourceRunPolicy,
     WorkbenchUser,
     WorkbenchWorkspace,
     DEFAULT_TENANT_ID,
@@ -188,7 +201,9 @@ def list_sessions(
     user: WorkbenchUser = Depends(require_current_user),
 ) -> WorkbenchSessionListResponse:
     store = get_workbench_store(request)
-    connections = {connection.source_kind: connection for connection in store.list_source_connections(user=user)}
+    connections: dict[str, WorkbenchSourceConnection] = {
+        connection.source_kind: connection for connection in store.list_source_connections(user=user)
+    }
     return WorkbenchSessionListResponse(
         sessions=[_session_response(session, connections) for session in store.list_workbench_sessions(user=user)]
     )
@@ -216,7 +231,9 @@ def create_session(
         jd_text=jd_text,
         notes=notes,
     )
-    connections = {connection.source_kind: connection for connection in store.list_source_connections(user=user)}
+    connections: dict[str, WorkbenchSourceConnection] = {
+        connection.source_kind: connection for connection in store.list_source_connections(user=user)
+    }
     return _session_response(session, connections)
 
 
@@ -230,7 +247,9 @@ def get_session(
     session = store.get_workbench_session(user=user, session_id=session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Not found.")
-    connections = {connection.source_kind: connection for connection in store.list_source_connections(user=user)}
+    connections: dict[str, WorkbenchSourceConnection] = {
+        connection.source_kind: connection for connection in store.list_source_connections(user=user)
+    }
     return _session_response(session, connections)
 
 
@@ -464,6 +483,123 @@ def update_candidate_review_item(
     return _candidate_review_item_response(item)
 
 
+@router.post(
+    "/api/workbench/sessions/{session_id}/candidates/{review_item_id}/provider-actions/open",
+    response_model=WorkbenchProviderActionResponse,
+)
+def open_candidate_provider_action(
+    session_id: str,
+    review_item_id: str,
+    request: Request,
+    user: WorkbenchUser = Depends(require_csrf_user),
+) -> WorkbenchProviderActionResponse:
+    store = get_workbench_store(request)
+    try:
+        action = store.build_liepin_provider_open_action(
+            user=user,
+            session_id=session_id,
+            review_item_id=review_item_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if action is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return _provider_action_response(action)
+
+
+@router.post(
+    "/api/workbench/sessions/{session_id}/candidates/{review_item_id}/detail-open-requests",
+    response_model=WorkbenchDetailOpenRequestResponse,
+    status_code=202,
+)
+def create_detail_open_request(
+    session_id: str,
+    review_item_id: str,
+    create_request: WorkbenchDetailOpenRequestCreateRequest,
+    request: Request,
+    user: WorkbenchUser = Depends(require_csrf_user),
+) -> WorkbenchDetailOpenRequestResponse:
+    store = get_workbench_store(request)
+    try:
+        detail_request = store.create_liepin_detail_open_request(
+            user=user,
+            session_id=session_id,
+            review_item_id=review_item_id,
+            idempotency_key=create_request.idempotencyKey,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if detail_request is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return _detail_open_request_response(detail_request)
+
+
+@router.get(
+    "/api/workbench/detail-open-requests",
+    response_model=WorkbenchDetailOpenRequestListResponse,
+)
+def list_detail_open_requests(
+    request: Request,
+    session_id: str | None = None,
+    status: WorkbenchDetailOpenRequestStatus | None = None,
+    user: WorkbenchUser = Depends(require_current_user),
+) -> WorkbenchDetailOpenRequestListResponse:
+    store = get_workbench_store(request)
+    return WorkbenchDetailOpenRequestListResponse(
+        requests=[
+            _detail_open_request_response(detail_request)
+            for detail_request in store.list_liepin_detail_open_requests(
+                user=user,
+                session_id=session_id,
+                status=status,
+            )
+        ]
+    )
+
+
+@router.post(
+    "/api/workbench/detail-open-requests/{request_id}/approve",
+    response_model=WorkbenchDetailOpenRequestResponse,
+)
+def approve_detail_open_request(
+    request_id: str,
+    request: Request,
+    user: WorkbenchUser = Depends(require_csrf_user),
+) -> WorkbenchDetailOpenRequestResponse:
+    store = get_workbench_store(request)
+    try:
+        detail_request = store.approve_liepin_detail_open_request(user=user, request_id=request_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if detail_request is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return _detail_open_request_response(detail_request)
+
+
+@router.post(
+    "/api/workbench/detail-open-requests/{request_id}/reject",
+    response_model=WorkbenchDetailOpenRequestResponse,
+)
+def reject_detail_open_request(
+    request_id: str,
+    reject_request: WorkbenchDetailOpenRejectRequest,
+    request: Request,
+    user: WorkbenchUser = Depends(require_csrf_user),
+) -> WorkbenchDetailOpenRequestResponse:
+    store = get_workbench_store(request)
+    try:
+        detail_request = store.reject_liepin_detail_open_request(
+            user=user,
+            request_id=request_id,
+            reason=reject_request.reason,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if detail_request is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return _detail_open_request_response(detail_request)
+
+
 @router.get(
     "/api/workbench/sessions/{session_id}/triage",
     response_model=WorkbenchRequirementTriageResponse,
@@ -616,6 +752,43 @@ def _start_source_run(
         status=source_run.status,
         job=_job_response(job),
     )
+
+
+@router.put(
+    "/api/workbench/sessions/{session_id}/source-runs/liepin/policy",
+    response_model=WorkbenchSourceRunPolicyResponse,
+)
+def update_liepin_source_run_policy(
+    session_id: str,
+    policy_update: WorkbenchSourceRunPolicyUpdateRequest,
+    request: Request,
+    user: WorkbenchUser = Depends(require_csrf_user),
+) -> WorkbenchSourceRunPolicyResponse:
+    store = get_workbench_store(request)
+    policy = store.update_liepin_source_run_policy(
+        user=user,
+        session_id=session_id,
+        detail_open_mode=policy_update.detailOpenMode,
+    )
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return _source_run_policy_response(policy)
+
+
+@router.get(
+    "/api/workbench/sessions/{session_id}/source-runs/liepin/policy",
+    response_model=WorkbenchSourceRunPolicyResponse,
+)
+def get_liepin_source_run_policy(
+    session_id: str,
+    request: Request,
+    user: WorkbenchUser = Depends(require_current_user),
+) -> WorkbenchSourceRunPolicyResponse:
+    store = get_workbench_store(request)
+    policy = store.get_liepin_source_run_policy(user=user, session_id=session_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return _source_run_policy_response(policy)
 
 
 @router.get("/api/workbench/settings", response_model=WorkbenchSettingsResponse)
@@ -874,6 +1047,8 @@ def _source_run_response(source_run: WorkbenchSourceRun) -> WorkbenchSourceRunRe
         warningMessage=source_run.warning_message,
         cardsScannedCount=source_run.cards_scanned_count,
         uniqueCandidatesCount=source_run.unique_candidates_count,
+        detailOpenUsedCount=source_run.detail_open_used_count,
+        detailOpenBlockedCount=source_run.detail_open_blocked_count,
     )
 
 
@@ -891,6 +1066,8 @@ def _source_card_response(
         warningMessage=source_run.warning_message,
         cardsScannedCount=source_run.cards_scanned_count,
         uniqueCandidatesCount=source_run.unique_candidates_count,
+        detailOpenUsedCount=source_run.detail_open_used_count,
+        detailOpenBlockedCount=source_run.detail_open_blocked_count,
         connectionId=connection.connection_id if connection is not None else None,
         connectionStatus=connection.status if connection is not None else None,
         connectionWarningCode=connection.warning_code if connection is not None else None,
@@ -909,6 +1086,56 @@ def _source_connection_response(connection: WorkbenchSourceConnection) -> Workbe
         createdAt=connection.created_at,
         updatedAt=connection.updated_at,
         connectedAt=connection.connected_at,
+    )
+
+
+def _source_run_policy_response(policy: WorkbenchSourceRunPolicy) -> WorkbenchSourceRunPolicyResponse:
+    return WorkbenchSourceRunPolicyResponse(
+        sessionId=policy.session_id,
+        sourceKind=policy.source_kind,
+        detailOpenMode=policy.detail_open_mode,
+        updatedAt=policy.updated_at,
+    )
+
+
+def _detail_open_request_response(
+    detail_request: WorkbenchDetailOpenRequest,
+) -> WorkbenchDetailOpenRequestResponse:
+    return WorkbenchDetailOpenRequestResponse(
+        requestId=detail_request.request_id,
+        sessionId=detail_request.session_id,
+        reviewItemId=detail_request.review_item_id,
+        status=detail_request.status,
+        detailOpenMode=detail_request.detail_open_mode,
+        blockedReason=detail_request.blocked_reason,
+        ledger=_detail_open_ledger_response(detail_request.ledger) if detail_request.ledger is not None else None,
+        providerAction=(
+            _provider_action_response(detail_request.provider_action)
+            if detail_request.provider_action is not None
+            else None
+        ),
+        createdAt=detail_request.created_at,
+        updatedAt=detail_request.updated_at,
+    )
+
+
+def _detail_open_ledger_response(ledger: WorkbenchDetailOpenLedger) -> WorkbenchDetailOpenLedgerResponse:
+    return WorkbenchDetailOpenLedgerResponse(
+        ledgerId=ledger.ledger_id,
+        status=ledger.status,
+        budgetDay=ledger.budget_day,
+        leaseExpiresAt=ledger.lease_expires_at,
+    )
+
+
+def _provider_action_response(action: WorkbenchProviderAction) -> WorkbenchProviderActionResponse:
+    return WorkbenchProviderActionResponse(
+        actionKind=action.action_kind,
+        sourceKind=action.source_kind,
+        connectionId=action.connection_id,
+        reviewItemId=action.review_item_id,
+        budgetImpact=action.budget_impact,
+        message=action.message,
     )
 
 

@@ -40,9 +40,13 @@ import type {
   WorkbenchCandidateReviewItem,
   WorkbenchCandidateReviewItemUpdateInput,
   WorkbenchCandidateReviewQueueResponse,
+  WorkbenchDetailOpenMode,
+  WorkbenchDetailOpenRequest,
+  WorkbenchDetailOpenRequestListResponse,
   WorkbenchEvent,
   WorkbenchEventListResponse,
   WorkbenchLiepinLoginHandoffResponse,
+  WorkbenchProviderAction,
   WorkbenchRequirementTriage,
   WorkbenchRequirementTriageInput,
   WorkbenchSession,
@@ -52,6 +56,7 @@ import type {
   WorkbenchSourceConnection,
   WorkbenchSourceConnectionListResponse,
   WorkbenchSourceCard,
+  WorkbenchSourceRunPolicy,
 } from './types';
 
 type WorkbenchRouterContext = {
@@ -69,6 +74,7 @@ const sessionListKey = ['workbench', 'sessions'] as const;
 const meKey = ['auth', 'me'] as const;
 const settingsKey = ['workbench', 'settings'] as const;
 const sourceConnectionsKey = ['workbench', 'source-connections'] as const;
+const detailOpenRequestsRootKey = ['workbench', 'detail-open-requests'] as const;
 const WorkbenchRuntimeContext = createContext<WorkbenchRouterContext | null>(null);
 const PlaybackContext = createContext<{
   playbackState: PlaybackState;
@@ -89,6 +95,14 @@ function eventListKey(afterSeq = 0) {
 
 function candidateQueueKey(sessionId: string) {
   return ['workbench', 'sessions', sessionId, 'candidates'] as const;
+}
+
+function sourceRunPolicyKey(sessionId: string, sourceKind: SourceKind) {
+  return ['workbench', 'sessions', sessionId, 'source-runs', sourceKind, 'policy'] as const;
+}
+
+function detailOpenRequestsKey(sessionId?: string) {
+  return sessionId ? [...detailOpenRequestsRootKey, sessionId] as const : detailOpenRequestsRootKey;
 }
 
 function sourceConnectionKey(connectionId: string) {
@@ -286,6 +300,21 @@ function useWorkbenchEvents(api: WorkbenchApi) {
   });
 }
 
+function useDetailOpenRequests(api: WorkbenchApi, sessionId: string) {
+  return useQuery({
+    queryKey: detailOpenRequestsKey(sessionId),
+    queryFn: () => api.listDetailOpenRequests(sessionId),
+  });
+}
+
+function useLiepinSourceRunPolicy(api: WorkbenchApi, sessionId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: sourceRunPolicyKey(sessionId, 'liepin'),
+    queryFn: () => api.getLiepinSourceRunPolicy(sessionId),
+    enabled,
+  });
+}
+
 function useWorkbenchEventStream() {
   const queryClient = useQueryClient();
 
@@ -314,6 +343,12 @@ function useWorkbenchEventStream() {
         if (connectionId) {
           void queryClient.invalidateQueries({ queryKey: sourceConnectionKey(connectionId), exact: true });
         }
+      }
+      if (event.eventName.startsWith('liepin_detail_open_')) {
+        void queryClient.invalidateQueries({ queryKey: detailOpenRequestsRootKey });
+      }
+      if (event.eventName === 'liepin_detail_policy_updated' && event.sessionId) {
+        void queryClient.invalidateQueries({ queryKey: sourceRunPolicyKey(event.sessionId, 'liepin'), exact: true });
       }
       void queryClient.invalidateQueries({ queryKey: sessionListKey, exact: true });
       if (event.sessionId) {
@@ -830,6 +865,7 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
 
       <section className="right-rail">
         <ActivityLog events={strategyEvents} loading={eventsQuery.isLoading} error={eventsQuery.isError} />
+        <DetailOpenRequestQueue sessionId={session.sessionId} />
         <CandidateReviewQueue sessionId={session.sessionId} />
       </section>
     </div>
@@ -872,6 +908,92 @@ function CandidateReviewQueue({ sessionId }: { sessionId: string }) {
             <CandidateReviewCard key={item.reviewItemId} item={item} sessionId={sessionId} />
           ))}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DetailOpenRequestQueue({ sessionId }: { sessionId: string }) {
+  const { api } = useWorkbenchRuntime();
+  const queryClient = useQueryClient();
+  const query = useDetailOpenRequests(api, sessionId);
+  const [error, setError] = useState('');
+  const requests = query.data?.requests ?? [];
+  const pendingRequests = requests.filter((request) => request.status === 'pending');
+  const recentRequests = requests.slice(-3);
+  const visibleRequests = pendingRequests.length > 0 ? pendingRequests : recentRequests;
+
+  const refreshDetailState = () => {
+    void queryClient.invalidateQueries({ queryKey: detailOpenRequestsKey(sessionId), exact: true });
+    void queryClient.invalidateQueries({ queryKey: sessionKey(sessionId), exact: true });
+    void queryClient.invalidateQueries({ queryKey: sessionListKey, exact: true });
+  };
+
+  const approveMutation = useMutation<WorkbenchDetailOpenRequest, Error, string>({
+    mutationFn: (requestId) => api.approveDetailOpenRequest(requestId),
+    onSuccess: () => {
+      setError('');
+      refreshDetailState();
+    },
+    onError: (err) => setError(err.message),
+  });
+  const rejectMutation = useMutation<WorkbenchDetailOpenRequest, Error, string>({
+    mutationFn: (requestId) => api.rejectDetailOpenRequest(requestId, 'Rejected from workbench queue.'),
+    onSuccess: () => {
+      setError('');
+      refreshDetailState();
+    },
+    onError: (err) => setError(err.message),
+  });
+
+  if (!query.isLoading && !query.isError && visibleRequests.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="detail-request-panel">
+      <div className="queue-heading">
+        <span>详情审批</span>
+        <strong>{pendingRequests.length} pending</strong>
+      </div>
+      {query.isLoading ? <p className="muted">Loading detail requests</p> : null}
+      {query.isError ? <p className="form-error" role="alert">Could not load detail requests</p> : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {visibleRequests.length > 0 ? (
+        <ol className="detail-request-list">
+          {visibleRequests.map((request) => (
+            <li key={request.requestId}>
+              <div>
+                <strong>{request.status}</strong>
+                <span>{request.reviewItemId.slice(-10)}</span>
+              </div>
+              {request.status === 'pending' ? (
+                <div className="detail-request-actions">
+                  <button
+                    className="primary-action compact"
+                    type="button"
+                    disabled={approveMutation.isPending || rejectMutation.isPending}
+                    onClick={() => approveMutation.mutate(request.requestId)}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="secondary-link compact"
+                    type="button"
+                    disabled={approveMutation.isPending || rejectMutation.isPending}
+                    onClick={() => rejectMutation.mutate(request.requestId)}
+                  >
+                    Reject
+                  </button>
+                </div>
+              ) : (
+                <span className="source-badge muted-badge">
+                  {request.ledger?.status ?? request.blockedReason ?? request.detailOpenMode}
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
       ) : null}
     </div>
   );
@@ -926,6 +1048,11 @@ function CandidateReviewCard({ item, sessionId }: { item: WorkbenchCandidateRevi
   const [note, setNote] = useState(item.note);
   const [noteDirty, setNoteDirty] = useState(false);
   const [error, setError] = useState('');
+  const [providerMessage, setProviderMessage] = useState('');
+  const hasLiepinEvidence = item.sourceBadges.includes('Liepin') || item.evidence.some((evidence) => evidence.sourceKind === 'liepin');
+  const hasLiepinDetailEvidence =
+    item.evidenceLevel === 'detail' ||
+    item.evidence.some((evidence) => evidence.sourceKind === 'liepin' && evidence.evidenceLevel === 'detail');
 
   useEffect(() => {
     setNote(item.note);
@@ -954,6 +1081,28 @@ function CandidateReviewCard({ item, sessionId }: { item: WorkbenchCandidateRevi
           ),
         };
       });
+    },
+    onError: (err) => setError(err.message),
+  });
+  const providerActionMutation = useMutation<WorkbenchProviderAction, Error>({
+    mutationFn: () => api.openCandidateProviderAction(sessionId, item.reviewItemId),
+    onSuccess: (action) => {
+      setError('');
+      setProviderMessage(action.message);
+    },
+    onError: (err) => setError(err.message),
+  });
+  const detailOpenMutation = useMutation<WorkbenchDetailOpenRequest, Error>({
+    mutationFn: () =>
+      api.createDetailOpenRequest(sessionId, item.reviewItemId, {
+        idempotencyKey: `detail:${item.reviewItemId}`,
+      }),
+    onSuccess: (detailRequest) => {
+      setError('');
+      setProviderMessage(detailOpenStatusMessage(detailRequest));
+      void queryClient.invalidateQueries({ queryKey: detailOpenRequestsKey(sessionId), exact: true });
+      void queryClient.invalidateQueries({ queryKey: sessionKey(sessionId), exact: true });
+      void queryClient.invalidateQueries({ queryKey: sessionListKey, exact: true });
     },
     onError: (err) => setError(err.message),
   });
@@ -1021,9 +1170,48 @@ function CandidateReviewCard({ item, sessionId }: { item: WorkbenchCandidateRevi
         >
           Save note
         </button>
+        {hasLiepinEvidence ? (
+          <>
+            {hasLiepinDetailEvidence ? (
+              <button
+                className="secondary-link"
+                type="button"
+                disabled={providerActionMutation.isPending}
+                onClick={() => providerActionMutation.mutate()}
+              >
+                Open Liepin
+              </button>
+            ) : null}
+            <button
+              className="secondary-link"
+              type="button"
+              disabled={detailOpenMutation.isPending}
+              onClick={() => detailOpenMutation.mutate()}
+            >
+              Request detail
+            </button>
+          </>
+        ) : null}
       </div>
+      {providerMessage ? <p className="candidate-action-message">{providerMessage}</p> : null}
     </article>
   );
+}
+
+function detailOpenStatusMessage(detailRequest: WorkbenchDetailOpenRequest): string {
+  if (detailRequest.status === 'pending') {
+    return 'Detail request is waiting for approval.';
+  }
+  if (detailRequest.status === 'bypassed') {
+    return 'Detail lease is reserved by bypass mode.';
+  }
+  if (detailRequest.status === 'approved') {
+    return 'Detail lease is approved and reserved.';
+  }
+  if (detailRequest.status === 'blocked') {
+    return detailRequest.blockedReason ?? 'Detail request is blocked.';
+  }
+  return `Detail request ${detailRequest.status}.`;
 }
 
 function CandidateFactList({ label, values }: { label: string; values: string[] }) {
@@ -1305,6 +1493,9 @@ function SourceCard({
   const queryClient = useQueryClient();
   const channel = getRecruiterChannelSnapshot(card.sourceKind, snapshot.elapsedSeconds);
   const playbackVisible = playbackState !== 'idle';
+  const [detailMode, setDetailMode] = useState<WorkbenchDetailOpenMode>('human_confirm');
+  const [policyError, setPolicyError] = useState('');
+  const policyQuery = useLiepinSourceRunPolicy(api, sessionId, card.sourceKind === 'liepin');
   const startMutation = useMutation({
     mutationFn: () => api.startSourceRun(sessionId, { sourceKind: card.sourceKind }),
     onSuccess: (started) => {
@@ -1341,6 +1532,20 @@ function SourceCard({
       void navigate({ to: '/connections/liepin/$connectionId/login', params: { connectionId: connection.connectionId } });
     },
   });
+  const policyMutation = useMutation<WorkbenchSourceRunPolicy, Error, WorkbenchDetailOpenMode>({
+    mutationFn: (mode) => api.updateLiepinSourceRunPolicy(sessionId, mode),
+    onSuccess: (policy) => {
+      setDetailMode(policy.detailOpenMode);
+      queryClient.setQueryData(sourceRunPolicyKey(sessionId, 'liepin'), policy);
+      setPolicyError('');
+    },
+    onError: (err) => setPolicyError(err.message),
+  });
+  useEffect(() => {
+    if (policyQuery.data && !policyMutation.isPending) {
+      setDetailMode(policyQuery.data.detailOpenMode);
+    }
+  }, [policyQuery.data, policyMutation.isPending]);
   const isCts = card.sourceKind === 'cts';
   const isRunning = card.status === 'running';
   const liepinConnected = card.sourceKind === 'liepin' && card.connectionStatus === 'connected';
@@ -1362,6 +1567,11 @@ function SourceCard({
       return;
     }
     createConnectionMutation.mutate();
+  };
+  const changeDetailMode = (mode: WorkbenchDetailOpenMode) => {
+    setDetailMode(mode);
+    setPolicyError('');
+    policyMutation.mutate(mode);
   };
 
   return (
@@ -1387,7 +1597,33 @@ function SourceCard({
         <span>{isCts ? '批量检索' : '顺序查看'}</span>
         <span>{isCts ? '可回放' : '额度保护'}</span>
       </div>
+      {card.sourceKind === 'liepin' ? (
+        <>
+          <dl className="source-state-strip detail-ledger-strip" aria-label="Liepin detail budget state">
+            <div>
+              <dt>DETAIL</dt>
+              <dd>{formatNumber(card.detailOpenUsedCount ?? 0)}</dd>
+            </div>
+            <div>
+              <dt>BLOCK</dt>
+              <dd>{formatNumber(card.detailOpenBlockedCount ?? 0)}</dd>
+            </div>
+          </dl>
+          <label className="source-policy-control">
+            <span>详情模式</span>
+            <select
+              value={detailMode}
+              disabled={policyMutation.isPending}
+              onChange={(event) => changeDetailMode(event.target.value as WorkbenchDetailOpenMode)}
+            >
+              <option value="human_confirm">人工确认</option>
+              <option value="bypass_confirm">绕过确认</option>
+            </select>
+          </label>
+        </>
+      ) : null}
       {warning ? <p className="source-warning">{warning}</p> : null}
+      {policyError ? <p className="source-warning" role="alert">{policyError}</p> : null}
       <button
         className={isCts || liepinConnected ? 'source-action-button primary' : 'source-action-button'}
         type="button"
