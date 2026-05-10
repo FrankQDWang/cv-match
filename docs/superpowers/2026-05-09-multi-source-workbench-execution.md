@@ -520,7 +520,7 @@ Verification:
 
 ## M6 Visual, QA, Docs, And Rollback Closure
 
-Status: in progress.
+Status: complete for code merge. Real-device LAN and real-provider account checks remain operator rollout gates before business use.
 
 Completed in this slice:
 
@@ -556,7 +556,7 @@ Completed in this slice:
   - restore validates sibling metadata, current canonical workbench column signatures, explicit index DDL, foreign-key integrity, required column-definition fragments, no triggers/views, and workbench read-path smoke checks before creating a verified temporary database;
   - restore quarantines the stopped target database plus SQLite sidecars and restores the original database if post-replace audit recording fails.
 
-Verification so far:
+Verification:
 
 - `uv run pytest tests/test_workbench_api.py tests/test_workbench_auth_security.py tests/test_workbench_network_guard.py tests/test_liepin_detail_ledger.py tests/test_liepin_detail_policy.py tests/test_liepin_detail_integration.py tests/test_liepin_verified_loop.py tests/test_liepin_worker_client.py -q` -> passed, 120 tests.
 - `cd apps/web && bun run test` -> passed, 36 tests.
@@ -578,8 +578,8 @@ Verification so far:
 - `uv run seektalent-ui-maintenance --help` -> passed after metadata/schema validation hardening.
 - `git diff --check` -> passed.
 
-Known M6 gaps still not claimed complete:
+Post-merge operator rollout gates:
 
 - Security audit coverage now exists for implemented sensitive workbench and maintenance actions; future user-admin, support-export, and raw-corpus export surfaces still need audit hooks when those surfaces are built.
-- Full live LAN QA on another device and real Liepin login remains manual operator verification, not automated in CI.
-- Final operator-facing LAN screenshot artifact remains manual review evidence, while the repeatable Playwright visual gate now covers the shell and reference-frame drift.
+- Full live LAN QA on another device and real Liepin login remain manual operator verification, not automated in CI.
+- Final operator-facing LAN screenshots are manual rollout evidence, while the repeatable Playwright visual gate covers the shell and reference-frame drift for code review.
