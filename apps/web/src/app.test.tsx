@@ -997,8 +997,69 @@ describe('workbench routes', () => {
     expect(card).toHaveTextContent('benchmark depth unclear');
   });
 
-  it('opens Liepin provider actions and creates detail requests from candidate cards', async () => {
+  it('creates detail requests for Liepin card evidence from candidate cards', async () => {
     const requests: Array<{ url: string; body?: unknown; headers: Headers }> = [];
+    const liepinCandidate = candidateReviewItem({
+      reviewItemId: 'review-liepin',
+      sourceBadges: ['Liepin'],
+      evidenceLevel: 'card',
+      evidence: [
+        {
+          evidenceId: 'evidence-liepin',
+          sourceRunId: 'src-liepin',
+          sourceKind: 'liepin',
+          evidenceLevel: 'card',
+          score: null,
+          fitBucket: 'card',
+          matchedMustHaves: ['FastAPI'],
+          matchedPreferences: [],
+          missingRisks: ['Detail page not opened yet.'],
+          strengths: [],
+          weaknesses: [],
+          createdAt: '2026-05-09T00:04:00Z',
+        },
+      ],
+    });
+
+    renderWorkbench('/sessions/session-1', (url, init) => {
+      if (url === '/api/auth/me') {
+        return jsonResponse({ user }, { headers: { 'X-CSRF-Token': 'csrf-token' } });
+      }
+      if (url === '/api/workbench/sessions') {
+        return jsonResponse({ sessions: [session()] });
+      }
+      if (url === '/api/workbench/sessions/session-1') {
+        return jsonResponse(session());
+      }
+      if (url === '/api/workbench/sessions/session-1/candidates') {
+        return candidateQueueResponse([liepinCandidate]);
+      }
+      if (url === '/api/workbench/sessions/session-1/candidates/review-liepin/detail-open-requests') {
+        requests.push({
+          url,
+          body: JSON.parse(String(init.body)),
+          headers: new Headers(init.headers),
+        });
+        return jsonResponse(detailOpenRequest(), { status: 202 });
+      }
+      if (url.startsWith('/api/workbench/events?after_seq=0')) {
+        return eventsResponse();
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+
+    const card = await screen.findByTestId('candidate-card-review-liepin');
+    expect(within(card).queryByRole('button', { name: 'Open Liepin' })).not.toBeInTheDocument();
+    await userEvent.click(within(card).getByRole('button', { name: 'Request detail' }));
+
+    await waitFor(() => expect(requests.map((request) => request.url)).toContain('/api/workbench/sessions/session-1/candidates/review-liepin/detail-open-requests'));
+    expect(requests.every((request) => request.headers.get('X-CSRF-Token') === 'csrf-token')).toBe(true);
+    expect(requests.find((request) => request.body)?.body).toEqual({ idempotencyKey: 'detail:review-liepin' });
+    expect(await within(card).findByText('Detail request is waiting for approval.')).toBeInTheDocument();
+  });
+
+  it('opens known Liepin detail actions without showing another detail request', async () => {
+    const requests: Array<{ url: string; headers: Headers }> = [];
     const liepinCandidate = candidateReviewItem({
       reviewItemId: 'review-liepin',
       sourceBadges: ['Liepin'],
@@ -1013,7 +1074,7 @@ describe('workbench routes', () => {
           fitBucket: 'card',
           matchedMustHaves: ['FastAPI'],
           matchedPreferences: [],
-          missingRisks: ['Detail page not opened yet.'],
+          missingRisks: [],
           strengths: [],
           weaknesses: [],
           createdAt: '2026-05-09T00:04:00Z',
@@ -1045,14 +1106,6 @@ describe('workbench routes', () => {
           message: 'Open an already-known Liepin detail view in the managed browser without reserving another budget slot.',
         });
       }
-      if (url === '/api/workbench/sessions/session-1/candidates/review-liepin/detail-open-requests') {
-        requests.push({
-          url,
-          body: JSON.parse(String(init.body)),
-          headers: new Headers(init.headers),
-        });
-        return jsonResponse(detailOpenRequest(), { status: 202 });
-      }
       if (url.startsWith('/api/workbench/events?after_seq=0')) {
         return eventsResponse();
       }
@@ -1060,19 +1113,38 @@ describe('workbench routes', () => {
     });
 
     const card = await screen.findByTestId('candidate-card-review-liepin');
+    expect(within(card).queryByRole('button', { name: 'Request detail' })).not.toBeInTheDocument();
     await userEvent.click(within(card).getByRole('button', { name: 'Open Liepin' }));
 
-    expect(await within(card).findByText(/without reserving another budget slot/i)).toBeInTheDocument();
-    await userEvent.click(within(card).getByRole('button', { name: 'Request detail' }));
-
-    await waitFor(() => expect(requests.map((request) => request.url)).toContain('/api/workbench/sessions/session-1/candidates/review-liepin/detail-open-requests'));
+    await waitFor(() =>
+      expect(requests.map((request) => request.url)).toContain(
+        '/api/workbench/sessions/session-1/candidates/review-liepin/provider-actions/open',
+      ),
+    );
     expect(requests.every((request) => request.headers.get('X-CSRF-Token') === 'csrf-token')).toBe(true);
-    expect(requests.find((request) => request.body)?.body).toEqual({ idempotencyKey: 'detail:review-liepin' });
-    expect(await within(card).findByText('Detail request is waiting for approval.')).toBeInTheDocument();
+    expect(await within(card).findByText(/without reserving another budget slot/i)).toBeInTheDocument();
   });
 
   it('renders the detail approval queue and approves pending detail requests', async () => {
     const approveRequests: string[] = [];
+    const approvedDetailRequest = detailOpenRequest({
+      status: 'approved',
+      ledger: {
+        ledgerId: 'dol-1',
+        status: 'leased',
+        budgetDay: '2026-05-09',
+        leaseExpiresAt: '2026-05-09T00:15:00Z',
+      },
+      providerAction: {
+        actionKind: 'managed_browser',
+        sourceKind: 'liepin',
+        connectionId: 'conn-liepin-1',
+        reviewItemId: 'review-liepin',
+        budgetImpact: 'reserved',
+        message: 'Detail view lease is reserved. Continue in the managed Liepin browser.',
+      },
+    });
+    let currentDetailRequest = detailOpenRequest();
 
     renderWorkbench('/sessions/session-1', (url, init) => {
       if (url === '/api/auth/me') {
@@ -1085,29 +1157,12 @@ describe('workbench routes', () => {
         return jsonResponse(session());
       }
       if (url === '/api/workbench/detail-open-requests?session_id=session-1') {
-        return jsonResponse({ requests: [detailOpenRequest()] });
+        return jsonResponse({ requests: [currentDetailRequest] });
       }
       if (url === '/api/workbench/detail-open-requests/dor-1/approve') {
         approveRequests.push(new Headers(init.headers).get('X-CSRF-Token') ?? '');
-        return jsonResponse(
-          detailOpenRequest({
-            status: 'approved',
-            ledger: {
-              ledgerId: 'dol-1',
-              status: 'leased',
-              budgetDay: '2026-05-09',
-              leaseExpiresAt: '2026-05-09T00:15:00Z',
-            },
-            providerAction: {
-              actionKind: 'managed_browser',
-              sourceKind: 'liepin',
-              connectionId: 'conn-liepin-1',
-              reviewItemId: 'review-liepin',
-              budgetImpact: 'reserved',
-              message: 'Detail view lease is reserved. Continue in the managed Liepin browser.',
-            },
-          }),
-        );
+        currentDetailRequest = approvedDetailRequest;
+        return jsonResponse(approvedDetailRequest);
       }
       if (url.startsWith('/api/workbench/events?after_seq=0')) {
         return eventsResponse();
@@ -1121,6 +1176,8 @@ describe('workbench routes', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     await waitFor(() => expect(approveRequests).toEqual(['csrf-token']));
+    await userEvent.click(await screen.findByRole('button', { name: 'Open Liepin' }));
+    expect(await screen.findByText('Detail view lease is reserved. Continue in the managed Liepin browser.')).toBeInTheDocument();
   });
 
   it('updates candidate review action and note through the API', async () => {

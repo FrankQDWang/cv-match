@@ -1128,6 +1128,30 @@ def test_liepin_provider_action_uses_existing_ledger_or_detail_evidence(tmp_path
     assert action_with_detail_evidence.json()["budgetImpact"] == "none"
     assert "another budget slot" in action_with_detail_evidence.json()["message"]
 
+    redundant_detail_request = client.post(
+        f"/api/workbench/sessions/{session['sessionId']}/candidates/{item_with_detail_evidence['reviewItemId']}/detail-open-requests",
+        headers=_csrf_header(client),
+        json={"idempotencyKey": "already-has-detail"},
+    )
+    assert redundant_detail_request.status_code == 409
+    assert redundant_detail_request.json()["detail"] == "detail_open_not_required"
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        request_count = conn.execute(
+            "SELECT COUNT(*) FROM detail_open_requests WHERE review_item_id = ?",
+            (item_with_detail_evidence["reviewItemId"],),
+        ).fetchone()[0]
+        ledger_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM detail_open_ledger AS dol
+            JOIN detail_open_requests AS dor ON dor.ledger_id = dol.ledger_id
+            WHERE dor.review_item_id = ?
+            """,
+            (item_with_detail_evidence["reviewItemId"],),
+        ).fetchone()[0]
+    assert request_count == 0
+    assert ledger_count == 0
+
 
 def test_triage_update_and_approve_are_scoped_and_csrf_protected(tmp_path: Path) -> None:
     client = _client(tmp_path)

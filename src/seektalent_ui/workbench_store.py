@@ -1956,6 +1956,8 @@ class WorkbenchStore:
             target = _liepin_review_target_conn(conn, user=user, session_id=session_id, review_item_id=review_item_id)
             if target is None:
                 return None
+            if target["evidence_level"] == "detail":
+                raise PermissionError("detail_open_not_required")
             existing = conn.execute(
                 """
                 SELECT *

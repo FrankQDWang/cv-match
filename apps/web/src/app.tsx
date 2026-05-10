@@ -918,6 +918,7 @@ function DetailOpenRequestQueue({ sessionId }: { sessionId: string }) {
   const queryClient = useQueryClient();
   const query = useDetailOpenRequests(api, sessionId);
   const [error, setError] = useState('');
+  const [providerMessage, setProviderMessage] = useState('');
   const requests = query.data?.requests ?? [];
   const pendingRequests = requests.filter((request) => request.status === 'pending');
   const recentRequests = requests.slice(-3);
@@ -933,6 +934,7 @@ function DetailOpenRequestQueue({ sessionId }: { sessionId: string }) {
     mutationFn: (requestId) => api.approveDetailOpenRequest(requestId),
     onSuccess: () => {
       setError('');
+      setProviderMessage('');
       refreshDetailState();
     },
     onError: (err) => setError(err.message),
@@ -941,6 +943,7 @@ function DetailOpenRequestQueue({ sessionId }: { sessionId: string }) {
     mutationFn: (requestId) => api.rejectDetailOpenRequest(requestId, 'Rejected from workbench queue.'),
     onSuccess: () => {
       setError('');
+      setProviderMessage('');
       refreshDetailState();
     },
     onError: (err) => setError(err.message),
@@ -959,6 +962,7 @@ function DetailOpenRequestQueue({ sessionId }: { sessionId: string }) {
       {query.isLoading ? <p className="muted">Loading detail requests</p> : null}
       {query.isError ? <p className="form-error" role="alert">Could not load detail requests</p> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {providerMessage ? <p className="candidate-action-message">{providerMessage}</p> : null}
       {visibleRequests.length > 0 ? (
         <ol className="detail-request-list">
           {visibleRequests.map((request) => (
@@ -987,9 +991,20 @@ function DetailOpenRequestQueue({ sessionId }: { sessionId: string }) {
                   </button>
                 </div>
               ) : (
-                <span className="source-badge muted-badge">
-                  {request.ledger?.status ?? request.blockedReason ?? request.detailOpenMode}
-                </span>
+                <div className="detail-request-actions">
+                  {request.providerAction ? (
+                    <button
+                      className="secondary-link compact"
+                      type="button"
+                      onClick={() => setProviderMessage(request.providerAction?.message ?? '')}
+                    >
+                      Open Liepin
+                    </button>
+                  ) : null}
+                  <span className="source-badge muted-badge">
+                    {request.ledger?.status ?? request.blockedReason ?? request.detailOpenMode}
+                  </span>
+                </div>
               )}
             </li>
           ))}
@@ -1182,14 +1197,16 @@ function CandidateReviewCard({ item, sessionId }: { item: WorkbenchCandidateRevi
                 Open Liepin
               </button>
             ) : null}
-            <button
-              className="secondary-link"
-              type="button"
-              disabled={detailOpenMutation.isPending}
-              onClick={() => detailOpenMutation.mutate()}
-            >
-              Request detail
-            </button>
+            {!hasLiepinDetailEvidence ? (
+              <button
+                className="secondary-link"
+                type="button"
+                disabled={detailOpenMutation.isPending}
+                onClick={() => detailOpenMutation.mutate()}
+              >
+                Request detail
+              </button>
+            ) : null}
           </>
         ) : null}
       </div>
