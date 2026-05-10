@@ -42,6 +42,8 @@ from seektalent_ui.models import (
     WorkbenchProviderActionResponse,
     WorkbenchRequirementTriageResponse,
     WorkbenchRequirementTriageUpdateRequest,
+    WorkbenchSecurityAuditEventListResponse,
+    WorkbenchSecurityAuditEventResponse,
     WorkbenchSessionCreateRequest,
     WorkbenchSessionListResponse,
     WorkbenchSessionResponse,
@@ -67,6 +69,7 @@ from seektalent_ui.workbench_store import (
     WorkbenchDetailOpenRequest,
     WorkbenchProviderAction,
     WorkbenchRequirementTriage,
+    WorkbenchSecurityAuditEvent,
     WorkbenchSession,
     WorkbenchSourceConnection,
     WorkbenchSourceRun,
@@ -171,11 +174,14 @@ def login(request: WorkbenchLoginRequest, http_request: Request, response: Respo
 def logout(
     request: Request,
     response: Response,
-    _user: WorkbenchUser = Depends(require_csrf_user),
+    user: WorkbenchUser = Depends(require_csrf_user),
     session_id: str | None = Depends(get_session_cookie),
 ) -> Response:
     store = get_workbench_store(request)
-    store.revoke_user_session(session_digest=session_token_digest(session_id) if session_id is not None else None)
+    store.revoke_user_session(
+        session_digest=session_token_digest(session_id) if session_id is not None else None,
+        user=user,
+    )
     clear_session_cookie(response)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
@@ -791,6 +797,19 @@ def get_liepin_source_run_policy(
     return _source_run_policy_response(policy)
 
 
+@router.get("/api/workbench/security-audit-events", response_model=WorkbenchSecurityAuditEventListResponse)
+def list_security_audit_events(
+    request: Request,
+    user: WorkbenchUser = Depends(require_current_user),
+) -> WorkbenchSecurityAuditEventListResponse:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required.")
+    store = get_workbench_store(request)
+    return WorkbenchSecurityAuditEventListResponse(
+        events=[_security_audit_event_response(event) for event in store.list_security_audit_events_for_user(user=user)]
+    )
+
+
 @router.get("/api/workbench/settings", response_model=WorkbenchSettingsResponse)
 def settings(user: WorkbenchUser = Depends(require_current_user)) -> WorkbenchSettingsResponse:
     return WorkbenchSettingsResponse(
@@ -1195,6 +1214,24 @@ def _candidate_evidence_response(evidence: WorkbenchCandidateEvidence) -> Workbe
         strengths=evidence.strengths,
         weaknesses=evidence.weaknesses,
         createdAt=evidence.created_at,
+    )
+
+
+def _security_audit_event_response(event: WorkbenchSecurityAuditEvent) -> WorkbenchSecurityAuditEventResponse:
+    return WorkbenchSecurityAuditEventResponse(
+        auditId=event.audit_id,
+        actorUserId=event.actor_user_id,
+        actorRole=event.actor_role,
+        workspaceId=event.workspace_id,
+        requestIp=event.request_ip,
+        userAgent=event.user_agent,
+        targetType=event.target_type,
+        targetId=event.target_id,
+        action=event.action,
+        result=event.result,
+        reasonCode=event.reason_code,
+        metadata=event.metadata,
+        createdAt=event.created_at,
     )
 
 

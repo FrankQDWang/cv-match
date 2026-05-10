@@ -495,3 +495,91 @@ Remaining visual truth:
 
 - The surface is now closer to the reference while preserving the product-specific session rail and CTS/Liepin-only V1 source model.
 - It is still not a pixel clone, and should not be treated as final M6 visual acceptance. M6 still needs the full key-frame parity sweep and should decide whether to mask the extra session rail or compare a reference-core crop.
+
+## M5 Detail Approval Ledger
+
+Status: completed and merged before M6.
+
+Completed:
+
+- Added Liepin detail-open approval queue with `human_confirm` default and `bypass_confirm` policy control.
+- Added workbench-owned `detail_open_requests`, `detail_open_ledger`, per-connection active lease protection, and source-card detail counters.
+- Added safe managed-browser provider action descriptors for known detail evidence or already reserved/used ledger rows.
+- Fixed the final M5 review gap:
+  - approved detail requests now expose an `Open Liepin` action in the UI;
+  - candidates with existing Liepin detail evidence no longer show `Request detail`;
+  - backend rejects redundant detail-open requests for existing detail evidence with `detail_open_not_required`.
+
+Verification:
+
+- `uv run pytest tests/test_workbench_api.py tests/test_liepin_detail_ledger.py tests/test_liepin_detail_policy.py tests/test_liepin_detail_integration.py tests/test_liepin_verified_loop.py tests/test_liepin_worker_client.py -q` -> passed, 95 tests.
+- `uv run ruff check src/seektalent_ui/models.py src/seektalent_ui/workbench_routes.py src/seektalent_ui/workbench_store.py tests/test_workbench_api.py` -> passed.
+- `uv run ty check src/seektalent_ui/models.py src/seektalent_ui/workbench_routes.py src/seektalent_ui/workbench_store.py` -> passed.
+- `cd apps/web && bun --bun run typecheck && bun --bun run test && bun --bun run build` -> passed, 36 frontend tests.
+- `git diff --check` -> passed.
+
+## M6 Visual, QA, Docs, And Rollback Closure
+
+Status: in progress.
+
+Completed in this slice:
+
+- Added a repeatable visual smoke gate for the stabilized workbench shell:
+  - `apps/web/playwright.config.ts`;
+  - `apps/web/tests/visual/workbench.visual.spec.ts`;
+  - tracked local screenshot baselines under `apps/web/tests/visual/baselines/`.
+- Added `cd apps/web && bun run test:visual`.
+- The visual smoke uses deterministic mocked workbench API state rather than a live backend or provider login.
+- The visual smoke uses tracked current-shell baselines and, when the extracted design package is present locally, compares desktop key frames against the extracted reference frames with a tolerant 8% `odiff-bin` structural threshold. `SEEKTALENT_REFERENCE_FRAME_DIR_REQUIRED=1` turns missing extracted reference frames into a hard failure for local design-parity checks.
+- The smoke verifies:
+  - desktop shell bounding boxes for topbar, session rail, JD/source panel, strategy panel, right rail, and bottom playback bar;
+  - desktop idle, 8s, 14s, 20s, 28s, 30s, and 34s playback frames;
+  - mobile shell non-overlap and horizontal overflow;
+  - control/chip/link text does not overflow visible controls;
+  - screenshot drift with `odiff-bin` against tracked local baselines.
+- Updated `docs/ui.md` from the old minimal one-run UI document to the current internal workbench runbook:
+  - loopback startup;
+  - explicit LAN startup with Host/Origin allowlists;
+  - account/session behavior;
+  - CTS + Liepin workflow;
+  - Liepin login and detail-open approval boundaries;
+  - data/privacy boundaries;
+  - first-class SQLite backup/verify/restore command and rollback smoke path;
+  - backend/frontend/worker verification commands.
+- Updated `README.zh-CN.md` so it no longer describes the UI as a minimal thin shell.
+- Corrected Task 7 verification commands in the plan to use the actual existing test files instead of stale future-placeholder filenames.
+- Added first-class M6 hardening for rollout and rollback:
+  - `SEEKTALENT_WORKBENCH_ENABLED` / `--disable-workbench` feature gate for `/api/auth/*` and `/api/workbench/*`;
+  - `security_audit_events` store table plus admin-only audit API for implemented sensitive actions;
+  - `seektalent-ui-maintenance` backup, verify-backup, and restore commands using SQLite's backup API and restrictive file permissions;
+  - backup metadata records schema, app version, git commit when available, retention policy, required workbench tables/columns/indexes, integrity status, and explicit exclusions;
+  - restore validates sibling metadata, current canonical workbench column signatures, explicit index DDL, foreign-key integrity, required column-definition fragments, no triggers/views, and workbench read-path smoke checks before creating a verified temporary database;
+  - restore quarantines the stopped target database plus SQLite sidecars and restores the original database if post-replace audit recording fails.
+
+Verification so far:
+
+- `uv run pytest tests/test_workbench_api.py tests/test_workbench_auth_security.py tests/test_workbench_network_guard.py tests/test_liepin_detail_ledger.py tests/test_liepin_detail_policy.py tests/test_liepin_detail_integration.py tests/test_liepin_verified_loop.py tests/test_liepin_worker_client.py -q` -> passed, 120 tests.
+- `cd apps/web && bun run test` -> passed, 36 tests.
+- `cd apps/web && UPDATE_VISUAL_BASELINES=1 bun run test:visual` -> passed, 2 tests and refreshed tracked baselines.
+- `cd apps/web && bun run test:visual` -> passed, 2 tests.
+- `cd apps/web && bun --bun run typecheck && bun --bun run test && bun --bun run build && bun --bun run test:visual` -> passed, 36 Vitest tests, production build, and 2 Playwright visual tests.
+- `uv run pytest tests/test_workbench_api.py tests/test_workbench_auth_security.py tests/test_workbench_network_guard.py tests/test_ui_api.py tests/test_ui_mapper.py -q` -> passed, 70 tests.
+- `uv run pytest tests/test_liepin_api_scope.py tests/test_liepin_boundaries.py tests/test_liepin_compliance_gate.py tests/test_liepin_corpus_integration.py tests/test_liepin_detail_ledger.py tests/test_liepin_detail_policy.py tests/test_liepin_detail_integration.py tests/test_liepin_provider_adapter.py tests/test_liepin_verified_loop.py tests/test_liepin_worker_client.py tests/test_liepin_worker_runtime.py -q` -> passed, 149 tests.
+- `cd apps/liepin-worker && bun --bun run test && bun --bun run typecheck && bun --bun run boundary-check` -> passed, 63 Bun tests plus typecheck and boundary check.
+- `uv run pytest tests/test_workbench_security_audit.py tests/test_workbench_maintenance.py -q` -> passed, 13 tests with real WorkbenchStore backup/restore fixtures, table/column/schema spoof rejection, column-fragment spoof rejection, trigger rejection, and restore rollback on post-replace audit failure.
+- `cd apps/web && UPDATE_VISUAL_BASELINES=1 bun --bun run test:visual` -> passed after refreshing the 1920x1080 desktop baselines and adding 14s/28s/30s key frames.
+- `cd apps/web && bun --bun run test:visual` -> passed with local reference-frame comparisons available. Observed reference `odiff` drift was 2.27%-4.94% across idle, 8s, 14s, 20s, 28s, 30s, and 34s, below the 8% gate.
+- `uv run ruff check src/seektalent/config.py src/seektalent_ui/server.py src/seektalent_ui/workbench_store.py src/seektalent_ui/workbench_routes.py src/seektalent_ui/models.py src/seektalent_ui/maintenance.py tests/test_workbench_security_audit.py tests/test_workbench_maintenance.py` -> passed.
+- `uv run ty check src/seektalent/config.py src/seektalent_ui/server.py src/seektalent_ui/workbench_store.py src/seektalent_ui/workbench_routes.py src/seektalent_ui/models.py src/seektalent_ui/maintenance.py` -> passed.
+- `uv run seektalent-ui-maintenance --help` -> passed.
+- `uv run pytest` -> passed, 1058 tests.
+- `cd apps/web && bun --bun run typecheck && bun --bun run test && bun --bun run build && SEEKTALENT_REFERENCE_FRAME_DIR_REQUIRED=1 bun --bun run test:visual` -> passed.
+- `cd apps/liepin-worker && bun --bun run test && bun --bun run typecheck && bun --bun run boundary-check` -> passed.
+- `uv run seektalent-ui-maintenance --help` -> passed after metadata/schema validation hardening.
+- `git diff --check` -> passed.
+
+Known M6 gaps still not claimed complete:
+
+- Security audit coverage now exists for implemented sensitive workbench and maintenance actions; future user-admin, support-export, and raw-corpus export surfaces still need audit hooks when those surfaces are built.
+- Full live LAN QA on another device and real Liepin login remains manual operator verification, not automated in CI.
+- Final operator-facing LAN screenshot artifact remains manual review evidence, while the repeatable Playwright visual gate now covers the shell and reference-frame drift.

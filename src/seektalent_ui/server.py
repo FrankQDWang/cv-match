@@ -200,6 +200,17 @@ def create_app(
         runtime_factory=registry.runtime_factory,
     )
     app.state.network_guard = network_guard
+    app.state.workbench_store.record_security_audit_event(
+        actor_user_id=None,
+        actor_role="system",
+        workspace_id="default",
+        target_type="feature_gate",
+        target_id="workbench",
+        action="workbench_feature_gate_evaluated",
+        result="enabled" if app_settings.workbench_enabled else "disabled",
+        reason_code="startup",
+        metadata={"workbenchEnabled": app_settings.workbench_enabled},
+    )
 
     @app.middleware("http")
     async def workbench_host_guard(request: Request, call_next):
@@ -212,6 +223,8 @@ def create_app(
             return JSONResponse(status_code=403, content={"detail": "Origin is not allowed."})
         if request.method == "OPTIONS":
             response = Response(status_code=204)
+        elif not app_settings.workbench_enabled:
+            response = JSONResponse(status_code=503, content={"detail": "Workbench is disabled by feature gate."})
         else:
             response = await call_next(request)
         if origin is not None:
@@ -935,6 +948,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--mock-cts", dest="mock_cts", action="store_true", default=None)
     parser.add_argument("--real-cts", dest="mock_cts", action="store_false")
+    parser.add_argument("--disable-workbench", action="store_true", help="Disable workbench/auth routes for rollback.")
     return parser
 
 
@@ -947,7 +961,10 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(str(exc))
         return 2
-    settings = AppSettings().with_overrides(mock_cts=args.mock_cts)
+    settings = AppSettings().with_overrides(
+        mock_cts=args.mock_cts,
+        workbench_enabled=False if args.disable_workbench else None,
+    )
     registry = RunRegistry(settings)
     network_guard = build_network_guard(
         bind_host=args.host,

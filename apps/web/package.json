@@ -7,9 +7,11 @@
     "dev": "bun --bun vite",
     "build": "bun --bun vite build",
     "test": "bun --bun vitest --run",
+    "test:visual": "bun --bun playwright test --config=playwright.config.ts",
     "typecheck": "bun --bun tsc --noEmit"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

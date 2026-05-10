@@ -13,7 +13,7 @@
 
 - 主产品是本地 CLI
 - 同一套 runtime 也能作为 Python 依赖被调用
-- 仓库里仍然有一个最小本地 Web UI，但它不是主入口
+- 仓库里包含一个本地优先的内部招聘工作台 Web UI，用于账号、session、多源检索和候选人审核
 
 ## 核心特性
 
@@ -251,7 +251,7 @@ payload = result.final_result.model_dump(mode="json")
 
 ## Web UI
 
-仓库里仍然包含一个最小本地 Web UI：
+仓库里包含一个本地优先的内部招聘工作台 Web UI：
 
 - 后端 API：`seektalent-ui-api`
 - 前端目录：`apps/web`
@@ -278,6 +278,10 @@ bun run dev
 http://127.0.0.1:5176
 ```
 
+局域网使用需要显式启用 `--lan` 或 `SEEKTALENT_UI_LAN=1`，并配置允许的 Host/Origin。业务用户只需要浏览器，不需要安装 Node.js、Bun、Playwright、插件或扩展。完整启动、安全边界、Liepin 登录、detail-open 审批、备份/恢复和 visual smoke 说明见：
+
+- [docs/ui.md](docs/ui.md)
+
 ## 输出产物
 
 每次运行默认都会在 `runs/` 下生成一个带时间戳的目录，常见产物包括：
@@ -298,7 +302,7 @@ http://127.0.0.1:5176
 当前限制是刻意设计的：
 
 - 这是一个实验型本地引擎，不是托管式多租户产品
-- Web UI 只是一个本地薄壳，不是完整招聘平台
+- Web UI 是内部真实业务工作台，不是公开 SaaS；云部署、域名、正式多用户运营和完整备份/审计自动化仍属于后续阶段
 - CTS adapter 只覆盖当前仓库已经实现的字段和语义
 - runtime 优先保证可审计、可复盘的确定性控制流，而不是开放式自治 agent
 
@@ -310,7 +314,7 @@ http://127.0.0.1:5176
 - [CLI](docs/cli.zh-CN.md)：命令行契约。
 - [Configuration](docs/configuration.md)：环境变量和模型配置。
 - [Outputs](docs/outputs.md)：运行产物和诊断文件。
-- [UI](docs/ui.md)：本地 Web 薄壳。
+- [UI](docs/ui.md)：本地/LAN 内部招聘工作台。
 - [Development](docs/development.md)：本地检查命令和仓库约定。
 
 历史版本设计文档保留在 `docs/v-*` 下。

@@ -539,6 +539,30 @@ class WorkbenchEventListResponse(BaseModel):
     events: list[WorkbenchEventResponse]
 
 
+class WorkbenchSecurityAuditEventResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    auditId: int
+    actorUserId: str | None = None
+    actorRole: str | None = None
+    workspaceId: str
+    requestIp: str | None = None
+    userAgent: str | None = None
+    targetType: str
+    targetId: str | None = None
+    action: str
+    result: str
+    reasonCode: str | None = None
+    metadata: dict[str, object]
+    createdAt: str
+
+
+class WorkbenchSecurityAuditEventListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    events: list[WorkbenchSecurityAuditEventResponse]
+
+
 class WorkbenchCandidateEvidenceResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

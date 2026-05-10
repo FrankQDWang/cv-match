@@ -1692,7 +1692,9 @@ M5 implementation note: card-only Liepin evidence now returns `detail_open_requi
   Commands:
 
   ```bash
-  uv run pytest tests/test_workbench_store.py tests/test_workbench_api.py tests/test_workbench_auth_security.py tests/test_workbench_data_security.py tests/test_workbench_error_rescue.py tests/test_workbench_input_security.py tests/test_workbench_job_runner.py tests/test_workbench_network_exposure.py tests/test_workbench_corpus_access.py tests/test_workbench_redaction.py tests/test_workbench_runtime_bridge.py tests/test_workbench_requirement_triage_eval.py tests/test_workbench_security_audit.py tests/test_ui_api.py tests/test_ui_mapper.py tests/test_liepin_provider_adapter.py tests/test_liepin_verified_loop.py tests/test_liepin_detail_ledger.py tests/test_liepin_detail_integration.py
+  uv run pytest tests/test_workbench_api.py tests/test_workbench_auth_security.py tests/test_workbench_network_guard.py tests/test_ui_api.py tests/test_ui_mapper.py -q
+  uv run pytest tests/test_workbench_security_audit.py tests/test_workbench_maintenance.py -q
+  uv run pytest tests/test_liepin_api_scope.py tests/test_liepin_boundaries.py tests/test_liepin_compliance_gate.py tests/test_liepin_corpus_integration.py tests/test_liepin_detail_ledger.py tests/test_liepin_detail_policy.py tests/test_liepin_detail_integration.py tests/test_liepin_provider_adapter.py tests/test_liepin_verified_loop.py tests/test_liepin_worker_client.py tests/test_liepin_worker_runtime.py -q
   uv run pytest
   ```
 
@@ -1701,7 +1703,7 @@ M5 implementation note: card-only Liepin evidence now returns `detail_open_requi
   Commands:
 
   ```bash
-  cd apps/web && bun run test && bun run build
+  cd apps/web && bun run test && bun run typecheck && bun run build
   cd apps/web && bun run test:visual
   cd apps/liepin-worker && bun run test && bun run typecheck && bun run boundary-check
   ```

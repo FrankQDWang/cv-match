@@ -232,6 +232,23 @@ class WorkbenchDetailOpenRequest:
 
 
 @dataclass(frozen=True)
+class WorkbenchSecurityAuditEvent:
+    audit_id: int
+    actor_user_id: str | None
+    actor_role: str | None
+    workspace_id: str
+    request_ip: str | None
+    user_agent: str | None
+    target_type: str
+    target_id: str | None
+    action: str
+    result: str
+    reason_code: str | None
+    metadata: dict[str, object]
+    created_at: str
+
+
+@dataclass(frozen=True)
 class WorkbenchSourceRunJobContext:
     job: WorkbenchSourceRunJob
     session: WorkbenchSession
@@ -293,6 +310,20 @@ class WorkbenchStore:
                 """,
                 (DEFAULT_WORKSPACE_ID, user_id, now),
             )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=DEFAULT_WORKSPACE_ID,
+                actor_user_id=user_id,
+                actor_role="admin",
+                target_type="user",
+                target_id=user_id,
+                action="bootstrap_admin_created",
+                result="success",
+                reason_code="first_admin",
+                metadata={"email": email},
+                created_at=now,
+            )
         return (
             WorkbenchUser(
                 user_id=user_id,
@@ -335,6 +366,11 @@ class WorkbenchStore:
     ) -> None:
         self._initialize()
         with self._connect() as conn:
+            now = _now_iso()
+            safe_email = _bounded_text(_normalize_email(email), LOGIN_ATTEMPT_EMAIL_MAX) or "unknown"
+            safe_reason = _bounded_text(reason, LOGIN_ATTEMPT_REASON_MAX) or "unknown"
+            safe_ip = _bounded_text(ip_address, LOGIN_ATTEMPT_IP_MAX)
+            safe_user_agent = _bounded_text(user_agent, LOGIN_ATTEMPT_USER_AGENT_MAX)
             conn.execute(
                 """
                 INSERT INTO login_attempts (
@@ -344,14 +380,30 @@ class WorkbenchStore:
                 """,
                 (
                     f"attempt_{uuid.uuid4().hex[:16]}",
-                    _bounded_text(_normalize_email(email), LOGIN_ATTEMPT_EMAIL_MAX) or "unknown",
+                    safe_email,
                     int(success),
-                    _bounded_text(reason, LOGIN_ATTEMPT_REASON_MAX) or "unknown",
+                    safe_reason,
                     user_id,
-                    _bounded_text(ip_address, LOGIN_ATTEMPT_IP_MAX),
-                    _bounded_text(user_agent, LOGIN_ATTEMPT_USER_AGENT_MAX),
-                    _now_iso(),
+                    safe_ip,
+                    safe_user_agent,
+                    now,
                 ),
+            )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=DEFAULT_WORKSPACE_ID,
+                actor_user_id=user_id,
+                actor_role=None,
+                target_type="auth",
+                target_id=user_id,
+                action="login",
+                result="success" if success else "failed",
+                reason_code=safe_reason,
+                request_ip=safe_ip,
+                user_agent=safe_user_agent,
+                metadata={"email": safe_email},
+                created_at=now,
             )
 
     def is_login_locked(self, *, email: str, ip_address: str | None) -> bool:
@@ -440,11 +492,12 @@ class WorkbenchStore:
                 )
         return _user_from_row(row)
 
-    def revoke_user_session(self, *, session_digest: str | None) -> None:
+    def revoke_user_session(self, *, session_digest: str | None, user: WorkbenchUser | None = None) -> None:
         if not session_digest:
             return
         self._initialize()
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
                 UPDATE user_sessions
@@ -453,6 +506,81 @@ class WorkbenchStore:
                 """,
                 (_now_iso(), session_digest),
             )
+            if user is not None:
+                _append_security_audit_event_conn(
+                    conn,
+                    tenant_id=DEFAULT_TENANT_ID,
+                    workspace_id=user.workspace_id,
+                    actor_user_id=user.user_id,
+                    actor_role=user.role,
+                    target_type="session",
+                    target_id="current_session",
+                    action="logout",
+                    result="success",
+                    reason_code="user_requested",
+                )
+
+    def record_security_audit_event(
+        self,
+        *,
+        actor_user_id: str | None,
+        actor_role: str | None,
+        workspace_id: str,
+        target_type: str,
+        target_id: str | None,
+        action: str,
+        result: str,
+        reason_code: str | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        self._initialize()
+        with self._connect() as conn:
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=workspace_id,
+                actor_user_id=actor_user_id,
+                actor_role=actor_role,
+                target_type=target_type,
+                target_id=target_id,
+                action=action,
+                result=result,
+                reason_code=reason_code,
+                metadata=metadata,
+            )
+
+    def list_security_audit_events(self) -> list[WorkbenchSecurityAuditEvent]:
+        self._initialize()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM security_audit_events
+                ORDER BY audit_id ASC
+                """
+            ).fetchall()
+        return [_security_audit_event_from_row(row) for row in rows]
+
+    def list_security_audit_events_for_user(
+        self,
+        *,
+        user: WorkbenchUser,
+        limit: int = 200,
+    ) -> list[WorkbenchSecurityAuditEvent]:
+        self._initialize()
+        safe_limit = min(max(limit, 1), 500)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM security_audit_events
+                WHERE tenant_id = ? AND workspace_id = ?
+                ORDER BY audit_id DESC
+                LIMIT ?
+                """,
+                (DEFAULT_TENANT_ID, user.workspace_id, safe_limit),
+            ).fetchall()
+        return [_security_audit_event_from_row(row) for row in rows]
 
     def rotate_session_csrf(self, *, session_digest: str) -> str:
         csrf_token = secrets.token_urlsafe(32)
@@ -719,6 +847,20 @@ class WorkbenchStore:
                 event_name="source_connection_created",
                 payload={"connectionId": connection_id, "sourceKind": "liepin", "status": "login_required"},
             )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                actor_user_id=user.user_id,
+                actor_role=user.role,
+                target_type="source_connection",
+                target_id=connection_id,
+                action="source_connection_created",
+                result="success",
+                reason_code="liepin_connection_requested",
+                metadata={"sourceKind": "liepin", "status": "login_required"},
+                created_at=now,
+            )
             _append_workbench_event_conn(
                 conn,
                 tenant_id=DEFAULT_TENANT_ID,
@@ -785,6 +927,20 @@ class WorkbenchStore:
                     "status": "login_in_progress",
                     "warningCode": warning_code,
                 },
+            )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                actor_user_id=user.user_id,
+                actor_role=user.role,
+                target_type="source_connection",
+                target_id=connection_id,
+                action="liepin_login_started",
+                result="success",
+                reason_code=warning_code,
+                metadata={"sourceKind": "liepin", "status": "login_in_progress", "warningCode": warning_code},
+                created_at=now,
             )
             _append_workbench_event_conn(
                 conn,
@@ -865,6 +1021,20 @@ class WorkbenchStore:
                 status="connected",
                 event_name="source_connection_login_completed",
                 payload={"connectionId": connection_id, "sourceKind": "liepin", "status": "connected"},
+            )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                actor_user_id=user.user_id,
+                actor_role=user.role,
+                target_type="source_connection",
+                target_id=connection_id,
+                action="liepin_login_completed",
+                result="success",
+                reason_code="verified",
+                metadata={"sourceKind": "liepin", "status": "connected"},
+                created_at=now,
             )
             _append_workbench_event_conn(
                 conn,
@@ -1930,6 +2100,20 @@ class WorkbenchStore:
                 event_name="liepin_detail_policy_updated",
                 payload={"sessionId": session_id, "sourceKind": "liepin", "detailOpenMode": detail_open_mode},
             )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                actor_user_id=user.user_id,
+                actor_role=user.role,
+                target_type="source_run_policy",
+                target_id=session_id,
+                action="liepin_detail_policy_updated",
+                result="success",
+                reason_code=detail_open_mode,
+                metadata={"sessionId": session_id, "sourceKind": "liepin", "detailOpenMode": detail_open_mode},
+                created_at=now,
+            )
             row = _source_run_policy_row_conn(conn, user=user, session_id=session_id)
         return _source_run_policy_from_row(row, session_id=session_id)
 
@@ -2024,6 +2208,25 @@ class WorkbenchStore:
                     "detailOpenMode": policy.detail_open_mode,
                 },
             )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                actor_user_id=user.user_id,
+                actor_role=user.role,
+                target_type="detail_open_request",
+                target_id=request_id,
+                action="liepin_detail_open_requested",
+                result=status,
+                reason_code=policy.detail_open_mode,
+                metadata={
+                    "sessionId": session_id,
+                    "sourceRunId": target["source_run_id"],
+                    "reviewItemId": review_item_id,
+                    "detailOpenMode": policy.detail_open_mode,
+                },
+                created_at=now,
+            )
             if status == "bypassed":
                 blocked_reason = self._lease_liepin_detail_open_request_conn(
                     conn,
@@ -2060,6 +2263,20 @@ class WorkbenchStore:
                 WHERE request_id = ?
                 """,
                 (now, now, request_id),
+            )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                actor_user_id=user.user_id,
+                actor_role=user.role,
+                target_type="detail_open_request",
+                target_id=request_id,
+                action="liepin_detail_open_approved",
+                result="approved",
+                reason_code="human_confirm",
+                metadata={"sessionId": row["session_id"], "sourceRunId": row["source_run_id"]},
+                created_at=now,
             )
             blocked_reason = self._lease_liepin_detail_open_request_conn(conn, request_id=request_id, now=now)
             refreshed = conn.execute("SELECT * FROM detail_open_requests WHERE request_id = ?", (request_id,)).fetchone()
@@ -2103,6 +2320,20 @@ class WorkbenchStore:
                 source_kind="liepin",
                 event_name="liepin_detail_open_rejected",
                 payload={"requestId": request_id, "reviewItemId": row["review_item_id"]},
+            )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                actor_user_id=user.user_id,
+                actor_role=user.role,
+                target_type="detail_open_request",
+                target_id=request_id,
+                action="liepin_detail_open_rejected",
+                result="success",
+                reason_code="human_rejected",
+                metadata={"sessionId": row["session_id"], "sourceRunId": row["source_run_id"]},
+                created_at=now,
             )
             refreshed = conn.execute("SELECT * FROM detail_open_requests WHERE request_id = ?", (request_id,)).fetchone()
             return _detail_open_request_from_row_conn(conn, refreshed)
@@ -2190,6 +2421,19 @@ class WorkbenchStore:
                 source_kind="liepin",
                 event_name="liepin_provider_action_requested",
                 payload={"reviewItemId": review_item_id, "budgetImpact": budget_impact},
+            )
+            _append_security_audit_event_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                actor_user_id=user.user_id,
+                actor_role=user.role,
+                target_type="candidate_review_item",
+                target_id=review_item_id,
+                action="liepin_provider_action_requested",
+                result="success",
+                reason_code=budget_impact,
+                metadata={"sessionId": session_id, "sourceRunId": target["source_run_id"], "budgetImpact": budget_impact},
             )
             return action
 
@@ -2608,6 +2852,29 @@ class WorkbenchStore:
 
                 CREATE INDEX IF NOT EXISTS idx_connection_status_events_connection
                 ON connection_status_events(tenant_id, workspace_id, connection_id, event_id);
+
+                CREATE TABLE IF NOT EXISTS security_audit_events (
+                    audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    actor_user_id TEXT,
+                    actor_role TEXT,
+                    request_ip TEXT,
+                    user_agent TEXT,
+                    target_type TEXT NOT NULL,
+                    target_id TEXT,
+                    action TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    reason_code TEXT,
+                    metadata_redacted_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_security_audit_events_scope
+                ON security_audit_events(tenant_id, workspace_id, audit_id);
+
+                CREATE INDEX IF NOT EXISTS idx_security_audit_events_action
+                ON security_audit_events(tenant_id, workspace_id, action, created_at);
 
                 CREATE TABLE IF NOT EXISTS source_run_policies (
                     session_id TEXT NOT NULL,
@@ -3108,6 +3375,20 @@ def _block_detail_open_request_conn(
         event_name="liepin_detail_open_blocked",
         payload={"requestId": row["request_id"], "reviewItemId": row["review_item_id"], "reason": reason},
     )
+    _append_security_audit_event_conn(
+        conn,
+        tenant_id=row["tenant_id"],
+        workspace_id=row["workspace_id"],
+        actor_user_id=row["user_id"],
+        actor_role=None,
+        target_type="detail_open_request",
+        target_id=row["request_id"],
+        action="liepin_detail_open_blocked",
+        result="blocked",
+        reason_code=reason,
+        metadata={"sessionId": row["session_id"], "sourceRunId": row["source_run_id"]},
+        created_at=now,
+    )
 
 
 def _budget_day(now: str) -> str:
@@ -3472,6 +3753,89 @@ def _append_connection_status_event_conn(
             json.dumps(redacted_payload, sort_keys=True, separators=(",", ":")),
             _now_iso(),
         ),
+    )
+
+
+def _append_security_audit_event_conn(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    actor_user_id: str | None,
+    actor_role: str | None,
+    target_type: str,
+    target_id: str | None,
+    action: str,
+    result: str,
+    reason_code: str | None = None,
+    request_ip: str | None = None,
+    user_agent: str | None = None,
+    metadata: Mapping[str, object] | None = None,
+    created_at: str | None = None,
+) -> WorkbenchSecurityAuditEvent:
+    redacted_metadata = redact_event_payload(dict(metadata or {}))
+    if not isinstance(redacted_metadata, dict):
+        redacted_metadata = {"value": redacted_metadata}
+    now = created_at or _now_iso()
+    cursor = conn.execute(
+        """
+        INSERT INTO security_audit_events (
+            tenant_id, workspace_id, actor_user_id, actor_role, request_ip, user_agent,
+            target_type, target_id, action, result, reason_code, metadata_redacted_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            _bounded_text(tenant_id, 64) or DEFAULT_TENANT_ID,
+            _bounded_text(workspace_id, 128) or DEFAULT_WORKSPACE_ID,
+            _bounded_text(redact_text(actor_user_id), 128),
+            _bounded_text(redact_text(actor_role), 64),
+            _bounded_text(redact_text(request_ip), LOGIN_ATTEMPT_IP_MAX),
+            _bounded_text(redact_text(user_agent), LOGIN_ATTEMPT_USER_AGENT_MAX),
+            _bounded_text(redact_text(target_type), 128) or "unknown",
+            _bounded_text(redact_text(target_id), 256),
+            _bounded_text(redact_text(action), 128) or "unknown",
+            _bounded_text(redact_text(result), 64) or "unknown",
+            _bounded_text(redact_text(reason_code), 128),
+            json.dumps(redacted_metadata, sort_keys=True, separators=(",", ":")),
+            now,
+        ),
+    )
+    return WorkbenchSecurityAuditEvent(
+        audit_id=int(cursor.lastrowid or 0),
+        actor_user_id=_bounded_text(redact_text(actor_user_id), 128),
+        actor_role=_bounded_text(redact_text(actor_role), 64),
+        workspace_id=_bounded_text(workspace_id, 128) or DEFAULT_WORKSPACE_ID,
+        request_ip=_bounded_text(redact_text(request_ip), LOGIN_ATTEMPT_IP_MAX),
+        user_agent=_bounded_text(redact_text(user_agent), LOGIN_ATTEMPT_USER_AGENT_MAX),
+        target_type=_bounded_text(redact_text(target_type), 128) or "unknown",
+        target_id=_bounded_text(redact_text(target_id), 256),
+        action=_bounded_text(redact_text(action), 128) or "unknown",
+        result=_bounded_text(redact_text(result), 64) or "unknown",
+        reason_code=_bounded_text(redact_text(reason_code), 128),
+        metadata=redacted_metadata,
+        created_at=now,
+    )
+
+
+def _security_audit_event_from_row(row: sqlite3.Row) -> WorkbenchSecurityAuditEvent:
+    metadata = json.loads(row["metadata_redacted_json"])
+    if not isinstance(metadata, dict):
+        metadata = {"value": metadata}
+    return WorkbenchSecurityAuditEvent(
+        audit_id=row["audit_id"],
+        actor_user_id=row["actor_user_id"],
+        actor_role=row["actor_role"],
+        workspace_id=row["workspace_id"],
+        request_ip=row["request_ip"],
+        user_agent=row["user_agent"],
+        target_type=row["target_type"],
+        target_id=row["target_id"],
+        action=row["action"],
+        result=row["result"],
+        reason_code=row["reason_code"],
+        metadata=metadata,
+        created_at=row["created_at"],
     )
 
 

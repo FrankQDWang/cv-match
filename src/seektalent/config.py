@@ -340,6 +340,7 @@ class AppSettings(BaseSettings):
     search_no_progress_limit: int = 2
     runtime_mode: RuntimeMode = "dev"
     workspace_root: str | None = None
+    workbench_enabled: bool = True
     artifacts_dir: str | None = None
     llm_cache_dir: str | None = None
     flywheel_db_path: str = ".seektalent/flywheel.sqlite3"
