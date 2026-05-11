@@ -46,6 +46,43 @@ Initial layout continues to use ELK. The user can pan and zoom the full canvas. 
 
 Pretext is not introduced for graph interaction. It remains reserved for future text-heavy candidate reports or final briefing surfaces if they need higher-quality responsive text layout.
 
+### Multi-Round Layout
+
+Multi-round agent iteration is shown as a round-by-round chain, not as a circular edge.
+
+Each round starts again from the left side of the graph. `第 N 轮关键词` nodes are vertically stacked and left-aligned with the previous round's keyword node. This keeps a long run readable: the user scans down by round, then left-to-right inside a round.
+
+Each round has its own horizontal row:
+
+```text
+第 1 轮关键词 -> exploit / explore -> 召回 -> 评分 -> 反思
+第 2 轮关键词 -> exploit / explore -> 召回 -> 评分 -> 反思
+第 3 轮关键词 -> exploit / explore -> 召回 -> 评分 -> 反思
+```
+
+`第 1 轮关键词` is derived from the requirement decomposition node. For `N > 1`, `第 N 轮关键词` has two inbound edges:
+
+1. From `需求拆解`, labeled as the stable requirement context.
+2. From `第 N-1 轮反思`, labeled as the reflection-driven adjustment.
+
+This makes the graph explicit: every round still obeys the original job requirements, while the previous reflection changes the next search direction.
+
+### CTS Internal Search Lanes
+
+CTS round details must expose the real internal strategy rather than flattening the round into one keyword string.
+
+Within each CTS round, the graph or node detail shows:
+
+- `exploit`: the main narrowing query path.
+- `explore`: the second-lane path when one exists.
+
+The explore path has two possible sources:
+
+- `prf_probe`: candidate-feedback/PRF-derived exploration when the PRF gate passes.
+- `generic_explore`: fallback exploration when PRF is unavailable or rejected.
+
+If the backend only ran a single-lane round, the UI must show a single-lane round explicitly and must not invent an explore lane. If both lanes ran, the round detail should show each lane's query terms, returned count, new candidate count, outcome, and related candidates.
+
 ### Candidate Mapping
 
 CTS round nodes must become candidate-aware.
@@ -57,11 +94,17 @@ The backend must expose safe per-round relationships rather than forcing the fro
 - `session_id`
 - `source_run_id`
 - `round_no`
+- `query_instance_id`
+- `query_fingerprint`
+- `query_role`
+- `lane_type`: `exploit`, `prf_probe`, `generic_explore`, or other backend-defined safe lane label
 - `review_item_id`
 - `evidence_id`
 - `relationship_kind`: `recalled`, `new`, `scored`, `fit`, or `not_fit`
 
 This can be stored directly or generated from persisted runtime artifacts, but the UI contract must be stable and scoped to tenant, workspace, user, and session.
+
+The lane fields are required so the UI can show which candidates came from the main exploit path versus candidate-feedback exploration or generic exploration. The frontend must not guess lane membership from text labels.
 
 Liepin keeps its existing candidate relationship model. `liepinCardCandidates`, `liepinCardSearch`, `liepinDetailApproval`, and final aggregation nodes use safe candidate ids and evidence refs.
 
@@ -91,7 +134,7 @@ Full resume snapshots are allowed in authenticated UI detail views and benchmark
 
 - `岗位`: job title, JD preview, notes preview, and source mode.
 - `需求拆解`: must-haves, nice-to-haves, query hints, exclusions, and triage status.
-- `第 N 轮关键词`: query terms, query label, and search direction.
+- `第 N 轮关键词`: query terms, query label, search direction, and exploit/explore lane breakdown where available.
 - `CTS 召回`: round recall counts plus this round's candidate cards.
 - `CTS 评分`: scored candidate cards, fit/not-fit labels, score, and key reasons.
 - `反思`: summary, rationale, and next direction.
@@ -160,6 +203,11 @@ Provider raw payloads remain out of normal business UI unless explicitly transfo
 - Full resume snapshot fetch failure is localized to that card.
 - The graph and running notes no longer render source filter controls.
 - The job brief card is fixed-height when collapsed and shows full JD/notes when expanded.
+- Multi-round layout left-aligns all `第 N 轮关键词` nodes.
+- For `N > 1`, each round keyword node has two incoming business edges: one from `需求拆解` and one from the previous round's `反思`.
+- CTS round details render exploit and explore lane data when both lanes exist.
+- CTS single-lane rounds render as single-lane rounds and do not invent explore data.
+- Candidate cards in CTS recall/scoring details can be grouped or labeled by `lane_type`.
 
 ### Visual And Interaction Smoke Tests
 
@@ -169,6 +217,7 @@ Provider raw payloads remain out of normal business UI unless explicitly transfo
 - Strategy graph nodes can be dragged locally.
 - Dragging a node does not persist after page refresh.
 - Business notes remain readable when CTS and Liepin emit events close together.
+- A multi-round CTS run is readable without a long horizontal chain: each new round starts on the left and scans left-to-right within its own row.
 
 ## Non-Goals
 
@@ -186,6 +235,8 @@ Provider raw payloads remain out of normal business UI unless explicitly transfo
 - The graph always shows the whole selected-source workflow by default.
 - The right rail is a two-tab inspector, not a stacked log and queue layout.
 - Clicking CTS recall or scoring nodes shows the candidates for that exact round.
+- Multi-round CTS layout returns each next round to the left side, aligns keyword nodes, and shows both stable requirement and previous-reflection inputs for `N > 1`.
+- CTS node details expose the real exploit / PRF exploration / generic exploration structure when backend data exists.
 - Clicking Liepin candidate, detail approval, or final shortlist nodes shows related candidates.
 - Candidate cards are compact by default and expandable for complete resume snapshots.
 - Running notes tell a business-readable story across all selected sources without source filters.
