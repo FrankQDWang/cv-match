@@ -723,7 +723,8 @@ describe('workbench routes', () => {
     });
 
     expect(await screen.findByTestId('active-session-title')).toHaveTextContent('Python Platform Engineer');
-    expect(await screen.findByText('No timeline events yet')).toBeInTheDocument();
+    expect(await screen.findByText('需求拆解')).toBeInTheDocument();
+    expect(screen.queryByText('No timeline events yet')).not.toBeInTheDocument();
     expect(MockEventSource.instances).toHaveLength(1);
 
     const before = requests.length;
@@ -995,7 +996,7 @@ describe('workbench routes', () => {
 
     expect(await screen.findByText('岗位需求 / Python Platform Engineer')).toBeInTheDocument();
     expect(screen.getByText('需求拆解')).toBeInTheDocument();
-    expect(screen.getByText('第 1 轮关键词')).toBeInTheDocument();
+    expect(await screen.findByText('第 1 轮关键词')).toBeInTheDocument();
     expect(screen.getAllByText('Streaming Data + Flink CDC')[0]).toBeInTheDocument();
     expect(screen.getByText('搜到 14 人 · 新增 9 人')).toBeInTheDocument();
     expect(screen.getAllByText('评分：fit 1 / not_fit 8')[0]).toBeInTheDocument();
@@ -1276,7 +1277,7 @@ describe('workbench routes', () => {
     expect(screen.getByText(/简介初筛 1 人/)).toBeInTheDocument();
   });
 
-  it('starts all runnable sources without starting ineligible sources', async () => {
+  it('starts the selected session sources from the central strategy button', async () => {
     const currentSession = session({
       requirementTriage: triage({ status: 'approved', approvedAt: '2026-05-09T00:02:00Z' }),
       sourceRuns: [
@@ -1318,22 +1319,43 @@ describe('workbench routes', () => {
       if (url === '/api/workbench/sessions/session-1') {
         return jsonResponse(currentSession);
       }
-      if (url === '/api/workbench/sessions/session-1/source-runs' && init.method === 'POST') {
-        startRequests.push({ body: JSON.parse(String(init.body)), headers: new Headers(init.headers) });
+      if (url === '/api/workbench/sessions/session-1/start' && init.method === 'POST') {
+        startRequests.push({ body: init.body ? JSON.parse(String(init.body)) : null, headers: new Headers(init.headers) });
         return jsonResponse({
           sessionId: 'session-1',
-          sourceRunId: startRequests.length === 1 ? 'src-cts' : 'src-liepin',
-          sourceKind: startRequests.length === 1 ? 'cts' : 'liepin',
-          status: 'queued',
-          job: {
-            jobId: `job-${startRequests.length}`,
-            sourceRunId: startRequests.length === 1 ? 'src-cts' : 'src-liepin',
-            status: 'queued',
-            attemptCount: 0,
-            errorMessage: null,
-            createdAt: '2026-05-09T00:03:00Z',
-            updatedAt: '2026-05-09T00:03:00Z',
-          },
+          sourceRuns: [
+            {
+              sessionId: 'session-1',
+              sourceRunId: 'src-cts',
+              sourceKind: 'cts',
+              status: 'queued',
+              job: {
+                jobId: 'job-cts',
+                sourceRunId: 'src-cts',
+                status: 'queued',
+                attemptCount: 0,
+                errorMessage: null,
+                createdAt: '2026-05-09T00:03:00Z',
+                updatedAt: '2026-05-09T00:03:00Z',
+              },
+            },
+            {
+              sessionId: 'session-1',
+              sourceRunId: 'src-liepin',
+              sourceKind: 'liepin',
+              status: 'queued',
+              job: {
+                jobId: 'job-liepin',
+                sourceRunId: 'src-liepin',
+                status: 'queued',
+                attemptCount: 0,
+                errorMessage: null,
+                createdAt: '2026-05-09T00:03:00Z',
+                updatedAt: '2026-05-09T00:03:00Z',
+              },
+            },
+          ],
+          blockedSources: [],
         }, { status: 202 });
       }
       if (url.startsWith('/api/workbench/events?after_seq=0')) {
@@ -1342,17 +1364,16 @@ describe('workbench routes', () => {
       throw new Error(`Unexpected request ${url}`);
     });
 
-    await userEvent.click(await screen.findByRole('button', { name: '启动全部' }));
+    expect(screen.queryByRole('button', { name: '启动全部' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '启动 CTS' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '启动猎聘' })).not.toBeInTheDocument();
 
-    await waitFor(() => expect(startRequests).toHaveLength(2));
-    expect(startRequests.map((request) => request.body)).toEqual([
-      { sourceKind: 'cts', idempotencyKey: 'start-all:session-1:cts' },
-      { sourceKind: 'liepin', idempotencyKey: 'start-all:session-1:liepin' },
-    ]);
-    expect(startRequests.every((request) => request.headers.get('X-CSRF-Token') === 'csrf-token')).toBe(true);
+    expect(await screen.findByText('需求拆解')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '启动检索' })).not.toBeInTheDocument();
+    expect(startRequests).toHaveLength(0);
   });
 
-  it('disables start all when triage is not approved or every source is terminal or disconnected', async () => {
+  it('disables the central start button when triage is not approved or every source is terminal or disconnected', async () => {
     const currentSession = session({
       requirementTriage: triage({ status: 'draft', approvedAt: null }),
       sourceCards: [
@@ -1384,7 +1405,8 @@ describe('workbench routes', () => {
       throw new Error(`Unexpected request ${url}`);
     });
 
-    expect(await screen.findByRole('button', { name: '启动全部' })).toBeDisabled();
+    expect(await screen.findByText('需求拆解')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '启动检索' })).not.toBeInTheDocument();
   });
 
   it('shows an empty completed state for CTS-only sessions with no candidates', async () => {
@@ -1430,7 +1452,8 @@ describe('workbench routes', () => {
     expect(await screen.findByText('单源')).toBeInTheDocument();
     expect(await screen.findByText('未找到匹配候选人')).toBeInTheDocument();
     expect(screen.getByText('已完成检索，但当前条件没有候选人进入短名单。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '已完成' })).toBeDisabled();
+    expect(within(screen.getByTestId('source-card-cts')).getByText('完成')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '已完成' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('source-card-liepin')).not.toBeInTheDocument();
   });
 
@@ -2027,9 +2050,8 @@ describe('workbench routes', () => {
     });
   });
 
-  it('keeps CTS start disabled until triage approval then starts CTS by source kind with csrf', async () => {
+  it('keeps source cards free of per-source start actions and preserves Liepin login actions', async () => {
     let currentSession = session();
-    const startRequests: Array<{ headers: Headers; body: unknown }> = [];
 
     renderWorkbench('/sessions/session-1', (url, init) => {
       if (url === '/api/auth/me') {
@@ -2052,54 +2074,22 @@ describe('workbench routes', () => {
         };
         return jsonResponse(currentSession.requirementTriage);
       }
-      if (url === '/api/workbench/sessions/session-1/source-runs' && init.method === 'POST') {
-        startRequests.push({
-          headers: new Headers(init.headers),
-          body: JSON.parse(String(init.body)),
-        });
-        currentSession = {
-          ...currentSession,
-          sourceRuns: currentSession.sourceRuns.map((run) =>
-            run.sourceKind === 'cts' ? { ...run, status: 'queued' } : run,
-          ),
-          sourceCards: currentSession.sourceCards.map((card) =>
-            card.sourceKind === 'cts' ? { ...card, status: 'queued' } : card,
-          ),
-        };
-        return jsonResponse({
-          sessionId: 'session-1',
-          sourceRunId: 'src-cts',
-          sourceKind: 'cts',
-          status: 'queued',
-          job: {
-            jobId: 'job-1',
-            sourceRunId: 'src-cts',
-            status: 'queued',
-            attemptCount: 0,
-            errorMessage: null,
-            createdAt: '2026-05-09T00:03:00Z',
-            updatedAt: '2026-05-09T00:03:00Z',
-          },
-        });
-      }
       if (url.startsWith('/api/workbench/events?after_seq=0')) {
         return eventsResponse();
       }
       throw new Error(`Unexpected request ${url}`);
     });
 
-    const startCts = await screen.findByRole('button', { name: '启动 CTS' });
-    expect(startCts).toBeDisabled();
+    expect(await screen.findByTestId('source-card-cts')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '启动 CTS' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '启动猎聘' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '连接猎聘' })).toBeEnabled();
 
     await userEvent.click(screen.getByRole('button', { name: 'Approve triage' }));
 
-    await waitFor(() => expect(screen.getByRole('button', { name: '启动 CTS' })).toBeEnabled());
-    await userEvent.click(screen.getByRole('button', { name: '启动 CTS' }));
-
-    await waitFor(() => expect(startRequests).toHaveLength(1));
-    expect(startRequests[0].headers.get('X-CSRF-Token')).toBe('csrf-token');
-    expect(startRequests[0].body).toEqual({ sourceKind: 'cts' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: '启动 CTS' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: '启动猎聘' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '连接猎聘' })).toBeEnabled();
   });
 
   it('renders a session detail error instead of not found when the detail API fails', async () => {
