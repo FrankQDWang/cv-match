@@ -1476,6 +1476,23 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.log-entry-button {
+  display: inline;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+
+.log-entry-button:hover {
+  text-decoration: underline;
+}
+
 .log-source-badge {
   flex: 0 0 auto;
   margin-top: 1px;

@@ -69,6 +69,30 @@ const sourceConnectionsKey = ['workbench', 'source-connections'] as const;
 const detailOpenRequestsRootKey = ['workbench', 'detail-open-requests'] as const;
 const WorkbenchRuntimeContext = createContext<WorkbenchRouterContext | null>(null);
 
+function evidenceRefKey(
+  evidenceId: string,
+  sourceRunId: string,
+  evidenceLevel: WorkbenchCandidateReviewItem['evidenceLevel'],
+): string {
+  return `${evidenceId}:${sourceRunId}:${evidenceLevel}`;
+}
+
+function candidateEvidenceGraphNodeId(
+  item: WorkbenchCandidateReviewItem,
+  evidenceRefToGraphNodeId: ReadonlyMap<string, string>,
+  reviewItemToGraphNodeId: ReadonlyMap<string, string>,
+): string | null {
+  for (const evidence of item.evidence) {
+    const nodeId = evidenceRefToGraphNodeId.get(
+      evidenceRefKey(evidence.evidenceId, evidence.sourceRunId, evidence.evidenceLevel),
+    );
+    if (nodeId) {
+      return nodeId;
+    }
+  }
+  return reviewItemToGraphNodeId.get(item.reviewItemId) ?? null;
+}
+
 function sessionKey(sessionId: string) {
   return ['workbench', 'sessions', sessionId] as const;
 }
@@ -698,6 +722,24 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
     () => buildRunStory({ session, events: sessionEvents, candidateReviewItems, detailOpenRequests, sourceFilter }),
     [candidateReviewItems, detailOpenRequests, session, sessionEvents, sourceFilter],
   );
+  const evidenceRefToGraphNodeId = useMemo(() => {
+    const index = new Map<string, string>();
+    for (const node of visibleStory.graphNodes) {
+      for (const ref of node.candidateEvidenceRefs ?? []) {
+        index.set(evidenceRefKey(ref.evidenceId, ref.sourceRunId, ref.evidenceLevel), node.id);
+      }
+    }
+    return index;
+  }, [visibleStory.graphNodes]);
+  const reviewItemToGraphNodeId = useMemo(() => {
+    const index = new Map<string, string>();
+    for (const node of visibleStory.graphNodes) {
+      for (const reviewItemId of node.candidateReviewItemIds ?? []) {
+        index.set(reviewItemId, node.id);
+      }
+    }
+    return index;
+  }, [visibleStory.graphNodes]);
   const selectedGraphNode = visibleStory.graphNodes.find((node) => node.id === selectedGraphNodeId) ?? null;
   useEffect(() => {
     if (!selectedGraphNodeId) {
@@ -723,9 +765,12 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
     () => session.sourceCards.some((card) => isSourceRunnable(card, triageApproved)),
     [session.sourceCards, triageApproved],
   );
-  const handleSelectGraphNode = (node: RecruiterGraphNode) => {
-    setSelectedGraphNodeId(node.id);
+  const selectGraphNodeId = (nodeId: string) => {
+    setSelectedGraphNodeId(nodeId);
     setRightDetailTab('node');
+  };
+  const handleSelectGraphNode = (node: RecruiterGraphNode) => {
+    selectGraphNodeId(node.id);
   };
   const startSessionMutation = useMutation({
     mutationFn: () => api.startSession(session.sessionId),
@@ -809,13 +854,20 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
           sourceFilter={sourceFilter}
           onSourceFilterChange={setSourceFilter}
           sourceKinds={sessionSourceKinds}
+          onSelectGraphNodeId={selectGraphNodeId}
         />
         <RightWorkbenchTabs
           activeTab={rightDetailTab}
           onActiveTabChange={setRightDetailTab}
           candidatePanel={
             <>
-              <CandidateReviewQueue session={session} query={candidateItemsQuery} />
+              <CandidateReviewQueue
+                session={session}
+                query={candidateItemsQuery}
+                evidenceRefToGraphNodeId={evidenceRefToGraphNodeId}
+                reviewItemToGraphNodeId={reviewItemToGraphNodeId}
+                onSelectGraphNodeId={selectGraphNodeId}
+              />
               <DetailOpenRequestQueue sessionId={session.sessionId} query={detailOpenRequestsQuery} />
             </>
           }
@@ -879,9 +931,15 @@ function RightWorkbenchTabs({
 function CandidateReviewQueue({
   session,
   query,
+  evidenceRefToGraphNodeId,
+  reviewItemToGraphNodeId,
+  onSelectGraphNodeId,
 }: {
   session: WorkbenchSession;
   query: ReturnType<typeof useCandidateReviewItems>;
+  evidenceRefToGraphNodeId: ReadonlyMap<string, string>;
+  reviewItemToGraphNodeId: ReadonlyMap<string, string>;
+  onSelectGraphNodeId: (nodeId: string) => void;
 }) {
   const items = query.data?.items ?? [];
   const queueCount = items.length;
@@ -911,7 +969,13 @@ function CandidateReviewQueue({
       {items.length > 0 ? (
         <div className="candidate-list">
           {items.map((item) => (
-            <CandidateReviewCard key={item.reviewItemId} item={item} sessionId={session.sessionId} />
+            <CandidateReviewCard
+              key={item.reviewItemId}
+              item={item}
+              sessionId={session.sessionId}
+              graphNodeId={candidateEvidenceGraphNodeId(item, evidenceRefToGraphNodeId, reviewItemToGraphNodeId)}
+              onSelectGraphNodeId={onSelectGraphNodeId}
+            />
           ))}
         </div>
       ) : null}
@@ -1062,7 +1126,17 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
-function CandidateReviewCard({ item, sessionId }: { item: WorkbenchCandidateReviewItem; sessionId: string }) {
+function CandidateReviewCard({
+  item,
+  sessionId,
+  graphNodeId,
+  onSelectGraphNodeId,
+}: {
+  item: WorkbenchCandidateReviewItem;
+  sessionId: string;
+  graphNodeId: string | null;
+  onSelectGraphNodeId: (nodeId: string) => void;
+}) {
   const { api } = useWorkbenchRuntime();
   const queryClient = useQueryClient();
   const [note, setNote] = useState(item.note);
@@ -1213,6 +1287,15 @@ function CandidateReviewCard({ item, sessionId }: { item: WorkbenchCandidateRevi
               </button>
             ) : null}
           </>
+        ) : null}
+        {graphNodeId ? (
+          <button
+            className="secondary-link"
+            type="button"
+            onClick={() => onSelectGraphNodeId(graphNodeId)}
+          >
+            查看策略节点
+          </button>
         ) : null}
       </div>
       {providerMessage ? <p className="candidate-action-message">{providerMessage}</p> : null}
@@ -1891,6 +1974,7 @@ function ActivityLog({
   sourceFilter,
   onSourceFilterChange,
   sourceKinds,
+  onSelectGraphNodeId,
 }: {
   events: WorkbenchEvent[];
   loading: boolean;
@@ -1899,6 +1983,7 @@ function ActivityLog({
   sourceFilter: SourceFilter;
   onSourceFilterChange: (source: SourceFilter) => void;
   sourceKinds: SourceKind[];
+  onSelectGraphNodeId: (nodeId: string) => void;
 }) {
   const hasStory = story.logEntries.length > 0;
   const businessEvents = hasStory ? story.logEntries.slice(-10) : [];
@@ -1929,7 +2014,17 @@ function ActivityLog({
               <span>{event.tag}</span>
               <strong>
                 {event.sourceLabel && event.sourceKind !== 'all' ? <em className="log-source-badge">{event.sourceLabel}</em> : null}
-                {event.text}
+                {event.relatedNodeId ? (
+                  <button
+                    className="log-entry-button"
+                    type="button"
+                    onClick={() => onSelectGraphNodeId(event.relatedNodeId ?? '')}
+                  >
+                    {event.text}
+                  </button>
+                ) : (
+                  event.text
+                )}
               </strong>
             </li>
           ))}
