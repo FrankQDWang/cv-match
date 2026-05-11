@@ -1109,10 +1109,15 @@ textarea:focus {
   background-size: 18px 18px;
 }
 
-.strategy-flow {
+.strategy-flow-shell {
   position: absolute;
   z-index: 2;
   inset: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.strategy-flow {
   width: 100%;
   height: 100%;
   background: transparent;

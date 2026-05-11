@@ -1,5 +1,5 @@
 import { Background, Controls, Handle, Position, ReactFlow, type NodeProps } from '@xyflow/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { RecruiterGraphNode } from './recruiterAnimation';
 import type { RunStory } from './runStory';
@@ -16,15 +16,21 @@ type StrategyGraphProps = {
   onSelectNode: (node: RecruiterGraphNode) => void;
 };
 
-const graphBounds = { width: 980, height: 560 };
+const defaultGraphBounds = { width: 980, height: 560 };
+const minGraphBounds = { width: 360, height: 420 };
 const nodeTypes = { strategy: StrategyGraphNode };
 
 export function StrategyGraph({ story, selectedNodeId, onSelectNode }: StrategyGraphProps) {
+  const [shellRef, graphBounds] = useStrategyGraphBounds();
   const fallbackGraph = useMemo(
     () => fallbackLayout(story.graphNodes, story.graphEdges, graphBounds),
-    [story.graphEdges, story.graphNodes],
+    [graphBounds, story.graphEdges, story.graphNodes],
   );
   const [laidOutGraph, setLaidOutGraph] = useState<LaidOutStrategyGraph>(fallbackGraph);
+  const graphKey = useMemo(
+    () => `${graphBounds.width}x${graphBounds.height}:${story.graphNodes.map((node) => node.id).join('|')}`,
+    [graphBounds.height, graphBounds.width, story.graphNodes],
+  );
   const nodes = useMemo(
     () =>
       laidOutGraph.nodes.map((node) => {
@@ -52,25 +58,70 @@ export function StrategyGraph({ story, selectedNodeId, onSelectNode }: StrategyG
   }, [fallbackGraph, story.graphEdges, story.graphNodes]);
 
   return (
-    <ReactFlow
-      className="strategy-flow"
-      data-testid="strategy-flow"
-      nodes={nodes}
-      edges={laidOutGraph.edges}
-      nodeTypes={nodeTypes}
-      fitView
-      minZoom={0.45}
-      maxZoom={1.6}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable
-      proOptions={{ hideAttribution: true }}
-      onNodeClick={(_, node) => onSelectNode(node.data.graphNode)}
-    >
-      <Background gap={24} size={1} className="strategy-flow-bg" />
-      <Controls showInteractive={false} />
-    </ReactFlow>
+    <div className="strategy-flow-shell" ref={shellRef}>
+      <ReactFlow
+        key={graphKey}
+        className="strategy-flow"
+        data-testid="strategy-flow"
+        nodes={nodes}
+        edges={laidOutGraph.edges}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.24 }}
+        minZoom={0.2}
+        maxZoom={1.6}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable
+        proOptions={{ hideAttribution: true }}
+        onNodeClick={(_, node) => onSelectNode(node.data.graphNode)}
+      >
+        <Background gap={24} size={1} className="strategy-flow-bg" />
+        <Controls showInteractive={false} />
+      </ReactFlow>
+    </div>
   );
+}
+
+function useStrategyGraphBounds() {
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const [bounds, setBounds] = useState(defaultGraphBounds);
+
+  useEffect(() => {
+    const element = shellRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateBounds = () => {
+      const rect = element.getBoundingClientRect();
+      const measuredWidth = rect.width || element.offsetWidth;
+      const measuredHeight = rect.height || element.offsetHeight;
+      const nextBounds = {
+        width:
+          measuredWidth > 0
+            ? Math.max(minGraphBounds.width, Math.round(measuredWidth))
+            : defaultGraphBounds.width,
+        height:
+          measuredHeight > 0
+            ? Math.max(minGraphBounds.height, Math.round(measuredHeight))
+            : defaultGraphBounds.height,
+      };
+
+      setBounds((currentBounds) =>
+        currentBounds.width === nextBounds.width && currentBounds.height === nextBounds.height
+          ? currentBounds
+          : nextBounds,
+      );
+    };
+
+    updateBounds();
+    const observer = new ResizeObserver(updateBounds);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return [shellRef, bounds] as const;
 }
 
 function StrategyGraphNode({ data }: NodeProps<StrategyFlowNode>) {

@@ -149,10 +149,39 @@ describe('strategy graph layout', () => {
     expect(cts).toBeDefined();
     expect(liepin).toBeDefined();
     expect(final).toBeDefined();
+    expect(cts?.width).toBe(168);
+    expect(cts?.height).toBe(74);
     expect(cts?.position.y).toBeLessThan(liepin?.position.y ?? 0);
     expect(cts?.position.x).toBe(liepin?.position.x);
     expect(cts?.selected).toBe(false);
     expect(cts?.data.selected).toBe(false);
     expect(final?.position.x).toBe(bounds.width - 168 - 34);
+  });
+
+  it('keeps fallback nodes inside a narrow responsive canvas', () => {
+    const narrowBounds = { width: 371, height: 560 };
+    const nodes = [
+      graphNode('job', 'shared', 0.08, 0.42),
+      graphNode('requirements', 'shared', 0.24, 0.42),
+      graphNode('cts-query', 'cts', 0.42, 0.22),
+      graphNode('liepin-search', 'liepin', 0.42, 0.62),
+      graphNode('final-shortlist', 'shared', 0.8, 0.42),
+    ];
+    const edges: RecruiterGraphEdge[] = [
+      { from: 'job', to: 'requirements', tone: 'neutral' },
+      { from: 'requirements', to: 'cts-query', tone: 'blue' },
+      { from: 'requirements', to: 'liepin-search', tone: 'green' },
+      { from: 'cts-query', to: 'final-shortlist', tone: 'blue' },
+      { from: 'liepin-search', to: 'final-shortlist', tone: 'green' },
+    ];
+
+    const layout = fallbackLayout(nodes, edges, narrowBounds);
+
+    for (const node of layout.nodes) {
+      expect(node.position.x).toBeGreaterThanOrEqual(0);
+      expect(node.position.x + 168).toBeLessThanOrEqual(narrowBounds.width);
+      expect(node.position.y).toBeGreaterThanOrEqual(0);
+      expect(node.position.y + 74).toBeLessThanOrEqual(narrowBounds.height);
+    }
   });
 });
