@@ -628,3 +628,28 @@ Verification:
   - markdown: `.seektalent/rollout-readiness/rollout-readiness-20260510T063319512966Z.md`.
 - `uv run pytest tests/test_workbench_api.py tests/test_workbench_auth_security.py tests/test_workbench_network_guard.py tests/test_ui_api.py tests/test_ui_mapper.py -q` -> passed, 70 tests.
 - `git diff --check` -> passed.
+
+## Interactive Strategy Graph Verification
+
+Status: completed for Task 7 visual regression and final verification.
+
+Completed:
+
+- Replaced the old playback-only visual smoke with current workbench coverage:
+  - `strategy-flow` visibility;
+  - clickable CTS reflection node opening `节点详情`;
+  - desktop screenshot baseline after node selection;
+  - 1024px layout where the graph and selected node detail remain reachable without horizontal overflow.
+- Refreshed tracked visual baselines to the current interactive strategy graph frames and removed unused playback-frame baselines.
+- Documented the interactive strategy graph behavior in `docs/ui.md`.
+
+Verification:
+
+- `cd apps/web && UPDATE_VISUAL_BASELINES=1 bun run test:visual` -> passed, 2 Playwright visual tests; refreshed `desktop-graph-detail.png` and `tablet-1024-node-detail.png`.
+- `cd apps/web && bun run test` -> passed, 68 Vitest tests.
+- `cd apps/web && bun run typecheck` -> passed.
+- `cd apps/web && bun run build` -> passed; Vite emitted the existing large-chunk warning for the production bundle.
+- `cd apps/web && bun run test:visual` -> passed, 2 Playwright visual tests.
+- `uv run pytest tests/test_workbench_api.py -q` -> passed, 43 tests.
+- `git diff --check` -> passed.
+- `git status --short` -> showed only the Task 7 changes plus the two pre-existing untracked Superpowers plan/spec files.

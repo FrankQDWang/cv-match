@@ -85,6 +85,14 @@ Typical flow:
 
 CTS and Liepin source runs use separate execution lanes. CTS runs can execute in parallel; Liepin uses a single serial lane for provider safety.
 
+## Interactive Strategy Graph
+
+The central workbench canvas renders the current recruiter run as an interactive strategy graph. The graph is derived from durable session state, SSE events, candidate review items, and safe Liepin detail-open request metadata; it does not depend on the old playback-only animation state.
+
+Graph lanes separate shared job/requirement nodes from CTS and Liepin source work. Nodes are clickable business objects: requirement breakdown, source queue state, CTS query/result/scoring/reflection rounds, Liepin card/detail approval steps, candidate aggregation, and final shortlist handoff. Selecting a node opens the right-side `节点详情` tab with the node's structured business payload while preserving the candidate queue as a separate tab.
+
+At desktop widths the JD/source panel, React Flow graph, activity log, and detail tabs are visible in the three-column workbench shell. Around 1024px the right-side activity and detail area stacks below the graph, so operators can still reach both the strategy graph and selected node details without horizontal scrolling.
+
 Liepin card search is summary-first. Strong card matches can create agent-recommended detail-open requests automatically, including the candidate snapshot, match reason, and budget impact shown in the approval queue. Liepin detail opening defaults to `human_confirm`, so an agent recommendation does not open the provider detail page until the user approves it. `bypass_confirm` skips only per-candidate confirmation; backend ledger, budget, lease, pacing, and risk-control checks still apply.
 
 ## Liepin Login

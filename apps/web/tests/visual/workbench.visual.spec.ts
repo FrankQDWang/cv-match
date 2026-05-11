@@ -6,12 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASELINE_DIR = path.join(__dirname, 'baselines');
-const DEFAULT_REFERENCE_FRAME_DIR =
-  '/Users/frankqdwang/Documents/工作/seektalent/references/output/recruiter-agent-design-system/frames';
-const REFERENCE_FRAME_DIR = process.env.SEEKTALENT_REFERENCE_FRAME_DIR ?? DEFAULT_REFERENCE_FRAME_DIR;
 const SESSION_ID = 'session-visual';
 const UPDATE_BASELINES = process.env.UPDATE_VISUAL_BASELINES === '1';
-const REQUIRE_REFERENCE_FRAMES = process.env.SEEKTALENT_REFERENCE_FRAME_DIR_REQUIRED === '1';
 
 type Box = {
   top: number;
@@ -110,11 +106,35 @@ const events = [
     globalSeq: 2,
     sessionSeq: 2,
     sessionId: SESSION_ID,
+    sourceRunId: 'src-cts-visual',
+    sourceKind: 'cts',
+    eventName: 'runtime_round_completed',
+    payload: {
+      type: 'round_completed',
+      roundNo: 1,
+      payload: {
+        executed_queries: [{ query_terms: ['AI platform', 'multi-source recruiting'] }],
+        raw_candidate_count: 18,
+        unique_new_count: 6,
+        newly_scored_count: 6,
+        fit_count: 2,
+        not_fit_count: 4,
+        reflection_summary: '收窄到有多源招聘工作流经验的产品负责人。',
+        reflection_rationale: '强候选人集中在 enterprise search 和 talent intelligence 产品线。',
+        next_direction: '保留 AI platform，加入 recruiting workflow 和 executive search 关键词。',
+      },
+    },
+    createdAt: '2026-05-10T00:02:00Z',
+  },
+  {
+    globalSeq: 3,
+    sessionSeq: 3,
+    sessionId: SESSION_ID,
     sourceRunId: 'src-liepin-visual',
     sourceKind: 'liepin',
     eventName: 'liepin_card_search_completed',
     payload: { scanned: 96, candidates: 12 },
-    createdAt: '2026-05-10T00:02:00Z',
+    createdAt: '2026-05-10T00:03:00Z',
   },
 ];
 
@@ -305,38 +325,6 @@ async function captureAndCompare(page: Page, testInfo: TestInfo, name: string, m
   return actualPath;
 }
 
-async function compareReferenceFrame(
-  actualPath: string,
-  testInfo: TestInfo,
-  referenceFrame: string,
-  maxDiffPercentage: number,
-) {
-  const referencePath = path.join(REFERENCE_FRAME_DIR, referenceFrame);
-  try {
-    await fs.access(referencePath);
-  } catch {
-    if (REQUIRE_REFERENCE_FRAMES) {
-      throw new Error(`Missing required reference frame ${referencePath}`);
-    }
-    testInfo.annotations.push({
-      type: 'reference-frame-skipped',
-      description: `Missing ${referencePath}`,
-    });
-    return;
-  }
-
-  const diffPath = testInfo.outputPath(`${path.basename(referenceFrame, '.png')}.reference.diff.png`);
-  const result = await compare(referencePath, actualPath, diffPath, {
-    antialiasing: true,
-    threshold: 0.18,
-  });
-  if (result.match) {
-    return;
-  }
-  expect(result.reason).toBe('pixel-diff');
-  expect(result.diffPercentage).toBeLessThanOrEqual(maxDiffPercentage);
-}
-
 async function boxes(page: Page, selectors: Record<string, string>) {
   return page.evaluate((input) => {
     const result: Record<string, Box> = {};
@@ -392,7 +380,7 @@ test.describe('workbench visual smoke', () => {
     await mockWorkbenchApi(page);
   });
 
-  test('desktop shell matches the M6 structural baseline through key playback frames', async ({ page }, testInfo) => {
+  test('desktop workbench renders the interactive strategy graph and node details', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await openWorkbench(page);
 
@@ -403,69 +391,53 @@ test.describe('workbench visual smoke', () => {
       jdPanel: '.jd-panel',
       strategyPanel: '.strategy-panel',
       rightRail: '.right-rail',
-      playbackBar: '.playback-bar',
+      strategyFlow: '.strategy-flow',
+      rightTabs: '.right-workbench-tabs',
     });
 
     expect(desktop.sessionRail.right).toBeLessThanOrEqual(desktop.workbenchMain.left + 1);
     expect(desktop.jdPanel.right).toBeLessThanOrEqual(desktop.strategyPanel.left + 1);
     expect(desktop.strategyPanel.right).toBeLessThanOrEqual(desktop.rightRail.left + 1);
     expect(desktop.topbar.bottom).toBeLessThanOrEqual(desktop.workbenchMain.top + 1);
-    expect(desktop.playbackBar.top).toBeGreaterThanOrEqual(desktop.workbenchMain.top);
+    expect(desktop.strategyFlow.width).toBeGreaterThan(600);
+    expect(desktop.rightTabs.top).toBeGreaterThan(desktop.rightRail.top);
     expect(overlaps(desktop.jdPanel, desktop.strategyPanel)).toBe(false);
     expect(overlaps(desktop.strategyPanel, desktop.rightRail)).toBe(false);
 
+    await expect(page.getByTestId('strategy-flow')).toBeVisible();
+    const reflectionNode = page.getByRole('button', { name: /第 1 轮反思/ });
+    await expect(reflectionNode).toBeVisible();
+    await reflectionNode.click();
+    await expect(page.getByRole('tab', { name: '节点详情' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('强候选人集中在 enterprise search 和 talent intelligence 产品线。')).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectNoVisibleControlTextOverflow(page);
-    let actual = await captureAndCompare(page, testInfo, 'desktop-idle', 0.25);
-    await compareReferenceFrame(actual, testInfo, '00-idle.png', 8);
-
-    await page.getByRole('button', { name: 'Start playback' }).click();
-    await page.clock.runFor(8000);
-    await expect(page.getByTestId('strategy-canvas')).toBeVisible();
-    actual = await captureAndCompare(page, testInfo, 'desktop-08s', 0.35);
-    await compareReferenceFrame(actual, testInfo, '06-08s.png', 8);
-
-    await page.clock.runFor(6000);
-    actual = await captureAndCompare(page, testInfo, 'desktop-14s', 0.35);
-    await compareReferenceFrame(actual, testInfo, '09-14s.png', 8);
-
-    await page.clock.runFor(6000);
-    expect(await page.locator('.graph-node').count()).toBeGreaterThanOrEqual(16);
-    actual = await captureAndCompare(page, testInfo, 'desktop-20s', 0.35);
-    await compareReferenceFrame(actual, testInfo, '12-20s.png', 8);
-
-    await page.clock.runFor(8000);
-    actual = await captureAndCompare(page, testInfo, 'desktop-28s', 0.35);
-    await compareReferenceFrame(actual, testInfo, '16-28s.png', 8);
-
-    await page.clock.runFor(2000);
-    actual = await captureAndCompare(page, testInfo, 'desktop-30s', 0.35);
-    await compareReferenceFrame(actual, testInfo, '17-30s.png', 8);
-
-    await page.clock.runFor(4000);
-    await expect(page.locator('.status-text')).toHaveText('已完成');
-    await expect(page.locator('.elapsed')).toHaveText('34.0 / 34s');
-    actual = await captureAndCompare(page, testInfo, 'desktop-34s', 0.35);
-    await compareReferenceFrame(actual, testInfo, '19-34_5s.png', 8);
+    await captureAndCompare(page, testInfo, 'desktop-graph-detail', 0.35);
   });
 
-  test('mobile shell keeps the session rail, workbench, and playback controls non-overlapping', async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  test('1024px workbench keeps graph and node detail reachable', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
     await openWorkbench(page);
 
-    const mobile = await boxes(page, {
+    const tablet = await boxes(page, {
       topbar: '.topbar',
       sessionRail: '.session-rail',
       workbenchMain: '.workbench-main',
-      playbackBar: '.playback-bar',
+      jdPanel: '.jd-panel',
+      strategyPanel: '.strategy-panel',
+      rightRail: '.right-rail',
     });
 
-    expect(mobile.topbar.bottom).toBeLessThanOrEqual(mobile.sessionRail.top + 1);
-    expect(mobile.sessionRail.bottom).toBeLessThanOrEqual(mobile.workbenchMain.top + 1);
-    expect(mobile.playbackBar.width).toBeLessThanOrEqual(390);
-    await expect(page.getByText('详情审批')).toBeVisible();
+    expect(tablet.topbar.bottom).toBeLessThanOrEqual(tablet.workbenchMain.top + 1);
+    expect(tablet.jdPanel.right).toBeLessThanOrEqual(tablet.strategyPanel.left + 1);
+    expect(tablet.rightRail.top).toBeGreaterThanOrEqual(tablet.strategyPanel.bottom - 1);
+    await expect(page.getByTestId('strategy-flow')).toBeVisible();
+    await page.getByRole('button', { name: /第 1 轮反思/ }).click();
+    await page.locator('.right-workbench-tabs').scrollIntoViewIfNeeded();
+    await expect(page.getByRole('tab', { name: '节点详情' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('保留 AI platform，加入 recruiting workflow 和 executive search 关键词。')).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectNoVisibleControlTextOverflow(page);
-    await captureAndCompare(page, testInfo, 'mobile-idle', 0.35);
+    await captureAndCompare(page, testInfo, 'tablet-1024-node-detail', 0.35);
   });
 });
