@@ -27,6 +27,8 @@
   "dependencies": {
     "@tanstack/react-query": "^5.100.9",
     "@tanstack/react-router": "^1.169.2",
+    "@xyflow/react": "^12.10.2",
+    "elkjs": "^0.11.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   }
