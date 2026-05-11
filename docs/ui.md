@@ -87,9 +87,9 @@ CTS and Liepin source runs use separate execution lanes. CTS runs can execute in
 
 ## Interactive Strategy Graph
 
-The central workbench canvas renders the current recruiter run as an interactive strategy graph. The graph is derived from durable session state, SSE events, candidate review items, and safe Liepin detail-open request metadata; it does not depend on the old playback-only animation state.
+The workbench strategy graph is rendered with React Flow and laid out through ELK. It is not a workflow engine; it is a recruiter-facing projection of durable Workbench session events, source-run state, candidate evidence, and detail approval state.
 
-Graph lanes separate shared job/requirement nodes from CTS and Liepin source work. Nodes are clickable business objects: requirement breakdown, source queue state, CTS query/result/scoring/reflection rounds, Liepin card/detail approval steps, candidate aggregation, and final shortlist handoff. Selecting a node opens the right-side `节点详情` tab with the node's structured business payload while preserving the candidate queue as a separate tab.
+Graph lanes separate shared job/requirement nodes from CTS and Liepin source work. Nodes are clickable business objects: requirement breakdown, source queue state, CTS query/result/scoring/reflection rounds, Liepin card/detail approval steps, candidate aggregation, and final shortlist handoff. Clicking a graph node opens the `节点详情` tab in the right-lower workbench area. The `候选人队列` tab remains available and is still the default candidate-review surface. Running notes and candidate evidence actions can jump to related graph nodes when the backend-safe data contains the relationship.
 
 At desktop widths the JD/source panel, React Flow graph, activity log, and detail tabs are visible in the three-column workbench shell. Around 1024px the right-side activity and detail area stacks below the graph, so operators can still reach both the strategy graph and selected node details without horizontal scrolling.
 
