@@ -1,5 +1,5 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
-import type { ElkNode } from 'elkjs/lib/elk.bundled.js';
+import type { ELK as ElkInstance, ElkNode } from 'elkjs/lib/elk.bundled.js';
 import { Position, type Edge, type Node } from '@xyflow/react';
 
 import type { RecruiterGraphEdge, RecruiterGraphNode, RecruiterLane } from './recruiterAnimation';
@@ -9,6 +9,7 @@ export type StrategyGraphEdgeData = { graphEdge: RecruiterGraphEdge };
 export type StrategyFlowNode = Node<StrategyGraphNodeData, 'strategy'>;
 export type StrategyFlowEdge = Edge<StrategyGraphEdgeData>;
 export type LaidOutStrategyGraph = { nodes: StrategyFlowNode[]; edges: StrategyFlowEdge[] };
+export type StrategyGraphLayoutRunner = (graph: ElkNode) => Promise<ElkNode>;
 
 type GraphBounds = { width: number; height: number };
 type GraphPosition = { x: number; y: number };
@@ -25,6 +26,18 @@ const LANE_Y_RATIOS: Record<RecruiterLane, number> = {
 const ROOT_ID = 'strategy-root';
 const FINAL_SHORTLIST_ID = 'final-shortlist';
 const GRAPH_INSET = 34;
+let elkInstance: ElkInstance | null = null;
+let testLayoutRunner: StrategyGraphLayoutRunner | null = null;
+
+export function setStrategyGraphLayoutRunnerForTests(runner: StrategyGraphLayoutRunner | null) {
+  testLayoutRunner = runner;
+}
+
+export function disposeStrategyGraphLayoutRunner() {
+  elkInstance?.terminateWorker();
+  elkInstance = null;
+  testLayoutRunner = null;
+}
 
 export function toElkGraph(nodes: RecruiterGraphNode[], edges: RecruiterGraphEdge[]): ElkNode {
   return {
@@ -55,8 +68,7 @@ export async function layoutStrategyGraph(
   bounds: GraphBounds,
 ): Promise<LaidOutStrategyGraph> {
   try {
-    const elk = new ELK();
-    const laidOut = await elk.layout(toElkGraph(nodes, edges));
+    const laidOut = await runElkLayout(toElkGraph(nodes, edges));
     const rawPositions = new Map<string, GraphPosition>();
 
     for (const child of laidOut.children ?? []) {
@@ -76,6 +88,14 @@ export async function layoutStrategyGraph(
   } catch {
     return fallbackLayout(nodes, edges, bounds);
   }
+}
+
+function runElkLayout(graph: ElkNode): Promise<ElkNode> {
+  if (testLayoutRunner) {
+    return testLayoutRunner(graph);
+  }
+  elkInstance ??= new ELK();
+  return elkInstance.layout(graph) as Promise<ElkNode>;
 }
 
 export function fallbackLayout(
