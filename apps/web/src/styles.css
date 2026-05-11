@@ -2276,6 +2276,14 @@ textarea:focus {
 
   .right-rail {
     display: grid;
+    grid-column: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  .right-log {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .run-cluster {
