@@ -1575,6 +1575,8 @@ describe('workbench routes', () => {
     expect(screen.queryByText('第 1 轮关键词')).not.toBeInTheDocument();
     expect(screen.getByText('猎聘简介抓取 · 30 张')).toBeInTheDocument();
     expect(screen.getByText(/简介初筛 1 人/)).toBeInTheDocument();
+    expect(screen.queryByText('灵光')).not.toBeInTheDocument();
+    expect(screen.getByText('详情审批')).toBeInTheDocument();
   });
 
   it('loads safe candidate and detail approval data once at the workbench shell level', async () => {
@@ -2098,7 +2100,7 @@ describe('workbench routes', () => {
       throw new Error(`Unexpected request ${url}`);
     });
 
-    expect(await screen.findByText('详情审批')).toBeInTheDocument();
+    expect((await screen.findAllByText('详情审批')).length).toBeGreaterThan(0);
     expect(await screen.findByText('pending')).toBeInTheDocument();
     expect(await screen.findByText('Lin Qian')).toBeInTheDocument();
     expect(await screen.findByText(/Agent recommends opening detail/i)).toBeInTheDocument();

@@ -116,7 +116,7 @@ export type RecruiterGraphDetailPayload =
 export type RecruiterGraphNode = {
   id: string;
   at: number;
-  kind: '岗位' | '拆解' | '检索' | '命中' | '过滤' | '反思' | '灵光' | '排序';
+  kind: '岗位' | '拆解' | '检索' | '命中' | '评分' | '反思' | '详情审批' | '排序';
   label: string;
   detail: string;
   x: number;
@@ -144,7 +144,7 @@ export type RecruiterGraphEdge = {
 export type RecruiterLogEntry = {
   id: string;
   at: number;
-  tag: 'SYS' | 'THINK' | 'PLAN' | 'SCAN' | 'HIT' | 'REFLECT' | 'AHA';
+  tag: 'SYS' | 'THINK' | 'PLAN' | 'SCAN' | 'HIT' | 'REFLECT' | 'DETAIL';
   text: string;
   sourceKind?: SourceKind | 'all';
   sourceLabel?: string;

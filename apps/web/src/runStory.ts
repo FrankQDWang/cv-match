@@ -383,7 +383,7 @@ function appendCtsLane({
       }),
       sourceNode({
         id: scoreId,
-        kind: '过滤',
+        kind: '评分',
         label: `评分：fit ${String(round.fitCount)} / not_fit ${String(round.notFitCount)}`,
         detail: `${String(round.newlyScoredCount)} 人进入评分`,
         x,
@@ -687,7 +687,7 @@ function appendLiepinLane({
     graphNodes.push(
       sourceNode({
         id: detailId,
-        kind: '灵光',
+        kind: '详情审批',
         label: `详情审批 · ${String(detailCounts.requestCount)} 个`,
         detail: `已预留 ${String(detailCounts.approvedOrLeasedCount)} · 阻塞 ${String(detailCounts.blockedOrRejectedCount)}`,
         x: 80,
@@ -712,7 +712,7 @@ function appendLiepinLane({
     logEntries.push({
       id: 'liepin-detail-log',
       at: Number.isFinite(detailLogAt) ? detailLogAt : graphNodes.length,
-      tag: 'AHA',
+      tag: 'DETAIL',
       text: `详情审批队列 ${String(detailCounts.requestCount)} 个，已预留 ${String(detailCounts.approvedOrLeasedCount)} 个`,
       sourceKind,
       sourceLabel,

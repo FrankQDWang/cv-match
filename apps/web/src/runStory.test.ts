@@ -458,8 +458,10 @@ describe('buildRunStory', () => {
     const detailApproval = story.graphNodes.find((node) => node.id === 'liepin-detail-approval');
     const detailLog = story.logEntries.find((entry) => entry.id === 'liepin-detail-log');
 
+    expect(detailApproval?.kind).toBe('详情审批');
     expect(detailApproval?.label).toBe('详情审批 · 1 个');
     expect(detailApproval?.detail).toBe('已预留 1 · 阻塞 0');
+    expect(detailLog?.tag).toBe('DETAIL');
     expect(detailLog?.text).toBe('详情审批队列 1 个，已预留 1 个');
   });
 
@@ -619,6 +621,33 @@ describe('buildRunStory', () => {
     expect(candidates?.detailPayload).toMatchObject({
       kind: 'liepinCardCandidates',
       bestScore: 92,
+    });
+  });
+
+  it('keeps individual candidates out of the strategy graph and links them through aggregate nodes', () => {
+    const story = buildRunStory({
+      session: session(),
+      events: [
+        event({
+          globalSeq: 4,
+          sourceKind: 'liepin',
+          sourceRunId: 'src-liepin',
+          eventName: 'source_run_started',
+          payload: { sourceRunId: 'src-liepin', sourceKind: 'liepin' },
+        }),
+      ],
+      candidateReviewItems: [
+        candidateReviewItem({ reviewItemId: 'review-liepin-1', displayName: 'Ada Chen' }),
+        candidateReviewItem({ reviewItemId: 'review-liepin-2', displayName: 'Ben Lin' }),
+      ],
+      sourceFilter: 'liepin',
+    });
+
+    expect(story.graphNodes.map((node) => node.label)).not.toContain('Ada Chen');
+    expect(story.graphNodes.map((node) => node.label)).not.toContain('Ben Lin');
+    expect(story.graphNodes.find((node) => node.id === 'liepin-card-candidates')).toMatchObject({
+      label: '候选人初筛 · 2 人',
+      candidateReviewItemIds: ['review-liepin-1', 'review-liepin-2'],
     });
   });
 

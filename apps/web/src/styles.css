@@ -1367,7 +1367,7 @@ textarea:focus {
 .strategy-flow-node[data-tone="amber"] span { color: var(--amber-text); }
 .strategy-flow-node[data-tone="rose"] span { color: var(--rose-text); }
 
-.strategy-flow-node[data-kind="灵光"] {
+.strategy-flow-node[data-kind="详情审批"] {
   box-shadow: 0 0 0 8px rgba(168, 117, 31, 0.08);
 }
 
@@ -1514,12 +1514,12 @@ textarea:focus {
   color: var(--lavender-text);
 }
 
-.log-aha {
+.log-detail {
   background: var(--amber-bg);
 }
 
-.log-aha span,
-.log-aha strong {
+.log-detail span,
+.log-detail strong {
   color: var(--amber-text);
 }
 

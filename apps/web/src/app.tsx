@@ -1965,8 +1965,9 @@ function StrategyCanvas({
               ['拆解', 'blue'],
               ['检索', 'teal'],
               ['命中', 'green'],
+              ['评分', 'green'],
               ['反思', 'violet'],
-              ['灵光', 'amber'],
+              ['详情审批', 'amber'],
             ].map(([label, tone]) => (
               <span key={label} className={`legend-${tone}`}>
                 {label}
