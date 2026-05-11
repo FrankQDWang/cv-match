@@ -77,7 +77,7 @@ Typical flow:
 
 1. Create a JD session.
 2. Edit and approve the requirement triage gate.
-3. Start CTS and/or Liepin source runs from the source cards.
+3. Start the selected CTS and/or Liepin source runs from the strategy panel's central `启动检索` action.
 4. Watch the strategy panel and source cards update from durable state and SSE events.
 5. Review merged candidates in the right rail.
 6. Add notes, mark promising, or reject.

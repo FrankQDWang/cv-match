@@ -682,24 +682,17 @@ function appendLiepinLane({
     ].includes(event.eventName),
   );
   if (detailEvents.length > 0 || visibleDetailRequests.length > 0) {
-    const leasedCount = detailEvents.filter((event) => event.eventName === 'liepin_detail_open_leased').length;
-    const blockedCount = detailEvents.filter((event) => event.eventName === 'liepin_detail_open_blocked').length;
-    const approvedOrLeasedCount =
-      visibleDetailRequests.filter((request) => request.status === 'approved' || request.ledger?.status === 'leased').length +
-      leasedCount;
-    const blockedOrRejectedCount =
-      visibleDetailRequests.filter((request) => request.status === 'rejected' || request.status === 'blocked').length +
-      blockedCount;
+    const detailCounts = detailApprovalCounts(visibleDetailRequests, detailEvents);
     const detailId = 'liepin-detail-approval';
     graphNodes.push(
       sourceNode({
         id: detailId,
         kind: '灵光',
-        label: `详情审批 · ${String(Math.max(detailEvents.length, visibleDetailRequests.length))} 个`,
-        detail: `已预留 ${String(approvedOrLeasedCount)} · 阻塞 ${String(blockedOrRejectedCount)}`,
+        label: `详情审批 · ${String(detailCounts.requestCount)} 个`,
+        detail: `已预留 ${String(detailCounts.approvedOrLeasedCount)} · 阻塞 ${String(detailCounts.blockedOrRejectedCount)}`,
         x: 80,
         y: baseY + (allMode ? 8 : 11),
-        tone: blockedOrRejectedCount > 0 ? 'amber' : 'violet',
+        tone: detailCounts.blockedOrRejectedCount > 0 ? 'amber' : 'violet',
         sourceKind,
         sourceLabel,
         detailKind: 'liepinDetailApproval',
@@ -720,7 +713,7 @@ function appendLiepinLane({
       id: 'liepin-detail-log',
       at: Number.isFinite(detailLogAt) ? detailLogAt : graphNodes.length,
       tag: 'AHA',
-      text: `详情审批队列 ${String(Math.max(detailEvents.length, visibleDetailRequests.length))} 个，已预留 ${String(approvedOrLeasedCount)} 个`,
+      text: `详情审批队列 ${String(detailCounts.requestCount)} 个，已预留 ${String(detailCounts.approvedOrLeasedCount)} 个`,
       sourceKind,
       sourceLabel,
       lane: sourceKind,
@@ -1077,6 +1070,56 @@ function detailRequestFields(detailOpenRequests: WorkbenchDetailOpenRequest[]) {
     requestSummaries: detailOpenRequests.map(detailRequestSummary),
     budgetText: detailBudgetText(detailOpenRequests),
   };
+}
+
+function detailApprovalCounts(
+  detailOpenRequests: WorkbenchDetailOpenRequest[],
+  detailEvents: WorkbenchEvent[],
+) {
+  const currentRequestIds = new Set(detailOpenRequests.map((request) => request.requestId));
+  const currentReviewItemIds = new Set(detailOpenRequests.map((request) => request.reviewItemId));
+  const eventOnlyRequests = new Map<string, { leased: boolean; blocked: boolean }>();
+
+  for (const event of detailEvents) {
+    const requestId = stringValue(event.payload.requestId);
+    const reviewItemId = stringValue(event.payload.reviewItemId);
+    if ((requestId && currentRequestIds.has(requestId)) || (reviewItemId && currentReviewItemIds.has(reviewItemId))) {
+      continue;
+    }
+    const requestKey = reviewItemId ?? requestId ?? eventId(event);
+    const current = eventOnlyRequests.get(requestKey) ?? { leased: false, blocked: false };
+    if (event.eventName === 'liepin_detail_open_leased') {
+      current.leased = true;
+    }
+    if (event.eventName === 'liepin_detail_open_blocked') {
+      current.blocked = true;
+    }
+    eventOnlyRequests.set(requestKey, current);
+  }
+  const eventOnlyStatuses = [...eventOnlyRequests.values()];
+
+  return {
+    requestCount: detailOpenRequests.length + eventOnlyRequests.size,
+    approvedOrLeasedCount:
+      detailOpenRequests.filter(isApprovedOrLeasedDetailRequest).length +
+      eventOnlyStatuses.filter((status) => status.leased).length,
+    blockedOrRejectedCount:
+      detailOpenRequests.filter(isBlockedOrRejectedDetailRequest).length +
+      eventOnlyStatuses.filter((status) => status.blocked).length,
+  };
+}
+
+function isApprovedOrLeasedDetailRequest(request: WorkbenchDetailOpenRequest): boolean {
+  return (
+    request.status === 'approved' ||
+    request.ledger?.status === 'leased' ||
+    request.ledger?.status === 'opened' ||
+    request.ledger?.status === 'maybe_used'
+  );
+}
+
+function isBlockedOrRejectedDetailRequest(request: WorkbenchDetailOpenRequest): boolean {
+  return request.status === 'rejected' || request.status === 'blocked' || request.ledger?.status === 'blocked';
 }
 
 function detailBudgetText(detailOpenRequests: WorkbenchDetailOpenRequest[]): string | null {
