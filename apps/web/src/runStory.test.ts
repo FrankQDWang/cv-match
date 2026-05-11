@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildRunStory } from './runStory';
-import type { WorkbenchEvent, WorkbenchRequirementTriage, WorkbenchSession } from './types';
+import type {
+  WorkbenchCandidateReviewItem,
+  WorkbenchDetailOpenRequest,
+  WorkbenchEvent,
+  WorkbenchRequirementTriage,
+  WorkbenchSession,
+} from './types';
 
 function triage(overrides: Partial<WorkbenchRequirementTriage> = {}): WorkbenchRequirementTriage {
   return {
@@ -102,6 +108,84 @@ function event(overrides: Partial<WorkbenchEvent>): WorkbenchEvent {
   };
 }
 
+function candidateReviewItem(overrides: Partial<WorkbenchCandidateReviewItem> = {}): WorkbenchCandidateReviewItem {
+  return {
+    reviewItemId: 'review-liepin-1',
+    sessionId: 'session-1',
+    status: 'new',
+    note: '',
+    displayName: 'Ada Chen',
+    title: 'Data Platform Engineer',
+    company: 'Example Inc.',
+    location: 'Shanghai',
+    summary: 'Built Kafka and Flink data platforms.',
+    aggregateScore: 93,
+    fitBucket: 'fit',
+    sourceBadges: ['Liepin'],
+    evidenceLevel: 'detail',
+    matchedMustHaves: ['Flink CDC'],
+    matchedPreferences: ['data platform'],
+    missingRisks: [],
+    strengths: ['streaming systems'],
+    weaknesses: [],
+    evidence: [
+      {
+        evidenceId: 'evidence-liepin-1',
+        sourceRunId: 'src-liepin',
+        sourceKind: 'liepin',
+        evidenceLevel: 'detail',
+        score: 93,
+        fitBucket: 'fit',
+        matchedMustHaves: ['Flink CDC'],
+        matchedPreferences: ['data platform'],
+        missingRisks: [],
+        strengths: ['streaming systems'],
+        weaknesses: [],
+        createdAt: '2026-05-09T00:00:06Z',
+      },
+    ],
+    createdAt: '2026-05-09T00:00:06Z',
+    updatedAt: '2026-05-09T00:00:06Z',
+    ...overrides,
+  };
+}
+
+function detailOpenRequest(overrides: Partial<WorkbenchDetailOpenRequest> = {}): WorkbenchDetailOpenRequest {
+  return {
+    requestId: 'detail-request-1',
+    sessionId: 'session-1',
+    reviewItemId: 'review-liepin-1',
+    status: 'approved',
+    detailOpenMode: 'human_confirm',
+    decisionNote: null,
+    candidate: {
+      reviewItemId: 'review-liepin-1',
+      displayName: 'Ada Chen',
+      title: 'Data Platform Engineer',
+      company: 'Example Inc.',
+      location: 'Shanghai',
+      summary: 'Built Kafka and Flink data platforms.',
+      aggregateScore: 93,
+      evidenceLevel: 'detail',
+      sourceBadges: ['Liepin'],
+      matchedMustHaves: ['Flink CDC'],
+      matchedPreferences: ['data platform'],
+      missingRisks: [],
+    },
+    blockedReason: null,
+    ledger: {
+      ledgerId: 'ledger-1',
+      status: 'leased',
+      budgetDay: '2026-05-09',
+      leaseExpiresAt: null,
+    },
+    providerAction: null,
+    createdAt: '2026-05-09T00:00:07Z',
+    updatedAt: '2026-05-09T00:00:07Z',
+    ...overrides,
+  };
+}
+
 const events: WorkbenchEvent[] = [
   event({
     globalSeq: 1,
@@ -173,7 +257,7 @@ const events: WorkbenchEvent[] = [
 
 describe('buildRunStory', () => {
   it('builds separate CTS and Liepin lanes in the all-sources story', () => {
-    const story = buildRunStory(session(), events, { sourceFilter: 'all' });
+    const story = buildRunStory({ session: session(), events, sourceFilter: 'all' });
 
     expect(story.graphNodes.some((node) => node.lane === 'cts' && node.label.includes('第 1 轮关键词'))).toBe(true);
     expect(story.graphNodes.some((node) => node.lane === 'liepin' && node.label.includes('猎聘简介抓取'))).toBe(true);
@@ -183,13 +267,133 @@ describe('buildRunStory', () => {
   });
 
   it('filters graph nodes and business logs by source', () => {
-    const ctsStory = buildRunStory(session(), events, { sourceFilter: 'cts' });
-    const liepinStory = buildRunStory(session(), events, { sourceFilter: 'liepin' });
+    const ctsStory = buildRunStory({ session: session(), events, sourceFilter: 'cts' });
+    const liepinStory = buildRunStory({ session: session(), events, sourceFilter: 'liepin' });
 
     expect(ctsStory.graphNodes.some((node) => node.sourceKind === 'liepin')).toBe(false);
     expect(ctsStory.logEntries.some((entry) => entry.sourceKind === 'liepin')).toBe(false);
     expect(liepinStory.graphNodes.some((node) => node.sourceKind === 'cts')).toBe(false);
     expect(liepinStory.logEntries.some((entry) => entry.sourceKind === 'cts')).toBe(false);
     expect(liepinStory.logEntries.some((entry) => entry.text.includes('详情'))).toBe(true);
+  });
+
+  it('marks approved triage requirements as confirmed detail payload', () => {
+    const story = buildRunStory({
+      session: session({
+        requirementTriage: triage({
+          status: 'approved',
+          mustHaves: ['Flink CDC'],
+          approvedAt: '2026-05-09T00:00:00Z',
+        }),
+      }),
+      events,
+      sourceFilter: 'all',
+    });
+
+    const requirements = story.graphNodes.find((node) => node.id === 'requirements');
+
+    expect(requirements?.detailKind).toBe('requirements');
+    expect(requirements?.detailPayload).toMatchObject({
+      kind: 'requirements',
+      triageStatus: 'confirmed',
+      criteria: expect.objectContaining({ mustHaves: ['Flink CDC'] }),
+    });
+  });
+
+  it('marks draft triage requirements as draft, not confirmed', () => {
+    const story = buildRunStory({
+      session: session({
+        requirementTriage: triage({
+          status: 'draft',
+          mustHaves: ['Kafka'],
+          approvedAt: null,
+        }),
+      }),
+      events: [],
+      sourceFilter: 'all',
+    });
+
+    const requirements = story.graphNodes.find((node) => node.id === 'requirements');
+
+    expect(requirements?.detailPayload).toMatchObject({
+      kind: 'requirements',
+      triageStatus: 'draft',
+      criteria: expect.objectContaining({ mustHaves: ['Kafka'] }),
+    });
+    expect(requirements?.detailPayload).not.toMatchObject({ triageStatus: 'confirmed' });
+  });
+
+  it('includes reflection summary, rationale, and next direction on CTS reflection nodes', () => {
+    const story = buildRunStory({
+      session: session(),
+      events: [
+        event({
+          globalSeq: 1,
+          sourceKind: 'cts',
+          sourceRunId: 'src-cts',
+          eventName: 'runtime_round_completed',
+          payload: {
+            round_no: 1,
+            payload: {
+              executedQueries: [{ queryTerms: ['Flink CDC', 'Kafka'] }],
+              rawCandidateCount: 4,
+              uniqueNewCount: 2,
+              newlyScoredCount: 2,
+              fitCount: 1,
+              notFitCount: 1,
+              reflectionSummary: 'Kafka narrows too much.',
+              reflectionRationale: 'Strong Flink candidates omit Kafka.',
+              nextDirection: 'Try CDC and realtime ETL terms.',
+            },
+          },
+        }),
+      ],
+      sourceFilter: 'cts',
+    });
+
+    const reflection = story.graphNodes.find((node) => node.id === 'cts-round-1-reflect');
+
+    expect(reflection?.detailPayload).toMatchObject({
+      kind: 'reflection',
+      summary: 'Kafka narrows too much.',
+      rationale: 'Strong Flink candidates omit Kafka.',
+      nextDirection: 'Try CDC and realtime ETL terms.',
+    });
+  });
+
+  it('populates Liepin candidate and detail-open metadata from safe API inputs', () => {
+    const story = buildRunStory({
+      session: session(),
+      events,
+      candidateReviewItems: [candidateReviewItem()],
+      detailOpenRequests: [detailOpenRequest()],
+      sourceFilter: 'liepin',
+    });
+
+    const candidates = story.graphNodes.find((node) => node.id === 'liepin-card-candidates');
+    const detailApproval = story.graphNodes.find((node) => node.id === 'liepin-detail-approval');
+
+    expect(candidates?.candidateReviewItemIds).toEqual(['review-liepin-1']);
+    expect(candidates?.candidateEvidenceRefs).toEqual([
+      {
+        evidenceId: 'evidence-liepin-1',
+        reviewItemId: 'review-liepin-1',
+        sourceRunId: 'src-liepin',
+        sourceKind: 'liepin',
+        evidenceLevel: 'detail',
+      },
+    ]);
+    expect(candidates?.detailPayload).toMatchObject({
+      kind: 'liepinCardCandidates',
+      candidateReviewItemIds: ['review-liepin-1'],
+      bestScore: 93,
+    });
+    expect(detailApproval?.detailOpenRequestIds).toEqual(['detail-request-1']);
+    expect(detailApproval?.detailPayload).toMatchObject({
+      kind: 'liepinDetailApproval',
+      requestIds: ['detail-request-1'],
+      requestSummaries: ['Ada Chen · approved · leased'],
+      budgetText: 'approved · leased',
+    });
   });
 });

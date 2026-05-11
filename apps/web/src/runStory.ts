@@ -1,6 +1,13 @@
-import type { RecruiterGraphEdge, RecruiterGraphNode, RecruiterLogEntry } from './recruiterAnimation';
+import type {
+  RecruiterCandidateEvidenceRef,
+  RecruiterGraphEdge,
+  RecruiterGraphNode,
+  RecruiterLogEntry,
+} from './recruiterAnimation';
 import type {
   SourceKind,
+  WorkbenchCandidateReviewItem,
+  WorkbenchDetailOpenRequest,
   WorkbenchEvent,
   WorkbenchRequirementTriage,
   WorkbenchRequirementTriageInput,
@@ -18,6 +25,14 @@ export type RunStory = {
   completionText: string | null;
 };
 
+export type BuildRunStoryInput = {
+  session: WorkbenchSession;
+  events: WorkbenchEvent[];
+  candidateReviewItems?: WorkbenchCandidateReviewItem[];
+  detailOpenRequests?: WorkbenchDetailOpenRequest[];
+  sourceFilter?: SourceFilter;
+};
+
 type BuildRunStoryOptions = {
   sourceFilter?: SourceFilter;
 };
@@ -31,14 +46,19 @@ type RuntimeEventData = {
 
 type RoundSummary = {
   eventSeq: number;
+  eventId: string;
+  sourceRunId: string | null;
   roundNo: number;
+  queryTerms: string[];
   queryLabel: string;
   rawCandidateCount: number;
   uniqueNewCount: number;
   newlyScoredCount: number;
   fitCount: number;
   notFitCount: number;
-  reflection: string;
+  reflectionSummary: string;
+  reflectionRationale: string;
+  nextDirection: string;
 };
 
 type CandidateScore = {
@@ -62,27 +82,55 @@ const sourceLabels: Record<SourceKind, string> = {
   liepin: 'Liepin',
 };
 
+export function buildRunStory(input: BuildRunStoryInput): RunStory;
 export function buildRunStory(
   session: WorkbenchSession,
   events: WorkbenchEvent[],
-  options: BuildRunStoryOptions = {},
+  options?: BuildRunStoryOptions,
+): RunStory;
+export function buildRunStory(
+  inputOrSession: BuildRunStoryInput | WorkbenchSession,
+  legacyEvents: WorkbenchEvent[] = [],
+  legacyOptions: BuildRunStoryOptions = {},
 ): RunStory {
-  const sourceFilter = options.sourceFilter ?? 'all';
+  const input =
+    'session' in inputOrSession && 'events' in inputOrSession
+      ? inputOrSession
+      : {
+          session: inputOrSession,
+          events: legacyEvents,
+          sourceFilter: legacyOptions.sourceFilter,
+        };
+  const {
+    session,
+    events,
+    candidateReviewItems = [],
+    detailOpenRequests = [],
+    sourceFilter = 'all',
+  } = input;
   const scopedEvents = scopeEvents(events, sourceFilter);
   const allRuntimeEvents = events
     .filter((event) => event.eventName.startsWith('runtime_'))
     .map(runtimeEventData)
     .filter(Boolean) as RuntimeEventData[];
   const requirements = allRuntimeEvents.find((item) => item.event.eventName === 'runtime_requirements_completed');
-  const criteria = criteriaFromRequirements(requirements);
+  const runtimeCriteria = criteriaFromRequirements(requirements);
+  const triageCriteria = criteriaFromTriage(session.requirementTriage);
+  const triageHasInput = hasTriageInput(triageCriteria);
+  const runtimeHasInput = hasTriageInput(runtimeCriteria);
+  const criteria = triageHasInput ? triageCriteria : runtimeCriteria;
   const sourceKinds = selectedSourceKinds(session, scopedEvents, sourceFilter);
-  const candidateScores = candidateScoresFromEvents(scopedEvents);
+  const scopedCandidateReviewItems =
+    sourceFilter === 'all'
+      ? candidateReviewItems
+      : scopeCandidateReviewItems(candidateReviewItems, sourceFilter);
+  const candidateScores = candidateScoresFromInputs(scopedEvents, scopedCandidateReviewItems);
   const hasSourceEvents = scopedEvents.some((event) => event.sourceKind !== null);
   const hasCompletion = scopedEvents.some((event) =>
     event.eventName === 'source_run_completed' || event.eventName === 'runtime_run_completed',
   );
 
-  if (!requirements && !hasSourceEvents && candidateScores.length === 0) {
+  if (!requirements && !triageHasInput && !hasSourceEvents && candidateScores.length === 0) {
     return { criteria: emptyCriteria, graphNodes: [], graphEdges: [], logEntries: [], nodeTotal: 27, completionText: null };
   }
 
@@ -99,12 +147,32 @@ export function buildRunStory(
       sourceKind: 'all',
       sourceLabel: 'All sources',
       lane: 'shared',
+      detailKind: 'job',
+      detailPayload: {
+        kind: 'job',
+        sessionId: session.sessionId,
+        jobTitle: session.jobTitle,
+        jdText: session.jdText,
+        notes: session.notes,
+        sourceKinds: session.sourceCards.map((card) => card.sourceKind),
+      },
+      eventIds: [],
+      sourceRunId: null,
+      candidateReviewItemIds: [],
+      candidateEvidenceRefs: [],
+      detailOpenRequestIds: [],
     },
   ];
   const graphEdges: RecruiterGraphEdge[] = [];
   const logEntries: RecruiterLogEntry[] = [];
 
-  if (requirements || criteria.mustHaves.length > 0 || criteria.niceToHaves.length > 0) {
+  if (requirements || triageHasInput || runtimeHasInput) {
+    const triageStatus =
+      triageHasInput && session.requirementTriage.status === 'approved'
+        ? 'confirmed'
+        : triageHasInput
+          ? 'draft'
+          : 'runtime';
     graphNodes.push({
       id: 'requirements',
       at: 1,
@@ -117,6 +185,19 @@ export function buildRunStory(
       sourceKind: 'all',
       sourceLabel: 'All sources',
       lane: 'shared',
+      detailKind: 'requirements',
+      detailPayload: {
+        kind: 'requirements',
+        triageStatus,
+        criteria,
+        runtimeCriteria,
+        approvedAt: session.requirementTriage.approvedAt,
+      },
+      eventIds: requirements ? [eventId(requirements.event)] : [],
+      sourceRunId: null,
+      candidateReviewItemIds: [],
+      candidateEvidenceRefs: [],
+      detailOpenRequestIds: [],
     });
     graphEdges.push({ from: 'job', to: 'requirements', tone: 'blue', label: '提取约束' });
     logEntries.push({
@@ -127,6 +208,7 @@ export function buildRunStory(
       sourceKind: 'all',
       sourceLabel: 'All sources',
       lane: 'shared',
+      relatedNodeId: 'requirements',
     });
   }
 
@@ -159,6 +241,8 @@ export function buildRunStory(
       graphEdges,
       graphNodes,
       logEntries,
+      candidateReviewItems: scopeCandidateReviewItems(candidateReviewItems, sourceKind),
+      detailOpenRequests,
       session,
     });
     if (terminalNode) {
@@ -227,7 +311,7 @@ function appendCtsLane({
   const sourceCard = session.sourceCards.find((card) => card.sourceKind === sourceKind);
   const rounds = roundSummaries(runtimeEvents);
   const started = firstEvent(events, ['source_run_started', 'source_run_queued', 'runtime_run_started']);
-  if (events.length === 0 && rounds.length === 0) {
+  if (events.length === 0 && rounds.length === 0 && !sourceCard) {
     return null;
   }
 
@@ -244,8 +328,15 @@ function appendCtsLane({
     sourceKind,
     sourceLabel,
     lane: sourceKind,
+    detailKind: 'sourceQueue',
+    detailPayload: sourceQueuePayload(sourceCard, sourceKind, started?.sourceRunId ?? sourceCard?.sourceRunId ?? null),
+    eventIds: started ? [eventId(started)] : [],
+    sourceRunId: started?.sourceRunId ?? sourceCard?.sourceRunId ?? null,
+    candidateReviewItemIds: [],
+    candidateEvidenceRefs: [],
+    detailOpenRequestIds: [],
   });
-  graphEdges.push({ from: anchor, to: startId, tone: 'teal', label: '启动 CTS' });
+  graphEdges.push({ from: anchor, to: startId, tone: 'teal', label: '进入 CTS 队列' });
   logEntries.push({
     id: 'cts-source-start-log',
     at: started?.globalSeq ?? 2,
@@ -254,6 +345,7 @@ function appendCtsLane({
     sourceKind,
     sourceLabel,
     lane: sourceKind,
+    relatedNodeId: startId,
   });
 
   let lastNode = startId;
@@ -275,6 +367,18 @@ function appendCtsLane({
         tone: 'teal',
         sourceKind,
         sourceLabel,
+        detailKind: 'ctsRoundQuery',
+        detailPayload: {
+          kind: 'ctsRoundQuery',
+          roundNo: round.roundNo,
+          queryTerms: round.queryTerms,
+          queryLabel: round.queryLabel,
+        },
+        eventIds: [round.eventId],
+        sourceRunId: round.sourceRunId,
+        candidateReviewItemIds: [],
+        candidateEvidenceRefs: [],
+        detailOpenRequestIds: [],
       }),
       sourceNode({
         id: resultId,
@@ -286,6 +390,18 @@ function appendCtsLane({
         tone: round.uniqueNewCount > 0 ? 'green' : 'rose',
         sourceKind,
         sourceLabel,
+        detailKind: 'ctsRoundResults',
+        detailPayload: {
+          kind: 'ctsRoundResults',
+          roundNo: round.roundNo,
+          rawCandidateCount: round.rawCandidateCount,
+          uniqueNewCount: round.uniqueNewCount,
+        },
+        eventIds: [round.eventId],
+        sourceRunId: round.sourceRunId,
+        candidateReviewItemIds: [],
+        candidateEvidenceRefs: [],
+        detailOpenRequestIds: [],
       }),
       sourceNode({
         id: scoreId,
@@ -297,17 +413,43 @@ function appendCtsLane({
         tone: round.fitCount > 0 ? 'green' : 'rose',
         sourceKind,
         sourceLabel,
+        detailKind: 'ctsRoundScoring',
+        detailPayload: {
+          kind: 'ctsRoundScoring',
+          roundNo: round.roundNo,
+          newlyScoredCount: round.newlyScoredCount,
+          fitCount: round.fitCount,
+          notFitCount: round.notFitCount,
+        },
+        eventIds: [round.eventId],
+        sourceRunId: round.sourceRunId,
+        candidateReviewItemIds: [],
+        candidateEvidenceRefs: [],
+        detailOpenRequestIds: [],
       }),
       sourceNode({
         id: reflectId,
         kind: '反思',
         label: `第 ${String(round.roundNo)} 轮反思`,
-        detail: clip(round.reflection || '等待下一轮判断', 70),
+        detail: clip(round.reflectionSummary || '等待下一轮判断', 70),
         x,
         y: positions.reflect,
         tone: 'violet',
         sourceKind,
         sourceLabel,
+        detailKind: 'reflection',
+        detailPayload: {
+          kind: 'reflection',
+          roundNo: round.roundNo,
+          summary: round.reflectionSummary,
+          rationale: round.reflectionRationale,
+          nextDirection: round.nextDirection,
+        },
+        eventIds: [round.eventId],
+        sourceRunId: round.sourceRunId,
+        candidateReviewItemIds: [],
+        candidateEvidenceRefs: [],
+        detailOpenRequestIds: [],
       }),
     );
     graphEdges.push(
@@ -325,6 +467,7 @@ function appendCtsLane({
         sourceKind,
         sourceLabel,
         lane: sourceKind,
+        relatedNodeId: queryId,
       },
       {
         id: `${resultId}-log`,
@@ -334,6 +477,7 @@ function appendCtsLane({
         sourceKind,
         sourceLabel,
         lane: sourceKind,
+        relatedNodeId: resultId,
       },
       {
         id: `${scoreId}-log`,
@@ -343,17 +487,19 @@ function appendCtsLane({
         sourceKind,
         sourceLabel,
         lane: sourceKind,
+        relatedNodeId: scoreId,
       },
     );
-    if (round.reflection) {
+    if (round.reflectionSummary) {
       logEntries.push({
         id: `${reflectId}-log`,
         at: round.eventSeq + 0.3,
         tag: 'REFLECT',
-        text: `反思：${clip(round.reflection, 120)}`,
+        text: `反思：${clip(round.reflectionSummary, 120)}`,
         sourceKind,
         sourceLabel,
         lane: sourceKind,
+        relatedNodeId: reflectId,
       });
     }
     lastNode = reflectId;
@@ -386,6 +532,8 @@ function appendCtsLane({
 function appendLiepinLane({
   allMode,
   anchor,
+  candidateReviewItems,
+  detailOpenRequests,
   events,
   graphEdges,
   graphNodes,
@@ -394,6 +542,8 @@ function appendLiepinLane({
 }: {
   allMode: boolean;
   anchor: string;
+  candidateReviewItems: WorkbenchCandidateReviewItem[];
+  detailOpenRequests: WorkbenchDetailOpenRequest[];
   events: WorkbenchEvent[];
   graphEdges: RecruiterGraphEdge[];
   graphNodes: RecruiterGraphNode[];
@@ -404,11 +554,21 @@ function appendLiepinLane({
   const sourceLabel = sourceLabels[sourceKind];
   const baseY = laneBaseY(sourceKind, allMode);
   const sourceCard = session.sourceCards.find((card) => card.sourceKind === sourceKind);
+  const visibleReviewItems = scopeCandidateReviewItems(candidateReviewItems, sourceKind);
+  const visibleReviewItemIds = new Set(visibleReviewItems.map((item) => item.reviewItemId));
+  const visibleDetailRequests = scopeDetailOpenRequests(detailOpenRequests, visibleReviewItemIds);
+  const detailFields = detailRequestFields(visibleDetailRequests);
+  const candidateEvidenceRefs = evidenceRefsForSource(visibleReviewItems, sourceKind);
+  const safeCandidateReviewItemIds = uniqueStrings([
+    ...visibleReviewItems.map((item) => item.reviewItemId),
+    ...candidateEvidenceRefs.map((ref) => ref.reviewItemId),
+  ]);
   if (events.length === 0 && !sourceCard) {
     return null;
   }
 
   const startId = 'liepin-source-start';
+  const started = firstEvent(events, ['source_run_started', 'source_run_queued']);
   graphNodes.push({
     id: startId,
     at: graphNodes.length,
@@ -421,9 +581,15 @@ function appendLiepinLane({
     sourceKind,
     sourceLabel,
     lane: sourceKind,
+    detailKind: 'sourceQueue',
+    detailPayload: sourceQueuePayload(sourceCard, sourceKind, started?.sourceRunId ?? sourceCard?.sourceRunId ?? null),
+    eventIds: started ? [eventId(started)] : [],
+    sourceRunId: started?.sourceRunId ?? sourceCard?.sourceRunId ?? null,
+    candidateReviewItemIds: safeCandidateReviewItemIds,
+    candidateEvidenceRefs,
+    detailOpenRequestIds: detailFields.detailOpenRequestIds,
   });
-  graphEdges.push({ from: anchor, to: startId, tone: 'teal', label: '启动猎聘' });
-  const started = firstEvent(events, ['source_run_started', 'source_run_queued']);
+  graphEdges.push({ from: anchor, to: startId, tone: 'teal', label: '进入猎聘队列' });
   logEntries.push({
     id: 'liepin-source-start-log',
     at: started?.globalSeq ?? 2,
@@ -432,6 +598,7 @@ function appendLiepinLane({
     sourceKind,
     sourceLabel,
     lane: sourceKind,
+    relatedNodeId: startId,
   });
 
   let lastNode = startId;
@@ -451,6 +618,18 @@ function appendLiepinLane({
         tone: 'teal',
         sourceKind,
         sourceLabel,
+        detailKind: 'liepinCardSearch',
+        detailPayload: {
+          kind: 'liepinCardSearch',
+          cardsScannedCount: scanned,
+          uniqueCandidatesCount: unique,
+          ...detailFields,
+        },
+        eventIds: [eventId(searchCompleted)],
+        sourceRunId: searchCompleted.sourceRunId,
+        candidateReviewItemIds: safeCandidateReviewItemIds,
+        candidateEvidenceRefs,
+        detailOpenRequestIds: detailFields.detailOpenRequestIds,
       }),
     );
     graphEdges.push({ from: lastNode, to: searchId, tone: 'teal', label: '猎聘简介抓取' });
@@ -462,25 +641,43 @@ function appendLiepinLane({
       sourceKind,
       sourceLabel,
       lane: sourceKind,
+      relatedNodeId: searchId,
     });
     lastNode = searchId;
   }
 
-  const liepinScores = candidateScoresFromEvents(events).filter((candidate) => candidate.sourceKind === sourceKind);
+  const liepinScores = candidateScoresFromInputs(events, visibleReviewItems).filter((candidate) => candidate.sourceKind === sourceKind);
   if (liepinScores.length > 0) {
-    const bestScore = Math.max(...liepinScores.map((candidate) => candidate.score));
+    const highScore = bestScore(liepinScores);
     const candidateId = 'liepin-card-candidates';
+    const candidateReviewItemIds = uniqueStrings([
+      ...safeCandidateReviewItemIds,
+      ...liepinScores.map((candidate) => candidate.reviewItemId),
+    ]);
     graphNodes.push(
       sourceNode({
         id: candidateId,
         kind: '命中',
         label: `候选人初筛 · ${String(liepinScores.length)} 人`,
-        detail: `AI 简介判断最高 ${String(bestScore)} 分`,
+        detail: highScore !== null ? `AI 简介判断最高 ${String(highScore)} 分` : 'AI 简介判断',
         x: 66,
         y: baseY,
         tone: 'green',
         sourceKind,
         sourceLabel,
+        detailKind: 'liepinCardCandidates',
+        detailPayload: {
+          kind: 'liepinCardCandidates',
+          candidateReviewItemIds,
+          candidateEvidenceRefs,
+          bestScore: highScore,
+          ...detailFields,
+        },
+        eventIds: events.filter((event) => event.eventName === 'candidate_review_item_upserted').map(eventId),
+        sourceRunId: events.find((event) => event.eventName === 'candidate_review_item_upserted')?.sourceRunId ?? sourceCard?.sourceRunId ?? null,
+        candidateReviewItemIds,
+        candidateEvidenceRefs,
+        detailOpenRequestIds: detailFields.detailOpenRequestIds,
       }),
     );
     graphEdges.push({ from: lastNode, to: candidateId, tone: 'green', label: 'AI 判断' });
@@ -488,10 +685,11 @@ function appendLiepinLane({
       id: 'liepin-candidates-log',
       at: liepinScores[0].eventSeq,
       tag: 'HIT',
-      text: `简介初筛 ${String(liepinScores.length)} 人，最高 ${String(bestScore)} 分`,
+      text: `简介初筛 ${String(liepinScores.length)} 人${highScore !== null ? `，最高 ${String(highScore)} 分` : ''}`,
       sourceKind,
       sourceLabel,
       lane: sourceKind,
+      relatedNodeId: candidateId,
     });
     lastNode = candidateId;
   }
@@ -504,21 +702,37 @@ function appendLiepinLane({
       'liepin_detail_open_blocked',
     ].includes(event.eventName),
   );
-  if (detailEvents.length > 0) {
+  if (detailEvents.length > 0 || visibleDetailRequests.length > 0) {
     const leasedCount = detailEvents.filter((event) => event.eventName === 'liepin_detail_open_leased').length;
     const blockedCount = detailEvents.filter((event) => event.eventName === 'liepin_detail_open_blocked').length;
+    const approvedOrLeasedCount =
+      visibleDetailRequests.filter((request) => request.status === 'approved' || request.ledger?.status === 'leased').length +
+      leasedCount;
+    const blockedOrRejectedCount =
+      visibleDetailRequests.filter((request) => request.status === 'rejected' || request.status === 'blocked').length +
+      blockedCount;
     const detailId = 'liepin-detail-approval';
     graphNodes.push(
       sourceNode({
         id: detailId,
         kind: '灵光',
-        label: `详情审批 · ${String(detailEvents.length)} 个`,
-        detail: `已预留 ${String(leasedCount)} · 阻塞 ${String(blockedCount)}`,
+        label: `详情审批 · ${String(Math.max(detailEvents.length, visibleDetailRequests.length))} 个`,
+        detail: `已预留 ${String(approvedOrLeasedCount)} · 阻塞 ${String(blockedOrRejectedCount)}`,
         x: 80,
         y: baseY + (allMode ? 8 : 11),
-        tone: blockedCount > 0 ? 'amber' : 'violet',
+        tone: blockedOrRejectedCount > 0 ? 'amber' : 'violet',
         sourceKind,
         sourceLabel,
+        detailKind: 'liepinDetailApproval',
+        detailPayload: {
+          kind: 'liepinDetailApproval',
+          ...detailFields,
+        },
+        eventIds: detailEvents.map(eventId),
+        sourceRunId: detailEvents[0]?.sourceRunId ?? sourceCard?.sourceRunId ?? null,
+        candidateReviewItemIds: safeCandidateReviewItemIds,
+        candidateEvidenceRefs,
+        detailOpenRequestIds: detailFields.detailOpenRequestIds,
       }),
     );
     graphEdges.push({ from: lastNode, to: detailId, tone: 'violet', label: '详情队列' });
@@ -530,6 +744,7 @@ function appendLiepinLane({
       sourceKind,
       sourceLabel,
       lane: sourceKind,
+      relatedNodeId: detailId,
     });
     lastNode = detailId;
   }
@@ -570,19 +785,30 @@ function appendFinalNode({
     return null;
   }
   const finalId = 'final-shortlist';
-  const bestScore = candidateScores.length > 0 ? Math.max(...candidateScores.map((candidate) => candidate.score)) : null;
+  const highScore = bestScore(candidateScores);
   graphNodes.push({
     id: finalId,
     at: graphNodes.length,
     kind: '排序',
     label: candidateScores.length > 0 ? `最终短名单 · ${String(candidateScores.length)} 人` : '最终短名单',
-    detail: bestScore !== null ? `最高 ${String(bestScore)} 分` : '检索完成',
+    detail: highScore !== null ? `最高 ${String(highScore)} 分` : '检索完成',
     x: 94,
     y: 50,
     tone: 'green',
     sourceKind: 'all',
     sourceLabel: 'All sources',
     lane: 'shared',
+    detailKind: 'aggregation',
+    detailPayload: {
+      kind: 'aggregation',
+      candidateCount: candidateScores.length,
+      bestScore: highScore,
+    },
+    eventIds: [],
+    sourceRunId: null,
+    candidateReviewItemIds: candidateScores.map((candidate) => candidate.reviewItemId),
+    candidateEvidenceRefs: [],
+    detailOpenRequestIds: [],
   });
   for (const sourceNodeId of sourceTerminalNodes.length > 0 ? sourceTerminalNodes : [fallbackAnchor]) {
     graphEdges.push({ from: sourceNodeId, to: finalId, tone: 'green', label: '聚合排序' });
@@ -592,10 +818,11 @@ function appendFinalNode({
       id: 'final-shortlist-log',
       at: Math.max(...candidateScores.map((candidate) => candidate.eventSeq)) + 0.5,
       tag: 'SYS',
-      text: `最终短名单 ${String(candidateScores.length)} 人，最高 ${String(bestScore)} 分`,
+      text: `最终短名单 ${String(candidateScores.length)} 人${highScore !== null ? `，最高 ${String(highScore)} 分` : ''}`,
       sourceKind: 'all',
       sourceLabel: 'All sources',
       lane: 'shared',
+      relatedNodeId: finalId,
     });
   }
   return finalId;
@@ -677,6 +904,29 @@ function sourceCardDetail(cardsScannedCount: number, uniqueCandidatesCount: numb
   return '本地库 · 可批量检索';
 }
 
+function sourceQueuePayload(
+  sourceCard: WorkbenchSession['sourceCards'][number] | undefined,
+  sourceKind: SourceKind,
+  sourceRunId: string | null,
+): RecruiterGraphNode['detailPayload'] {
+  const warningCode = sourceCard?.warningCode ?? sourceCard?.connectionWarningCode ?? null;
+  const warningMessage = displaySafeWarning(warningCode, sourceCard?.warningMessage ?? sourceCard?.connectionWarningMessage ?? null);
+  return {
+    kind: 'sourceQueue',
+    sourceKind,
+    sourceRunId,
+    status: sourceCard?.status ?? null,
+    authState: sourceCard?.authState ?? null,
+    connectionStatus: sourceCard?.connectionStatus ?? null,
+    cardsScannedCount: sourceCard?.cardsScannedCount ?? 0,
+    uniqueCandidatesCount: sourceCard?.uniqueCandidatesCount ?? 0,
+    detailOpenUsedCount: sourceCard?.detailOpenUsedCount ?? 0,
+    detailOpenBlockedCount: sourceCard?.detailOpenBlockedCount ?? 0,
+    warningCode,
+    warningMessage,
+  };
+}
+
 function runtimeEventData(event: WorkbenchEvent): RuntimeEventData | null {
   const outer = recordValue(event.payload);
   if (!outer) {
@@ -686,7 +936,7 @@ function runtimeEventData(event: WorkbenchEvent): RuntimeEventData | null {
   return {
     event,
     payload: inner,
-    roundNo: numberValue(outer.roundNo) ?? numberValue(inner.round_no),
+    roundNo: numberValue(outer.roundNo) ?? numberValue(outer.round_no) ?? numberValue(inner.round_no) ?? numberValue(inner.roundNo),
     message: stringValue(outer.message) ?? stringValue(inner.message) ?? '',
   };
 }
@@ -710,27 +960,63 @@ function criteriaFromRequirements(requirements: RuntimeEventData | undefined): W
   };
 }
 
+export function criteriaFromTriage(triage: WorkbenchRequirementTriage): WorkbenchRequirementTriageInput {
+  return {
+    mustHaves: [...triage.mustHaves],
+    niceToHaves: [...triage.niceToHaves],
+    synonyms: [...triage.synonyms],
+    seniorityFilters: [...triage.seniorityFilters],
+    exclusions: [...triage.exclusions],
+    generatedQueryHints: [...triage.generatedQueryHints],
+  };
+}
+
+export function hasTriageInput(triage: WorkbenchRequirementTriageInput): boolean {
+  return (
+    triage.mustHaves.length > 0 ||
+    triage.niceToHaves.length > 0 ||
+    triage.synonyms.length > 0 ||
+    triage.seniorityFilters.length > 0 ||
+    triage.exclusions.length > 0 ||
+    triage.generatedQueryHints.length > 0
+  );
+}
+
 function roundSummaries(events: RuntimeEventData[]): RoundSummary[] {
   return events
     .filter((item) => item.event.eventName === 'runtime_round_completed')
     .map((item) => {
       const roundNo = item.roundNo ?? 0;
+      const queryTerms = queryTermsFromPayload(item.payload);
       return {
         eventSeq: item.event.globalSeq,
+        eventId: eventId(item.event),
+        sourceRunId: item.event.sourceRunId,
         roundNo,
+        queryTerms,
         queryLabel: queryLabel(item.payload),
-        rawCandidateCount: numberValue(item.payload.raw_candidate_count) ?? 0,
-        uniqueNewCount: numberValue(item.payload.unique_new_count) ?? 0,
-        newlyScoredCount: numberValue(item.payload.newly_scored_count) ?? 0,
-        fitCount: numberValue(item.payload.fit_count) ?? 0,
-        notFitCount: numberValue(item.payload.not_fit_count) ?? 0,
-        reflection: stringValue(item.payload.reflection_summary) ?? stringValue(item.payload.reflection_rationale) ?? '',
+        rawCandidateCount: metricValue(item.payload, 'raw_candidate_count', 'rawCandidateCount') ?? 0,
+        uniqueNewCount: metricValue(item.payload, 'unique_new_count', 'uniqueNewCount') ?? 0,
+        newlyScoredCount: metricValue(item.payload, 'newly_scored_count', 'newlyScoredCount') ?? 0,
+        fitCount: metricValue(item.payload, 'fit_count', 'fitCount') ?? 0,
+        notFitCount: metricValue(item.payload, 'not_fit_count', 'notFitCount') ?? 0,
+        reflectionSummary:
+          stringValue(item.payload.reflection_summary) ??
+          stringValue(item.payload.reflectionSummary) ??
+          stringValue(item.payload.reflection_rationale) ??
+          '',
+        reflectionRationale:
+          stringValue(item.payload.reflection_rationale) ?? stringValue(item.payload.reflectionRationale) ?? '',
+        nextDirection: stringValue(item.payload.next_direction) ?? stringValue(item.payload.nextDirection) ?? '',
       };
     })
     .filter((round) => round.roundNo > 0);
 }
 
-function candidateScoresFromEvents(events: WorkbenchEvent[]): CandidateScore[] {
+function candidateScoresFromInputs(
+  events: WorkbenchEvent[],
+  candidateReviewItems: WorkbenchCandidateReviewItem[] = [],
+): CandidateScore[] {
   const byReviewItemId = new Map<string, CandidateScore>();
   for (const event of events) {
     if (event.eventName !== 'candidate_review_item_upserted') {
@@ -752,21 +1038,156 @@ function candidateScoresFromEvents(events: WorkbenchEvent[]): CandidateScore[] {
       eventSeq: event.globalSeq,
     });
   }
+  for (const [index, item] of candidateReviewItems.entries()) {
+    const score = item.aggregateScore ?? firstNumber(item.evidence.map((evidence) => evidence.score));
+    if (score === null) {
+      continue;
+    }
+    const sourceKind = item.evidence.find((evidence) => evidence.sourceKind)?.sourceKind ?? null;
+    byReviewItemId.set(item.reviewItemId, {
+      reviewItemId: item.reviewItemId,
+      score,
+      sourceKind,
+      eventSeq: byReviewItemId.get(item.reviewItemId)?.eventSeq ?? 100_000 + index,
+    });
+  }
   return [...byReviewItemId.values()].sort((left, right) => left.eventSeq - right.eventSeq);
 }
 
 function queryLabel(payload: Record<string, unknown>): string {
-  const queries = Array.isArray(payload.executed_queries) ? payload.executed_queries : [];
+  const queries = Array.isArray(payload.executed_queries)
+    ? payload.executed_queries
+    : Array.isArray(payload.executedQueries)
+      ? payload.executedQueries
+      : [];
   const labels = queries
     .map((item) => {
       const query = recordValue(item);
-      return query ? listText(stringsValue(query.query_terms)) : '';
+      return query ? listText([...stringsValue(query.query_terms), ...stringsValue(query.queryTerms)]) : '';
     })
     .filter(Boolean);
   if (labels.length > 0) {
     return labels.join(' / ');
   }
-  return listText(stringsValue(payload.query_terms));
+  return listText(queryTermsFromPayload(payload));
+}
+
+function scopeCandidateReviewItems(
+  candidateReviewItems: WorkbenchCandidateReviewItem[],
+  sourceKind: SourceKind,
+): WorkbenchCandidateReviewItem[] {
+  return candidateReviewItems.filter((item) => item.evidence.some((evidence) => evidence.sourceKind === sourceKind));
+}
+
+function scopeDetailOpenRequests(
+  detailOpenRequests: WorkbenchDetailOpenRequest[],
+  visibleReviewItemIds: Set<string>,
+): WorkbenchDetailOpenRequest[] {
+  return detailOpenRequests.filter((request) => visibleReviewItemIds.has(request.reviewItemId));
+}
+
+function detailRequestFields(detailOpenRequests: WorkbenchDetailOpenRequest[]) {
+  const requestIds = detailOpenRequests.map((request) => request.requestId);
+  return {
+    detailOpenRequestIds: requestIds,
+    requestIds,
+    requestSummaries: detailOpenRequests.map(detailRequestSummary),
+    budgetText: detailBudgetText(detailOpenRequests),
+  };
+}
+
+function detailBudgetText(detailOpenRequests: WorkbenchDetailOpenRequest[]): string | null {
+  const labels: string[] = [];
+  for (const request of detailOpenRequests) {
+    if (
+      request.status === 'pending' ||
+      request.status === 'approved' ||
+      request.status === 'rejected' ||
+      request.status === 'bypassed'
+    ) {
+      labels.push(request.status);
+    }
+    if (request.ledger?.status === 'leased') {
+      labels.push('leased');
+    }
+  }
+  const uniqueLabels = uniqueStrings(labels);
+  return uniqueLabels.length > 0 ? uniqueLabels.join(' · ') : null;
+}
+
+function displaySafeWarning(warningCode: string | null, warningMessage: string | null): string | null {
+  const safeMessages: Record<string, string> = {
+    login_required: '需要重新登录后才能继续。',
+    budget_blocked: '详情额度不足，请调整预算。',
+    connection_expired: '连接已过期，请重新授权。',
+  };
+  if (warningCode && safeMessages[warningCode]) {
+    return safeMessages[warningCode];
+  }
+  if (warningCode || warningMessage) {
+    return '源状态异常，请查看设置。';
+  }
+  return null;
+}
+
+function bestScore(candidateScores: CandidateScore[]): number | null {
+  if (candidateScores.length === 0) {
+    return null;
+  }
+  return Math.max(...candidateScores.map((candidate) => candidate.score));
+}
+
+function evidenceRefsForSource(
+  candidateReviewItems: WorkbenchCandidateReviewItem[],
+  sourceKind: SourceKind,
+): RecruiterCandidateEvidenceRef[] {
+  return candidateReviewItems.flatMap((item) =>
+    item.evidence
+      .filter((evidence) => evidence.sourceKind === sourceKind)
+      .map((evidence) => ({
+        evidenceId: evidence.evidenceId,
+        reviewItemId: item.reviewItemId,
+        sourceRunId: evidence.sourceRunId,
+        sourceKind: evidence.sourceKind,
+        evidenceLevel: evidence.evidenceLevel,
+      })),
+  );
+}
+
+function detailRequestSummary(request: WorkbenchDetailOpenRequest): string {
+  const candidateLabel = request.candidate?.displayName || request.reviewItemId || request.requestId;
+  return [candidateLabel, request.status, request.ledger?.status].filter(Boolean).join(' · ');
+}
+
+function queryTermsFromPayload(payload: Record<string, unknown>): string[] {
+  const executedQueries = Array.isArray(payload.executed_queries)
+    ? payload.executed_queries
+    : Array.isArray(payload.executedQueries)
+      ? payload.executedQueries
+      : [];
+  const executedTerms = executedQueries.flatMap((item) => {
+    const query = recordValue(item);
+    return query ? [...stringsValue(query.query_terms), ...stringsValue(query.queryTerms)] : [];
+  });
+  return uniqueStrings([
+    ...executedTerms,
+    ...stringsValue(payload.query_terms),
+    ...stringsValue(payload.queryTerms),
+    ...stringsValue(payload.search_terms),
+    ...stringsValue(payload.searchTerms),
+  ]);
+}
+
+function metricValue(payload: Record<string, unknown>, snakeKey: string, camelKey: string): number | null {
+  return numberValue(payload[snakeKey]) ?? numberValue(payload[camelKey]);
+}
+
+function firstNumber(values: Array<number | null>): number | null {
+  return values.find((value) => value !== null) ?? null;
+}
+
+function eventId(event: WorkbenchEvent): string {
+  return `seq:${String(event.globalSeq)}`;
 }
 
 function firstEvent(events: WorkbenchEvent[], eventNames: string[]): WorkbenchEvent | null {

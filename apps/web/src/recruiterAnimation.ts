@@ -1,7 +1,117 @@
-import type { SourceKind } from './types';
+import type {
+  SourceKind,
+  WorkbenchAuthState,
+  WorkbenchCandidateEvidenceLevel,
+  WorkbenchRequirementTriageInput,
+  WorkbenchSourceConnectionStatus,
+  WorkbenchSourceStatus,
+} from './types';
 
 export type RecruiterTone = 'blue' | 'teal' | 'violet' | 'amber' | 'green' | 'neutral' | 'rose';
 export type RecruiterLane = 'shared' | SourceKind;
+export type RecruiterGraphDetailKind =
+  | 'job'
+  | 'requirements'
+  | 'sourceQueue'
+  | 'ctsRoundQuery'
+  | 'ctsRoundResults'
+  | 'ctsRoundScoring'
+  | 'reflection'
+  | 'liepinCardSearch'
+  | 'liepinCardCandidates'
+  | 'liepinDetailApproval'
+  | 'aggregation';
+
+export type RecruiterCandidateEvidenceRef = {
+  evidenceId: string;
+  reviewItemId: string;
+  sourceRunId: string;
+  sourceKind: SourceKind;
+  evidenceLevel: WorkbenchCandidateEvidenceLevel;
+};
+
+type RecruiterDetailRequestFields = {
+  detailOpenRequestIds: string[];
+  requestIds: string[];
+  requestSummaries: string[];
+  budgetText: string | null;
+};
+
+export type RecruiterGraphDetailPayload =
+  | {
+      kind: 'job';
+      sessionId: string;
+      jobTitle: string;
+      jdText: string;
+      notes: string;
+      sourceKinds: SourceKind[];
+    }
+  | {
+      kind: 'requirements';
+      triageStatus: 'confirmed' | 'draft' | 'runtime';
+      criteria: WorkbenchRequirementTriageInput;
+      runtimeCriteria: WorkbenchRequirementTriageInput;
+      approvedAt: string | null;
+    }
+  | {
+      kind: 'sourceQueue';
+      sourceKind: SourceKind;
+      sourceRunId: string | null;
+      status: WorkbenchSourceStatus | null;
+      authState: WorkbenchAuthState | null;
+      connectionStatus?: WorkbenchSourceConnectionStatus | null;
+      cardsScannedCount: number;
+      uniqueCandidatesCount: number;
+      detailOpenUsedCount: number;
+      detailOpenBlockedCount: number;
+      warningCode: string | null;
+      warningMessage: string | null;
+    }
+  | {
+      kind: 'ctsRoundQuery';
+      roundNo: number;
+      queryTerms: string[];
+      queryLabel: string;
+    }
+  | {
+      kind: 'ctsRoundResults';
+      roundNo: number;
+      rawCandidateCount: number;
+      uniqueNewCount: number;
+    }
+  | {
+      kind: 'ctsRoundScoring';
+      roundNo: number;
+      newlyScoredCount: number;
+      fitCount: number;
+      notFitCount: number;
+    }
+  | {
+      kind: 'reflection';
+      roundNo: number;
+      summary: string;
+      rationale: string;
+      nextDirection: string;
+    }
+  | ({
+      kind: 'liepinCardSearch';
+      cardsScannedCount: number;
+      uniqueCandidatesCount: number;
+    } & RecruiterDetailRequestFields)
+  | ({
+      kind: 'liepinCardCandidates';
+      candidateReviewItemIds: string[];
+      candidateEvidenceRefs: RecruiterCandidateEvidenceRef[];
+      bestScore: number | null;
+    } & RecruiterDetailRequestFields)
+  | ({
+      kind: 'liepinDetailApproval';
+    } & RecruiterDetailRequestFields)
+  | {
+      kind: 'aggregation';
+      candidateCount: number;
+      bestScore: number | null;
+    };
 
 export type RecruiterGraphNode = {
   id: string;
@@ -15,6 +125,13 @@ export type RecruiterGraphNode = {
   sourceKind?: SourceKind | 'all';
   sourceLabel?: string;
   lane?: RecruiterLane;
+  detailKind?: RecruiterGraphDetailKind;
+  detailPayload?: RecruiterGraphDetailPayload;
+  eventIds?: string[];
+  sourceRunId?: string | null;
+  candidateReviewItemIds?: string[];
+  candidateEvidenceRefs?: RecruiterCandidateEvidenceRef[];
+  detailOpenRequestIds?: string[];
 };
 
 export type RecruiterGraphEdge = {
@@ -32,4 +149,5 @@ export type RecruiterLogEntry = {
   sourceKind?: SourceKind | 'all';
   sourceLabel?: string;
   lane?: RecruiterLane;
+  relatedNodeId?: string;
 };
