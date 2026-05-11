@@ -1751,6 +1751,14 @@ function StrategyCanvas({
               <small>{node.detail}</small>
             </article>
           ))}
+          {canStart || startError ? (
+            <div className="canvas-start-overlay">
+              <button className="central-start" type="button" disabled={!canStart || starting} onClick={onStart}>
+                {starting ? '启动中' : '启动检索'}
+              </button>
+              {startError ? <p className="form-error" role="alert">{startError}</p> : null}
+            </div>
+          ) : null}
           {story.completionText ? (
             <div className="completion-toast">{story.completionText}</div>
           ) : null}

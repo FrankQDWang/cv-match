@@ -1079,6 +1079,25 @@ textarea:focus {
   opacity: 0.48;
 }
 
+.canvas-start-overlay {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 24px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.canvas-start-overlay .form-error {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(168, 80, 72, 0.28);
+  border-radius: 7px;
+  background: rgba(255, 247, 242, 0.94);
+}
+
 .strategy-canvas {
   position: relative;
   height: 100%;

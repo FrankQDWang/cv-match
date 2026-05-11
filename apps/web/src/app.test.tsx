@@ -1369,8 +1369,11 @@ describe('workbench routes', () => {
     expect(screen.queryByRole('button', { name: '启动猎聘' })).not.toBeInTheDocument();
 
     expect(await screen.findByText('需求拆解')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '启动检索' })).not.toBeInTheDocument();
-    expect(startRequests).toHaveLength(0);
+    await userEvent.click(screen.getByRole('button', { name: '启动检索' }));
+
+    await waitFor(() => expect(startRequests).toHaveLength(1));
+    expect(startRequests[0]?.body).toBeNull();
+    expect(startRequests[0]?.headers.get('X-CSRF-Token')).toBe('csrf-token');
   });
 
   it('disables the central start button when triage is not approved or every source is terminal or disconnected', async () => {
