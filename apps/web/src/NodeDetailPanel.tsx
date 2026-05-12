@@ -1,8 +1,10 @@
 import type { RecruiterGraphDetailPayload, RecruiterGraphNode } from './recruiterAnimation';
+import type { ReactNode } from 'react';
 import type { SourceKind } from './types';
 
 type NodeDetailPanelProps = {
   node: RecruiterGraphNode | null;
+  candidatePanel?: ReactNode;
 };
 
 const sourceLabels: Record<SourceKind, string> = {
@@ -10,7 +12,7 @@ const sourceLabels: Record<SourceKind, string> = {
   liepin: 'Liepin',
 };
 
-export function NodeDetailPanel({ node }: NodeDetailPanelProps) {
+export function NodeDetailPanel({ node, candidatePanel }: NodeDetailPanelProps) {
   if (!node) {
     return (
       <div className="node-detail-panel">
@@ -31,6 +33,11 @@ export function NodeDetailPanel({ node }: NodeDetailPanelProps) {
       </div>
       <div className="node-detail-body">
         {node.detailPayload ? <PayloadDetail payload={node.detailPayload} /> : <EmptyBusinessState />}
+        {candidatePanel ? (
+          <section className="node-detail-candidates" aria-label="节点候选人">
+            {candidatePanel}
+          </section>
+        ) : null}
       </div>
     </div>
   );
@@ -62,6 +69,21 @@ function PayloadDetail({ payload }: { payload: RecruiterGraphDetailPayload }) {
           <DetailRow label="轮次" value={`第 ${String(payload.roundNo)} 轮`} />
           <DetailBlock title="关键词" value={payload.queryLabel} />
           <DetailList title="查询词" values={payload.queryTerms} />
+          {payload.executedQueries && payload.executedQueries.length > 0 ? (
+            <DetailList
+              title="检索分支"
+              values={payload.executedQueries.map((query) =>
+                [
+                  query.lane_type ?? 'default',
+                  query.query_role,
+                  query.query_terms.join(' / ') || query.keyword_query,
+                  query.query_instance_id,
+                ]
+                  .filter(Boolean)
+                  .join(' · '),
+              )}
+            />
+          ) : null}
         </>
       );
     case 'ctsRoundResults':
@@ -70,13 +92,14 @@ function PayloadDetail({ payload }: { payload: RecruiterGraphDetailPayload }) {
           <DetailRow label="轮次" value={`第 ${String(payload.roundNo)} 轮`} />
           <DetailRow label="原始命中" value={`${String(payload.rawCandidateCount)} 人`} />
           <DetailRow label="新增候选人" value={`${String(payload.uniqueNewCount)} 人`} />
+          {payload.recallCounts ? <DetailBlock title="召回分布" value={textFromRecord(payload.recallCounts)} /> : null}
         </>
       );
     case 'ctsRoundScoring':
       return (
         <>
           <DetailRow label="轮次" value={`第 ${String(payload.roundNo)} 轮`} />
-          <DetailRow label="进入评分" value={`${String(payload.newlyScoredCount)} 人`} />
+          <DetailRow label="进入评分" value={`${String(payload.scoredCount ?? payload.newlyScoredCount)} 人`} />
           <DetailRow label="Fit" value={`${String(payload.fitCount)} 人`} />
           <DetailRow label="Not fit" value={`${String(payload.notFitCount)} 人`} />
         </>
@@ -208,6 +231,12 @@ function sourceLabel(sourceKind: RecruiterGraphNode['sourceKind']) {
 
 function scoreText(score: number | null) {
   return score === null ? '暂无分数' : `${String(score)} 分`;
+}
+
+function textFromRecord(value: Record<string, unknown>) {
+  return Object.entries(value)
+    .map(([key, item]) => `${key}: ${String(item)}`)
+    .join(' / ');
 }
 
 function clip(value: string, maxLength: number) {

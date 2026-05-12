@@ -1,5 +1,5 @@
-import { Background, Controls, Handle, Position, ReactFlow, type NodeProps } from '@xyflow/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Background, Controls, Handle, Position, ReactFlow, type NodeChange, type NodeProps } from '@xyflow/react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import type { RecruiterGraphNode } from './recruiterAnimation';
 import type { RunStory } from './runStory';
@@ -18,7 +18,8 @@ type StrategyGraphProps = {
 
 const defaultGraphBounds = { width: 980, height: 560 };
 const minGraphBounds = { width: 360, height: 420 };
-const nodeTypes = { strategy: StrategyGraphNode };
+const nodeTypes = { strategy: memo(StrategyGraphNode) };
+type ManualPosition = { x: number; y: number };
 
 export function StrategyGraph({ story, selectedNodeId, onSelectNode }: StrategyGraphProps) {
   const [shellRef, graphBounds] = useStrategyGraphBounds();
@@ -27,6 +28,7 @@ export function StrategyGraph({ story, selectedNodeId, onSelectNode }: StrategyG
     [graphBounds, story.graphEdges, story.graphNodes],
   );
   const [laidOutGraph, setLaidOutGraph] = useState<LaidOutStrategyGraph>(fallbackGraph);
+  const [manualPositions, setManualPositions] = useState<Map<string, ManualPosition>>(() => new Map());
   const graphKey = useMemo(
     () => `${graphBounds.width}x${graphBounds.height}:${story.graphNodes.map((node) => node.id).join('|')}`,
     [graphBounds.height, graphBounds.width, story.graphNodes],
@@ -35,14 +37,34 @@ export function StrategyGraph({ story, selectedNodeId, onSelectNode }: StrategyG
     () =>
       laidOutGraph.nodes.map((node) => {
         const selected = node.id === selectedNodeId;
+        const manualPosition = manualPositions.get(node.id);
         return {
           ...node,
+          position: manualPosition ?? node.position,
+          draggable: true,
           selected,
-          data: { ...node.data, selected },
+          data: { ...node.data, selected, onSelectNode },
         };
       }),
-    [laidOutGraph.nodes, selectedNodeId],
+    [laidOutGraph.nodes, manualPositions, onSelectNode, selectedNodeId],
   );
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    setManualPositions((current) => {
+      let changed = false;
+      const next = new Map(current);
+      for (const change of changes) {
+        if (change.type === 'position' && change.position) {
+          next.set(change.id, change.position);
+          changed = true;
+        }
+        if (change.type === 'remove') {
+          next.delete(change.id);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, []);
 
   useEffect(() => {
     let canceled = false;
@@ -57,6 +79,10 @@ export function StrategyGraph({ story, selectedNodeId, onSelectNode }: StrategyG
     };
   }, [fallbackGraph, story.graphEdges, story.graphNodes]);
 
+  useEffect(() => {
+    setManualPositions(new Map());
+  }, [graphKey]);
+
   return (
     <div className="strategy-flow-shell" ref={shellRef}>
       <ReactFlow
@@ -70,11 +96,12 @@ export function StrategyGraph({ story, selectedNodeId, onSelectNode }: StrategyG
         fitViewOptions={{ padding: 0.24 }}
         minZoom={0.2}
         maxZoom={1.6}
-        nodesDraggable={false}
+        nodesDraggable
         nodesConnectable={false}
         elementsSelectable
         proOptions={{ hideAttribution: true }}
         onNodeClick={(_, node) => onSelectNode(node.data.graphNode)}
+        onNodesChange={handleNodesChange}
       >
         <Background gap={24} size={1} className="strategy-flow-bg" />
         <Controls showInteractive={false} />
@@ -126,6 +153,13 @@ function useStrategyGraphBounds() {
 
 function StrategyGraphNode({ data }: NodeProps<StrategyFlowNode>) {
   const node = data.graphNode;
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      data.onSelectNode?.(node);
+    }
+  };
+
   return (
     <div className="strategy-flow-node-shell">
       <Handle className="strategy-flow-handle" type="target" position={Position.Left} />
@@ -135,6 +169,7 @@ function StrategyGraphNode({ data }: NodeProps<StrategyFlowNode>) {
         data-kind={node.kind}
         type="button"
         aria-pressed={data.selected}
+        onKeyDown={handleKeyDown}
       >
         <span>
           {node.kind}

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 
+from seektalent.progress import ProgressEvent
 from seektalent.providers.liepin.client import build_liepin_worker_client
 from seektalent.providers.liepin.worker_contracts import LiepinWorkerModeError
 from seektalent_ui.auth import (
@@ -22,6 +24,7 @@ from seektalent_ui.auth import (
     set_session_cookie,
     verify_password,
 )
+from seektalent_ui.runtime_bridge import extract_requirement_triage
 from seektalent_ui.models import (
     WorkbenchBootstrapRequest,
     WorkbenchBootstrapResponse,
@@ -36,6 +39,8 @@ from seektalent_ui.models import (
     WorkbenchDetailOpenRequestListResponse,
     WorkbenchDetailOpenRequestResponse,
     WorkbenchDetailOpenLedgerResponse,
+    WorkbenchGraphCandidateListResponse,
+    WorkbenchGraphCandidateResumeSnapshotResponse,
     WorkbenchLiepinLoginHandoffResponse,
     WorkbenchLiepinLoginRelayInputRequest,
     WorkbenchLoginRequest,
@@ -63,6 +68,8 @@ from seektalent_ui.models import (
     WorkbenchUserResponse,
     WorkbenchWorkspaceResponse,
 )
+from seektalent_ui.resume_snapshot_projection import build_resume_snapshot_response
+from seektalent_ui.workbench_candidate_graph import DEFAULT_GRAPH_CANDIDATE_LIMIT, list_graph_candidates
 from seektalent_ui.workbench_store import (
     BootstrapAlreadyCompleteError,
     WorkbenchCandidateEvidence,
@@ -85,6 +92,11 @@ from seektalent_ui.workbench_store import (
 
 
 router = APIRouter()
+
+
+def _safe_event_suffix(value: str) -> str:
+    suffix = re.sub(r"[^a-zA-Z0-9_]+", "_", value).strip("_").lower()
+    return suffix or "progress"
 
 
 @router.post("/api/auth/bootstrap", response_model=WorkbenchBootstrapResponse, status_code=201)
@@ -280,6 +292,71 @@ def list_candidate_review_items(
     if items is None:
         raise HTTPException(status_code=404, detail="Not found.")
     return WorkbenchCandidateReviewQueueResponse(items=[_candidate_review_item_response(item) for item in items])
+
+
+@router.get(
+    "/api/workbench/sessions/{session_id}/graph-candidates",
+    response_model=WorkbenchGraphCandidateListResponse,
+)
+def list_session_graph_candidates(
+    session_id: str,
+    node_id: str,
+    request: Request,
+    limit: int = DEFAULT_GRAPH_CANDIDATE_LIMIT,
+    cursor: str | None = None,
+    user: WorkbenchUser = Depends(require_current_user),
+) -> WorkbenchGraphCandidateListResponse:
+    store = get_workbench_store(request)
+    settings = getattr(request.app.state, "settings", None)
+    if settings is None:
+        raise HTTPException(status_code=500, detail="Workbench settings are not available.")
+    response = list_graph_candidates(
+        settings=settings,
+        graph_secret=_workbench_graph_secret(request),
+        store=store,
+        user=user,
+        session_id=session_id,
+        node_id=node_id,
+        limit=limit,
+        cursor=cursor,
+    )
+    if response is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return response
+
+
+@router.get(
+    "/api/workbench/sessions/{session_id}/graph-candidates/{graph_candidate_id}/resume-snapshot",
+    response_model=WorkbenchGraphCandidateResumeSnapshotResponse,
+)
+def get_graph_candidate_resume_snapshot(
+    session_id: str,
+    graph_candidate_id: str,
+    request: Request,
+    user: WorkbenchUser = Depends(require_current_user),
+) -> WorkbenchGraphCandidateResumeSnapshotResponse:
+    store = get_workbench_store(request)
+    settings = getattr(request.app.state, "settings", None)
+    if settings is None:
+        raise HTTPException(status_code=500, detail="Workbench settings are not available.")
+    response = build_resume_snapshot_response(
+        settings=settings,
+        graph_secret=_workbench_graph_secret(request),
+        store=store,
+        user=user,
+        session_id=session_id,
+        graph_candidate_id=graph_candidate_id,
+    )
+    if response is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return response
+
+
+def _workbench_graph_secret(request: Request) -> str:
+    secret = getattr(request.app.state, "workbench_graph_secret", None)
+    if not isinstance(secret, str) or not secret:
+        raise HTTPException(status_code=500, detail="Workbench graph secret is not configured.")
+    return secret
 
 
 @router.get("/api/workbench/source-connections", response_model=WorkbenchSourceConnectionListResponse)
@@ -649,6 +726,67 @@ def update_requirement_triage(
         seniority_filters=triage_update.seniorityFilters,
         exclusions=triage_update.exclusions,
         generated_query_hints=triage_update.generatedQueryHints,
+    )
+    if triage is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return _triage_response(triage)
+
+
+@router.post(
+    "/api/workbench/sessions/{session_id}/triage/prepare",
+    response_model=WorkbenchRequirementTriageResponse,
+)
+def prepare_requirement_triage(
+    session_id: str,
+    request: Request,
+    user: WorkbenchUser = Depends(require_csrf_user),
+) -> WorkbenchRequirementTriageResponse:
+    store = get_workbench_store(request)
+    session = store.get_workbench_session(user=user, session_id=session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    runner = getattr(request.app.state, "workbench_job_runner", None)
+    if runner is None:
+        raise HTTPException(status_code=500, detail="Workbench runtime is not available.")
+
+    def record_progress(event: ProgressEvent) -> None:
+        store.append_workbench_event(
+            tenant_id=DEFAULT_TENANT_ID,
+            workspace_id=session.workspace_id,
+            user_id=session.owner_user_id,
+            session_id=session.session_id,
+            source_run_id=None,
+            source_kind=None,
+            event_name=f"runtime_{_safe_event_suffix(event.type)}",
+            schema_version="runtime_progress_v1",
+            idempotency_key=f"{session.session_id}:triage-prepare:{event.type}:{event.round_no}:{event.timestamp}",
+            occurred_at=event.timestamp,
+            payload={
+                "message": event.message,
+                "roundNo": event.round_no,
+                **event.payload,
+            },
+        )
+
+    try:
+        extracted = extract_requirement_triage(
+            session=session,
+            settings=runner.settings,
+            runtime_factory=runner.runtime_factory,
+            progress_callback=record_progress,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail="Requirement extraction failed.") from exc
+
+    triage = store.update_requirement_triage(
+        user=user,
+        session_id=session_id,
+        must_haves=extracted.must_haves,
+        nice_to_haves=extracted.nice_to_haves,
+        synonyms=extracted.synonyms,
+        seniority_filters=extracted.seniority_filters,
+        exclusions=extracted.exclusions,
+        generated_query_hints=extracted.generated_query_hints,
     )
     if triage is None:
         raise HTTPException(status_code=404, detail="Not found.")

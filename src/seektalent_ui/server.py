@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import re
+import secrets
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -192,6 +193,7 @@ def create_app(
     store = LiepinStore(_liepin_db_path(app_settings))
     app = FastAPI(title="SeekTalent UI API")
     app.state.settings = app_settings
+    app.state.workbench_graph_secret = secrets.token_urlsafe(32)
     app.state.workbench_store = WorkbenchStore(_workbench_db_path(app_settings))
     app.state.workbench_store.reconcile_expired_running_jobs()
     app.state.workbench_job_runner = WorkbenchJobRunner(

@@ -76,12 +76,13 @@ Sessions are scoped to the current user/workspace. A JD plus optional notes is o
 Typical flow:
 
 1. Create a JD session.
-2. Edit and approve the requirement triage gate.
-3. Start the selected CTS and/or Liepin source runs from the strategy panel's central `启动检索` action.
-4. Watch the strategy panel and source cards update from durable state and SSE events.
-5. Review merged candidates in the right rail.
-6. Add notes, mark promising, or reject.
-7. For Liepin detail pages, approve or reject detail-open requests in the approval queue.
+2. Select CTS and/or Liepin sources at session creation; source cards then show the selected source state in the left column.
+3. Click the central `启动 Agent` action in the strategy graph. The agent extracts search criteria from JD/notes first and does not start source runs yet.
+4. Review or edit the extracted criteria, then confirm and start the selected sources through the same central strategy action.
+5. Watch the strategy graph, source cards, and running notes update from durable state and SSE events.
+6. Review the global shortlist in `候选人队列`, or click graph nodes to inspect node-scoped candidates in `节点详情`.
+7. Expand an individual candidate card only when a safe resume snapshot is needed.
+8. For Liepin detail pages, approve or reject detail-open requests from the global queue or the relevant `详情审批` node detail.
 
 CTS and Liepin source runs use separate execution lanes. CTS runs can execute in parallel; Liepin uses a single serial lane for provider safety.
 
@@ -89,7 +90,11 @@ CTS and Liepin source runs use separate execution lanes. CTS runs can execute in
 
 The workbench strategy graph is rendered with React Flow and laid out through ELK. It is not a workflow engine; it is a recruiter-facing projection of durable Workbench session events, source-run state, candidate evidence, and detail approval state.
 
-Graph lanes separate shared job/requirement nodes from CTS and Liepin source work. Nodes are clickable business objects: requirement breakdown, source queue state, CTS query/result/scoring/reflection rounds, Liepin card/detail approval steps, candidate aggregation, and final shortlist handoff. Clicking a graph node opens the `节点详情` tab in the right-lower workbench area. The `候选人队列` tab remains available and is still the default candidate-review surface. Running notes and candidate evidence actions can jump to related graph nodes when the backend-safe data contains the relationship.
+Graph lanes separate shared job/requirement nodes from CTS and Liepin source work. The graph and running notes do not expose source filters; they show all sources selected for the current session. Nodes are clickable business objects: requirement breakdown, source queue state, CTS query/result/scoring/reflection rounds, Liepin card/detail approval steps, candidate aggregation, and final shortlist handoff. Clicking a graph node opens the `节点详情` tab in the right-lower workbench area. The `候选人队列` tab remains available and is still the default candidate-review surface. Running notes and candidate evidence actions can jump to related graph nodes when the backend-safe data contains the relationship.
+
+CTS multi-round runs are rendered as workflow rows: `第 N 轮关键词 -> 召回 -> 评分 -> 反思`. Later rounds return to the keyword column on a lower row. For round `N > 1`, the keyword node has two business inputs: stable requirements and the previous round's reflection. The canvas can be panned and zoomed, and nodes can be dragged locally for readability; local drag positions are not persisted.
+
+Candidate graph nodes do not embed full candidate arrays. When a user selects a recall, scoring, final, Liepin card, or detail-approval node, the frontend queries the backend for paginated node-scoped candidate summaries. Complete resume content is fetched only after expanding a single candidate card and is projected through the safe snapshot API.
 
 At desktop widths the JD/source panel, React Flow graph, activity log, and detail tabs are visible in the three-column workbench shell. Around 1024px the right-side activity and detail area stacks below the graph, so operators can still reach both the strategy graph and selected node details without horizontal scrolling.
 

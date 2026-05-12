@@ -4,7 +4,11 @@ import { Position, type Edge, type Node } from '@xyflow/react';
 
 import type { RecruiterGraphEdge, RecruiterGraphNode, RecruiterLane } from './recruiterAnimation';
 
-export type StrategyGraphNodeData = { graphNode: RecruiterGraphNode; selected: boolean };
+export type StrategyGraphNodeData = {
+  graphNode: RecruiterGraphNode;
+  selected: boolean;
+  onSelectNode?: (node: RecruiterGraphNode) => void;
+};
 export type StrategyGraphEdgeData = { graphEdge: RecruiterGraphEdge };
 export type StrategyFlowNode = Node<StrategyGraphNodeData, 'strategy'>;
 export type StrategyFlowEdge = Edge<StrategyGraphEdgeData>;
@@ -26,6 +30,9 @@ const LANE_Y_RATIOS: Record<RecruiterLane, number> = {
 const ROOT_ID = 'strategy-root';
 const FINAL_SHORTLIST_ID = 'final-shortlist';
 const GRAPH_INSET = 34;
+const CTS_ROUND_START_X = GRAPH_INSET + 230;
+const CTS_ROUND_COLUMN_GAP = 192;
+const CTS_ROUND_ROW_GAP = 132;
 let elkInstance: ElkInstance | null = null;
 let testLayoutRunner: StrategyGraphLayoutRunner | null = null;
 
@@ -119,16 +126,25 @@ export function stackLanePositions(
   const hasCts = nodes.some((node) => node.lane === 'cts');
   const hasLiepin = nodes.some((node) => node.lane === 'liepin');
   const hasMultipleSourceLanes = hasCts && hasLiepin;
+  const hasCtsRoundNodes = nodes.some((node) => ctsRoundPosition(node, bounds, hasMultipleSourceLanes));
   const maxX = Math.max(
     1,
     ...nodes.map((node) => rawPositions.get(node.id)?.x ?? percentPosition(node, bounds).x),
   );
-  const rightX = Math.max(GRAPH_INSET, bounds.width - NODE_WIDTH - GRAPH_INSET);
+  const viewportRightX = Math.max(GRAPH_INSET, bounds.width - NODE_WIDTH - GRAPH_INSET);
+  const ctsFlowRightX = CTS_ROUND_START_X + CTS_ROUND_COLUMN_GAP * 3 + NODE_WIDTH + GRAPH_INSET;
+  const rightX = hasCtsRoundNodes ? Math.max(viewportRightX, ctsFlowRightX) : viewportRightX;
   const availableWidth = Math.max(1, rightX - GRAPH_INSET);
   const maxY = Math.max(GRAPH_INSET, bounds.height - NODE_HEIGHT - GRAPH_INSET);
   const positions = new Map<string, GraphPosition>();
 
   for (const node of nodes) {
+    const ctsPosition = ctsRoundPosition(node, bounds, hasMultipleSourceLanes);
+    if (ctsPosition) {
+      positions.set(node.id, ctsPosition);
+      continue;
+    }
+
     const rawPosition = rawPositions.get(node.id) ?? percentPosition(node, bounds);
     const lane = node.lane ?? 'shared';
     const scaledX =
@@ -146,6 +162,25 @@ export function stackLanePositions(
   return positions;
 }
 
+function ctsRoundPosition(
+  node: RecruiterGraphNode,
+  bounds: GraphBounds,
+  hasMultipleSourceLanes: boolean,
+): GraphPosition | null {
+  const match = /^cts-round-(\d+)-(query|result|score|reflect)$/.exec(node.id);
+  if (!match) {
+    return null;
+  }
+  const roundNo = Number(match[1] ?? '1');
+  const stage = (match[2] ?? 'query') as 'query' | 'result' | 'score' | 'reflect';
+  const stageIndex = { query: 0, result: 1, score: 2, reflect: 3 }[stage];
+  const firstRowY = hasMultipleSourceLanes ? LANE_Y_RATIOS.cts * bounds.height : GRAPH_INSET + 96;
+  return {
+    x: CTS_ROUND_START_X + stageIndex * CTS_ROUND_COLUMN_GAP,
+    y: Math.max(GRAPH_INSET, firstRowY + Math.max(0, roundNo - 1) * CTS_ROUND_ROW_GAP),
+  };
+}
+
 function flowNodes(nodes: RecruiterGraphNode[], positions: Map<string, GraphPosition>): StrategyFlowNode[] {
   return nodes.map((node) => ({
     id: node.id,
@@ -155,7 +190,7 @@ function flowNodes(nodes: RecruiterGraphNode[], positions: Map<string, GraphPosi
     height: NODE_HEIGHT,
     style: { width: NODE_WIDTH, height: NODE_HEIGHT },
     data: { graphNode: node, selected: false },
-    draggable: false,
+    draggable: true,
     selected: false,
     selectable: true,
     sourcePosition: Position.Right,

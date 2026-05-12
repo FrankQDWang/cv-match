@@ -9,6 +9,8 @@ import type {
   WorkbenchDetailOpenRequestListResponse,
   WorkbenchDetailOpenRequestStatus,
   WorkbenchEventListResponse,
+  WorkbenchGraphCandidateListResponse,
+  WorkbenchGraphCandidateResumeSnapshot,
   WorkbenchLiepinLoginHandoffResponse,
   WorkbenchProviderAction,
   WorkbenchRequirementTriage,
@@ -34,6 +36,16 @@ type LoginInput = {
   password: string;
 };
 
+type GraphCandidateListOptions = {
+  limit?: number;
+  cursor?: string;
+  signal?: AbortSignal;
+};
+
+type ResumeSnapshotOptions = {
+  signal?: AbortSignal;
+};
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -53,12 +65,23 @@ export type WorkbenchApi = {
   createSession(input: CreateWorkbenchSessionInput): Promise<WorkbenchSession>;
   getSession(sessionId: string): Promise<WorkbenchSession>;
   listCandidateReviewItems(sessionId: string): Promise<WorkbenchCandidateReviewQueueResponse>;
+  listGraphCandidates(
+    sessionId: string,
+    nodeId: string,
+    options?: GraphCandidateListOptions,
+  ): Promise<WorkbenchGraphCandidateListResponse>;
+  getGraphCandidateResumeSnapshot(
+    sessionId: string,
+    graphCandidateId: string,
+    options?: ResumeSnapshotOptions,
+  ): Promise<WorkbenchGraphCandidateResumeSnapshot>;
   updateCandidateReviewItem(
     sessionId: string,
     reviewItemId: string,
     input: WorkbenchCandidateReviewItemUpdateInput,
   ): Promise<WorkbenchCandidateReviewItem>;
   updateRequirementTriage(sessionId: string, input: WorkbenchRequirementTriageInput): Promise<WorkbenchRequirementTriage>;
+  prepareRequirementTriage(sessionId: string): Promise<WorkbenchRequirementTriage>;
   approveRequirementTriage(sessionId: string): Promise<WorkbenchRequirementTriage>;
   startSession(sessionId: string): Promise<WorkbenchSessionStartResponse>;
   getLiepinSourceRunPolicy(sessionId: string): Promise<WorkbenchSourceRunPolicy>;
@@ -168,6 +191,24 @@ export function createWorkbenchApi(): WorkbenchApi {
         `/api/workbench/sessions/${encodeURIComponent(sessionId)}/candidates`,
       );
     },
+    listGraphCandidates(sessionId, nodeId, options = {}) {
+      const params = new URLSearchParams();
+      params.set('node_id', nodeId);
+      params.set('limit', String(options.limit ?? 50));
+      if (options.cursor) {
+        params.set('cursor', options.cursor);
+      }
+      return request<WorkbenchGraphCandidateListResponse>(
+        `/api/workbench/sessions/${encodeURIComponent(sessionId)}/graph-candidates?${params.toString()}`,
+        { signal: options.signal },
+      );
+    },
+    getGraphCandidateResumeSnapshot(sessionId, graphCandidateId, options = {}) {
+      return request<WorkbenchGraphCandidateResumeSnapshot>(
+        `/api/workbench/sessions/${encodeURIComponent(sessionId)}/graph-candidates/${encodeURIComponent(graphCandidateId)}/resume-snapshot`,
+        { signal: options.signal },
+      );
+    },
     updateCandidateReviewItem(sessionId, reviewItemId, input) {
       return request<WorkbenchCandidateReviewItem>(
         `/api/workbench/sessions/${encodeURIComponent(sessionId)}/candidates/${encodeURIComponent(reviewItemId)}`,
@@ -182,6 +223,12 @@ export function createWorkbenchApi(): WorkbenchApi {
         method: 'PUT',
         body: JSON.stringify(input),
       });
+    },
+    prepareRequirementTriage(sessionId) {
+      return request<WorkbenchRequirementTriage>(
+        `/api/workbench/sessions/${encodeURIComponent(sessionId)}/triage/prepare`,
+        { method: 'POST' },
+      );
     },
     approveRequirementTriage(sessionId) {
       return request<WorkbenchRequirementTriage>(

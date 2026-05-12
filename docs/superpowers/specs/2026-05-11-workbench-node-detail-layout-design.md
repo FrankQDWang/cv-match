@@ -2,22 +2,21 @@
 
 ## Purpose
 
-The recruiter workbench should make the search process understandable to business users. The strategy graph is already a workflow projection: CTS uses `queue -> keywords -> recall -> scoring -> reflection`, and Liepin uses `queue -> card search -> candidate screening -> detail approval`. This design keeps that structure and fixes the surrounding interaction model so the graph, notes, candidate details, and JD brief work as one coherent business tool.
+The recruiter workbench should make the real CTS and Liepin search process understandable to business users. The strategy graph is a workflow projection, not the workflow engine. CTS still runs through the existing runtime and flywheel/corpus stores. Liepin still runs through the protected worker, connection state, detail approval, and ledger. The UI must adapt to those backend facts instead of inventing design-only fields.
 
-This spec focuses on UI and safe data contracts. It does not redesign the CTS runtime, Liepin worker, or multi-source execution policy.
+This spec covers the workbench UI, graph candidate read model, node details, safe resume snapshot projection, and recruiter-facing notes. It does not redesign the CTS runtime, Liepin worker, benchmark method, or multi-source execution policy.
 
 ## Current Code Facts
 
-- `buildRunStory()` already creates CTS round nodes with `ctsRoundQuery`, `ctsRoundResults`, `ctsRoundScoring`, and `reflection`.
-- CTS recall nodes currently carry counts such as `rawCandidateCount` and `uniqueNewCount`, but they do not carry per-round candidate ids.
-- Liepin candidate nodes already carry `candidateReviewItemIds` and `candidateEvidenceRefs`.
-- `NodeDetailPanel` renders structured node payloads, but does not yet render candidate cards or expandable full resume snapshots.
-- `StrategyGraph` already uses `@xyflow/react` with ELK layout. React Flow is the right surface for panning, zooming, and node drag. Pretext is not the right tool for graph dragging.
-- The current right rail is split vertically between running notes and candidate queue / node detail tabs. That wastes space and duplicates the graph interaction model.
+- CTS CLI/runtime already works and writes durable runtime/flywheel/corpus artifacts.
+- `RunArtifacts` has `run_id` and `run_dir`; Workbench source runs currently do not persist the runtime `run_id`.
+- Flywheel already stores `run_queries` and `query_resume_hits`, including `round_no`, `query_instance_id`, `query_fingerprint`, `lane_type`, `query_role`, scoring fields, and final candidate status.
+- Corpus already stores `resume_documents` and `resume_observations`, including normalized text/sections, artifact refs, eligibility flags, and per-run/query observation metadata.
+- `candidate_review_items` is for review/final/actionable candidates. It must not become the recall pool.
+- `buildRunStory()` already creates graph nodes, but it currently depends too much on review items and idealized runtime events.
+- `StrategyGraph` already uses `@xyflow/react` and ELK. React Flow is the correct interaction surface for pan, zoom, and local node drag. Pretext is not used for graph dragging.
 
-## Decisions
-
-### Layout
+## Layout
 
 The workbench keeps the three-column shell:
 
@@ -25,204 +24,333 @@ The workbench keeps the three-column shell:
 2. Center strategy graph.
 3. Right inspector column.
 
-The left `岗位简报` becomes a fixed-height, collapsible card. In collapsed state it shows the job title, session status, source count, and a short JD preview. If notes exist, a notes preview is shown below the JD preview. Expanding the card displays the full JD and full notes inside the same left column, then the user can collapse it again.
+The left `岗位简报` is a fixed-height collapsible card. Collapsed state shows job title, session status, source count, JD preview, and notes preview when notes exist. Expanded state shows the full JD and notes in the left column.
 
-The center strategy graph continues to show all selected sources by default. The graph-level source selector is removed. The graph is a session workflow, not a per-source filter UI.
+The left criteria area is agent-first. Empty triage does not render blank textareas. The center graph shows `启动 Agent`; clicking it calls triage prepare and does not start sources. After the agent extracts criteria, the left card shows a readonly review card with `确认并开始检索` and `修改`. Textareas appear only after `修改`. Human confirmation is the default; bypass remains a configuration mode outside this layout change.
 
-The right inspector column becomes one full-height tabbed panel. It has only two compact icon tabs:
+Source selection happens when the session is created and is represented by source cards in the left column. The graph and running notes do not show source filter selectors. The central graph start button starts the selected session sources through the existing session start API.
 
-- `运行笔记`
+The right rail keeps the current workbench shape: business-readable `运行笔记` remains visible above the lower inspector, and the lower inspector has exactly two compact tabs:
+
+- `候选人队列`
 - `节点详情`
 
-`运行笔记` is the default. Clicking any strategy graph node selects the node and switches the right column to `节点详情`.
+`候选人队列` is the default global shortlist. Clicking a graph node switches to `节点详情`. Node-scoped candidates appear in the node detail for the workflow node that produced, scored, approved, or aggregated them. Do not turn every candidate into a top-level graph node.
 
-The standalone `候选人短名单` panel is removed. Candidates are displayed in node details for the workflow node that produced, scored, approved, or aggregated them.
+## Strategy Graph
 
-### Strategy Graph Interaction
+The graph remains an interactive React Flow surface laid out by ELK plus local post-processing. ELK computes initial structure; the workbench applies domain-specific round-row layout after ELK.
 
-The existing `@xyflow/react` graph remains the interaction engine.
+The user can pan and zoom the full canvas. Nodes can be dragged locally to resolve overlap or temporarily organize a complex run. Dragged node positions are not persisted in this version.
 
-Initial layout continues to use ELK. The user can pan and zoom the full canvas. Nodes can be dragged locally to resolve overlap or temporarily organize a complex run. Dragged node positions are not persisted in this version; refresh returns to the automatic layout.
+The graph uses virtual content bounds, not viewport clamping. Long multi-round runs may extend beyond the visible panel; users pan/zoom to inspect them. CTS round nodes must not be clamped to the visible viewport bottom because that causes later rounds to overlap.
 
-Pretext is not introduced for graph interaction. It remains reserved for future text-heavy candidate reports or final briefing surfaces if they need higher-quality responsive text layout.
+## Multi-Round CTS Layout
 
-### Multi-Round Layout
+Multi-round CTS iteration is shown as stacked horizontal rows, not as a circular loop or a long single horizontal chain.
 
-Multi-round agent iteration is shown as a round-by-round chain, not as a circular edge.
-
-Each round starts again from the left side of the graph. `第 N 轮关键词` nodes are vertically stacked and left-aligned with the previous round's keyword node. This keeps a long run readable: the user scans down by round, then left-to-right inside a round.
-
-Each round has its own horizontal row:
+Each round starts again from the left:
 
 ```text
-第 1 轮关键词 -> exploit / explore -> 召回 -> 评分 -> 反思
-第 2 轮关键词 -> exploit / explore -> 召回 -> 评分 -> 反思
-第 3 轮关键词 -> exploit / explore -> 召回 -> 评分 -> 反思
+第 1 轮关键词 -> 召回 -> 评分 -> 反思
+第 2 轮关键词 -> 召回 -> 评分 -> 反思
+第 3 轮关键词 -> 召回 -> 评分 -> 反思
 ```
 
-`第 1 轮关键词` is derived from the requirement decomposition node. For `N > 1`, `第 N 轮关键词` has two inbound edges:
+All `第 N 轮关键词` nodes are left-aligned. For `N > 1`, the keyword node has two incoming business edges:
 
-1. From `需求拆解`, labeled as the stable requirement context.
-2. From `第 N-1 轮反思`, labeled as the reflection-driven adjustment.
+1. From `需求拆解`, labeled as stable requirement context.
+2. From `第 N-1 轮反思`, labeled as reflection-driven adjustment.
 
-This makes the graph explicit: every round still obeys the original job requirements, while the previous reflection changes the next search direction.
+The graph may summarize lane information on the row. Detailed exploit/explore lane breakdown appears in node detail.
 
-### CTS Internal Search Lanes
+## CTS Internal Search Lanes
 
-CTS round details must expose the real internal strategy rather than flattening the round into one keyword string.
+CTS round details are lane-driven. The UI must not invent fixed lanes.
 
-Within each CTS round, the graph or node detail shows:
+The backend-owned fields are:
 
-- `exploit`: the main narrowing query path.
-- `explore`: the second-lane path when one exists.
-
-The explore path has two possible sources:
-
-- `prf_probe`: candidate-feedback/PRF-derived exploration when the PRF gate passes.
-- `generic_explore`: fallback exploration when PRF is unavailable or rejected.
-
-If the backend only ran a single-lane round, the UI must show a single-lane round explicitly and must not invent an explore lane. If both lanes ran, the round detail should show each lane's query terms, returned count, new candidate count, outcome, and related candidates.
-
-### Candidate Mapping
-
-CTS round nodes must become candidate-aware.
-
-For CTS, per-round candidate mapping is required. `ctsRoundResults` should list candidates recalled or newly surfaced by that round. `ctsRoundScoring` should list candidates scored in that round, grouped or labeled by fit outcome where data exists.
-
-The backend must expose safe per-round relationships rather than forcing the frontend to infer them. The minimum relationship shape is:
-
-- `session_id`
-- `source_run_id`
-- `round_no`
+- `lane_type`
+- `query_role`
 - `query_instance_id`
 - `query_fingerprint`
-- `query_role`
-- `lane_type`: `exploit`, `prf_probe`, `generic_explore`, or other backend-defined safe lane label
-- `review_item_id`
-- `evidence_id`
-- `relationship_kind`: `recalled`, `new`, `scored`, `fit`, or `not_fit`
+- query terms
 
-This can be stored directly or generated from persisted runtime artifacts, but the UI contract must be stable and scoped to tenant, workspace, user, and session.
+Known lane meanings:
 
-The lane fields are required so the UI can show which candidates came from the main exploit path versus candidate-feedback exploration or generic exploration. The frontend must not guess lane membership from text labels.
+- `exploit`: main narrowing query path.
+- `prf_probe`: candidate-feedback/PRF-derived exploration.
+- `generic_explore`: fallback exploration when PRF is unavailable or rejected.
 
-Liepin keeps its existing candidate relationship model. `liepinCardCandidates`, `liepinCardSearch`, `liepinDetailApproval`, and final aggregation nodes use safe candidate ids and evidence refs.
+If a round only executed `exploit`, the UI shows one lane. If a round executed `prf_probe` or `generic_explore`, the UI labels those lanes in recruiter language. Unknown backend-defined lane values are displayed as safe backend labels and are not dropped.
 
-### Full Resume Snapshots
+## Source-Run Runtime Link
 
-Candidate cards in node details show safe summaries by default. Full resume content is loaded lazily only when the user expands an individual candidate card.
+Workbench needs a stable internal link from a Workbench `source_run_id` to the runtime/flywheel `run_id`.
 
-The UI uses this authenticated endpoint:
+`source_runs.runtime_run_id` is added as an internal field. It is written as soon as the CTS runtime allocates a `run_id`, not only when the runtime completes. Normal session/source card API responses do not expose `runtime_run_id` and never expose `run_dir`.
 
-```http
-GET /api/workbench/candidates/{review_item_id}/resume-snapshot
+Graph candidate reads use:
+
+```text
+session_id + source_run_id -> runtime_run_id -> flywheel/corpus stores
 ```
 
-The endpoint returns a safe display model for the saved full resume snapshot. The model has optional structured sections for profile, work experience, education, projects, skills, and source evidence text. It must not return auth-bearing provider URLs, cookies, storage state, CDP URLs, or raw provider control payloads.
+The CTS source-run lifecycle is:
 
-Full resume snapshots are allowed in authenticated UI detail views and benchmark storage. They are not allowed in:
+```text
+queued -> running -> runtime_run_id_attached -> completed | failed
+```
+
+`runtime_run_id_attached` is an internal persistence milestone, not a user-facing status. Completion must be idempotent. If a worker crashes after runtime/corpus/flywheel state exists but before Workbench completion finishes, the source run must remain recoverable rather than silently losing graph candidates.
+
+The system provides a repair/backfill path for source runs missing `runtime_run_id`. The repair path may use Workbench events, source run jobs, artifact refs, or runtime metadata to reattach the link. If the link cannot be repaired, graph candidate reads return a scoped recoverable empty state with a business-safe reason such as `runtime_link_missing`.
+
+## Graph Candidate Read Model
+
+Workbench does not add a `candidate_graph_relationships` shadow table and does not copy the recall pool into `candidate_review_items`.
+
+The graph candidate read model is generated from authoritative stores:
+
+- CTS recall and scoring nodes read from `flywheel.query_resume_hits` and `flywheel.run_queries`.
+- Resume display metadata reads from `corpus.resume_documents` and `resume_observations`.
+- Final/actionable candidates read from `candidate_review_items` and `candidate_evidence`.
+- Liepin candidate/detail nodes read from existing Liepin review/evidence/detail request state.
+
+The API returns safe `GraphCandidateSummary` rows for the selected graph node only. It does not return full resumes or raw provider payloads.
+
+Graph candidate reads are paginated and stably ordered:
+
+```http
+GET /api/workbench/sessions/{session_id}/graph-candidates?node_id={node_id}&limit=50&cursor={cursor}
+```
+
+Default `limit` is 50. The backend enforces a maximum limit. The response returns `nextCursor`, `totalEstimate`, and `truncated`. Cursor values are opaque and server-verifiable. Sorting is stable per node kind:
+
+- CTS recall nodes: round, lane, query order, provider rank, then deterministic candidate key.
+- CTS scoring nodes: fit bucket, score descending, then deterministic candidate key.
+- Final nodes: final score descending, review status, then deterministic candidate key.
+- Liepin approval nodes: pending first, then most recently updated.
+
+`graphCandidateId` is opaque. It must not expose `runtime_run_id`, resume document ids, artifact ids, provider ids, provider keys, detail URLs, or filesystem paths. The server resolves it only inside the authenticated tenant/workspace/user/session/node scope and must be able to reject forged, stale, cross-session, or cross-node ids.
+
+Minimum safe shape:
+
+```ts
+type GraphCandidateSummary = {
+  graphCandidateId: string;
+  sourceKind: 'cts' | 'liepin';
+  sourceRunId: string;
+  nodeKind: 'recall' | 'scoring' | 'final' | 'liepin_card' | 'detail_approval';
+  roundNo: number | null;
+  laneType: string | null;
+  queryRole: string | null;
+  relationshipKind: 'recalled' | 'new' | 'scored' | 'fit' | 'not_fit' | 'final' | 'detail_requested';
+  displayName: string;
+  title: string;
+  company: string;
+  location: string;
+  sourceBadges: string[];
+  score: number | null;
+  fitBucket: string | null;
+  summary: string;
+  matchedMustHaves: string[];
+  strengths: string[];
+  missingRisks: string[];
+  reviewItemId: string | null;
+  evidenceLevel: 'card' | 'detail' | 'final' | null;
+  detailOpenRequestId: string | null;
+  canExpandResume: boolean;
+  canMarkPromising: boolean;
+  canReject: boolean;
+  canSaveNote: boolean;
+  canRequestDetail: boolean;
+  canOpenProvider: boolean;
+};
+
+type GraphCandidateListResponse = {
+  nodeId: string;
+  items: GraphCandidateSummary[];
+  nextCursor: string | null;
+  totalEstimate: number | null;
+  truncated: boolean;
+  generatedAt: string;
+};
+```
+
+Capabilities are backend-derived. The frontend does not guess which actions are allowed.
+
+## Resume Snapshot Projection
+
+Candidate cards show safe summaries by default. Complete resume content is loaded lazily only after the user expands an individual candidate card.
+
+The UI uses a session-scoped graph-candidate endpoint:
+
+```http
+GET /api/workbench/sessions/{session_id}/graph-candidates/{graph_candidate_id}/resume-snapshot
+```
+
+The endpoint resolves the graph candidate to corpus/review state inside the authenticated tenant/workspace/user/session/node scope and returns a safe display model. It does not read from a Workbench-owned copied snapshot table.
+
+The projection is allowlist based. It can include normalized profile, work experience, education, projects, skills, and safe source evidence text. It must not include cookies, authorization headers, storage state, CDP/WebSocket endpoints, provider account hashes, raw provider control payloads, auth-bearing provider URLs, or raw artifact paths.
+
+Complete resume snapshots are allowed in authenticated UI detail views and benchmark/corpus storage. They are fetched only while the individual candidate card is expanded. They are not allowed in:
 
 - memory rows
-- SSE business logs
+- session events
+- SSE responses
 - running-note payloads
+- graph story payloads
 - public artifacts
-- frontend graph story payloads
+- ordinary logs
+- persisted frontend query cache, `localStorage`, or `sessionStorage`
+- frontend error boundaries, console logs, or test debug output
 
-### Node Details
+Snapshot queries use short-lived in-memory cache only. Session, workspace, or logout changes clear snapshot queries. Collapsing a card may leave a short-lived in-memory cache entry, but it must not be persisted.
 
-`节点详情` renders by node type:
+## Node Details
+
+`节点详情` renders structured payload first, then node-scoped candidates or approval cards where relevant.
+
+Node types:
 
 - `岗位`: job title, JD preview, notes preview, and source mode.
 - `需求拆解`: must-haves, nice-to-haves, query hints, exclusions, and triage status.
-- `第 N 轮关键词`: query terms, query label, search direction, and exploit/explore lane breakdown where available.
-- `CTS 召回`: round recall counts plus this round's candidate cards.
-- `CTS 评分`: scored candidate cards, fit/not-fit labels, score, and key reasons.
+- `第 N 轮关键词`: query terms, query label, search direction, and lane breakdown.
+- `CTS 召回`: recall counts plus this round's recalled/new candidate cards.
+- `CTS 评分`: scored candidate cards, fit/not-fit labels, score, and reasons.
 - `反思`: summary, rationale, and next direction.
-- `猎聘简介抓取`: scanned card count, unique candidate count, and related candidates where available.
+- `猎聘简介抓取`: scanned card count, unique candidate count, and related candidates.
 - `猎聘候选人初筛`: candidate cards, score, source badge, and AI screening reasons.
-- `详情审批`: candidate cards with approval status, budget impact, and blocked reason if any.
-- `最终短名单`: aggregated candidates with final score and source badges.
+- `详情审批`: detail request cards with approval status, budget impact, blocked reason, and approve/reject controls.
+- `最终短名单`: aggregated review-backed candidates with final score and source badges.
 
-Candidate cards have a fixed collapsed height. Collapsed cards show:
+Candidate cards have a fixed collapsed height. Collapsed cards show safe identity, title/company/location, source badges, score/fit bucket, short summary, matched must-haves, strengths, and risks. Expanding a card fetches the safe resume snapshot. A failed snapshot fetch is localized to that card.
 
-- display name or safe masked name
-- title, company, location
-- source badges
-- score and fit bucket
-- short summary
-- key matched must-haves, strengths, or risks
+Review-backed candidate cards expose review actions: mark promising, reject, save note, request detail, and open provider where allowed. Recall-only candidates are read-only except safe snapshot expansion when allowed.
 
-Expanding a card loads the full resume snapshot and renders it inside that card. The card can be collapsed again. A failed full-resume fetch shows a per-card error state and does not break the whole node detail panel.
+## Liepin Detail Approval
 
-### Running Notes
+The current global queue can continue to surface detail approvals while node detail becomes the richer contextual surface.
 
-`运行笔记` is for business-readable narration, not technical logs.
+The `详情审批` node is an interactive approval surface. Pending request cards show the candidate summary, AI recommendation, budget impact, current detail-open mode, and `批准打开` / `暂不打开`. Approved/leased/opened requests show budget reservation and provider action. Rejected requests show that no quota was consumed. Blocked requests show the blocked reason.
 
-The source selector is removed. Running notes always show all selected sources for the current session. Multi-source concurrency is handled by business grouping:
+Approving or rejecting invalidates detail requests, graph candidates for the current node, session/source cards, and the session list.
 
-- Events are ordered by real time.
-- Each entry has a CTS or Liepin badge when source-specific.
-- Short bursts of same-source same-stage events are merged into one note.
-- Raw event names are not shown by default.
-- Clicking a note selects the related graph node and switches to node detail.
+The approve/reject endpoints re-check scope, request status, budget state, and backend capability at mutation time. Frontend capability flags are display hints only. Double approve, approve-after-reject, reject-after-approve, and blocked approve are rejected or idempotently resolved without consuming extra quota. Ledger writes and request state updates are atomic.
 
-Example entries:
+Approval discoverability remains visible through:
 
-- `CTS 第 1 轮完成：搜到 14 人，9 人进入评分，1 人 fit。`
-- `Liepin 正在串行抓取简介：已扫描 30 张，命中 5 位候选人。`
-- `反思：Kafka 关键词过窄，下一轮放宽到实时数据平台。`
+- pending count on the left source card
+- human-action-required running note
+- badge count on the `详情审批` graph node
+- session list pending approval badge when available
 
-### Privacy And Security
+## Running Notes
 
-All candidate and resume data remains tenant/workspace/user/session scoped.
+`运行笔记` is a business narrative layer, not a technical log and not a node list.
 
-The UI may display complete resume snapshots only after authenticated user action. Complete snapshots must not be included in durable event payloads, SSE streams, running notes, graph payloads, public artifacts, or memory. Logs and exception serializers must continue to use existing redaction boundaries.
+The graph answers "where the workflow is." Running notes answer "what this means for the search."
 
-Provider raw payloads remain out of normal business UI unless explicitly transformed into the safe resume snapshot display model.
+Notes always show all selected sources and use source badges for source-specific entries. Entries are ordered by real time and may merge same-round/same-stage bursts into one business summary. Raw event names are hidden by default and only appear inside a collapsed developer log.
+
+Good notes include:
+
+- the round goal or query change reason
+- recall quality changes
+- scoring outcome and what it implies
+- reflection conclusion and next direction
+- Liepin serial progress, budget, approval, or blocked status
+- human action required
+
+Example:
+
+```text
+CTS 第 2 轮：用“实时平台 / Flink CDC”放宽搜索，搜到 8 人，3 人进入评分，1 人 fit。反思认为 Kafka 关键词过窄。
+```
+
+Clicking a note selects the related graph node and switches to node detail.
+
+## Event Replay And Idempotency
+
+Workbench events remain the durable audit stream for UI reconstruction. New or migrated events include schema metadata sufficient for replay:
+
+- global sequence
+- session sequence when a session exists
+- source run id when source-specific
+- event name
+- schema version
+- occurred/ingested timestamp when available
+- idempotency key when the producer can provide one
+
+`buildRunStory()` must tolerate duplicate, missing, unknown, and out-of-order events. Duplicate events do not create duplicate notes or candidate counts. Unknown event names are hidden from business notes and can appear only in the collapsed developer log after redaction. Legacy composite `runtime_round_completed` remains supported, but split runtime events are preferred.
+
+## Failure And Recovery States
+
+The UI must render recoverable states without exposing backend internals:
+
+- `runtime_link_missing`: CTS runtime data may exist, but Workbench cannot yet link to it.
+- `runtime_artifacts_unavailable`: the runtime link exists, but flywheel/corpus data cannot be read.
+- `candidate_resolution_failed`: a graph node exists, but its candidates cannot be resolved.
+- `snapshot_forbidden`: the user cannot open the selected candidate snapshot.
+- `snapshot_not_found`: the candidate no longer resolves to a safe snapshot.
+- `snapshot_redacted`: the snapshot was returned with sensitive fields removed.
+- `detail_request_stale`: the approval request changed before the user acted.
+- `detail_request_blocked`: budget or lease rules prevented detail opening.
+
+Business UI shows concise action-oriented text. Developer logs may include redacted technical context.
+
+## Privacy And Security
+
+All candidate and resume data is tenant/workspace/user/session scoped.
+
+Graph/story/event/note payloads contain only safe summaries and identifiers. Complete resume content appears only after authenticated user action against the snapshot endpoint. Logs and exception serializers continue using centralized redaction.
+
+All new API routes use explicit response models and allowlist projection. Field-level authorization is enforced by construction: routes return only fields defined in the response model and never serialize internal runtime objects, raw provider payloads, exception reprs, or storage rows directly.
 
 ## Testing Requirements
 
-### Backend
+Backend:
 
-- CTS per-round candidate mapping is persisted or generated with stable scoped ids.
-- CTS round result node data can resolve only that round's candidates.
-- CTS scoring node data can resolve only that round's scored candidates.
-- Full resume snapshot endpoint enforces tenant, workspace, user, and session scope.
-- Full resume snapshot endpoint does not expose provider auth data or raw control payloads.
-- Full resume snapshot data does not appear in `session_events`, SSE responses, running-note payloads, or memory rows.
+- CTS start attaches `source_runs.runtime_run_id` as soon as the runtime allocates `run_id`.
+- CTS completion is idempotent and does not lose the runtime link on retry.
+- A repair/backfill path can recover missing runtime links or mark them as recoverable empty.
+- Session/source APIs do not expose `runtime_run_id`, `run_dir`, or artifact paths.
+- Graph candidate API enforces tenant/workspace/user/session/node scope.
+- Graph candidate API uses opaque candidate ids, pagination, stable ordering, and response models.
+- Graph candidate API reads CTS recall/scoring candidates from flywheel/corpus by runtime run id.
+- Graph candidate API reads final/actionable candidates from review/evidence state.
+- Resume snapshot endpoint enforces scope and returns allowlisted display data.
+- Complete resume data does not enter `session_events`, SSE responses, running notes, graph story payloads, memory rows, frontend persistent cache, logs, or error payloads.
+- Detail approval approve/reject remains scoped and CSRF protected.
+- Detail approval double-submit, stale status, cross-user, and budget exhaustion cases are tested.
+- Event replay is idempotent under duplicate/out-of-order events.
 
-### Frontend Unit And Component Tests
+Frontend:
 
-- The right rail has exactly two tabs: running notes and node detail.
-- The candidate queue panel is not rendered as a standalone bottom panel.
-- Clicking a graph node switches to node detail.
-- Clicking a running-note entry selects the related graph node.
-- CTS recall and scoring nodes render related candidate cards from per-round refs.
-- Candidate cards are collapsed by default and have fixed summary layout.
-- Expanding a candidate card requests its full resume snapshot.
-- Full resume snapshot fetch failure is localized to that card.
-- The graph and running notes no longer render source filter controls.
-- The job brief card is fixed-height when collapsed and shows full JD/notes when expanded.
-- Multi-round layout left-aligns all `第 N 轮关键词` nodes.
-- For `N > 1`, each round keyword node has two incoming business edges: one from `需求拆解` and one from the previous round's `反思`.
-- CTS round details render exploit and explore lane data when both lanes exist.
-- CTS single-lane rounds render as single-lane rounds and do not invent explore data.
-- Candidate cards in CTS recall/scoring details can be grouped or labeled by `lane_type`.
-
-### Visual And Interaction Smoke Tests
-
-- Long JD text no longer stretches the left column indefinitely.
-- Right rail content uses the full rail height for the selected tab.
-- Strategy graph supports pan and zoom.
-- Strategy graph nodes can be dragged locally.
-- Dragging a node does not persist after page refresh.
-- Business notes remain readable when CTS and Liepin emit events close together.
-- A multi-round CTS run is readable without a long horizontal chain: each new round starts on the left and scans left-to-right within its own row.
+- Empty triage starts with `启动 Agent`, not blank editable criteria fields.
+- Prepare calls triage prepare and does not start sources.
+- Confirm calls approve then start.
+- The right rail keeps business `运行笔记` visible and the lower inspector has exactly `候选人队列` and `节点详情`.
+- Source filters are absent from the graph and running notes.
+- The global candidate queue remains the default shortlist view; node-scoped candidates render inside `节点详情`.
+- Selecting a graph node lazily fetches graph candidates.
+- Switching nodes aborts or ignores stale graph candidate and snapshot responses.
+- Expanding a candidate card lazily fetches a safe resume snapshot.
+- Resume snapshot queries use short-lived in-memory cache and are cleared on session/workspace/logout changes.
+- Detail approval nodes can approve/reject pending requests.
+- Pending detail approvals remain discoverable from global queue/source indicators and relevant detail nodes.
+- Multi-round CTS layout left-aligns keyword nodes and uses virtual content bounds.
+- CTS single-lane rounds do not invent explore lanes.
+- Running notes do not expose raw event names and do not duplicate every graph node as a log line.
+- Graph node interactions remain keyboard-accessible.
 
 ## Non-Goals
 
 - Persisting custom graph node positions.
 - Turning every candidate into a top-level graph node.
+- Adding `candidate_graph_relationships` or `candidate_resume_snapshots` shadow tables.
+- Copying recall pool candidates into `candidate_review_items`.
 - Replacing React Flow or ELK.
 - Introducing Pretext for graph interaction.
 - Adding a third right-rail candidate tab.
@@ -231,13 +359,14 @@ Provider raw payloads remain out of normal business UI unless explicitly transfo
 
 ## Acceptance Criteria
 
-- A recruiter can keep the JD brief collapsed while working in the graph.
-- The graph always shows the whole selected-source workflow by default.
-- The right rail is a two-tab inspector, not a stacked log and queue layout.
-- Clicking CTS recall or scoring nodes shows the candidates for that exact round.
-- Multi-round CTS layout returns each next round to the left side, aligns keyword nodes, and shows both stable requirement and previous-reflection inputs for `N > 1`.
-- CTS node details expose the real exploit / PRF exploration / generic exploration structure when backend data exists.
-- Clicking Liepin candidate, detail approval, or final shortlist nodes shows related candidates.
-- Candidate cards are compact by default and expandable for complete resume snapshots.
-- Running notes tell a business-readable story across all selected sources without source filters.
+- A recruiter can start with a JD, let the agent extract criteria, confirm criteria, and run selected sources from the central graph action.
+- The graph shows selected-source workflow by default without source filters.
+- Multi-round CTS returns each next round to the left side, aligns keyword nodes, and shows both stable requirement and previous-reflection inputs for `N > 1`.
+- Clicking CTS recall/scoring/final nodes shows candidates for that exact node.
+- Node candidate lists are paginated, stable, and do not overload the graph.
+- CTS node details expose real exploit/PRF/generic lane structure when backend data exists.
+- Clicking Liepin candidate/detail/final nodes shows related candidates or approval requests.
+- Candidate cards are compact by default and expandable for safe complete resume snapshots.
+- Detail approval remains usable from `节点详情`.
+- Running notes tell a business-readable story across selected sources.
 - Complete resume data stays out of memory, events, running notes, graph payloads, and public artifacts.

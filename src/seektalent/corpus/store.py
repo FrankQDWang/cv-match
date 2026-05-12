@@ -472,6 +472,40 @@ class CorpusStore:
         )
         self.connect().commit()
 
+    def get_resume_documents_by_snapshot_sha256(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        snapshot_sha256_values: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        if not snapshot_sha256_values:
+            return {}
+        placeholders = ",".join("?" for _ in snapshot_sha256_values)
+        rows = self.connect().execute(
+            f"""
+            SELECT
+                resume_doc_id,
+                snapshot_sha256,
+                normalized_sections_json,
+                skills_json,
+                experience_json,
+                education_json,
+                locations_json,
+                current_title,
+                current_company,
+                allowed_uses_json,
+                internal_materialization_eligible,
+                redaction_status
+            FROM resume_documents
+            WHERE tenant_id = ?
+              AND workspace_id = ?
+              AND snapshot_sha256 IN ({placeholders})
+            """,
+            (tenant_id, workspace_id, *snapshot_sha256_values),
+        ).fetchall()
+        return {str(row["snapshot_sha256"]): dict(row) for row in rows}
+
     def record_artifact_ref(
         self,
         *,

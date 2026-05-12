@@ -2,6 +2,7 @@ import {
   QueryClient,
   QueryClientProvider,
   useMutation,
+  useInfiniteQuery,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
@@ -22,7 +23,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiError, type WorkbenchApi } from './api';
 import { NodeDetailPanel } from './NodeDetailPanel';
 import type { RecruiterGraphNode } from './recruiterAnimation';
-import { buildRunStory, displayTriageFromStory, type RunStory, type SourceFilter } from './runStory';
+import { buildRunStory, displayTriageFromStory, type RunStory } from './runStory';
 import { StrategyGraph } from './StrategyGraph';
 import type {
   BootstrapResponse,
@@ -37,6 +38,9 @@ import type {
   WorkbenchDetailOpenRequestListResponse,
   WorkbenchEvent,
   WorkbenchEventListResponse,
+  WorkbenchGraphCandidateListResponse,
+  WorkbenchGraphCandidateResumeSnapshot,
+  WorkbenchGraphCandidateSummary,
   WorkbenchLiepinLoginHandoffResponse,
   WorkbenchProviderAction,
   WorkbenchRequirementTriage,
@@ -67,6 +71,7 @@ const meKey = ['auth', 'me'] as const;
 const settingsKey = ['workbench', 'settings'] as const;
 const sourceConnectionsKey = ['workbench', 'source-connections'] as const;
 const detailOpenRequestsRootKey = ['workbench', 'detail-open-requests'] as const;
+const graphCandidatesRootKey = ['workbench', 'graph-candidates'] as const;
 const WorkbenchRuntimeContext = createContext<WorkbenchRouterContext | null>(null);
 
 function evidenceRefKey(
@@ -139,6 +144,16 @@ function eventListKey(afterSeq = 0) {
 
 function candidateQueueKey(sessionId: string) {
   return ['workbench', 'sessions', sessionId, 'candidates'] as const;
+}
+
+const graphCandidateSnapshotsRootKey = ['workbench', 'graph-candidate-snapshots'] as const;
+
+function graphCandidatesKey(sessionId: string, nodeId: string | null, limit: number) {
+  return [...graphCandidatesRootKey, sessionId, nodeId ?? 'none', limit] as const;
+}
+
+function graphCandidateResumeSnapshotKey(sessionId: string, graphCandidateId: string) {
+  return [...graphCandidateSnapshotsRootKey, sessionId, graphCandidateId] as const;
 }
 
 function sourceRunPolicyKey(sessionId: string, sourceKind: SourceKind) {
@@ -337,6 +352,38 @@ function useCandidateReviewItems(api: WorkbenchApi, sessionId: string) {
   });
 }
 
+function useGraphCandidates(api: WorkbenchApi, sessionId: string, nodeId: string | null) {
+  const limit = 50;
+  return useInfiniteQuery({
+    queryKey: graphCandidatesKey(sessionId, nodeId, limit),
+    queryFn: ({ signal, pageParam }) =>
+      api.listGraphCandidates(sessionId, nodeId ?? '', {
+        limit,
+        cursor: pageParam,
+        signal,
+      }),
+    enabled: Boolean(nodeId),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+}
+
+function useGraphCandidateResumeSnapshot(
+  api: WorkbenchApi,
+  sessionId: string,
+  graphCandidateId: string,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: graphCandidateResumeSnapshotKey(sessionId, graphCandidateId),
+    queryFn: ({ signal }) => api.getGraphCandidateResumeSnapshot(sessionId, graphCandidateId, { signal }),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
 function useWorkbenchEvents(api: WorkbenchApi) {
   return useQuery({
     queryKey: eventListKey(0),
@@ -397,6 +444,15 @@ function useWorkbenchEventStream() {
       void queryClient.invalidateQueries({ queryKey: sessionListKey, exact: true });
       if (event.sessionId) {
         void queryClient.invalidateQueries({ queryKey: sessionKey(event.sessionId), exact: true });
+        if (
+          event.eventName.startsWith('runtime_') ||
+          event.eventName.startsWith('liepin_') ||
+          event.eventName.startsWith('source_run_') ||
+          event.eventName.startsWith('candidate_')
+        ) {
+          void queryClient.invalidateQueries({ queryKey: [...graphCandidatesRootKey, event.sessionId] });
+          void queryClient.invalidateQueries({ queryKey: [...graphCandidateSnapshotsRootKey, event.sessionId] });
+        }
         if (event.eventName === 'candidate_review_item_upserted' || event.eventName === 'candidate_review_item_updated') {
           void queryClient.invalidateQueries({ queryKey: candidateQueueKey(event.sessionId), exact: true });
         }
@@ -433,7 +489,10 @@ function parseWorkbenchEvent(data: string): WorkbenchEvent | null {
     sourceRunId: parsed.sourceRunId ?? null,
     sourceKind: parsed.sourceKind ?? null,
     eventName: parsed.eventName,
+    schemaVersion: typeof parsed.schemaVersion === 'string' ? parsed.schemaVersion : undefined,
+    idempotencyKey: typeof parsed.idempotencyKey === 'string' ? parsed.idempotencyKey : null,
     payload: parsed.payload ?? {},
+    occurredAt: typeof parsed.occurredAt === 'string' ? parsed.occurredAt : undefined,
     createdAt: parsed.createdAt ?? '',
   };
 }
@@ -721,29 +780,19 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
   const eventsQuery = useWorkbenchEvents(api);
   const candidateItemsQuery = useCandidateReviewItems(api, session.sessionId);
   const detailOpenRequestsQuery = useDetailOpenRequests(api, session.sessionId);
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [rightDetailTab, setRightDetailTab] = useState<'candidates' | 'node'>('candidates');
   const [startError, setStartError] = useState('');
   const triageApproved = session.requirementTriage.status === 'approved';
   const sessionSourceKinds = useMemo(() => session.sourceCards.map((card) => card.sourceKind), [session.sourceCards]);
-  useEffect(() => {
-    if (sourceFilter !== 'all' && !sessionSourceKinds.includes(sourceFilter)) {
-      setSourceFilter('all');
-    }
-  }, [sessionSourceKinds, sourceFilter]);
   const allEvents = eventsQuery.data?.events;
   const sessionEvents = useMemo(
     () => (allEvents ?? []).filter((event) => event.sessionId === session.sessionId),
     [allEvents, session.sessionId],
   );
-  const visibleEvents = useMemo(
-    () => (sourceFilter === 'all' ? sessionEvents : sessionEvents.filter((event) => event.sourceKind === sourceFilter)),
-    [sessionEvents, sourceFilter],
-  );
   const strategyEvents = useMemo(
-    () => visibleEvents.filter((event) => event.eventName !== 'session_created'),
-    [visibleEvents],
+    () => sessionEvents.filter((event) => event.eventName !== 'session_created'),
+    [sessionEvents],
   );
   const candidateReviewItems = useMemo(() => candidateItemsQuery.data?.items ?? [], [candidateItemsQuery.data?.items]);
   const detailOpenRequests = useMemo(
@@ -754,10 +803,7 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
     () => buildRunStory({ session, events: sessionEvents, candidateReviewItems, detailOpenRequests, sourceFilter: 'all' }),
     [candidateReviewItems, detailOpenRequests, session, sessionEvents],
   );
-  const visibleStory = useMemo(
-    () => buildRunStory({ session, events: sessionEvents, candidateReviewItems, detailOpenRequests, sourceFilter }),
-    [candidateReviewItems, detailOpenRequests, session, sessionEvents, sourceFilter],
-  );
+  const visibleStory = sessionStory;
   const evidenceRefToGraphNodeId = useMemo(() => {
     const index = new Map<string, string>();
     const priorities = new Map<string, number>();
@@ -808,6 +854,12 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
     () => session.sourceCards.some((card) => isSourceRunnable(card, triageApproved)),
     [session.sourceCards, triageApproved],
   );
+  const triageHasInput = hasTriageInput(session.requirementTriage);
+  const canPrepareTriage = session.sourceCards.length > 0 && !triageHasInput;
+  const canStartAfterApproval = useMemo(
+    () => session.sourceCards.some((card) => isSourceRunnable(card, true)),
+    [session.sourceCards],
+  );
   const selectGraphNodeId = (nodeId: string) => {
     setSelectedGraphNodeId(nodeId);
     setRightDetailTab('node');
@@ -815,6 +867,33 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
   const handleSelectGraphNode = (node: RecruiterGraphNode) => {
     selectGraphNodeId(node.id);
   };
+  function patchSessionTriage(triage: WorkbenchRequirementTriage) {
+    queryClient.setQueryData<WorkbenchSession>(sessionKey(session.sessionId), (current) =>
+      current ? { ...current, requirementTriage: triage } : current,
+    );
+    queryClient.setQueryData<WorkbenchSessionListResponse>(sessionListKey, (current) =>
+      current
+        ? {
+            sessions: current.sessions.map((item) =>
+              item.sessionId === session.sessionId ? { ...item, requirementTriage: triage } : item,
+            ),
+          }
+        : current,
+    );
+  }
+  const prepareTriageMutation = useMutation({
+    mutationFn: () => api.prepareRequirementTriage(session.sessionId),
+    onMutate: () => setStartError(''),
+    onSuccess: (triage) => {
+      patchSessionTriage(triage);
+    },
+    onError: (error) => setStartError(error.message),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionKey(session.sessionId), exact: true });
+      void queryClient.invalidateQueries({ queryKey: sessionListKey, exact: true });
+      void queryClient.invalidateQueries({ queryKey: eventListKey(0), exact: true });
+    },
+  });
   const startSessionMutation = useMutation({
     mutationFn: () => api.startSession(session.sessionId),
     onMutate: () => setStartError(''),
@@ -824,6 +903,42 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
       void queryClient.invalidateQueries({ queryKey: sessionListKey, exact: true });
     },
   });
+  const approveAndStartMutation = useMutation({
+    mutationFn: async () => {
+      const triage = await api.approveRequirementTriage(session.sessionId);
+      patchSessionTriage(triage);
+      return api.startSession(session.sessionId);
+    },
+    onMutate: () => setStartError(''),
+    onError: (error) => setStartError(error.message),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionKey(session.sessionId), exact: true });
+      void queryClient.invalidateQueries({ queryKey: sessionListKey, exact: true });
+      void queryClient.invalidateQueries({ queryKey: eventListKey(0), exact: true });
+    },
+  });
+  const primaryActionLabel = !triageHasInput ? '启动 Agent' : triageApproved ? '启动检索' : '确认并开始检索';
+  const primaryActionDescription = !triageHasInput
+    ? 'Agent 将先拆解 JD，生成可确认的检索标准。'
+    : triageApproved
+      ? '启动本 session 已选择的检索源，后台事件会生成策略流程。'
+      : '确认 Agent 提取的标准后，启动本 session 已选择的检索源。';
+  const primaryActionPending =
+    prepareTriageMutation.isPending || approveAndStartMutation.isPending || startSessionMutation.isPending;
+  const primaryActionEnabled = !triageHasInput
+    ? canPrepareTriage
+    : triageApproved
+      ? canStartSession
+      : canStartAfterApproval;
+  const runPrimaryAction = () => {
+    if (!triageHasInput) {
+      prepareTriageMutation.mutate();
+    } else if (!triageApproved) {
+      approveAndStartMutation.mutate();
+    } else {
+      startSessionMutation.mutate();
+    }
+  };
   const requirementLines = session.jdText
     .split('\n')
     .map((line) => line.trim())
@@ -872,16 +987,15 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
 
       <section className="strategy-panel">
         <StrategyCanvas
-          events={strategyEvents}
           loading={eventsQuery.isLoading}
           error={eventsQuery.isError}
-          sourceFilter={sourceFilter}
-          onSourceFilterChange={setSourceFilter}
           sourceKinds={sessionSourceKinds}
-          canStart={canStartSession}
+          canStart={primaryActionEnabled}
           startError={startError}
-          starting={startSessionMutation.isPending}
-          onStart={() => startSessionMutation.mutate()}
+          starting={primaryActionPending}
+          onStart={runPrimaryAction}
+          startLabel={primaryActionLabel}
+          startDescription={primaryActionDescription}
           story={visibleStory}
           selectedNodeId={selectedGraphNodeId}
           onSelectNode={handleSelectGraphNode}
@@ -894,9 +1008,6 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
           loading={eventsQuery.isLoading}
           error={eventsQuery.isError}
           story={visibleStory}
-          sourceFilter={sourceFilter}
-          onSourceFilterChange={setSourceFilter}
-          sourceKinds={sessionSourceKinds}
           onSelectGraphNodeId={selectGraphNodeId}
         />
         <RightWorkbenchTabs
@@ -914,7 +1025,23 @@ function WorkbenchShell({ session }: { session: WorkbenchSession }) {
               <DetailOpenRequestQueue sessionId={session.sessionId} query={detailOpenRequestsQuery} />
             </>
           }
-          nodePanel={<NodeDetailPanel node={selectedGraphNode} />}
+          nodePanel={
+            <NodeDetailPanel
+              node={selectedGraphNode}
+              candidatePanel={
+                selectedGraphNode ? (
+                  <>
+                    {graphNodeSupportsCandidates(selectedGraphNode) ? (
+                      <GraphNodeCandidateList sessionId={session.sessionId} node={selectedGraphNode} />
+                    ) : null}
+                    {selectedGraphNode.detailKind === 'liepinDetailApproval' ? (
+                      <DetailOpenRequestQueue sessionId={session.sessionId} query={detailOpenRequestsQuery} />
+                    ) : null}
+                  </>
+                ) : null
+              }
+            />
+          }
         />
       </section>
     </div>
@@ -969,6 +1096,235 @@ function RightWorkbenchTabs({
       </div>
     </div>
   );
+}
+
+function graphNodeSupportsCandidates(node: RecruiterGraphNode) {
+  return (
+    node.detailKind === 'ctsRoundResults' ||
+    node.detailKind === 'ctsRoundScoring' ||
+    node.detailKind === 'liepinCardSearch' ||
+    node.detailKind === 'liepinCardCandidates' ||
+    node.detailKind === 'liepinDetailApproval' ||
+    node.detailKind === 'aggregation'
+  );
+}
+
+function GraphNodeCandidateList({ sessionId, node }: { sessionId: string; node: RecruiterGraphNode }) {
+  const { api } = useWorkbenchRuntime();
+  const query = useGraphCandidates(api, sessionId, node.id);
+  const pages = query.data?.pages ?? [];
+  const currentPages = pages.filter((page) => page.nodeId === node.id);
+  const lastPage = currentPages[currentPages.length - 1];
+  const items = currentPages.flatMap((page) => page.items);
+  const total = lastPage?.totalEstimate ?? items.length;
+  const recoveryState = lastPage?.recoveryState;
+
+  return (
+    <div className="graph-candidate-panel">
+      <div className="graph-candidate-heading">
+        <span>节点候选人</span>
+        <strong>{query.isLoading ? '加载中' : `${String(items.length)} / ${String(total)}`}</strong>
+      </div>
+      {query.isLoading ? <p className="muted">正在读取这个节点对应的候选人...</p> : null}
+      {query.isError ? <p className="form-error" role="alert">无法读取节点候选人</p> : null}
+      {!query.isLoading && !query.isError && recoveryState === 'recoverable_empty' ? (
+        <div className="queue-empty compact-empty">
+          <strong>候选人索引需要恢复</strong>
+          <span>{lastPage?.recoveryReason ?? '该节点的候选人关系暂时不可读取。'}</span>
+        </div>
+      ) : null}
+      {!query.isLoading && !query.isError && recoveryState !== 'recoverable_empty' && items.length === 0 ? (
+        <div className="queue-empty compact-empty">
+          <strong>暂无候选人明细</strong>
+          <span>该节点还没有可展示的候选人摘要。</span>
+        </div>
+      ) : null}
+      {items.length > 0 ? (
+        <div className="graph-candidate-list">
+          {items.map((candidate) => (
+            <GraphNodeCandidateCard key={candidate.graphCandidateId} sessionId={sessionId} candidate={candidate} />
+          ))}
+        </div>
+      ) : null}
+      {query.hasNextPage ? (
+        <button
+          className="secondary-link graph-candidate-more"
+          type="button"
+          disabled={query.isFetchingNextPage}
+          onClick={() => void query.fetchNextPage()}
+        >
+          {query.isFetchingNextPage ? '加载中' : '加载更多候选人'}
+        </button>
+      ) : null}
+      {!query.hasNextPage && lastPage?.truncated ? <p className="muted">候选人列表已按安全上限截断。</p> : null}
+    </div>
+  );
+}
+
+function GraphNodeCandidateCard({
+  sessionId,
+  candidate,
+}: {
+  sessionId: string;
+  candidate: WorkbenchGraphCandidateSummary;
+}) {
+  const { api } = useWorkbenchRuntime();
+  const [expanded, setExpanded] = useState(false);
+  const snapshotQuery = useGraphCandidateResumeSnapshot(api, sessionId, candidate.graphCandidateId, expanded && candidate.canExpandResume);
+  const subtitle = [candidate.title, candidate.company, candidate.location].filter(Boolean).join(' · ');
+
+  return (
+    <article className={`graph-candidate-card ${expanded ? 'expanded' : ''}`}>
+      <div className="candidate-card-head">
+        <div>
+          <strong>{candidate.displayName}</strong>
+          <span>{subtitle || relationshipLabel(candidate.relationshipKind)}</span>
+        </div>
+        <div className="score-badge">{candidate.score ?? '-'}</div>
+      </div>
+      <div className="badge-row">
+        {candidate.sourceBadges.map((badge) => (
+          <span key={badge} className="source-badge">
+            {badge}
+          </span>
+        ))}
+        <span className="source-badge muted-badge">{relationshipLabel(candidate.relationshipKind)}</span>
+        {candidate.fitBucket ? <span className="source-badge muted-badge">{candidate.fitBucket}</span> : null}
+      </div>
+      <p className="graph-candidate-summary">{candidate.summary || '暂无简介'}</p>
+      {candidate.matchedMustHaves.length > 0 ? <CandidateFactList label="Must" values={candidate.matchedMustHaves} /> : null}
+      {candidate.missingRisks.length > 0 ? <CandidateFactList label="Risk" values={candidate.missingRisks} /> : null}
+      <div className="candidate-actions">
+        <button
+          className="secondary-link"
+          type="button"
+          disabled={!candidate.canExpandResume}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? '收起完整简历' : candidate.canExpandResume ? '展开完整简历' : '完整简历不可用'}
+        </button>
+      </div>
+      {expanded ? (
+        <ResumeSnapshotView candidate={candidate} query={snapshotQuery} />
+      ) : null}
+    </article>
+  );
+}
+
+function ResumeSnapshotView({
+  candidate,
+  query,
+}: {
+  candidate: WorkbenchGraphCandidateSummary;
+  query: ReturnType<typeof useGraphCandidateResumeSnapshot>;
+}) {
+  if (query.isLoading) {
+    return <p className="muted">正在读取安全简历快照...</p>;
+  }
+  if (query.isError) {
+    return <p className="form-error" role="alert">无法读取简历快照</p>;
+  }
+  const snapshot = query.data;
+  if (!snapshot) {
+    return null;
+  }
+  if (snapshot.status !== 'ready') {
+    return (
+      <div className="resume-snapshot">
+        <strong>{resumeSnapshotStatusLabel(snapshot.status)}</strong>
+        <p>{snapshot.reason ?? '该简历快照暂时不可展示。'}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="resume-snapshot" data-testid={`resume-snapshot-${candidate.graphCandidateId}`}>
+      {snapshot.profile ? (
+        <section>
+          <strong>{snapshot.profile.displayName}</strong>
+          <p>{[snapshot.profile.headline, snapshot.profile.company, snapshot.profile.location].filter(Boolean).join(' · ')}</p>
+          {snapshot.profile.summary ? <p>{snapshot.profile.summary}</p> : null}
+        </section>
+      ) : null}
+      <ResumeSnapshotList
+        title="工作经历"
+        items={snapshot.workExperience.map((item) => ({
+          key: `${item.company}-${item.title}-${item.duration ?? ''}`,
+          title: [item.title, item.company, item.duration].filter(Boolean).join(' · '),
+          body: item.summary,
+        }))}
+      />
+      <ResumeSnapshotList
+        title="教育经历"
+        items={snapshot.education.map((item) => ({
+          key: `${item.school}-${item.degree ?? ''}-${item.major ?? ''}`,
+          title: item.school,
+          body: [item.degree, item.major].filter(Boolean).join(' · '),
+        }))}
+      />
+      <ResumeSnapshotList
+        title="项目"
+        items={snapshot.projects.map((item) => ({
+          key: item.name,
+          title: item.name,
+          body: item.summary,
+        }))}
+      />
+      {snapshot.skills.length > 0 ? <CandidateFactList label="Skills" values={snapshot.skills} /> : null}
+      {snapshot.sourceEvidence.length > 0 ? (
+        <ResumeSnapshotList
+          title="证据"
+          items={snapshot.sourceEvidence.map((item) => ({
+            key: `${item.label}-${item.text}`,
+            title: item.label,
+            body: item.text,
+          }))}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ResumeSnapshotList({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{ key: string; title: string; body: string | null }>;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <section className="resume-snapshot-section">
+      <span>{title}</span>
+      <ul>
+        {items.map((item) => (
+          <li key={item.key}>
+            <strong>{item.title}</strong>
+            {item.body ? <p>{item.body}</p> : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function relationshipLabel(kind: WorkbenchGraphCandidateSummary['relationshipKind']) {
+  if (kind === 'new') return '新增召回';
+  if (kind === 'recalled') return '召回';
+  if (kind === 'scored') return '已评分';
+  if (kind === 'fit') return '匹配';
+  if (kind === 'not_fit') return '不匹配';
+  if (kind === 'final') return '入围';
+  return '详情请求';
+}
+
+function resumeSnapshotStatusLabel(status: WorkbenchGraphCandidateResumeSnapshot['status']) {
+  if (status === 'snapshot_forbidden') return '简历快照受限';
+  if (status === 'snapshot_not_found') return '未找到简历快照';
+  if (status === 'snapshot_redacted') return '简历快照已脱敏';
+  return '简历快照不可用';
 }
 
 function CandidateReviewQueue({
@@ -1491,6 +1847,28 @@ function RequirementTriageGate({ session, runtimeStory }: { session: WorkbenchSe
 
   const approved = session.requirementTriage.status === 'approved';
   const mutating = saveMutation.isPending || approveMutation.isPending;
+  const hasSavedTriage = hasTriageInput(session.requirementTriage);
+
+  if (!hasSavedTriage && !dirty) {
+    return (
+      <section className="triage-gate triage-gate-placeholder">
+        <div className="triage-head">
+          <div>
+            <p className="section-label">Requirement triage gate</p>
+            <h3>Search criteria</h3>
+          </div>
+          <span className="status-pill">{session.requirementTriage.status}</span>
+        </div>
+        {hasRuntimeCriteria ? (
+          <RuntimeCriteriaSummary criteria={runtimeStory.criteria} onUse={useRuntimeCriteria} />
+        ) : (
+          <p className="triage-empty-copy">
+            Agent 将先拆解 JD，自动生成 must-have、nice-to-have、排除项和检索提示。生成后你可以在这里审阅和微调。
+          </p>
+        )}
+      </section>
+    );
+  }
 
   return (
     <form className="triage-gate" onSubmit={submit}>
@@ -1521,7 +1899,7 @@ function RequirementTriageGate({ session, runtimeStory }: { session: WorkbenchSe
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="triage-actions">
         <button className="secondary-link" type="submit" disabled={mutating}>
-          Save triage
+          保存标准
         </button>
         <button
           className="primary-action"
@@ -1529,7 +1907,7 @@ function RequirementTriageGate({ session, runtimeStory }: { session: WorkbenchSe
           disabled={mutating || approved}
           onClick={() => approveMutation.mutate(formToTriageInput(form))}
         >
-          Approve triage
+          确认标准
         </button>
       </div>
     </form>
@@ -1859,12 +2237,16 @@ function SourceCard({
 function ReadyStatePanel({
   canStart,
   onStart,
+  startDescription = 'Agent 将先拆解 JD，生成可确认的检索标准。',
   startError,
+  startLabel = '启动 Agent',
   starting,
 }: {
   canStart?: boolean;
   onStart?: () => void;
+  startDescription?: string;
   startError?: string;
+  startLabel?: string;
   starting?: boolean;
 }) {
   return (
@@ -1873,12 +2255,10 @@ function ReadyStatePanel({
         AI
       </div>
       <h2>准备就绪</h2>
-      <p>
-        确认左侧 Search criteria 后，启动本 session 已选择的检索源。这里会随着后台事件生成策略流程。
-      </p>
+      <p>{startDescription}</p>
       {onStart && (canStart || startError) ? (
         <button className="central-start" type="button" disabled={!canStart || starting} onClick={onStart}>
-          {starting ? '启动中' : '启动检索'}
+          {starting ? '处理中' : startLabel}
         </button>
       ) : null}
       {startError ? <p className="form-error" role="alert">{startError}</p> : null}
@@ -1886,53 +2266,28 @@ function ReadyStatePanel({
   );
 }
 
-function SourceFilterControl({
-  sourceFilter,
-  onSourceFilterChange,
-  sourceKinds,
-  label = 'Source',
-}: {
-  sourceFilter: SourceFilter;
-  onSourceFilterChange: (source: SourceFilter) => void;
-  sourceKinds: SourceKind[];
-  label?: string;
-}) {
-  return (
-    <label className="canvas-filter">
-      <span>{label}</span>
-      <select value={sourceFilter} onChange={(event) => onSourceFilterChange(event.target.value as SourceFilter)}>
-        <option value="all">All sources</option>
-        {sourceKinds.includes('cts') ? <option value="cts">CTS</option> : null}
-        {sourceKinds.includes('liepin') ? <option value="liepin">Liepin</option> : null}
-      </select>
-    </label>
-  );
-}
-
 function StrategyCanvas({
-  events,
   loading,
   error,
-  sourceFilter,
-  onSourceFilterChange,
   sourceKinds,
   canStart,
   onStart,
   startError,
+  startDescription,
+  startLabel,
   starting,
   story,
   selectedNodeId,
   onSelectNode,
 }: {
-  events: WorkbenchEvent[];
   loading: boolean;
   error: boolean;
-  sourceFilter: SourceFilter;
-  onSourceFilterChange: (source: SourceFilter) => void;
   sourceKinds: SourceKind[];
   canStart: boolean;
   onStart: () => void;
   startError: string;
+  startDescription: string;
+  startLabel: string;
   starting: boolean;
   story: RunStory;
   selectedNodeId: string | null;
@@ -1951,12 +2306,18 @@ function StrategyCanvas({
           <span className="section-label">检索策略图</span>
           <span className="mono-line">节点 {nodeCount} / {nodeTotal}</span>
         </div>
-        <SourceFilterControl sourceFilter={sourceFilter} onSourceFilterChange={onSourceFilterChange} sourceKinds={sourceKinds} />
       </div>
       {loading ? <div className="canvas-ready compact">Loading timeline</div> : null}
       {error ? <div className="canvas-ready compact" role="alert">Could not load timeline</div> : null}
       {!loading && !error && nodes.length === 0 ? (
-        <ReadyStatePanel canStart={canStart} onStart={onStart} startError={startError} starting={starting} />
+        <ReadyStatePanel
+          canStart={canStart}
+          onStart={onStart}
+          startDescription={startDescription}
+          startError={startError}
+          startLabel={startLabel}
+          starting={starting}
+        />
       ) : null}
       {nodes.length > 0 ? (
         <div className="strategy-canvas" data-testid="strategy-canvas">
@@ -1975,12 +2336,12 @@ function StrategyCanvas({
             ))}
           </div>
           <div className="graph-grid" aria-hidden="true" />
-          {sourceFilter === 'all' && activeLaneKinds.length > 1 ? <SourceLaneBands sourceKinds={activeLaneKinds} /> : null}
+          {activeLaneKinds.length > 1 ? <SourceLaneBands sourceKinds={activeLaneKinds} /> : null}
           <StrategyGraph story={story} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} />
           {canStart || startError ? (
             <div className="canvas-start-overlay">
               <button className="central-start" type="button" disabled={!canStart || starting} onClick={onStart}>
-                {starting ? '启动中' : '启动检索'}
+                {starting ? '处理中' : startLabel}
               </button>
               {startError ? <p className="form-error" role="alert">{startError}</p> : null}
             </div>
@@ -2015,34 +2376,22 @@ function ActivityLog({
   loading,
   error,
   story,
-  sourceFilter,
-  onSourceFilterChange,
-  sourceKinds,
   onSelectGraphNodeId,
 }: {
   events: WorkbenchEvent[];
   loading: boolean;
   error: boolean;
   story: RunStory;
-  sourceFilter: SourceFilter;
-  onSourceFilterChange: (source: SourceFilter) => void;
-  sourceKinds: SourceKind[];
   onSelectGraphNodeId: (nodeId: string) => void;
 }) {
   const hasStory = story.logEntries.length > 0;
-  const businessEvents = hasStory ? story.logEntries.slice(-10) : [];
+  const businessEvents = hasStory ? story.logEntries : [];
   const [showDeveloperLog, setShowDeveloperLog] = useState(false);
 
   return (
     <div className="right-log">
       <div className="right-section-head">
         <p className="section-label">运行笔记</p>
-        <SourceFilterControl
-          sourceFilter={sourceFilter}
-          onSourceFilterChange={onSourceFilterChange}
-          sourceKinds={sourceKinds}
-          label="View"
-        />
       </div>
       {loading ? <p className="muted">Loading timeline</p> : null}
       {error ? <p className="form-error" role="alert">Could not load timeline</p> : null}

@@ -794,6 +794,42 @@ class FlywheelStore:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def query_resume_hits_with_queries_for_run_round(self, *, run_id: str, round_no: int) -> list[dict[str, Any]]:
+        rows = self.connect().execute(
+            """
+            SELECT
+                hits.*,
+                run_queries.query_role AS query_role,
+                run_queries.keyword_query AS keyword_query,
+                run_queries.query_terms_json AS query_terms_json,
+                run_queries.created_at AS query_created_at
+            FROM query_resume_hits AS hits
+            LEFT JOIN run_queries
+              ON run_queries.run_id = hits.run_id
+             AND run_queries.query_instance_id = hits.query_instance_id
+            WHERE hits.run_id = ? AND hits.round_no = ?
+            ORDER BY hits.round_no ASC,
+                     hits.lane_type ASC,
+                     hits.query_instance_id ASC,
+                     hits.rank_in_query ASC,
+                     hits.resume_id ASC
+            """,
+            (run_id, round_no),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def round_numbers_for_run(self, *, run_id: str) -> list[int]:
+        rows = self.connect().execute(
+            """
+            SELECT DISTINCT round_no
+            FROM query_resume_hits
+            WHERE run_id = ?
+            ORDER BY round_no ASC
+            """,
+            (run_id,),
+        ).fetchall()
+        return [int(row["round_no"]) for row in rows]
+
     def query_hits_for_run(self, *, run_id: str) -> list[dict[str, Any]]:
         rows = self.connect().execute(
             """

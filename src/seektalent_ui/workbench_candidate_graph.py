@@ -1,0 +1,620 @@
+from __future__ import annotations
+
+import base64
+import binascii
+import hashlib
+import hmac
+import json
+import re
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Literal
+
+from seektalent.config import AppSettings
+from seektalent.corpus.store import CorpusStore
+from seektalent.flywheel.store import FlywheelStore
+from seektalent_ui.models import WorkbenchGraphCandidateListResponse, WorkbenchGraphCandidateSummaryResponse
+from seektalent_ui.workbench_store import DEFAULT_TENANT_ID, WorkbenchCandidateEvidence, WorkbenchStore, WorkbenchUser
+
+
+MAX_GRAPH_CANDIDATE_LIMIT = 100
+DEFAULT_GRAPH_CANDIDATE_LIMIT = 50
+
+
+@dataclass(frozen=True)
+class GraphNodeRef:
+    node_id: str
+    source_kind: Literal["cts", "liepin", "all"]
+    node_kind: Literal["recall", "scoring", "final", "liepin_card", "detail_approval"]
+    round_no: int | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedGraphCandidate:
+    summary: WorkbenchGraphCandidateSummaryResponse
+    snapshot_sha256: str | None
+
+
+def parse_graph_node_ref(node_id: str) -> GraphNodeRef | None:
+    recall_match = re.fullmatch(r"cts-round-(\d+)-result", node_id)
+    if recall_match:
+        return GraphNodeRef(node_id=node_id, source_kind="cts", node_kind="recall", round_no=int(recall_match.group(1)))
+    score_match = re.fullmatch(r"cts-round-(\d+)-score", node_id)
+    if score_match:
+        return GraphNodeRef(node_id=node_id, source_kind="cts", node_kind="scoring", round_no=int(score_match.group(1)))
+    if node_id == "final-shortlist":
+        return GraphNodeRef(node_id=node_id, source_kind="all", node_kind="final")
+    if node_id in {"liepin-card-search", "liepin-card-candidates"}:
+        return GraphNodeRef(node_id=node_id, source_kind="liepin", node_kind="liepin_card")
+    if node_id == "liepin-detail-approval":
+        return GraphNodeRef(node_id=node_id, source_kind="liepin", node_kind="detail_approval")
+    return None
+
+
+def list_graph_candidates(
+    *,
+    settings: AppSettings,
+    graph_secret: str,
+    store: WorkbenchStore,
+    user: WorkbenchUser,
+    session_id: str,
+    node_id: str,
+    limit: int,
+    cursor: str | None,
+) -> WorkbenchGraphCandidateListResponse | None:
+    node = parse_graph_node_ref(node_id)
+    if node is None:
+        return None
+    if store.get_workbench_session(user=user, session_id=session_id) is None:
+        return None
+    safe_limit = min(max(limit, 1), MAX_GRAPH_CANDIDATE_LIMIT)
+    offset = _decode_cursor(cursor, session_id=session_id, node_id=node_id, secret=graph_secret) if cursor else 0
+    if offset is None:
+        return None
+    candidates = _all_candidates(
+        settings=settings,
+        graph_secret=graph_secret,
+        store=store,
+        user=user,
+        session_id=session_id,
+        node=node,
+    )
+    if candidates is None:
+        return WorkbenchGraphCandidateListResponse(
+            nodeId=node_id,
+            items=[],
+            nextCursor=None,
+            totalEstimate=0,
+            truncated=False,
+            generatedAt=_now_iso(),
+            recoveryState="recoverable_empty",
+            recoveryReason="runtime_link_missing",
+        )
+
+    total = len(candidates)
+    page = candidates[offset : offset + safe_limit]
+    next_offset = offset + safe_limit
+    next_cursor = None
+    if next_offset < total:
+        next_cursor = _encode_cursor(next_offset, session_id=session_id, node_id=node_id, secret=graph_secret)
+    return WorkbenchGraphCandidateListResponse(
+        nodeId=node_id,
+        items=[candidate.summary for candidate in page],
+        nextCursor=next_cursor,
+        totalEstimate=total,
+        truncated=next_cursor is not None,
+        generatedAt=_now_iso(),
+    )
+
+
+def resolve_graph_candidate(
+    *,
+    settings: AppSettings,
+    graph_secret: str,
+    store: WorkbenchStore,
+    user: WorkbenchUser,
+    session_id: str,
+    graph_candidate_id: str,
+    node_id: str | None = None,
+) -> ResolvedGraphCandidate | None:
+    if store.get_workbench_session(user=user, session_id=session_id) is None:
+        return None
+    for node in _candidate_node_refs(settings=settings, store=store, user=user, session_id=session_id, node_id=node_id):
+        candidates = _all_candidates(
+            settings=settings,
+            graph_secret=graph_secret,
+            store=store,
+            user=user,
+            session_id=session_id,
+            node=node,
+        )
+        if candidates is None:
+            continue
+        for candidate in candidates:
+            if hmac.compare_digest(candidate.summary.graphCandidateId, graph_candidate_id):
+                return candidate
+    return None
+
+
+def _all_candidates(
+    *,
+    settings: AppSettings,
+    graph_secret: str,
+    store: WorkbenchStore,
+    user: WorkbenchUser,
+    session_id: str,
+    node: GraphNodeRef,
+) -> list[ResolvedGraphCandidate] | None:
+    if node.source_kind == "cts" and node.node_kind in {"recall", "scoring"}:
+        link = store.get_scoped_source_run_runtime_link(user=user, session_id=session_id, source_kind="cts")
+        if link is None or not link.runtime_run_id or node.round_no is None:
+            return None
+        return _cts_round_candidates(
+            settings=settings,
+            graph_secret=graph_secret,
+            user=user,
+            session_id=session_id,
+            source_run_id=link.source_run_id,
+            runtime_run_id=link.runtime_run_id,
+            node=node,
+        )
+    if node.node_kind == "detail_approval":
+        return _liepin_detail_approval_candidates(
+            settings=settings,
+            graph_secret=graph_secret,
+            store=store,
+            user=user,
+            session_id=session_id,
+            node=node,
+        )
+    return _review_backed_candidates(
+        settings=settings,
+        graph_secret=graph_secret,
+        store=store,
+        user=user,
+        session_id=session_id,
+        node=node,
+    )
+
+
+def _cts_round_candidates(
+    *,
+    settings: AppSettings,
+    graph_secret: str,
+    user: WorkbenchUser,
+    session_id: str,
+    source_run_id: str,
+    runtime_run_id: str,
+    node: GraphNodeRef,
+) -> list[ResolvedGraphCandidate]:
+    flywheel = FlywheelStore(settings.flywheel_path)
+    corpus = CorpusStore(settings.corpus_path)
+    rows = flywheel.query_resume_hits_with_queries_for_run_round(run_id=runtime_run_id, round_no=node.round_no or 0)
+    docs = corpus.get_resume_documents_by_snapshot_sha256(
+        tenant_id=DEFAULT_TENANT_ID,
+        workspace_id=user.workspace_id,
+        snapshot_sha256_values=[row["snapshot_sha256"] for row in rows if row.get("snapshot_sha256")],
+    )
+    candidates: list[ResolvedGraphCandidate] = []
+    for row in rows:
+        if node.node_kind == "scoring" and row.get("scored_fit_bucket") is None and row.get("overall_score") is None:
+            continue
+        snapshot_sha256 = row.get("snapshot_sha256")
+        doc = docs.get(snapshot_sha256 or "")
+        if doc is None:
+            continue
+        can_materialize = _snapshot_materialization_allowed(doc)
+        candidate_key = str(row["resume_id"])
+        graph_id = _graph_candidate_id(
+            graph_secret,
+            session_id=session_id,
+            node_id=node.node_id,
+            source_run_id=source_run_id,
+            candidate_key=candidate_key,
+            snapshot_sha256=snapshot_sha256,
+        )
+        sections = _json_object(doc.get("normalized_sections_json")) if can_materialize else {}
+        profile = _json_object(sections.get("profile")) if can_materialize else {}
+        locations = _json_list(doc.get("locations_json")) if can_materialize else []
+        score = _int_or_none(row.get("overall_score"))
+        fit_bucket = _text(row.get("scored_fit_bucket"), 64)
+        relationship = _relationship_for_cts(node.node_kind, row)
+        summary = _safe_text(profile.get("summary"), 500) if can_materialize else None
+        candidates.append(
+            ResolvedGraphCandidate(
+                summary=WorkbenchGraphCandidateSummaryResponse(
+                    graphCandidateId=graph_id,
+                    sourceKind="cts",
+                    sourceRunId=source_run_id,
+                    nodeKind=node.node_kind,
+                    roundNo=node.round_no,
+                    laneType=_text(row.get("lane_type"), 80),
+                    queryRole=_text(row.get("query_role"), 80),
+                    relationshipKind=relationship,
+                    displayName=_safe_text(profile.get("name"), 160) or ("Candidate" if not can_materialize else f"Candidate {candidate_key[-8:]}"),
+                    title=(_safe_text(doc.get("current_title"), 160) if can_materialize else "") or "",
+                    company=(_safe_text(doc.get("current_company"), 160) if can_materialize else "") or "",
+                    location=(_safe_text(locations[0], 160) if locations and can_materialize else "") or "",
+                    sourceBadges=["CTS"],
+                    score=score,
+                    fitBucket=fit_bucket,
+                    summary=summary or "",
+                    matchedMustHaves=[],
+                    strengths=[],
+                    missingRisks=[],
+                    reviewItemId=None,
+                    evidenceLevel=None,
+                    detailOpenRequestId=None,
+                    canExpandResume=bool(snapshot_sha256 and can_materialize),
+                    canMarkPromising=False,
+                    canReject=False,
+                    canSaveNote=False,
+                    canRequestDetail=False,
+                    canOpenProvider=False,
+                ),
+                snapshot_sha256=snapshot_sha256,
+            )
+        )
+    if node.node_kind == "scoring":
+        return sorted(candidates, key=lambda candidate: _cts_sort_key(candidate.summary, node.node_kind))
+    return candidates
+
+
+def _review_backed_candidates(
+    *,
+    settings: AppSettings,
+    graph_secret: str,
+    store: WorkbenchStore,
+    user: WorkbenchUser,
+    session_id: str,
+    node: GraphNodeRef,
+) -> list[ResolvedGraphCandidate]:
+    items = store.list_candidate_review_items(user=user, session_id=session_id)
+    if items is None:
+        return []
+    candidates: list[ResolvedGraphCandidate] = []
+    for item in items:
+        evidence = _select_review_evidence(item.evidence, node)
+        if evidence is None:
+            continue
+        source_run_id = evidence.source_run_id
+        graph_id = _graph_candidate_id(
+            graph_secret,
+            session_id=session_id,
+            node_id=node.node_id,
+            source_run_id=source_run_id,
+            candidate_key=item.review_item_id,
+            snapshot_sha256=evidence.resume_id if evidence is not None else None,
+        )
+        candidates.append(
+            ResolvedGraphCandidate(
+                summary=WorkbenchGraphCandidateSummaryResponse(
+                    graphCandidateId=graph_id,
+                    sourceKind=evidence.source_kind,
+                    sourceRunId=source_run_id,
+                    nodeKind=node.node_kind,
+                    roundNo=None,
+                    laneType=None,
+                    queryRole=None,
+                    relationshipKind="final" if node.node_kind == "final" else "detail_requested",
+                    displayName=item.display_name,
+                    title=item.title,
+                    company=item.company,
+                    location=item.location,
+                    sourceBadges=item.source_badges,
+                    score=item.aggregate_score if item.aggregate_score is not None else evidence.score,
+                    fitBucket=item.fit_bucket or evidence.fit_bucket,
+                    summary=item.summary,
+                    matchedMustHaves=item.matched_must_haves or evidence.matched_must_haves,
+                    strengths=item.strengths or evidence.strengths,
+                    missingRisks=item.missing_risks or evidence.missing_risks,
+                    reviewItemId=item.review_item_id,
+                    evidenceLevel=evidence.evidence_level,
+                    detailOpenRequestId=None,
+                    canExpandResume=False,
+                    canMarkPromising=True,
+                    canReject=True,
+                    canSaveNote=True,
+                    canRequestDetail=evidence.source_kind == "liepin",
+                    canOpenProvider=evidence.source_kind == "liepin",
+                ),
+                snapshot_sha256=None,
+            )
+        )
+    return sorted(candidates, key=lambda candidate: (-(candidate.summary.score or -1), candidate.summary.reviewItemId or ""))
+
+
+def _liepin_detail_approval_candidates(
+    *,
+    settings: AppSettings,
+    graph_secret: str,
+    store: WorkbenchStore,
+    user: WorkbenchUser,
+    session_id: str,
+    node: GraphNodeRef,
+) -> list[ResolvedGraphCandidate]:
+    requests = store.list_liepin_detail_open_requests(user=user, session_id=session_id)
+    items = store.list_candidate_review_items(user=user, session_id=session_id) or []
+    items_by_id = {item.review_item_id: item for item in items}
+    candidates: list[ResolvedGraphCandidate] = []
+    for request in requests:
+        item = items_by_id.get(request.review_item_id)
+        evidence = _select_source_evidence(item.evidence, "liepin") if item is not None and item.evidence else None
+        candidate = request.candidate
+        source_run_id = evidence.source_run_id if evidence is not None else ""
+        graph_id = _graph_candidate_id(
+            graph_secret,
+            session_id=session_id,
+            node_id=node.node_id,
+            source_run_id=source_run_id,
+            candidate_key=request.request_id,
+            snapshot_sha256=None,
+        )
+        candidates.append(
+            ResolvedGraphCandidate(
+                summary=WorkbenchGraphCandidateSummaryResponse(
+                    graphCandidateId=graph_id,
+                    sourceKind="liepin",
+                    sourceRunId=source_run_id,
+                    nodeKind=node.node_kind,
+                    roundNo=None,
+                    laneType=None,
+                    queryRole=None,
+                    relationshipKind="detail_requested",
+                    displayName=(candidate.display_name if candidate is not None else item.display_name if item is not None else ""),
+                    title=(candidate.title if candidate is not None else item.title if item is not None else ""),
+                    company=(candidate.company if candidate is not None else item.company if item is not None else ""),
+                    location=(candidate.location if candidate is not None else item.location if item is not None else ""),
+                    sourceBadges=(candidate.source_badges if candidate is not None else item.source_badges if item is not None else ["Liepin"]),
+                    score=(candidate.aggregate_score if candidate is not None else item.aggregate_score if item is not None else None),
+                    fitBucket=(item.fit_bucket if item is not None else None),
+                    summary=(candidate.summary if candidate is not None else item.summary if item is not None else ""),
+                    matchedMustHaves=(candidate.matched_must_haves if candidate is not None else item.matched_must_haves if item is not None else []),
+                    strengths=(item.strengths if item is not None else []),
+                    missingRisks=(candidate.missing_risks if candidate is not None else item.missing_risks if item is not None else []),
+                    reviewItemId=request.review_item_id,
+                    evidenceLevel=(candidate.evidence_level if candidate is not None else item.evidence_level if item is not None else None),
+                    detailOpenRequestId=request.request_id,
+                    canExpandResume=False,
+                    canMarkPromising=item is not None,
+                    canReject=item is not None,
+                    canSaveNote=item is not None,
+                    canRequestDetail=False,
+                    canOpenProvider=request.provider_action is not None,
+                ),
+                snapshot_sha256=None,
+            )
+        )
+    return candidates
+
+
+def _relationship_for_cts(node_kind: str, row: dict[str, object]) -> str:
+    if node_kind == "scoring":
+        fit_bucket = row.get("scored_fit_bucket")
+        if fit_bucket == "fit":
+            return "fit"
+        if fit_bucket == "not_fit":
+            return "not_fit"
+        return "scored"
+    return "new" if row.get("was_new_to_pool") else "recalled"
+
+
+def _cts_sort_key(summary: WorkbenchGraphCandidateSummaryResponse, node_kind: str) -> tuple[object, ...]:
+    if node_kind == "scoring":
+        fit_order = {"fit": 0, "near_fit": 1, "not_fit": 2}
+        return (fit_order.get(summary.fitBucket or "", 99), -(summary.score or -1), summary.displayName)
+    return (summary.roundNo or 0, summary.laneType or "", summary.displayName)
+
+
+def _select_review_evidence(
+    evidence: list[WorkbenchCandidateEvidence],
+    node: GraphNodeRef,
+) -> WorkbenchCandidateEvidence | None:
+    if node.source_kind in {"cts", "liepin"}:
+        return _select_source_evidence(evidence, node.source_kind)
+    return _strongest_evidence(evidence)
+
+
+def _select_source_evidence(
+    evidence: list[WorkbenchCandidateEvidence],
+    source_kind: Literal["cts", "liepin"],
+) -> WorkbenchCandidateEvidence | None:
+    return _strongest_evidence([item for item in evidence if item.source_kind == source_kind])
+
+
+def _strongest_evidence(evidence: list[WorkbenchCandidateEvidence]) -> WorkbenchCandidateEvidence | None:
+    if not evidence:
+        return None
+    level_rank = {"detail": 0, "final": 1, "card": 2}
+    return sorted(
+        evidence,
+        key=lambda item: (
+            level_rank.get(item.evidence_level, 99),
+            -(item.score or -1),
+            item.created_at,
+            item.evidence_id,
+        ),
+    )[0]
+
+
+def _graph_candidate_id(
+    secret: str,
+    *,
+    session_id: str,
+    node_id: str,
+    source_run_id: str,
+    candidate_key: str,
+    snapshot_sha256: str | None,
+) -> str:
+    payload = json.dumps(
+        {
+            "session_id": session_id,
+            "node_id": node_id,
+            "source_run_id": source_run_id,
+            "candidate_key": candidate_key,
+            "snapshot_sha256": snapshot_sha256,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).digest()
+    return "gc_" + base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def _encode_cursor(offset: int, *, session_id: str, node_id: str, secret: str) -> str:
+    offset_bytes = offset.to_bytes(8, byteorder="big", signed=False)
+    pad = _cursor_pad(secret=secret, session_id=session_id, node_id=node_id)
+    masked_offset = bytes(left ^ right for left, right in zip(offset_bytes, pad, strict=True))
+    signature = hmac.new(
+        secret.encode("utf-8"),
+        b"cursor-v1:" + session_id.encode("utf-8") + b":" + node_id.encode("utf-8") + b":" + masked_offset,
+        hashlib.sha256,
+    ).digest()[:16]
+    return "cur_" + base64.urlsafe_b64encode(masked_offset + signature).decode("ascii").rstrip("=")
+
+
+def _decode_cursor(cursor: str, *, session_id: str, node_id: str, secret: str) -> int | None:
+    if not cursor.startswith("cur_"):
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(cursor[4:] + "=" * (-len(cursor[4:]) % 4))
+    except (ValueError, binascii.Error):
+        return None
+    if len(raw) != 24:
+        return None
+    masked_offset = raw[:8]
+    signature = raw[8:]
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        b"cursor-v1:" + session_id.encode("utf-8") + b":" + node_id.encode("utf-8") + b":" + masked_offset,
+        hashlib.sha256,
+    ).digest()[:16]
+    if not hmac.compare_digest(signature, expected):
+        return None
+    pad = _cursor_pad(secret=secret, session_id=session_id, node_id=node_id)
+    offset_bytes = bytes(left ^ right for left, right in zip(masked_offset, pad, strict=True))
+    return int.from_bytes(offset_bytes, byteorder="big", signed=False)
+
+
+def _cursor_pad(*, secret: str, session_id: str, node_id: str) -> bytes:
+    return hmac.new(
+        secret.encode("utf-8"),
+        b"cursor-pad-v1:" + session_id.encode("utf-8") + b":" + node_id.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()[:8]
+
+
+def _snapshot_materialization_allowed(doc: dict[str, object]) -> bool:
+    if not bool(doc.get("internal_materialization_eligible")):
+        return False
+    redaction_status = str(doc.get("redaction_status") or "").strip().casefold()
+    if redaction_status in {"blocked", "forbidden", "failed"}:
+        return False
+    allowed_uses = {str(value).strip().casefold() for value in _json_list(doc.get("allowed_uses_json"))}
+    return bool(allowed_uses.intersection({"search", "recruiting", "internal_materialization", "workspace_recruiting_record"}))
+
+
+def _candidate_node_refs(
+    *,
+    settings: AppSettings,
+    store: WorkbenchStore,
+    user: WorkbenchUser,
+    session_id: str,
+    node_id: str | None,
+) -> list[GraphNodeRef]:
+    if node_id is not None:
+        parsed = parse_graph_node_ref(node_id)
+        return [parsed] if parsed is not None else []
+    nodes: list[GraphNodeRef] = []
+    link = store.get_scoped_source_run_runtime_link(user=user, session_id=session_id, source_kind="cts")
+    if link is not None and link.runtime_run_id:
+        flywheel = FlywheelStore(settings.flywheel_path)
+        for round_no in flywheel.round_numbers_for_run(run_id=link.runtime_run_id):
+            nodes.append(GraphNodeRef(node_id=f"cts-round-{round_no}-result", source_kind="cts", node_kind="recall", round_no=round_no))
+            nodes.append(GraphNodeRef(node_id=f"cts-round-{round_no}-score", source_kind="cts", node_kind="scoring", round_no=round_no))
+    nodes.extend(
+        [
+            GraphNodeRef(node_id="final-shortlist", source_kind="all", node_kind="final"),
+            GraphNodeRef(node_id="liepin-card-search", source_kind="liepin", node_kind="liepin_card"),
+            GraphNodeRef(node_id="liepin-card-candidates", source_kind="liepin", node_kind="liepin_card"),
+            GraphNodeRef(node_id="liepin-detail-approval", source_kind="liepin", node_kind="detail_approval"),
+        ]
+    )
+    return nodes
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _json_list(value: object) -> list[object]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
+
+
+def _text(value: object, max_length: int) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text[:max_length] if text else None
+
+
+def _safe_text(value: object, max_length: int) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    forbidden = (
+        "cookie",
+        "authorization",
+        "bearer ",
+        "set-cookie",
+        "authheader",
+        "storagestate",
+        "localstorage",
+        "sessionstorage",
+        "cdp",
+        "websocket",
+        "websocketdebuggerurl",
+        "wsendpoint",
+        "run_dir",
+        "artifact",
+        "provider_account_hash",
+        "provider-secret",
+        "source-secret",
+        "token=",
+        "ticket=",
+    )
+    lowered = text.lower()
+    if any(token in lowered for token in forbidden):
+        return None
+    if "://" in lowered and ("http://" in lowered or "https://" in lowered or "ws://" in lowered or "wss://" in lowered):
+        return None
+    return text[:max_length]
+
+
+def _int_or_none(value: object) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None

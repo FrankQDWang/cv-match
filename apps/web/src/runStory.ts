@@ -42,19 +42,31 @@ type RuntimeEventData = {
 
 type RoundSummary = {
   eventSeq: number;
-  eventId: string;
+  eventIds: string[];
   sourceRunId: string | null;
   roundNo: number;
   queryTerms: string[];
   queryLabel: string;
+  executedQueries: ExecutedQuerySummary[];
   rawCandidateCount: number;
   uniqueNewCount: number;
+  recallCounts: Record<string, unknown> | null;
   newlyScoredCount: number;
+  scoredCount: number;
   fitCount: number;
   notFitCount: number;
   reflectionSummary: string;
   reflectionRationale: string;
   nextDirection: string;
+};
+
+type ExecutedQuerySummary = {
+  query_role: string | null;
+  lane_type: string | null;
+  query_terms: string[];
+  keyword_query: string | null;
+  query_instance_id: string | null;
+  query_fingerprint: string | null;
 };
 
 type CandidateScore = {
@@ -351,8 +363,9 @@ function appendCtsLane({
           roundNo: round.roundNo,
           queryTerms: round.queryTerms,
           queryLabel: round.queryLabel,
+          executedQueries: round.executedQueries,
         },
-        eventIds: [round.eventId],
+        eventIds: round.eventIds,
         sourceRunId: round.sourceRunId,
         candidateReviewItemIds: [],
         candidateEvidenceRefs: [],
@@ -374,8 +387,9 @@ function appendCtsLane({
           roundNo: round.roundNo,
           rawCandidateCount: round.rawCandidateCount,
           uniqueNewCount: round.uniqueNewCount,
+          recallCounts: round.recallCounts,
         },
-        eventIds: [round.eventId],
+        eventIds: round.eventIds,
         sourceRunId: round.sourceRunId,
         candidateReviewItemIds: [],
         candidateEvidenceRefs: [],
@@ -395,11 +409,12 @@ function appendCtsLane({
         detailPayload: {
           kind: 'ctsRoundScoring',
           roundNo: round.roundNo,
+          scoredCount: round.scoredCount,
           newlyScoredCount: round.newlyScoredCount,
           fitCount: round.fitCount,
           notFitCount: round.notFitCount,
         },
-        eventIds: [round.eventId],
+        eventIds: round.eventIds,
         sourceRunId: round.sourceRunId,
         candidateReviewItemIds: [],
         candidateEvidenceRefs: [],
@@ -423,15 +438,22 @@ function appendCtsLane({
           rationale: round.reflectionRationale,
           nextDirection: round.nextDirection,
         },
-        eventIds: [round.eventId],
+        eventIds: round.eventIds,
         sourceRunId: round.sourceRunId,
         candidateReviewItemIds: [],
         candidateEvidenceRefs: [],
         detailOpenRequestIds: [],
       }),
     );
+    if (index === 0) {
+      graphEdges.push({ from: anchor, to: queryId, tone: 'teal', label: '生成关键词' });
+    } else {
+      graphEdges.push(
+        { from: anchor, to: queryId, tone: 'blue', label: '需求约束' },
+        { from: lastNode, to: queryId, tone: 'violet', label: '反思迭代' },
+      );
+    }
     graphEdges.push(
-      { from: lastNode, to: queryId, tone: 'teal', label: index === 0 ? '生成关键词' : '进入下一轮' },
       { from: queryId, to: resultId, tone: 'teal', label: 'CTS 检索' },
       { from: resultId, to: scoreId, tone: 'green', label: '评分' },
       { from: scoreId, to: reflectId, tone: 'violet', label: '复盘' },
@@ -828,26 +850,9 @@ function selectedSourceKinds(
   if (sourceFilter !== 'all') {
     return [sourceFilter];
   }
-  const activeKinds = new Set<SourceKind>();
-  for (const event of scopedEvents) {
-    if (event.sourceKind) {
-      activeKinds.add(event.sourceKind);
-    }
-  }
-  for (const card of session.sourceCards) {
-    if (
-      card.status === 'running' ||
-      card.status === 'completed' ||
-      card.status === 'failed' ||
-      card.cardsScannedCount > 0 ||
-      card.uniqueCandidatesCount > 0
-    ) {
-      activeKinds.add(card.sourceKind);
-    }
-  }
   return session.sourceCards
     .map((card) => card.sourceKind)
-    .filter((sourceKind, index, values) => values.indexOf(sourceKind) === index && activeKinds.has(sourceKind));
+    .filter((sourceKind, index, values) => values.indexOf(sourceKind) === index);
 }
 
 function laneBaseY(sourceKind: SourceKind, allMode: boolean): number {
@@ -956,34 +961,151 @@ export function hasTriageInput(triage: WorkbenchRequirementTriageInput): boolean
 }
 
 function roundSummaries(events: RuntimeEventData[]): RoundSummary[] {
-  return events
-    .filter((item) => item.event.eventName === 'runtime_round_completed')
-    .map((item) => {
-      const roundNo = item.roundNo ?? 0;
-      const queryTerms = queryTermsFromPayload(item.payload);
-      return {
-        eventSeq: item.event.globalSeq,
-        eventId: eventId(item.event),
-        sourceRunId: item.event.sourceRunId,
-        roundNo,
-        queryTerms,
-        queryLabel: queryLabel(item.payload),
-        rawCandidateCount: metricValue(item.payload, 'raw_candidate_count', 'rawCandidateCount') ?? 0,
-        uniqueNewCount: metricValue(item.payload, 'unique_new_count', 'uniqueNewCount') ?? 0,
-        newlyScoredCount: metricValue(item.payload, 'newly_scored_count', 'newlyScoredCount') ?? 0,
-        fitCount: metricValue(item.payload, 'fit_count', 'fitCount') ?? 0,
-        notFitCount: metricValue(item.payload, 'not_fit_count', 'notFitCount') ?? 0,
-        reflectionSummary:
-          stringValue(item.payload.reflection_summary) ??
-          stringValue(item.payload.reflectionSummary) ??
-          stringValue(item.payload.reflection_rationale) ??
-          '',
-        reflectionRationale:
-          stringValue(item.payload.reflection_rationale) ?? stringValue(item.payload.reflectionRationale) ?? '',
-        nextDirection: stringValue(item.payload.next_direction) ?? stringValue(item.payload.nextDirection) ?? '',
-      };
-    })
-    .filter((round) => round.roundNo > 0);
+  const groups = new Map<string, RoundAccumulator>();
+  const roundEventNames = new Set([
+    'runtime_search_completed',
+    'runtime_scoring_completed',
+    'runtime_round_completed',
+    'runtime_reflection_completed',
+  ]);
+  for (const item of [...events].sort((left, right) => left.event.globalSeq - right.event.globalSeq)) {
+    if (!roundEventNames.has(item.event.eventName)) {
+      continue;
+    }
+    const roundNo = item.roundNo ?? numberValue(item.payload.round_no) ?? numberValue(item.payload.roundNo) ?? 0;
+    if (roundNo <= 0) {
+      continue;
+    }
+    const sourceRunId = item.event.sourceRunId;
+    const key = `${sourceRunId ?? 'source:none'}:${String(roundNo)}`;
+    const round = groups.get(key) ?? emptyRoundAccumulator(item, roundNo);
+    mergeRoundEvent(round, item);
+    groups.set(key, round);
+  }
+
+  return [...groups.values()]
+    .map((round) => ({
+      eventSeq: round.eventSeq,
+      eventIds: round.eventIds,
+      sourceRunId: round.sourceRunId,
+      roundNo: round.roundNo,
+      queryTerms: uniqueStrings(round.queryTerms),
+      queryLabel: round.queryLabel || listText(uniqueStrings(round.queryTerms)),
+      executedQueries: round.executedQueries,
+      rawCandidateCount: round.rawCandidateCount ?? 0,
+      uniqueNewCount: round.uniqueNewCount ?? 0,
+      recallCounts: round.recallCounts,
+      newlyScoredCount: round.newlyScoredCount ?? round.scoredCount ?? 0,
+      scoredCount: round.scoredCount ?? round.newlyScoredCount ?? 0,
+      fitCount: round.fitCount ?? 0,
+      notFitCount: round.notFitCount ?? 0,
+      reflectionSummary: round.reflectionSummary,
+      reflectionRationale: round.reflectionRationale,
+      nextDirection: round.nextDirection,
+    }))
+    .sort(
+      (left, right) =>
+        left.roundNo - right.roundNo ||
+        (left.sourceRunId ?? '').localeCompare(right.sourceRunId ?? '') ||
+        left.eventSeq - right.eventSeq,
+    );
+}
+
+type RoundAccumulator = {
+  eventSeq: number;
+  eventIds: string[];
+  sourceRunId: string | null;
+  roundNo: number;
+  queryTerms: string[];
+  queryLabel: string;
+  executedQueries: ExecutedQuerySummary[];
+  rawCandidateCount: number | null;
+  uniqueNewCount: number | null;
+  recallCounts: Record<string, unknown> | null;
+  newlyScoredCount: number | null;
+  scoredCount: number | null;
+  fitCount: number | null;
+  notFitCount: number | null;
+  reflectionSummary: string;
+  reflectionRationale: string;
+  nextDirection: string;
+  hasSearch: boolean;
+  hasScoring: boolean;
+};
+
+function emptyRoundAccumulator(item: RuntimeEventData, roundNo: number): RoundAccumulator {
+  return {
+    eventSeq: item.event.globalSeq,
+    eventIds: [],
+    sourceRunId: item.event.sourceRunId,
+    roundNo,
+    queryTerms: [],
+    queryLabel: '',
+    executedQueries: [],
+    rawCandidateCount: null,
+    uniqueNewCount: null,
+    recallCounts: null,
+    newlyScoredCount: null,
+    scoredCount: null,
+    fitCount: null,
+    notFitCount: null,
+    reflectionSummary: '',
+    reflectionRationale: '',
+    nextDirection: '',
+    hasSearch: false,
+    hasScoring: false,
+  };
+}
+
+function mergeRoundEvent(round: RoundAccumulator, item: RuntimeEventData): void {
+  round.eventSeq = Math.min(round.eventSeq, item.event.globalSeq);
+  round.eventIds = uniqueStrings([...round.eventIds, eventId(item.event)]);
+  if (item.event.eventName === 'runtime_search_completed' || (item.event.eventName === 'runtime_round_completed' && !round.hasSearch)) {
+    mergeSearchPayload(round, item.payload);
+    if (item.event.eventName === 'runtime_search_completed') {
+      round.hasSearch = true;
+    }
+  }
+  if (item.event.eventName === 'runtime_scoring_completed' || (item.event.eventName === 'runtime_round_completed' && !round.hasScoring)) {
+    mergeScoringPayload(round, item.payload);
+    if (item.event.eventName === 'runtime_scoring_completed') {
+      round.hasScoring = true;
+    }
+  }
+  if (item.event.eventName === 'runtime_round_completed' || item.event.eventName === 'runtime_reflection_completed') {
+    mergeReflectionPayload(round, item.payload);
+  }
+}
+
+function mergeSearchPayload(round: RoundAccumulator, payload: Record<string, unknown>): void {
+  const executedQueries = executedQueriesFromPayload(payload);
+  round.executedQueries = uniqueExecutedQueries([...round.executedQueries, ...executedQueries]);
+  round.queryTerms = uniqueStrings([...round.queryTerms, ...queryTermsFromPayload(payload)]);
+  round.queryLabel = queryLabelFromExecutedQueries(round.executedQueries) || listText(round.queryTerms) || round.queryLabel;
+  round.rawCandidateCount = metricValue(payload, 'raw_candidate_count', 'rawCandidateCount') ?? round.rawCandidateCount;
+  round.uniqueNewCount = metricValue(payload, 'unique_new_count', 'uniqueNewCount') ?? round.uniqueNewCount;
+  round.recallCounts = recordValue(payload.recall_counts) ?? recordValue(payload.recallCounts) ?? round.recallCounts;
+}
+
+function mergeScoringPayload(round: RoundAccumulator, payload: Record<string, unknown>): void {
+  const scoredCount =
+    metricValue(payload, 'scored_count', 'scoredCount') ??
+    metricValue(payload, 'newly_scored_count', 'newlyScoredCount');
+  round.scoredCount = scoredCount ?? round.scoredCount;
+  round.newlyScoredCount = scoredCount ?? round.newlyScoredCount;
+  round.fitCount = metricValue(payload, 'fit_count', 'fitCount') ?? round.fitCount;
+  round.notFitCount = metricValue(payload, 'not_fit_count', 'notFitCount') ?? round.notFitCount;
+}
+
+function mergeReflectionPayload(round: RoundAccumulator, payload: Record<string, unknown>): void {
+  round.reflectionSummary =
+    stringValue(payload.reflection_summary) ??
+    stringValue(payload.reflectionSummary) ??
+    stringValue(payload.reflection_rationale) ??
+    round.reflectionSummary;
+  round.reflectionRationale =
+    stringValue(payload.reflection_rationale) ?? stringValue(payload.reflectionRationale) ?? round.reflectionRationale;
+  round.nextDirection = stringValue(payload.next_direction) ?? stringValue(payload.nextDirection) ?? round.nextDirection;
 }
 
 function candidateScoresFromInputs(
@@ -1034,21 +1156,64 @@ function candidateScoresFromInputs(
 }
 
 function queryLabel(payload: Record<string, unknown>): string {
-  const queries = Array.isArray(payload.executed_queries)
-    ? payload.executed_queries
-    : Array.isArray(payload.executedQueries)
-      ? payload.executedQueries
-      : [];
+  return queryLabelFromExecutedQueries(executedQueriesFromPayload(payload)) || listText(queryTermsFromPayload(payload));
+}
+
+function queryLabelFromExecutedQueries(queries: ExecutedQuerySummary[]): string {
   const labels = queries
     .map((item) => {
-      const query = recordValue(item);
-      return query ? listText([...stringsValue(query.query_terms), ...stringsValue(query.queryTerms)]) : '';
+      return listText(item.query_terms);
     })
     .filter(Boolean);
   if (labels.length > 0) {
     return labels.join(' / ');
   }
-  return listText(queryTermsFromPayload(payload));
+  return '';
+}
+
+function executedQueriesFromPayload(payload: Record<string, unknown>): ExecutedQuerySummary[] {
+  const queries = Array.isArray(payload.executed_queries)
+    ? payload.executed_queries
+    : Array.isArray(payload.executedQueries)
+      ? payload.executedQueries
+      : [];
+  return queries.flatMap((item) => {
+    const query = recordValue(item);
+    if (!query) {
+      return [];
+    }
+    return [
+      {
+        query_role: stringValue(query.query_role) ?? stringValue(query.queryRole),
+        lane_type: stringValue(query.lane_type) ?? stringValue(query.laneType),
+        query_terms: uniqueStrings([...stringsValue(query.query_terms), ...stringsValue(query.queryTerms)]),
+        keyword_query: stringValue(query.keyword_query) ?? stringValue(query.keywordQuery),
+        query_instance_id: stringValue(query.query_instance_id) ?? stringValue(query.queryInstanceId),
+        query_fingerprint: stringValue(query.query_fingerprint) ?? stringValue(query.queryFingerprint),
+      },
+    ];
+  });
+}
+
+function uniqueExecutedQueries(queries: ExecutedQuerySummary[]): ExecutedQuerySummary[] {
+  const seen = new Set<string>();
+  const uniqueQueries: ExecutedQuerySummary[] = [];
+  for (const query of queries) {
+    const key = [
+      query.query_instance_id,
+      query.query_fingerprint,
+      query.lane_type,
+      query.query_role,
+      query.keyword_query,
+      query.query_terms.join('\u0000'),
+    ].join('\u0001');
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    uniqueQueries.push(query);
+  }
+  return uniqueQueries;
 }
 
 function scopeCandidateReviewItems(

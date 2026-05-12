@@ -120,6 +120,9 @@ class WorkbenchJobRunner:
             source_run_id=context.job.source_run_id,
             source_kind=context.job.source_kind,
             event_name=f"runtime_{_safe_event_suffix(event.type)}",
+            schema_version="runtime_progress_v1",
+            idempotency_key=f"{context.job.source_run_id}:{event.type}:{event.round_no}:{event.timestamp}",
+            occurred_at=event.timestamp,
             payload={
                 "type": event.type,
                 "message": event.message,

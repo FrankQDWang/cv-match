@@ -93,7 +93,10 @@ def _event_response(event: WorkbenchEvent) -> WorkbenchEventResponse:
         sourceRunId=event.source_run_id,
         sourceKind=event.source_kind,
         eventName=event.event_name,
+        schemaVersion=event.schema_version,
+        idempotencyKey=event.idempotency_key,
         payload=event.payload,
+        occurredAt=event.occurred_at,
         createdAt=event.created_at,
     )
 
@@ -106,7 +109,10 @@ def _event_data(event: WorkbenchEvent) -> dict[str, object]:
         "sourceRunId": event.source_run_id,
         "sourceKind": event.source_kind,
         "eventName": event.event_name,
+        "schemaVersion": event.schema_version,
+        "idempotencyKey": event.idempotency_key,
         "payload": event.payload,
+        "occurredAt": event.occurred_at,
         "createdAt": event.created_at,
     }
 

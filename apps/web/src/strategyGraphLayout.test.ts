@@ -155,7 +155,36 @@ describe('strategy graph layout', () => {
     expect(cts?.position.x).toBe(liepin?.position.x);
     expect(cts?.selected).toBe(false);
     expect(cts?.data.selected).toBe(false);
+    expect(cts?.draggable).toBe(true);
     expect(final?.position.x).toBe(bounds.width - 168 - 34);
+  });
+
+  it('lays out CTS rounds as repeating workflow rows that can extend beyond the viewport', () => {
+    const compactBounds = { width: 520, height: 360 };
+    const nodes = [
+      graphNode('cts-round-1-query', 'cts', 0.42, 0.22),
+      graphNode('cts-round-1-result', 'cts', 0.52, 0.22),
+      graphNode('cts-round-1-score', 'cts', 0.62, 0.22),
+      graphNode('cts-round-1-reflect', 'cts', 0.72, 0.22),
+      graphNode('cts-round-2-query', 'cts', 0.42, 0.32),
+      graphNode('cts-round-2-result', 'cts', 0.52, 0.32),
+      graphNode('cts-round-6-query', 'cts', 0.42, 0.72),
+    ];
+
+    const layout = fallbackLayout(nodes, [], compactBounds);
+    const round1Query = layout.nodes.find((node) => node.id === 'cts-round-1-query');
+    const round1Result = layout.nodes.find((node) => node.id === 'cts-round-1-result');
+    const round1Reflect = layout.nodes.find((node) => node.id === 'cts-round-1-reflect');
+    const round2Query = layout.nodes.find((node) => node.id === 'cts-round-2-query');
+    const round2Result = layout.nodes.find((node) => node.id === 'cts-round-2-result');
+    const round6Query = layout.nodes.find((node) => node.id === 'cts-round-6-query');
+
+    expect(round1Query?.position.x).toBe(round2Query?.position.x);
+    expect(round1Result?.position.x).toBe(round2Result?.position.x);
+    expect(round1Result?.position.x).toBeGreaterThan(round1Query?.position.x ?? 0);
+    expect(round1Reflect?.position.x).toBeGreaterThan(round1Result?.position.x ?? 0);
+    expect(round2Query?.position.y).toBeGreaterThan(round1Query?.position.y ?? 0);
+    expect(round6Query?.position.y).toBeGreaterThan(compactBounds.height);
   });
 
   it('keeps fallback nodes inside a narrow responsive canvas', () => {

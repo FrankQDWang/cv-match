@@ -266,6 +266,23 @@ describe('buildRunStory', () => {
     expect(story.graphNodes.find((node) => node.id === 'final-shortlist')?.detail).toBe('最高 91 分');
   });
 
+  it('keeps selected queued or blocked sources visible in the all-sources graph', () => {
+    const story = buildRunStory({
+      session: session({
+        requirementTriage: triage({ mustHaves: ['Flink CDC'] }),
+        sourceCards: [
+          { ...session().sourceCards[0], status: 'queued', cardsScannedCount: 0, uniqueCandidatesCount: 0 },
+          { ...session().sourceCards[1], status: 'blocked', cardsScannedCount: 0, uniqueCandidatesCount: 0 },
+        ],
+      }),
+      events: [],
+      sourceFilter: 'all',
+    });
+
+    expect(story.graphNodes.some((node) => node.id === 'cts-source-start')).toBe(true);
+    expect(story.graphNodes.some((node) => node.id === 'liepin-source-start')).toBe(true);
+  });
+
   it('filters graph nodes and business logs by source', () => {
     const ctsStory = buildRunStory({ session: session(), events, sourceFilter: 'cts' });
     const liepinStory = buildRunStory({ session: session(), events, sourceFilter: 'liepin' });
@@ -325,7 +342,7 @@ describe('buildRunStory', () => {
 
   it('includes reflection summary, rationale, and next direction on CTS reflection nodes', () => {
     const story = buildRunStory({
-      session: session(),
+      session: session({ requirementTriage: triage({ mustHaves: ['Flink CDC'] }) }),
       events: [
         event({
           globalSeq: 1,
@@ -363,7 +380,7 @@ describe('buildRunStory', () => {
 
   it('populates Liepin candidate and detail-open metadata from safe API inputs', () => {
     const story = buildRunStory({
-      session: session(),
+      session: session({ requirementTriage: triage({ mustHaves: ['Flink CDC'] }) }),
       events,
       candidateReviewItems: [candidateReviewItem()],
       detailOpenRequests: [detailOpenRequest()],
@@ -687,5 +704,325 @@ describe('buildRunStory', () => {
       detailOpenRequestIds: ['detail-request-1'],
     });
     expect(ctsStory.graphNodes.some((node) => node.detailOpenRequestIds?.includes('detail-request-1'))).toBe(false);
+  });
+
+  it('builds CTS rounds from split runtime search, scoring, reflection, requirements, and completion events', () => {
+    const story = buildRunStory({
+      session: session(),
+      events: [
+        event({
+          globalSeq: 1,
+          eventName: 'runtime_requirements_completed',
+          payload: {
+            type: 'requirements_completed',
+            payload: {
+              must_have_capabilities: ['Flink CDC'],
+              preferred_capabilities: ['streaming platform'],
+              search_terms: ['streaming data'],
+            },
+          },
+        }),
+        event({
+          globalSeq: 4,
+          eventName: 'runtime_scoring_completed',
+          payload: {
+            type: 'scoring_completed',
+            roundNo: 1,
+            payload: {
+              stage: 'scoring',
+              scored_count: 9,
+              fit_count: 2,
+              not_fit_count: 7,
+            },
+          },
+        }),
+        event({
+          globalSeq: 2,
+          eventName: 'runtime_search_completed',
+          payload: {
+            type: 'search_completed',
+            roundNo: 1,
+            payload: {
+              stage: 'search',
+              query_terms: ['Flink CDC', 'Kafka'],
+              executed_queries: [
+                {
+                  query_role: 'exploit',
+                  lane_type: 'exploit',
+                  query_terms: ['Flink CDC', 'Kafka'],
+                  keyword_query: '"Flink CDC" Kafka',
+                  query_instance_id: 'query-1',
+                  query_fingerprint: 'fingerprint-1',
+                },
+                {
+                  query_role: 'explore',
+                  lane_type: 'generic_explore',
+                  query_terms: ['streaming ETL'],
+                  keyword_query: '"streaming ETL"',
+                  query_instance_id: 'query-2',
+                  query_fingerprint: 'fingerprint-2',
+                },
+              ],
+              raw_candidate_count: 14,
+              unique_new_count: 9,
+              recall_counts: { exploit: 10, generic_explore: 4 },
+            },
+          },
+        }),
+        event({
+          globalSeq: 3,
+          eventName: 'runtime_round_completed',
+          payload: {
+            type: 'round_completed',
+            roundNo: 1,
+            payload: {
+              reflection_summary: 'Kafka narrows the pool.',
+              reflection_rationale: 'Strong Flink candidates may not mention Kafka.',
+              next_direction: 'Try CDC and realtime ETL terms.',
+            },
+          },
+        }),
+        event({
+          globalSeq: 5,
+          eventName: 'runtime_run_completed',
+          payload: { type: 'run_completed', payload: { rounds_executed: 1 } },
+        }),
+      ],
+      sourceFilter: 'cts',
+    });
+
+    const query = story.graphNodes.find((node) => node.id === 'cts-round-1-query');
+    const result = story.graphNodes.find((node) => node.id === 'cts-round-1-result');
+    const score = story.graphNodes.find((node) => node.id === 'cts-round-1-score');
+    const reflection = story.graphNodes.find((node) => node.id === 'cts-round-1-reflect');
+
+    expect(story.criteria).toMatchObject({
+      mustHaves: ['Flink CDC'],
+      niceToHaves: ['streaming platform'],
+      generatedQueryHints: ['streaming data'],
+    });
+    expect(query?.detail).toBe('Flink CDC + Kafka / streaming ETL');
+    expect(query?.detailPayload).toMatchObject({
+      kind: 'ctsRoundQuery',
+      roundNo: 1,
+      queryTerms: ['Flink CDC', 'Kafka', 'streaming ETL'],
+      executedQueries: [
+        {
+          query_role: 'exploit',
+          lane_type: 'exploit',
+          query_instance_id: 'query-1',
+          query_fingerprint: 'fingerprint-1',
+        },
+        {
+          query_role: 'explore',
+          lane_type: 'generic_explore',
+          query_instance_id: 'query-2',
+          query_fingerprint: 'fingerprint-2',
+        },
+      ],
+    });
+    expect(result?.label).toBe('搜到 14 人 · 新增 9 人');
+    expect(result?.detailPayload).toMatchObject({
+      kind: 'ctsRoundResults',
+      rawCandidateCount: 14,
+      uniqueNewCount: 9,
+      recallCounts: { exploit: 10, generic_explore: 4 },
+    });
+    expect(score).toMatchObject({
+      label: '评分：fit 2 / not_fit 7',
+      detail: '9 人进入评分',
+    });
+    expect(score?.detailPayload).toMatchObject({
+      kind: 'ctsRoundScoring',
+      scoredCount: 9,
+      fitCount: 2,
+      notFitCount: 7,
+    });
+    expect(reflection?.detailPayload).toMatchObject({
+      kind: 'reflection',
+      summary: 'Kafka narrows the pool.',
+      rationale: 'Strong Flink candidates may not mention Kafka.',
+      nextDirection: 'Try CDC and realtime ETL terms.',
+    });
+    expect(story.completionText).toBe('检索完成 · 候选人进入短名单');
+  });
+
+  it('dedupes duplicate split events and legacy composite round events by source run and round number', () => {
+    const splitSearch = event({
+      globalSeq: 3,
+      eventName: 'runtime_search_completed',
+      payload: {
+        type: 'search_completed',
+        roundNo: 1,
+        payload: {
+          executed_queries: [{ query_role: 'exploit', lane_type: 'exploit', query_terms: ['Flink CDC'] }],
+          raw_candidate_count: 8,
+          unique_new_count: 5,
+        },
+      },
+    });
+    const story = buildRunStory({
+      session: session(),
+      events: [
+        event({
+          globalSeq: 2,
+          eventName: 'runtime_round_completed',
+          payload: {
+            type: 'round_completed',
+            roundNo: 1,
+            payload: {
+              executed_queries: [{ query_role: 'exploit', lane_type: 'exploit', query_terms: ['Flink CDC'] }],
+              raw_candidate_count: 8,
+              unique_new_count: 5,
+              newly_scored_count: 5,
+              fit_count: 1,
+              not_fit_count: 4,
+              reflection_summary: 'Keep the main lane.',
+            },
+          },
+        }),
+        splitSearch,
+        { ...splitSearch, globalSeq: 4 },
+        event({
+          globalSeq: 5,
+          eventName: 'runtime_scoring_completed',
+          payload: {
+            type: 'scoring_completed',
+            roundNo: 1,
+            payload: { newly_scored_count: 5, fit_count: 1, not_fit_count: 4 },
+          },
+        }),
+        event({
+          globalSeq: 6,
+          eventName: 'runtime_scoring_completed',
+          payload: {
+            type: 'scoring_completed',
+            roundNo: 1,
+            payload: { newly_scored_count: 5, fit_count: 1, not_fit_count: 4 },
+          },
+        }),
+      ],
+      sourceFilter: 'cts',
+    });
+
+    expect(story.graphNodes.filter((node) => node.id === 'cts-round-1-query')).toHaveLength(1);
+    expect(story.graphNodes.filter((node) => node.id === 'cts-round-1-result')).toHaveLength(1);
+    expect(story.graphNodes.filter((node) => node.id === 'cts-round-1-score')).toHaveLength(1);
+    expect(story.graphNodes.filter((node) => node.id === 'cts-round-1-reflect')).toHaveLength(1);
+    expect(story.logEntries.filter((entry) => entry.relatedNodeId === 'cts-round-1-result')).toHaveLength(1);
+    expect(story.graphNodes.find((node) => node.id === 'cts-round-1-score')?.label).toBe('评分：fit 1 / not_fit 4');
+  });
+
+  it('connects later CTS rounds to both requirements and the previous reflection', () => {
+    const story = buildRunStory({
+      session: session({ requirementTriage: triage({ mustHaves: ['Flink CDC'] }) }),
+      events: [
+        event({
+          globalSeq: 2,
+          eventName: 'runtime_round_completed',
+          payload: {
+            type: 'round_completed',
+            roundNo: 1,
+            payload: {
+              executed_queries: [{ query_role: 'exploit', lane_type: 'exploit', query_terms: ['Kafka'] }],
+              raw_candidate_count: 8,
+              unique_new_count: 5,
+              newly_scored_count: 5,
+              fit_count: 1,
+              not_fit_count: 4,
+              reflection_summary: 'Kafka-only is too narrow.',
+            },
+          },
+        }),
+        event({
+          globalSeq: 3,
+          eventName: 'runtime_round_completed',
+          payload: {
+            type: 'round_completed',
+            roundNo: 2,
+            payload: {
+              executed_queries: [{ query_role: 'explore', lane_type: 'generic_explore', query_terms: ['Flink CDC'] }],
+              raw_candidate_count: 12,
+              unique_new_count: 7,
+              newly_scored_count: 7,
+              fit_count: 2,
+              not_fit_count: 5,
+            },
+          },
+        }),
+      ],
+      sourceFilter: 'cts',
+    });
+
+    expect(story.graphEdges).toContainEqual(
+      expect.objectContaining({ from: 'requirements', to: 'cts-round-2-query', label: '需求约束' }),
+    );
+    expect(story.graphEdges).toContainEqual(
+      expect.objectContaining({ from: 'cts-round-1-reflect', to: 'cts-round-2-query', label: '反思迭代' }),
+    );
+  });
+
+  it('keeps search and result nodes when split runtime scoring has not arrived yet', () => {
+    const story = buildRunStory({
+      session: session(),
+      events: [
+        event({
+          globalSeq: 2,
+          eventName: 'runtime_search_completed',
+          payload: {
+            type: 'search_completed',
+            roundNo: 1,
+            payload: {
+              executed_queries: [{ query_role: 'exploit', lane_type: 'exploit', query_terms: ['Flink CDC'] }],
+              raw_candidate_count: 6,
+              unique_new_count: 3,
+            },
+          },
+        }),
+      ],
+      sourceFilter: 'cts',
+    });
+
+    expect(story.graphNodes.find((node) => node.id === 'cts-round-1-query')?.detail).toBe('Flink CDC');
+    expect(story.graphNodes.find((node) => node.id === 'cts-round-1-result')?.label).toBe('搜到 6 人 · 新增 3 人');
+    expect(story.graphNodes.find((node) => node.id === 'cts-round-1-score')).toMatchObject({
+      label: '评分：fit 0 / not_fit 0',
+      detail: '0 人进入评分',
+    });
+  });
+
+  it('does not show raw runtime event names or unknown runtime events in business notes', () => {
+    const story = buildRunStory({
+      session: session(),
+      events: [
+        event({
+          globalSeq: 2,
+          eventName: 'runtime_search_completed',
+          payload: {
+            type: 'search_completed',
+            roundNo: 1,
+            payload: {
+              executed_queries: [{ query_role: 'exploit', lane_type: 'exploit', query_terms: ['Flink CDC'] }],
+              raw_candidate_count: 6,
+              unique_new_count: 3,
+            },
+          },
+        }),
+        event({
+          globalSeq: 3,
+          eventName: 'runtime_internal_debug_completed',
+          payload: {
+            type: 'internal_debug_completed',
+            message: 'runtime_internal_debug_completed should not be shown',
+            roundNo: 1,
+            payload: { raw_event_name: 'runtime_internal_debug_completed' },
+          },
+        }),
+      ],
+      sourceFilter: 'cts',
+    });
+
+    expect(story.logEntries.some((entry) => entry.text.includes('runtime_'))).toBe(false);
+    expect(story.logEntries.some((entry) => entry.text.includes('internal_debug'))).toBe(false);
   });
 });

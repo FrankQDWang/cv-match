@@ -72,16 +72,26 @@ export type RecruiterGraphDetailPayload =
       roundNo: number;
       queryTerms: string[];
       queryLabel: string;
+      executedQueries?: {
+        query_role: string | null;
+        lane_type: string | null;
+        query_terms: string[];
+        keyword_query: string | null;
+        query_instance_id: string | null;
+        query_fingerprint: string | null;
+      }[];
     }
   | {
       kind: 'ctsRoundResults';
       roundNo: number;
       rawCandidateCount: number;
       uniqueNewCount: number;
+      recallCounts?: Record<string, unknown> | null;
     }
   | {
       kind: 'ctsRoundScoring';
       roundNo: number;
+      scoredCount?: number;
       newlyScoredCount: number;
       fitCount: number;
       notFitCount: number;

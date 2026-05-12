@@ -683,12 +683,21 @@ textarea:focus {
 .triage-gate {
   gap: 10px;
   margin: 12px 0 0;
-  max-height: 184px;
-  overflow: auto;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--panel);
+}
+
+.triage-gate-placeholder {
+  display: grid;
+}
+
+.triage-empty-copy {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 .triage-head,
@@ -1003,31 +1012,6 @@ textarea:focus {
   color: var(--text-muted);
 }
 
-.canvas-filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 7px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: rgba(251, 250, 246, 0.82);
-}
-
-.canvas-filter span {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.canvas-filter select {
-  width: 104px;
-  height: 28px;
-  padding: 0 6px;
-  border: 0;
-  background: transparent;
-  font-size: 12px;
-}
-
 .canvas-ready {
   height: 100%;
   display: grid;
@@ -1124,7 +1108,11 @@ textarea:focus {
 }
 
 .strategy-flow .react-flow__viewport {
-  cursor: default;
+  cursor: grab;
+}
+
+.strategy-flow .react-flow__viewport:active {
+  cursor: grabbing;
 }
 
 .strategy-flow-bg {
@@ -1286,6 +1274,11 @@ textarea:focus {
 .strategy-flow-node:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(60, 90, 74, 0.1);
+}
+
+.strategy-flow-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .strategy-flow .react-flow__node.selected .strategy-flow-node,
@@ -1613,6 +1606,12 @@ textarea:focus {
   padding-top: 12px;
 }
 
+.node-detail-candidates {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
 .node-detail-row {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
@@ -1668,6 +1667,120 @@ textarea:focus {
   display: grid;
   gap: 10px;
   margin-top: 16px;
+}
+
+.graph-candidate-panel {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.graph-candidate-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.graph-candidate-heading span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.graph-candidate-heading strong {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.graph-candidate-list {
+  display: grid;
+  gap: 10px;
+}
+
+.graph-candidate-more {
+  justify-self: stretch;
+}
+
+.graph-candidate-card {
+  display: grid;
+  gap: 9px;
+  min-height: 168px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-strong);
+}
+
+.graph-candidate-card.expanded {
+  min-height: 0;
+}
+
+.graph-candidate-summary {
+  min-height: 54px;
+  max-height: 54px;
+  display: -webkit-box;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.graph-candidate-card.expanded .graph-candidate-summary {
+  max-height: none;
+  display: block;
+}
+
+.compact-empty {
+  min-height: 96px;
+  padding: 14px;
+}
+
+.resume-snapshot {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.resume-snapshot section,
+.resume-snapshot-section {
+  display: grid;
+  gap: 6px;
+}
+
+.resume-snapshot strong,
+.resume-snapshot-section strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.resume-snapshot span,
+.resume-snapshot-section span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.resume-snapshot p,
+.resume-snapshot-section p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.resume-snapshot-section ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 16px;
 }
 
 .candidate-card {

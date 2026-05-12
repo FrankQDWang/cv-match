@@ -64,6 +64,25 @@ class WorkbenchSourceRun:
     detail_open_blocked_count: int = 0
 
 
+@dataclass(frozen=True)
+class WorkbenchSourceRunRuntimeLink:
+    source_run_id: str
+    source_kind: Literal["cts", "liepin"]
+    runtime_run_id: str | None
+
+
+RuntimeLinkRepairStatus = Literal["attached", "already_attached", "runtime_link_missing"]
+GraphCandidateRecoveryState = Literal["ready", "recoverable_empty"]
+
+
+@dataclass(frozen=True)
+class WorkbenchRuntimeLinkRepairResult:
+    status: RuntimeLinkRepairStatus
+    graph_candidate_state: GraphCandidateRecoveryState
+    runtime_run_id: str | None
+    reason: str | None = None
+
+
 def _new_source_run(source_kind: Literal["cts", "liepin"]) -> WorkbenchSourceRun:
     if source_kind == "cts":
         return WorkbenchSourceRun(
@@ -157,7 +176,10 @@ class WorkbenchEvent:
     source_run_id: str | None
     source_kind: Literal["cts", "liepin"] | None
     event_name: str
+    schema_version: str
+    idempotency_key: str | None
     payload: dict[str, object]
+    occurred_at: str
     created_at: str
 
 
@@ -1548,6 +1570,9 @@ class WorkbenchStore:
         source_kind: Literal["cts", "liepin"] | None,
         event_name: str,
         payload: dict[str, object],
+        schema_version: str = "workbench_event_v1",
+        idempotency_key: str | None = None,
+        occurred_at: str | None = None,
     ) -> WorkbenchEvent:
         self._initialize()
         with self._connect() as conn:
@@ -1562,7 +1587,122 @@ class WorkbenchStore:
                 source_kind=source_kind,
                 event_name=event_name,
                 payload=payload,
+                schema_version=schema_version,
+                idempotency_key=idempotency_key,
+                occurred_at=occurred_at,
             )
+
+    def attach_source_run_runtime_run_id(
+        self,
+        *,
+        context: WorkbenchSourceRunJobContext,
+        runtime_run_id: str,
+    ) -> None:
+        self._initialize()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            _attach_source_run_runtime_run_id_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=context.session.workspace_id,
+                user_id=context.session.owner_user_id,
+                session_id=context.session.session_id,
+                source_run_id=context.job.source_run_id,
+                runtime_run_id=runtime_run_id,
+            )
+
+    def repair_cts_source_run_runtime_link(
+        self,
+        *,
+        user: WorkbenchUser,
+        session_id: str,
+        source_run_id: str,
+        runtime_run_id: str | None = None,
+    ) -> WorkbenchRuntimeLinkRepairResult:
+        self._initialize()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = _source_run_runtime_link_row_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                user_id=user.user_id,
+                session_id=session_id,
+                source_run_id=source_run_id,
+            )
+            if row is None or row["source_kind"] != "cts":
+                return WorkbenchRuntimeLinkRepairResult(
+                    status="runtime_link_missing",
+                    graph_candidate_state="recoverable_empty",
+                    runtime_run_id=None,
+                    reason="runtime_link_missing",
+                )
+            existing = row["runtime_run_id"]
+            if existing:
+                return WorkbenchRuntimeLinkRepairResult(
+                    status="already_attached",
+                    graph_candidate_state="ready",
+                    runtime_run_id=existing,
+                )
+            if runtime_run_id is None:
+                return WorkbenchRuntimeLinkRepairResult(
+                    status="runtime_link_missing",
+                    graph_candidate_state="recoverable_empty",
+                    runtime_run_id=None,
+                    reason="runtime_link_missing",
+                )
+            if row["status"] not in {"running", "completed", "failed"}:
+                return WorkbenchRuntimeLinkRepairResult(
+                    status="runtime_link_missing",
+                    graph_candidate_state="recoverable_empty",
+                    runtime_run_id=None,
+                    reason="runtime_run_not_started",
+                )
+            _attach_source_run_runtime_run_id_conn(
+                conn,
+                tenant_id=DEFAULT_TENANT_ID,
+                workspace_id=user.workspace_id,
+                user_id=user.user_id,
+                session_id=session_id,
+                source_run_id=source_run_id,
+                runtime_run_id=runtime_run_id,
+            )
+            return WorkbenchRuntimeLinkRepairResult(
+                status="attached",
+                graph_candidate_state="ready",
+                runtime_run_id=runtime_run_id,
+            )
+
+    def get_scoped_source_run_runtime_link(
+        self,
+        *,
+        user: WorkbenchUser,
+        session_id: str,
+        source_kind: Literal["cts", "liepin"],
+    ) -> WorkbenchSourceRunRuntimeLink | None:
+        self._initialize()
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT source_run_id, source_kind, runtime_run_id
+                FROM source_runs
+                WHERE tenant_id = ?
+                  AND workspace_id = ?
+                  AND user_id = ?
+                  AND session_id = ?
+                  AND source_kind = ?
+                ORDER BY created_at ASC, source_run_id ASC
+                LIMIT 1
+                """,
+                (DEFAULT_TENANT_ID, user.workspace_id, user.user_id, session_id, source_kind),
+            ).fetchone()
+        if row is None:
+            return None
+        return WorkbenchSourceRunRuntimeLink(
+            source_run_id=row["source_run_id"],
+            source_kind=row["source_kind"],
+            runtime_run_id=row["runtime_run_id"],
+        )
 
     def list_workbench_events(
         self,
@@ -1625,8 +1765,31 @@ class WorkbenchStore:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT * FROM source_run_jobs WHERE job_id = ?", (context.job.job_id,)).fetchone()
-            if row is None or row["status"] != "running":
+            if row is None:
                 return []
+            runtime_run_id = _runtime_run_id_from_artifacts(artifacts)
+            if row["status"] != "running":
+                if runtime_run_id is not None:
+                    _validate_source_run_runtime_run_id_conn(
+                        conn,
+                        tenant_id=DEFAULT_TENANT_ID,
+                        workspace_id=context.session.workspace_id,
+                        user_id=context.session.owner_user_id,
+                        session_id=context.session.session_id,
+                        source_run_id=context.job.source_run_id,
+                        runtime_run_id=runtime_run_id,
+                    )
+                return []
+            if runtime_run_id is not None:
+                _attach_source_run_runtime_run_id_conn(
+                    conn,
+                    tenant_id=DEFAULT_TENANT_ID,
+                    workspace_id=context.session.workspace_id,
+                    user_id=context.session.owner_user_id,
+                    session_id=context.session.session_id,
+                    source_run_id=context.job.source_run_id,
+                    runtime_run_id=runtime_run_id,
+                )
             review_item_ids = self._persist_cts_candidate_results_conn(
                 conn,
                 context=context,
@@ -2900,6 +3063,7 @@ class WorkbenchStore:
                     status TEXT NOT NULL CHECK(status IN ('queued', 'blocked', 'running', 'completed', 'failed')),
                     auth_state TEXT NOT NULL CHECK(auth_state IN ('not_required', 'login_required')),
                     health_state TEXT NOT NULL,
+                    runtime_run_id TEXT,
                     warning_code TEXT,
                     warning_message TEXT,
                     cards_scanned_count INTEGER NOT NULL DEFAULT 0,
@@ -3047,7 +3211,10 @@ class WorkbenchStore:
                     source_run_id TEXT,
                     source_kind TEXT CHECK(source_kind IN ('cts', 'liepin') OR source_kind IS NULL),
                     event_name TEXT NOT NULL,
+                    schema_version TEXT NOT NULL DEFAULT 'workbench_event_v1',
+                    idempotency_key TEXT,
                     payload_redacted_json TEXT NOT NULL,
+                    occurred_at TEXT,
                     created_at TEXT NOT NULL
                 );
 
@@ -3226,6 +3393,10 @@ class WorkbenchStore:
             _ensure_column(conn, "user_sessions", "csrf_token_digest", "TEXT")
             _ensure_column(conn, "source_run_jobs", "idempotency_key", "TEXT")
             _ensure_column(conn, "source_connections", "provider_account_hash", "TEXT")
+            _ensure_column(conn, "session_events", "schema_version", "TEXT NOT NULL DEFAULT 'workbench_event_v1'")
+            _ensure_column(conn, "session_events", "idempotency_key", "TEXT")
+            _ensure_column(conn, "session_events", "occurred_at", "TEXT")
+            _ensure_column(conn, "source_runs", "runtime_run_id", "TEXT")
             _ensure_column(conn, "source_runs", "cards_scanned_count", "INTEGER NOT NULL DEFAULT 0")
             _ensure_column(conn, "source_runs", "unique_candidates_count", "INTEGER NOT NULL DEFAULT 0")
             _ensure_column(conn, "source_runs", "detail_open_used_count", "INTEGER NOT NULL DEFAULT 0")
@@ -3790,6 +3961,114 @@ def _source_run_from_row(row: sqlite3.Row) -> WorkbenchSourceRun:
     )
 
 
+def _runtime_run_id_from_artifacts(artifacts: object) -> str | None:
+    value = getattr(artifacts, "run_id", None)
+    if not isinstance(value, str):
+        return None
+    runtime_run_id = value.strip()
+    return runtime_run_id or None
+
+
+def _source_run_runtime_link_row_conn(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    user_id: str,
+    session_id: str,
+    source_run_id: str,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT source_run_id, source_kind, status, runtime_run_id
+        FROM source_runs
+        WHERE tenant_id = ?
+          AND workspace_id = ?
+          AND user_id = ?
+          AND session_id = ?
+          AND source_run_id = ?
+        """,
+        (tenant_id, workspace_id, user_id, session_id, source_run_id),
+    ).fetchone()
+
+
+def _validate_source_run_runtime_run_id_conn(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    user_id: str,
+    session_id: str,
+    source_run_id: str,
+    runtime_run_id: str,
+) -> None:
+    runtime_run_id = runtime_run_id.strip()
+    if not runtime_run_id:
+        raise RuntimeError("runtime_run_id_required")
+    row = _source_run_runtime_link_row_conn(
+        conn,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        user_id=user_id,
+        session_id=session_id,
+        source_run_id=source_run_id,
+    )
+    if row is None or row["source_kind"] != "cts":
+        raise RuntimeError("cts_source_run_not_found")
+    existing = row["runtime_run_id"]
+    if existing and existing != runtime_run_id:
+        raise RuntimeError("runtime_run_id_conflict")
+
+
+def _attach_source_run_runtime_run_id_conn(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    user_id: str,
+    session_id: str,
+    source_run_id: str,
+    runtime_run_id: str,
+) -> None:
+    runtime_run_id = runtime_run_id.strip()
+    if not runtime_run_id:
+        raise RuntimeError("runtime_run_id_required")
+    row = _source_run_runtime_link_row_conn(
+        conn,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        user_id=user_id,
+        session_id=session_id,
+        source_run_id=source_run_id,
+    )
+    if row is None or row["source_kind"] != "cts":
+        raise RuntimeError("cts_source_run_not_found")
+    _validate_source_run_runtime_run_id_conn(
+        conn,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        user_id=user_id,
+        session_id=session_id,
+        source_run_id=source_run_id,
+        runtime_run_id=runtime_run_id,
+    )
+    if row["runtime_run_id"] == runtime_run_id:
+        return
+    conn.execute(
+        """
+        UPDATE source_runs
+        SET runtime_run_id = ?
+        WHERE tenant_id = ?
+          AND workspace_id = ?
+          AND user_id = ?
+          AND session_id = ?
+          AND source_run_id = ?
+          AND runtime_run_id IS NULL
+        """,
+        (runtime_run_id, tenant_id, workspace_id, user_id, session_id, source_run_id),
+    )
+
+
 def _source_connection_from_row(row: sqlite3.Row) -> WorkbenchSourceConnection:
     return WorkbenchSourceConnection(
         connection_id=row["connection_id"],
@@ -3845,7 +4124,10 @@ def _event_from_row(row: sqlite3.Row) -> WorkbenchEvent:
         source_run_id=row["source_run_id"],
         source_kind=row["source_kind"],
         event_name=row["event_name"],
+        schema_version=row["schema_version"] or "workbench_event_v1",
+        idempotency_key=row["idempotency_key"],
         payload=payload,
+        occurred_at=row["occurred_at"] or row["created_at"],
         created_at=row["created_at"],
     )
 
@@ -3977,6 +4259,9 @@ def _append_workbench_event_conn(
     source_kind: Literal["cts", "liepin"] | None,
     event_name: str,
     payload: dict[str, object],
+    schema_version: str = "workbench_event_v1",
+    idempotency_key: str | None = None,
+    occurred_at: str | None = None,
 ) -> WorkbenchEvent:
     session_seq = None
     if session_id is not None:
@@ -3992,14 +4277,18 @@ def _append_workbench_event_conn(
     redacted_payload = redact_event_payload(payload)
     if not isinstance(redacted_payload, dict):
         redacted_payload = {"value": redacted_payload}
+    safe_schema_version = _bounded_text(schema_version, 80) or "workbench_event_v1"
+    safe_idempotency_key = _bounded_text(idempotency_key, 160)
     now = _now_iso()
+    safe_occurred_at = _bounded_text(occurred_at, 80) or now
     cursor = conn.execute(
         """
         INSERT INTO session_events (
             tenant_id, workspace_id, user_id, session_id, session_seq,
-            source_run_id, source_kind, event_name, payload_redacted_json, created_at
+            source_run_id, source_kind, event_name, schema_version, idempotency_key,
+            payload_redacted_json, occurred_at, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             tenant_id,
@@ -4010,7 +4299,10 @@ def _append_workbench_event_conn(
             source_run_id,
             source_kind,
             event_name,
+            safe_schema_version,
+            safe_idempotency_key,
             json.dumps(redacted_payload, sort_keys=True, separators=(",", ":")),
+            safe_occurred_at,
             now,
         ),
     )
@@ -4021,7 +4313,10 @@ def _append_workbench_event_conn(
         source_run_id=source_run_id,
         source_kind=source_kind,
         event_name=event_name,
+        schema_version=safe_schema_version,
+        idempotency_key=safe_idempotency_key,
         payload=redacted_payload,
+        occurred_at=safe_occurred_at,
         created_at=now,
     )
 

@@ -258,6 +258,18 @@ WorkbenchTriageStatus = Literal["draft", "approved"]
 WorkbenchJobStatus = Literal["queued", "running", "completed", "failed"]
 WorkbenchCandidateReviewStatus = Literal["new", "promising", "rejected"]
 WorkbenchCandidateEvidenceLevel = Literal["card", "detail", "final"]
+WorkbenchGraphNodeKind = Literal["recall", "scoring", "final", "liepin_card", "detail_approval"]
+WorkbenchGraphRelationshipKind = Literal[
+    "recalled",
+    "new",
+    "scored",
+    "fit",
+    "not_fit",
+    "final",
+    "detail_requested",
+]
+WorkbenchGraphCandidateRecoveryState = Literal["ready", "recoverable_empty"]
+WorkbenchResumeSnapshotStatus = Literal["ready", "snapshot_forbidden", "snapshot_not_found", "snapshot_redacted"]
 WorkbenchDetailOpenMode = Literal["human_confirm", "bypass_confirm"]
 WorkbenchDetailOpenRequestStatus = Literal["pending", "approved", "rejected", "bypassed", "blocked", "expired"]
 WorkbenchDetailOpenLedgerStatus = Literal["planned", "leased", "opened", "skipped", "blocked", "failed", "maybe_used"]
@@ -558,7 +570,10 @@ class WorkbenchEventResponse(BaseModel):
     sourceRunId: str | None = None
     sourceKind: SourceKind | None = None
     eventName: str
+    schemaVersion: str
+    idempotencyKey: str | None = None
     payload: dict[str, object]
+    occurredAt: str
     createdAt: str
 
 
@@ -607,6 +622,107 @@ class WorkbenchCandidateEvidenceResponse(BaseModel):
     strengths: list[str]
     weaknesses: list[str]
     createdAt: str
+
+
+class WorkbenchGraphCandidateSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    graphCandidateId: str
+    sourceKind: SourceKind
+    sourceRunId: str
+    nodeKind: WorkbenchGraphNodeKind
+    roundNo: int | None = None
+    laneType: str | None = None
+    queryRole: str | None = None
+    relationshipKind: WorkbenchGraphRelationshipKind
+    displayName: str
+    title: str
+    company: str
+    location: str
+    sourceBadges: list[str]
+    score: int | None = None
+    fitBucket: str | None = None
+    summary: str
+    matchedMustHaves: list[str]
+    strengths: list[str]
+    missingRisks: list[str]
+    reviewItemId: str | None = None
+    evidenceLevel: WorkbenchCandidateEvidenceLevel | None = None
+    detailOpenRequestId: str | None = None
+    canExpandResume: bool
+    canMarkPromising: bool
+    canReject: bool
+    canSaveNote: bool
+    canRequestDetail: bool
+    canOpenProvider: bool
+
+
+class WorkbenchGraphCandidateListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nodeId: str
+    items: list[WorkbenchGraphCandidateSummaryResponse]
+    nextCursor: str | None = None
+    totalEstimate: int | None = None
+    truncated: bool
+    generatedAt: str
+    recoveryState: WorkbenchGraphCandidateRecoveryState = "ready"
+    recoveryReason: str | None = None
+
+
+class WorkbenchResumeSnapshotProfileResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    displayName: str
+    headline: str
+    company: str
+    location: str
+    summary: str
+
+
+class WorkbenchResumeSnapshotWorkExperienceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    company: str
+    title: str
+    duration: str | None = None
+    summary: str | None = None
+
+
+class WorkbenchResumeSnapshotEducationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    school: str
+    degree: str | None = None
+    major: str | None = None
+
+
+class WorkbenchResumeSnapshotProjectResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    summary: str | None = None
+
+
+class WorkbenchResumeSnapshotSourceEvidenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    text: str
+
+
+class WorkbenchGraphCandidateResumeSnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    graphCandidateId: str
+    status: WorkbenchResumeSnapshotStatus
+    reason: str | None = None
+    profile: WorkbenchResumeSnapshotProfileResponse | None = None
+    workExperience: list[WorkbenchResumeSnapshotWorkExperienceResponse] = Field(default_factory=list)
+    education: list[WorkbenchResumeSnapshotEducationResponse] = Field(default_factory=list)
+    projects: list[WorkbenchResumeSnapshotProjectResponse] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
+    sourceEvidence: list[WorkbenchResumeSnapshotSourceEvidenceResponse] = Field(default_factory=list)
 
 
 class WorkbenchCandidateReviewItemResponse(BaseModel):

@@ -156,6 +156,7 @@ WORKBENCH_REQUIRED_COLUMNS = {
             "source_kind",
             "status",
             "auth_state",
+            "runtime_run_id",
             "cards_scanned_count",
             "unique_candidates_count",
             "detail_open_used_count",
@@ -171,7 +172,10 @@ WORKBENCH_REQUIRED_COLUMNS = {
             "session_id",
             "session_seq",
             "event_name",
+            "schema_version",
+            "idempotency_key",
             "payload_redacted_json",
+            "occurred_at",
             "created_at",
         }
     ),

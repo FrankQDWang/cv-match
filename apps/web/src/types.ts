@@ -248,7 +248,10 @@ export type WorkbenchEvent = {
   sourceRunId: string | null;
   sourceKind: SourceKind | null;
   eventName: string;
+  schemaVersion?: string;
+  idempotencyKey?: string | null;
   payload: Record<string, unknown>;
+  occurredAt?: string;
   createdAt: string;
 };
 
@@ -302,4 +305,105 @@ export type WorkbenchCandidateReviewQueueResponse = {
 export type WorkbenchCandidateReviewItemUpdateInput = {
   status?: WorkbenchCandidateReviewStatus;
   note?: string;
+};
+
+export type WorkbenchGraphNodeKind = 'recall' | 'scoring' | 'final' | 'liepin_card' | 'detail_approval';
+export type WorkbenchGraphRelationshipKind =
+  | 'recalled'
+  | 'new'
+  | 'scored'
+  | 'fit'
+  | 'not_fit'
+  | 'final'
+  | 'detail_requested';
+export type WorkbenchGraphCandidateRecoveryState = 'ready' | 'recoverable_empty';
+export type WorkbenchResumeSnapshotStatus =
+  | 'ready'
+  | 'snapshot_forbidden'
+  | 'snapshot_not_found'
+  | 'snapshot_redacted';
+
+export type WorkbenchGraphCandidateSummary = {
+  graphCandidateId: string;
+  sourceKind: SourceKind;
+  sourceRunId: string;
+  nodeKind: WorkbenchGraphNodeKind;
+  roundNo: number | null;
+  laneType: string | null;
+  queryRole: string | null;
+  relationshipKind: WorkbenchGraphRelationshipKind;
+  displayName: string;
+  title: string;
+  company: string;
+  location: string;
+  sourceBadges: string[];
+  score: number | null;
+  fitBucket: string | null;
+  summary: string;
+  matchedMustHaves: string[];
+  strengths: string[];
+  missingRisks: string[];
+  reviewItemId: string | null;
+  evidenceLevel: WorkbenchCandidateEvidenceLevel | null;
+  detailOpenRequestId: string | null;
+  canExpandResume: boolean;
+  canMarkPromising: boolean;
+  canReject: boolean;
+  canSaveNote: boolean;
+  canRequestDetail: boolean;
+  canOpenProvider: boolean;
+};
+
+export type WorkbenchGraphCandidateListResponse = {
+  nodeId: string;
+  items: WorkbenchGraphCandidateSummary[];
+  nextCursor: string | null;
+  totalEstimate: number | null;
+  truncated: boolean;
+  generatedAt: string;
+  recoveryState: WorkbenchGraphCandidateRecoveryState;
+  recoveryReason: string | null;
+};
+
+export type WorkbenchResumeSnapshotProfile = {
+  displayName: string;
+  headline: string;
+  company: string;
+  location: string;
+  summary: string;
+};
+
+export type WorkbenchResumeSnapshotWorkExperience = {
+  company: string;
+  title: string;
+  duration: string | null;
+  summary: string | null;
+};
+
+export type WorkbenchResumeSnapshotEducation = {
+  school: string;
+  degree: string | null;
+  major: string | null;
+};
+
+export type WorkbenchResumeSnapshotProject = {
+  name: string;
+  summary: string | null;
+};
+
+export type WorkbenchResumeSnapshotSourceEvidence = {
+  label: string;
+  text: string;
+};
+
+export type WorkbenchGraphCandidateResumeSnapshot = {
+  graphCandidateId: string;
+  status: WorkbenchResumeSnapshotStatus;
+  reason: string | null;
+  profile: WorkbenchResumeSnapshotProfile | null;
+  workExperience: WorkbenchResumeSnapshotWorkExperience[];
+  education: WorkbenchResumeSnapshotEducation[];
+  projects: WorkbenchResumeSnapshotProject[];
+  skills: string[];
+  sourceEvidence: WorkbenchResumeSnapshotSourceEvidence[];
 };

@@ -9,13 +9,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
 from seektalent.config import AppSettings
+from seektalent.corpus.store import CorpusStore
 from seektalent.core.retrieval.provider_contract import ProviderSnapshot
 from seektalent.core.retrieval.provider_contract import SearchRequest
 from seektalent.core.retrieval.provider_contract import SearchResult
+from seektalent.flywheel.store import FlywheelStore
 from seektalent.models import ResumeCandidate
 from seektalent.progress import ProgressEvent
 from seektalent.providers.liepin.worker_contracts import LoginHandoff
@@ -24,6 +27,8 @@ from seektalent.providers.liepin.worker_contracts import LoginRelayInputResult
 from seektalent.providers.liepin.worker_contracts import LoginRelaySnapshot
 from seektalent.providers.liepin.worker_contracts import LiepinWorkerModeError
 from seektalent_ui.server import RunRegistry, create_app
+from seektalent_ui.workbench_store import WorkbenchSourceRunJob
+from seektalent_ui.workbench_store import WorkbenchSourceRunJobContext
 from seektalent_ui.workbench_store import WorkbenchUser
 from tests.settings_factory import make_settings
 
@@ -35,15 +40,27 @@ class FakeWorkbenchRuntime:
     started = threading.Event()
     release = threading.Event()
     calls: list[dict[str, str]] = []
+    extraction_calls: list[dict[str, str]] = []
     error_message: str | None = None
     progress_events: list[ProgressEvent] = []
     artifacts: object = object()
+    runtime_run_id: str | None = None
 
     def __init__(self, settings: AppSettings) -> None:
         del settings
 
-    def run(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> object:
+    def run(
+        self,
+        *,
+        job_title: str,
+        jd: str,
+        notes: str,
+        progress_callback=None,
+        runtime_start_callback=None,
+    ) -> object:
         self.calls.append({"job_title": job_title, "jd": jd, "notes": notes})
+        if self.runtime_run_id is not None and runtime_start_callback is not None:
+            runtime_start_callback(self.runtime_run_id)
         self.started.set()
         for event in self.progress_events:
             if progress_callback is not None:
@@ -53,14 +70,41 @@ class FakeWorkbenchRuntime:
             raise RuntimeError(self.error_message)
         return self.artifacts
 
+    def extract_requirements(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> object:
+        self.extraction_calls.append({"job_title": job_title, "jd": jd, "notes": notes})
+        if progress_callback is not None:
+            progress_callback(
+                ProgressEvent(
+                    type="requirements_completed",
+                    message=f"岗位需求解析完成：{job_title}",
+                    payload={
+                        "stage": "requirements",
+                        "role_title": job_title,
+                        "must_have_capabilities": ["Python APIs", "ranking systems"],
+                        "preferred_capabilities": ["retrieval experience"],
+                    },
+                )
+            )
+        return SimpleNamespace(
+            must_have_capabilities=["Python APIs", "ranking systems"],
+            preferred_capabilities=["retrieval experience"],
+            exclusion_signals=["intern only"],
+            initial_query_term_pool=[
+                SimpleNamespace(term="Python backend"),
+                SimpleNamespace(term="ranking systems"),
+            ],
+        )
+
 
 def _reset_fake_runtime() -> None:
     FakeWorkbenchRuntime.started = threading.Event()
     FakeWorkbenchRuntime.release = threading.Event()
     FakeWorkbenchRuntime.calls = []
+    FakeWorkbenchRuntime.extraction_calls = []
     FakeWorkbenchRuntime.error_message = None
     FakeWorkbenchRuntime.progress_events = []
     FakeWorkbenchRuntime.artifacts = object()
+    FakeWorkbenchRuntime.runtime_run_id = None
 
 
 class ParallelProbeRuntime:
@@ -74,8 +118,16 @@ class ParallelProbeRuntime:
     def __init__(self, settings: AppSettings) -> None:
         del settings
 
-    def run(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> object:
-        del job_title, jd, notes, progress_callback
+    def run(
+        self,
+        *,
+        job_title: str,
+        jd: str,
+        notes: str,
+        progress_callback=None,
+        runtime_start_callback=None,
+    ) -> object:
+        del job_title, jd, notes, progress_callback, runtime_start_callback
         with self.lock:
             type(self).active_count += 1
             type(self).started_count += 1
@@ -86,6 +138,15 @@ class ParallelProbeRuntime:
         with self.lock:
             type(self).active_count -= 1
         return object()
+
+
+class ExplodingRequirementRuntime(FakeWorkbenchRuntime):
+    def extract_requirements(self, *, job_title: str, jd: str, notes: str, progress_callback=None) -> object:
+        del job_title, jd, notes, progress_callback
+        raise RuntimeError(
+            "Cookie=abc Authorization: Bearer token storageState=/tmp/private-runtime-dir "
+            "webSocketDebuggerUrl=ws://127.0.0.1/devtools/browser/secret"
+        )
 
 
 def _reset_parallel_probe_runtime() -> None:
@@ -107,6 +168,14 @@ def _client(tmp_path: Path, *, runtime_factory=FakeWorkbenchRuntime) -> TestClie
 
 def _db_path(tmp_path: Path) -> Path:
     return tmp_path / ".seektalent" / "workbench.sqlite3"
+
+
+def _flywheel_path(tmp_path: Path) -> Path:
+    return tmp_path / ".seektalent" / "flywheel.sqlite3"
+
+
+def _corpus_path(tmp_path: Path) -> Path:
+    return tmp_path / ".seektalent" / "corpus.sqlite3"
 
 
 def _session_digest(client: TestClient) -> str:
@@ -182,8 +251,15 @@ def _approve_triage(client: TestClient, session_id: str) -> dict:
     return response.json()
 
 
-def _candidate_artifacts(*, resume_id: str = "resume-1", source_resume_id: str = "provider-secret-id") -> object:
+def _candidate_artifacts(
+    *,
+    resume_id: str = "resume-1",
+    source_resume_id: str = "provider-secret-id",
+    run_id: str | None = "runtime-run-1",
+) -> object:
     return SimpleNamespace(
+        run_id=run_id,
+        run_dir=Path("/tmp/private-runtime-dir"),
         final_result=SimpleNamespace(
             candidates=[
                 SimpleNamespace(
@@ -220,6 +296,189 @@ def _candidate_artifacts(*, resume_id: str = "resume-1", source_resume_id: str =
     )
 
 
+def _insert_cts_graph_candidate_fixture(
+    tmp_path: Path,
+    client: TestClient,
+    *,
+    session_id: str,
+    source_run_id: str,
+    runtime_run_id: str = "runtime-run-secret-graph",
+    count: int = 3,
+) -> None:
+    store = client.app.state.workbench_store
+    user = store.get_user_by_session(session_digest=_session_digest(client))
+    assert user is not None
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        conn.execute(
+            """
+            UPDATE source_runs
+            SET runtime_run_id = ?, status = 'completed'
+            WHERE workspace_id = ? AND user_id = ? AND session_id = ? AND source_run_id = ?
+            """,
+            (runtime_run_id, user.workspace_id, user.user_id, session_id, source_run_id),
+        )
+
+    flywheel = FlywheelStore(_flywheel_path(tmp_path))
+    corpus = CorpusStore(_corpus_path(tmp_path))
+    task_id = flywheel.upsert_task(job_title="Backend Engineer", jd_text="Python search", notes_text="")
+    flywheel.start_run(
+        run_id=runtime_run_id,
+        task_id=task_id,
+        version="test",
+        git_sha=None,
+        artifact_ref_id=None,
+        artifact_root="/tmp/private-runtime-dir/artifacts",
+        config_hash="config",
+        config_payload={"providerKey": "provider-secret-key"},
+        status="completed",
+        eval_enabled=False,
+        benchmark_id=None,
+        benchmark_case_id=None,
+    )
+    flywheel.record_run_queries(
+        [
+            {
+                "run_id": runtime_run_id,
+                "query_instance_id": "query-1",
+                "query_fingerprint": "fingerprint-1",
+                "round_no": 1,
+                "lane_type": "generic_explore",
+                "query_role": "primary",
+                "canonical_query_spec_json": "{}",
+                "query_spec_schema_version": "test",
+                "query_policy_version": "test",
+                "job_intent_fingerprint": "job",
+                "provider_name": "cts",
+                "rendered_provider_query": "Python backend",
+                "keyword_query": "Python backend",
+                "query_terms_json": '["Python"]',
+                "filters_json": "{}",
+                "batch_no": 1,
+            }
+        ]
+    )
+    artifact_ref_id = corpus.record_artifact_ref(
+        artifact_kind="provider_snapshot",
+        artifact_id="artifact-secret",
+        artifact_root="/tmp/private-runtime-dir/corpus",
+        logical_name="raw-private-resumes",
+        relative_path="raw/provider-secret-cookie.json",
+        content_sha256="sha",
+        schema_version="test",
+    )
+    for index in range(count):
+        resume_id = f"resume-{index + 1}"
+        snapshot_hash = f"snapshot-{index + 1}"
+        resume_doc_id = f"doc-{index + 1}"
+        subject_id = f"subject-{index + 1}"
+        corpus.upsert_resume_subject(
+            {
+                "subject_id": subject_id,
+                "tenant_id": "local",
+                "workspace_id": "default",
+                "provider_name": "cts",
+                "provider_candidate_id": f"provider-secret-{index + 1}",
+                "source_resume_id": f"source-secret-{index + 1}",
+                "dedup_key": resume_id,
+                "subject_confidence": "high",
+                "subject_binding_reason": "provider_candidate_id",
+            }
+        )
+        corpus.upsert_resume_document(
+            {
+                "resume_doc_id": resume_doc_id,
+                "tenant_id": "local",
+                "workspace_id": "default",
+                "subject_id": subject_id,
+                "snapshot_sha256": snapshot_hash,
+                "source_resume_id": f"source-secret-{index + 1}",
+                "provider_name": "cts",
+                "provider_candidate_id": f"provider-secret-{index + 1}",
+                "dedup_key": resume_id,
+                "raw_payload_artifact_ref_id": artifact_ref_id,
+                "raw_payload_sha256": f"raw-sha-{index + 1}",
+                "raw_payload_size_bytes": 1024,
+                "raw_payload_json": None,
+                "raw_payload_inline_reason": None,
+                "normalized_text": "Private raw resume body with Cookie Authorization storageState CDP websocket",
+                "normalized_sections_json": {"profile": {"name": f"Candidate {index + 1}", "summary": "Python backend search engineer."}},
+                "skills_json": ["Python", "FastAPI", "ranking"],
+                "experience_json": [
+                    {"company": f"SearchCo {index + 1}", "title": "Backend Engineer", "summary": "Built retrieval APIs."}
+                ],
+                "education_json": [{"school": "ZJU", "degree": "BS", "major": "Computer Science"}],
+                "locations_json": ["Shanghai"],
+                "current_title": "Backend Engineer",
+                "current_company": f"SearchCo {index + 1}",
+                "searchable_text_version": "test",
+                "normalization_version": "test",
+                "normalization_status": "ok",
+                "normalization_failure_kind": None,
+                "normalization_warnings_json": [],
+                "payload_completeness": "summary",
+                "has_searchable_text": True,
+                "source_kind": "provider_return",
+                "first_seen_run_id": runtime_run_id,
+                "first_seen_query_instance_id": "query-1",
+                "first_seen_stage_id": None,
+                "first_seen_artifact_ref_id": artifact_ref_id,
+                "memory_eligible": False,
+                "allowed_uses_json": ["search"],
+                "search_index_eligible": True,
+                "benchmark_eligible": False,
+                "training_eligible": False,
+                "external_export_eligible": False,
+                "internal_materialization_eligible": True,
+                "llm_ingestion_eligible": False,
+                "consent_basis": None,
+                "source_terms_ref": None,
+                "pii_classification_version": "test",
+                "redaction_status": "unredacted",
+                "sensitivity_json": {"contains_pii": True, "cookie": "secret-cookie"},
+                "content_trust_level": "untrusted_external",
+                "contains_prompt_like_text": False,
+                "llm_sanitization_version": None,
+                "llm_ingestion_policy": "quote_as_data_only",
+                "retention_policy": "workspace_recruiting_record",
+                "schema_version": "test",
+            }
+        )
+        flywheel.upsert_resume_snapshot(
+            snapshot_sha256=snapshot_hash,
+            source_resume_id=f"source-secret-{index + 1}",
+            dedup_key=resume_id,
+            raw_payload={"Cookie": "secret-cookie", "Authorization": "Bearer provider-secret", "resume": resume_id},
+            normalized_preview={"name": f"Candidate {index + 1}"},
+        )
+        flywheel.record_query_resume_hits(
+            [
+                {
+                    "run_id": runtime_run_id,
+                    "query_instance_id": "query-1",
+                    "query_fingerprint": "fingerprint-1",
+                    "hit_sequence_no": index + 1,
+                    "snapshot_sha256": snapshot_hash,
+                    "resume_id": resume_id,
+                    "round_no": 1,
+                    "lane_type": "generic_explore",
+                    "batch_no": 1,
+                    "rank_in_query": index + 1,
+                    "provider_name": "cts",
+                    "dedup_key": resume_id,
+                    "was_new_to_pool": True,
+                    "was_duplicate": False,
+                    "scored_fit_bucket": "fit" if index == 0 else "near_fit",
+                    "overall_score": 92 - index,
+                    "must_have_match_score": 80,
+                    "risk_score": 10,
+                    "final_candidate_status": "shortlisted" if index == 0 else None,
+                }
+            ]
+        )
+    flywheel.close()
+    corpus.close()
+
+
 def _wait_for_source_status(
     client: TestClient,
     session_id: str,
@@ -238,6 +497,73 @@ def _wait_for_source_status(
             return run
         time.sleep(0.02)
     raise AssertionError(f"Timed out waiting for sourceRunId={source_run_id} status={expected}")
+
+
+def _insert_review_candidate(
+    tmp_path: Path,
+    client: TestClient,
+    *,
+    session_id: str,
+    review_item_id: str,
+    evidence: list[dict[str, object]],
+    display_name: str = "Graph Candidate",
+    aggregate_score: int = 88,
+) -> None:
+    store = client.app.state.workbench_store
+    user = store.get_user_by_session(session_digest=_session_digest(client))
+    assert user is not None
+    now = "2026-01-01T00:00:00+00:00"
+    primary_evidence_id = str(evidence[0]["evidence_id"])
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        conn.execute(
+            """
+            INSERT INTO candidate_review_items (
+                review_item_id, tenant_id, workspace_id, user_id, session_id,
+                primary_evidence_id, display_name, title, company, location, summary,
+                aggregate_score, fit_bucket, review_status, note, created_at, updated_at
+            )
+            VALUES (?, 'local', ?, ?, ?, ?, ?, 'Backend Engineer', 'SearchCo', 'Shanghai',
+                    'Safe graph summary.', ?, 'fit', 'new', '', ?, ?)
+            """,
+            (
+                review_item_id,
+                user.workspace_id,
+                user.user_id,
+                session_id,
+                primary_evidence_id,
+                display_name,
+                aggregate_score,
+                now,
+                now,
+            ),
+        )
+        for item in evidence:
+            conn.execute(
+                """
+                INSERT INTO candidate_evidence (
+                    evidence_id, review_item_id, tenant_id, workspace_id, user_id, session_id,
+                    source_run_id, source_kind, evidence_level, provider_candidate_key_hash,
+                    resume_id, score, fit_bucket, matched_must_haves_json,
+                    matched_preferences_json, missing_risks_json, strengths_json, weaknesses_json, created_at
+                )
+                VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'fit', ?, '[]', '[]', '[]', '[]', ?)
+                """,
+                (
+                    item["evidence_id"],
+                    review_item_id,
+                    user.workspace_id,
+                    user.user_id,
+                    session_id,
+                    item["source_run_id"],
+                    item["source_kind"],
+                    item.get("evidence_level", "card"),
+                    item.get("provider_candidate_key_hash", f"provider-{item['evidence_id']}"),
+                    item.get("resume_id", f"resume-{item['evidence_id']}"),
+                    item.get("score", aggregate_score),
+                    json.dumps(item.get("matched_must_haves", ["Python"])),
+                    now,
+                ),
+            )
 
 
 def _insert_user(tmp_path: Path, *, email: str, password_hash: str) -> str:
@@ -992,6 +1318,118 @@ def test_liepin_detail_open_request_requires_human_approval_before_lease(tmp_pat
     assert "Cookie" not in intent["target_scope_json"]
 
 
+def test_liepin_detail_approval_graph_candidates_are_read_from_detail_requests(tmp_path: Path) -> None:
+    client, session, items, _fake_worker = _create_liepin_candidate_queue(tmp_path)
+    item = items[0]
+    created = client.post(
+        f"/api/workbench/sessions/{session['sessionId']}/candidates/{item['reviewItemId']}/detail-open-requests",
+        headers=_csrf_header(client),
+        json={"idempotencyKey": "graph-detail-approval"},
+    )
+    assert created.status_code == 202, created.text
+    request_payload = created.json()
+
+    response = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=liepin-detail-approval"
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["nodeId"] == "liepin-detail-approval"
+    assert payload["items"][0]["reviewItemId"] == item["reviewItemId"]
+    assert payload["items"][0]["detailOpenRequestId"] == request_payload["requestId"]
+    assert payload["items"][0]["relationshipKind"] == "detail_requested"
+    assert payload["items"][0]["sourceKind"] == "liepin"
+
+
+def test_final_shortlist_graph_candidates_include_all_review_sources(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts", "liepin"])
+    runs = {run["sourceKind"]: run for run in session["sourceRuns"]}
+    _insert_review_candidate(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        review_item_id="review-cts-final",
+        display_name="CTS Final Candidate",
+        aggregate_score=86,
+        evidence=[
+            {
+                "evidence_id": "evidence-cts-final",
+                "source_run_id": runs["cts"]["sourceRunId"],
+                "source_kind": "cts",
+                "evidence_level": "final",
+                "score": 86,
+            }
+        ],
+    )
+    _insert_review_candidate(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        review_item_id="review-liepin-final",
+        display_name="Liepin Final Candidate",
+        aggregate_score=91,
+        evidence=[
+            {
+                "evidence_id": "evidence-liepin-final",
+                "source_run_id": runs["liepin"]["sourceRunId"],
+                "source_kind": "liepin",
+                "evidence_level": "card",
+                "score": 91,
+            }
+        ],
+    )
+
+    response = client.get(f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=final-shortlist")
+
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert [item["displayName"] for item in items] == ["Liepin Final Candidate", "CTS Final Candidate"]
+    assert {item["sourceKind"] for item in items} == {"cts", "liepin"}
+    assert {item["sourceRunId"] for item in items} == {runs["cts"]["sourceRunId"], runs["liepin"]["sourceRunId"]}
+
+
+def test_liepin_graph_candidates_use_liepin_evidence_even_when_not_first(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts", "liepin"])
+    runs = {run["sourceKind"]: run for run in session["sourceRuns"]}
+    _insert_review_candidate(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        review_item_id="review-mixed-evidence",
+        display_name="Mixed Evidence Candidate",
+        aggregate_score=92,
+        evidence=[
+            {
+                "evidence_id": "evidence-cts-first",
+                "source_run_id": runs["cts"]["sourceRunId"],
+                "source_kind": "cts",
+                "evidence_level": "card",
+                "score": 70,
+            },
+            {
+                "evidence_id": "evidence-liepin-second",
+                "source_run_id": runs["liepin"]["sourceRunId"],
+                "source_kind": "liepin",
+                "evidence_level": "card",
+                "score": 92,
+            },
+        ],
+    )
+
+    response = client.get(f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=liepin-card-candidates")
+
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert [item["displayName"] for item in items] == ["Mixed Evidence Candidate"]
+    assert items[0]["sourceKind"] == "liepin"
+    assert items[0]["sourceRunId"] == runs["liepin"]["sourceRunId"]
+
+
 def test_liepin_detail_open_rejection_does_not_consume_budget_or_later_approve(tmp_path: Path) -> None:
     client, session, items, _fake_worker = _create_liepin_candidate_queue(tmp_path)
     item = items[0]
@@ -1329,6 +1767,72 @@ def test_triage_update_and_approve_are_scoped_and_csrf_protected(tmp_path: Path)
     assert read_back.json()["status"] == "approved"
 
 
+def test_prepare_requirement_triage_extracts_agent_criteria_without_starting_sources(tmp_path: Path) -> None:
+    _reset_fake_runtime()
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+
+    response = client.post(
+        f"/api/workbench/sessions/{session['sessionId']}/triage/prepare",
+        headers=_csrf_header(client),
+    )
+
+    assert response.status_code == 200, response.text
+    triage = response.json()
+    assert triage["status"] == "draft"
+    assert triage["mustHaves"] == ["Python APIs", "ranking systems"]
+    assert triage["niceToHaves"] == ["retrieval experience"]
+    assert triage["exclusions"] == ["intern only"]
+    assert triage["generatedQueryHints"] == ["Python backend", "ranking systems"]
+    assert FakeWorkbenchRuntime.extraction_calls == [
+        {
+            "job_title": "Python Engineer",
+            "jd": "Build Python agents and ranking systems.",
+            "notes": "Prefer retrieval experience.",
+        }
+    ]
+    assert FakeWorkbenchRuntime.calls == []
+    assert not FakeWorkbenchRuntime.started.is_set()
+
+    refreshed = client.get(f"/api/workbench/sessions/{session['sessionId']}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["requirementTriage"]["mustHaves"] == ["Python APIs", "ranking systems"]
+    assert refreshed.json()["sourceRuns"][0]["status"] == "queued"
+
+    events = client.get("/api/workbench/events?after_seq=0").json()["events"]
+    event_names = [event["eventName"] for event in events]
+    assert "runtime_requirements_completed" in event_names
+    assert "requirement_triage_updated" in event_names
+    assert "source_run_started" not in event_names
+
+
+def test_prepare_requirement_triage_does_not_return_raw_runtime_exception(tmp_path: Path) -> None:
+    client = _client(tmp_path, runtime_factory=ExplodingRequirementRuntime)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+
+    response = client.post(
+        f"/api/workbench/sessions/{session['sessionId']}/triage/prepare",
+        headers=_csrf_header(client),
+    )
+
+    assert response.status_code == 500
+    payload = response.json()
+    assert payload["detail"] == "Requirement extraction failed."
+    serialized = json.dumps(payload)
+    for forbidden in (
+        "Cookie",
+        "Authorization",
+        "Bearer",
+        "storageState",
+        "private-runtime-dir",
+        "webSocketDebuggerUrl",
+        "devtools",
+    ):
+        assert forbidden not in serialized
+
+
 def test_session_start_requires_approved_triage_and_blocks_unconnected_liepin(tmp_path: Path) -> None:
     _reset_fake_runtime()
     client = _client(tmp_path)
@@ -1401,6 +1905,626 @@ def test_cts_session_start_creates_job_and_completes_with_events(tmp_path: Path)
     assert "requirement_triage_used" in event_names
     assert "source_run_completed" in event_names
     assert "session_completed" not in event_names
+
+
+def test_cts_runtime_run_id_is_attached_before_completion_without_exposing_runtime_paths(tmp_path: Path) -> None:
+    _reset_fake_runtime()
+    runtime_run_id = "runtime-run-before-completion"
+    FakeWorkbenchRuntime.runtime_run_id = runtime_run_id
+    FakeWorkbenchRuntime.artifacts = _candidate_artifacts(run_id=runtime_run_id)
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _approve_triage(session_id=session["sessionId"], client=client)
+
+    start = _start_session(client, session["sessionId"])
+
+    assert start.status_code == 202, start.text
+    assert FakeWorkbenchRuntime.started.wait(timeout=1)
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        row = conn.execute(
+            "SELECT status, runtime_run_id FROM source_runs WHERE source_run_id = ?",
+            (cts_run["sourceRunId"],),
+        ).fetchone()
+    assert row == ("running", runtime_run_id)
+    running_payload = client.get(f"/api/workbench/sessions/{session['sessionId']}").json()
+    serialized = json.dumps(running_payload)
+    for forbidden in ("runtimeRunId", "runtime_run_id", "runDir", "run_dir", runtime_run_id, "private-runtime-dir"):
+        assert forbidden not in serialized
+
+    FakeWorkbenchRuntime.release.set()
+    completed = _wait_for_source_status(client, session["sessionId"], cts_run["sourceRunId"], "completed")
+    assert completed["status"] == "completed"
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        preserved = conn.execute(
+            "SELECT runtime_run_id FROM source_runs WHERE source_run_id = ?",
+            (cts_run["sourceRunId"],),
+        ).fetchone()[0]
+    assert preserved == runtime_run_id
+
+    _reset_fake_runtime()
+    attached_run_id = "runtime-run-original"
+    FakeWorkbenchRuntime.runtime_run_id = attached_run_id
+    FakeWorkbenchRuntime.artifacts = _candidate_artifacts(run_id="runtime-run-conflict")
+    conflict_session = _create_session(client, source_kinds=["cts"])
+    conflict_cts_run = next(run for run in conflict_session["sourceRuns"] if run["sourceKind"] == "cts")
+    _approve_triage(session_id=conflict_session["sessionId"], client=client)
+    conflict_start = _start_session(client, conflict_session["sessionId"])
+    assert conflict_start.status_code == 202, conflict_start.text
+    assert FakeWorkbenchRuntime.started.wait(timeout=1)
+    FakeWorkbenchRuntime.release.set()
+
+    failed = _wait_for_source_status(client, conflict_session["sessionId"], conflict_cts_run["sourceRunId"], "failed")
+    assert failed["warningCode"] == "runtime_failed"
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        conflict_row = conn.execute(
+            "SELECT runtime_run_id, warning_message FROM source_runs WHERE source_run_id = ?",
+            (conflict_cts_run["sourceRunId"],),
+        ).fetchone()
+    assert conflict_row[0] == attached_run_id
+    assert "runtime_run_id_conflict" in conflict_row[1]
+
+
+def test_cts_completion_attaches_runtime_run_id_when_start_callback_was_missing(tmp_path: Path) -> None:
+    _reset_fake_runtime()
+    runtime_run_id = "runtime-run-from-completion"
+    FakeWorkbenchRuntime.runtime_run_id = None
+    FakeWorkbenchRuntime.artifacts = _candidate_artifacts(run_id=runtime_run_id)
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _approve_triage(session_id=session["sessionId"], client=client)
+
+    start = _start_session(client, session["sessionId"])
+    assert start.status_code == 202, start.text
+    assert FakeWorkbenchRuntime.started.wait(timeout=1)
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        pending = conn.execute(
+            "SELECT status, runtime_run_id FROM source_runs WHERE source_run_id = ?",
+            (cts_run["sourceRunId"],),
+        ).fetchone()
+    assert pending == ("running", None)
+
+    FakeWorkbenchRuntime.release.set()
+    completed = _wait_for_source_status(client, session["sessionId"], cts_run["sourceRunId"], "completed")
+    assert completed["status"] == "completed"
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        attached = conn.execute(
+            "SELECT runtime_run_id FROM source_runs WHERE source_run_id = ?",
+            (cts_run["sourceRunId"],),
+        ).fetchone()[0]
+    assert attached == runtime_run_id
+
+
+def test_cts_completion_retry_rejects_runtime_run_id_conflict_after_completion(tmp_path: Path) -> None:
+    _reset_fake_runtime()
+    runtime_run_id = "runtime-run-original"
+    FakeWorkbenchRuntime.runtime_run_id = runtime_run_id
+    FakeWorkbenchRuntime.artifacts = _candidate_artifacts(run_id=runtime_run_id)
+    client = _client(tmp_path)
+    bootstrap = _bootstrap_and_login(client)
+    user = _workbench_user_from_bootstrap(bootstrap)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _approve_triage(session_id=session["sessionId"], client=client)
+
+    start = _start_session(client, session["sessionId"])
+    assert start.status_code == 202, start.text
+    assert FakeWorkbenchRuntime.started.wait(timeout=1)
+    FakeWorkbenchRuntime.release.set()
+    completed = _wait_for_source_status(client, session["sessionId"], cts_run["sourceRunId"], "completed")
+    assert completed["status"] == "completed"
+
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM source_run_jobs WHERE source_run_id = ?",
+            (cts_run["sourceRunId"],),
+        ).fetchone()
+    assert row is not None
+    store = client.app.state.workbench_store
+    session_model = store.get_workbench_session(user=user, session_id=session["sessionId"])
+    assert session_model is not None
+    job = WorkbenchSourceRunJob(
+        job_id=row["job_id"],
+        source_run_id=row["source_run_id"],
+        session_id=row["session_id"],
+        source_kind=row["source_kind"],
+        status=row["status"],
+        attempt_count=row["attempt_count"],
+        error_message=row["error_message"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+    context = WorkbenchSourceRunJobContext(
+        job=job,
+        session=session_model,
+        triage=session_model.requirement_triage,
+    )
+
+    with pytest.raises(RuntimeError, match="runtime_run_id_conflict"):
+        store.complete_cts_source_run_with_candidate_results(
+            context=context,
+            artifacts=_candidate_artifacts(run_id="runtime-run-conflict"),
+        )
+
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        row = conn.execute(
+            "SELECT status, runtime_run_id FROM source_runs WHERE source_run_id = ?",
+            (cts_run["sourceRunId"],),
+        ).fetchone()
+    assert row == ("completed", runtime_run_id)
+
+
+def test_cts_runtime_link_repair_is_idempotent_for_missing_source_run_link(tmp_path: Path) -> None:
+    _reset_fake_runtime()
+    client = _client(tmp_path)
+    bootstrap = _bootstrap_and_login(client)
+    user = _workbench_user_from_bootstrap(bootstrap)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    store = client.app.state.workbench_store
+
+    missing = store.repair_cts_source_run_runtime_link(
+        user=user,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+    )
+    missing_again = store.repair_cts_source_run_runtime_link(
+        user=user,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+    )
+
+    assert missing.status == "runtime_link_missing"
+    assert missing.reason == "runtime_link_missing"
+    assert missing.graph_candidate_state == "recoverable_empty"
+    assert missing_again == missing
+
+    not_started = store.repair_cts_source_run_runtime_link(
+        user=user,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        runtime_run_id="runtime-run-too-early",
+    )
+    assert not_started.status == "runtime_link_missing"
+    assert not_started.reason == "runtime_run_not_started"
+
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        conn.execute(
+            "UPDATE source_runs SET status = 'completed' WHERE source_run_id = ?",
+            (cts_run["sourceRunId"],),
+        )
+
+    attached = store.repair_cts_source_run_runtime_link(
+        user=user,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        runtime_run_id="runtime-run-recovered",
+    )
+    attached_again = store.repair_cts_source_run_runtime_link(
+        user=user,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        runtime_run_id="runtime-run-recovered",
+    )
+
+    assert attached.status == "attached"
+    assert attached.runtime_run_id == "runtime-run-recovered"
+    assert attached_again.status == "already_attached"
+    assert attached_again.runtime_run_id == "runtime-run-recovered"
+
+
+def test_cts_graph_candidates_are_read_from_flywheel_for_round_nodes(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        runtime_run_id="runtime-run-secret-graph",
+        count=2,
+    )
+
+    response = client.get(f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["nodeId"] == "cts-round-1-result"
+    assert payload["totalEstimate"] == 2
+    assert payload["truncated"] is False
+    assert payload["recoveryState"] == "ready"
+    assert [item["displayName"] for item in payload["items"]] == ["Candidate 1", "Candidate 2"]
+    first = payload["items"][0]
+    assert first["sourceKind"] == "cts"
+    assert first["sourceRunId"] == cts_run["sourceRunId"]
+    assert first["nodeKind"] == "recall"
+    assert first["relationshipKind"] == "new"
+    assert first["roundNo"] == 1
+    assert first["laneType"] == "generic_explore"
+    assert first["queryRole"] == "primary"
+    assert first["title"] == "Backend Engineer"
+    assert first["company"] == "SearchCo 1"
+    assert first["location"] == "Shanghai"
+    assert first["score"] == 92
+    assert first["fitBucket"] == "fit"
+    assert first["canExpandResume"] is True
+
+    review_queue = client.get(f"/api/workbench/sessions/{session['sessionId']}/candidates").json()
+    assert review_queue["items"] == []
+    serialized = json.dumps(payload)
+    for forbidden in (
+        "runtime-run-secret-graph",
+        "snapshot-1",
+        "doc-1",
+        "provider-secret",
+        "artifact-secret",
+        "/tmp/private-runtime-dir",
+        "secret-cookie",
+        "Authorization",
+        "storageState",
+        "CDP",
+        "websocket",
+    ):
+        assert forbidden not in serialized
+
+
+def test_cts_recall_graph_candidates_preserve_query_rank_order(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        count=2,
+    )
+    with sqlite3.connect(_corpus_path(tmp_path)) as conn:
+        conn.execute(
+            "UPDATE resume_documents SET normalized_sections_json = ? WHERE snapshot_sha256 = 'snapshot-1'",
+            (json.dumps({"profile": {"name": "Zulu Candidate", "summary": "Rank one."}}),),
+        )
+        conn.execute(
+            "UPDATE resume_documents SET normalized_sections_json = ? WHERE snapshot_sha256 = 'snapshot-2'",
+            (json.dumps({"profile": {"name": "Alpha Candidate", "summary": "Rank two."}}),),
+        )
+
+    response = client.get(f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result")
+
+    assert response.status_code == 200, response.text
+    assert [item["displayName"] for item in response.json()["items"]] == ["Zulu Candidate", "Alpha Candidate"]
+
+
+def test_cts_scoring_graph_candidates_exclude_unscored_hits(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        count=3,
+    )
+    with sqlite3.connect(_flywheel_path(tmp_path)) as conn:
+        conn.execute(
+            """
+            UPDATE query_resume_hits
+            SET scored_fit_bucket = NULL, overall_score = NULL
+            WHERE resume_id = 'resume-3'
+            """
+        )
+
+    response = client.get(f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-score")
+
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert [item["displayName"] for item in items] == ["Candidate 1", "Candidate 2"]
+    assert items[0]["relationshipKind"] == "fit"
+    assert items[1]["fitBucket"] == "near_fit"
+    assert items[1]["relationshipKind"] == "scored"
+
+
+def test_graph_candidate_ids_are_opaque_and_scoped_to_session_node(tmp_path: Path) -> None:
+    from seektalent_ui.auth import hash_password
+
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    _insert_user(tmp_path, email="user-b@example.com", password_hash=hash_password("correct horse"))
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+    )
+    other_session = _create_session(client, source_kinds=["cts"])
+    other_run = next(run for run in other_session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=other_session["sessionId"],
+        source_run_id=other_run["sourceRunId"],
+        runtime_run_id="runtime-run-other-secret",
+        count=1,
+    )
+
+    payload = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result"
+    ).json()
+    graph_candidate_id = payload["items"][0]["graphCandidateId"]
+
+    assert "runtime-run-secret-graph" not in graph_candidate_id
+    assert "resume-1" not in graph_candidate_id
+    assert "snapshot-1" not in graph_candidate_id
+    assert client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates/forged.resume-1/resume-snapshot"
+    ).status_code == 404
+    own_snapshot = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates/{graph_candidate_id}/resume-snapshot"
+    )
+    assert own_snapshot.status_code == 200, own_snapshot.text
+    assert client.get(
+        f"/api/workbench/sessions/{other_session['sessionId']}/graph-candidates/{graph_candidate_id}/resume-snapshot"
+    ).status_code == 404
+
+    login_b = client.post("/api/auth/login", json={"email": "user-b@example.com", "password": "correct horse"})
+    assert login_b.status_code == 204
+    assert client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result"
+    ).status_code == 404
+    assert client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates/{graph_candidate_id}/resume-snapshot"
+    ).status_code == 404
+
+
+def test_graph_candidate_list_is_paginated_and_stably_ordered(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        count=3,
+    )
+
+    first = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result&limit=2"
+    )
+    assert first.status_code == 200, first.text
+    first_payload = first.json()
+    assert [item["displayName"] for item in first_payload["items"]] == ["Candidate 1", "Candidate 2"]
+    assert first_payload["nextCursor"] is not None
+    assert "cts-round-1-result" not in first_payload["nextCursor"]
+    assert session["sessionId"] not in first_payload["nextCursor"]
+    second = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates"
+        f"?node_id=cts-round-1-result&limit=2&cursor={first_payload['nextCursor']}"
+    )
+    assert second.status_code == 200, second.text
+    assert [item["displayName"] for item in second.json()["items"]] == ["Candidate 3"]
+
+    repeated = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result&limit=2"
+    ).json()
+    assert [item["graphCandidateId"] for item in repeated["items"]] == [
+        item["graphCandidateId"] for item in first_payload["items"]
+    ]
+    forged = first_payload["nextCursor"][:-1] + ("A" if first_payload["nextCursor"][-1] != "A" else "B")
+    assert client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates"
+        f"?node_id=cts-round-1-result&limit=2&cursor={forged}"
+    ).status_code == 404
+
+
+def test_graph_candidate_resume_snapshot_is_scoped_and_allowlisted(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        count=1,
+    )
+    candidate = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result"
+    ).json()["items"][0]
+
+    response = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates/{candidate['graphCandidateId']}/resume-snapshot"
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["profile"]["displayName"] == "Candidate 1"
+    assert payload["profile"]["headline"] == "Backend Engineer"
+    assert payload["workExperience"][0]["company"] == "SearchCo 1"
+    assert payload["education"][0]["school"] == "ZJU"
+    assert payload["skills"] == ["Python", "FastAPI", "ranking"]
+    serialized = json.dumps(payload)
+    for forbidden in (
+        "runtime-run-secret-graph",
+        "snapshot-1",
+        "doc-1",
+        "source-secret",
+        "provider-secret",
+        "Private raw resume body",
+        "Cookie",
+        "secret-cookie",
+        "Authorization",
+        "storageState",
+        "CDP",
+        "websocket",
+        "/tmp/private-runtime-dir",
+        "artifact-secret",
+    ):
+        assert forbidden not in serialized
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("internal_materialization_eligible", 0),
+        ("allowed_uses_json", "[]"),
+        ("redaction_status", "blocked"),
+    ],
+)
+def test_graph_candidate_resume_snapshot_policy_denies_single_forbidden_flags(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        count=1,
+    )
+    candidate = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result"
+    ).json()["items"][0]
+    with sqlite3.connect(_corpus_path(tmp_path)) as conn:
+        conn.execute(
+            f"UPDATE resume_documents SET {field} = ? WHERE snapshot_sha256 = 'snapshot-1'",
+            (value,),
+        )
+
+    response = client.get(
+        f"/api/workbench/sessions/{session['sessionId']}/graph-candidates/{candidate['graphCandidateId']}/resume-snapshot"
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "snapshot_forbidden"
+    serialized = json.dumps(payload)
+    for forbidden in (
+        "runtime-run-secret-graph",
+        "snapshot-1",
+        "doc-1",
+        "provider-secret",
+        "secret-cookie",
+        "Authorization",
+        "storageState",
+        "CDP",
+        "websocket",
+        "/tmp/private-runtime-dir",
+        "sqlite",
+        "Traceback",
+    ):
+        assert forbidden not in serialized
+
+
+def test_graph_candidate_list_redacts_identity_when_snapshot_policy_forbids_materialization(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        count=1,
+    )
+    with sqlite3.connect(_corpus_path(tmp_path)) as conn:
+        conn.execute(
+            "UPDATE resume_documents SET internal_materialization_eligible = 0 WHERE snapshot_sha256 = 'snapshot-1'"
+        )
+
+    response = client.get(f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result")
+
+    assert response.status_code == 200, response.text
+    item = response.json()["items"][0]
+    assert item["displayName"] == "Candidate"
+    assert item["title"] == ""
+    assert item["company"] == ""
+    assert item["location"] == ""
+    assert item["summary"] == ""
+    assert item["canExpandResume"] is False
+    serialized = json.dumps(response.json())
+    for forbidden in ("Candidate 1", "Backend Engineer", "SearchCo 1", "Shanghai", "Python backend search engineer"):
+        assert forbidden not in serialized
+
+
+def test_graph_candidate_list_sanitizes_contaminated_projected_fields(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client, source_kinds=["cts"])
+    cts_run = next(run for run in session["sourceRuns"] if run["sourceKind"] == "cts")
+    _insert_cts_graph_candidate_fixture(
+        tmp_path,
+        client,
+        session_id=session["sessionId"],
+        source_run_id=cts_run["sourceRunId"],
+        count=1,
+    )
+    with sqlite3.connect(_corpus_path(tmp_path)) as conn:
+        conn.execute(
+            """
+            UPDATE resume_documents
+            SET normalized_sections_json = ?,
+                current_title = ?,
+                current_company = ?,
+                locations_json = ?
+            WHERE snapshot_sha256 = 'snapshot-1'
+            """,
+            (
+                json.dumps(
+                    {
+                        "profile": {
+                            "name": "Cookie: secret-cookie",
+                            "summary": "Authorization: Bearer provider-secret",
+                        }
+                    }
+                ),
+                "https://provider.example/private?token=secret",
+                "storageState source-secret",
+                json.dumps(["ws://127.0.0.1/devtools/browser/provider-secret"]),
+            ),
+        )
+
+    response = client.get(f"/api/workbench/sessions/{session['sessionId']}/graph-candidates?node_id=cts-round-1-result")
+
+    assert response.status_code == 200, response.text
+    item = response.json()["items"][0]
+    assert item["displayName"].startswith("Candidate ")
+    assert item["title"] == ""
+    assert item["company"] == ""
+    assert item["location"] == ""
+    assert item["summary"] == ""
+    serialized = json.dumps(response.json())
+    for forbidden in (
+        "secret-cookie",
+        "Authorization",
+        "Bearer",
+        "provider-secret",
+        "token=secret",
+        "storageState",
+        "source-secret",
+        "devtools/browser",
+    ):
+        assert forbidden not in serialized
 
 
 def test_cts_source_runs_can_execute_in_parallel(tmp_path: Path) -> None:
@@ -1539,10 +2663,12 @@ def test_runtime_failure_messages_are_redacted_outside_events(tmp_path: Path) ->
 
 def test_runtime_progress_callback_persists_redacted_workbench_event(tmp_path: Path) -> None:
     _reset_fake_runtime()
+    progress_time = "2026-05-09T00:01:02+00:00"
     FakeWorkbenchRuntime.progress_events = [
         ProgressEvent(
             type="search_started",
             message="query started with Cookie secret",
+            timestamp=progress_time,
             round_no=1,
             payload={
                 "stage": "search",
@@ -1571,6 +2697,9 @@ def test_runtime_progress_callback_persists_redacted_workbench_event(tmp_path: P
     assert progress
     assert progress[0]["sessionId"] == session["sessionId"]
     assert progress[0]["sourceRunId"] == cts_run["sourceRunId"]
+    assert progress[0]["schemaVersion"] == "runtime_progress_v1"
+    assert progress[0]["idempotencyKey"].startswith(f"{cts_run['sourceRunId']}:search_started:1:")
+    assert progress[0]["occurredAt"] == progress_time
     serialized = str(progress[0])
     assert "visible" in serialized
     assert "Cookie" not in serialized
@@ -1727,6 +2856,46 @@ def test_workbench_events_after_seq_and_redaction(tmp_path: Path) -> None:
     assert "Bearer" not in serialized
     assert "wsEndpoint" not in serialized
     assert "playwright" not in serialized
+
+
+def test_workbench_event_schema_supports_versioned_replay_metadata(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client)
+    store = client.app.state.workbench_store
+    event_record = store.append_workbench_event(
+        tenant_id="local",
+        workspace_id="default",
+        user_id=session["ownerUserId"],
+        session_id=session["sessionId"],
+        source_run_id=None,
+        source_kind=None,
+        event_name="runtime_search_completed",
+        schema_version="runtime_progress_v1",
+        idempotency_key="runtime-search-1",
+        occurred_at="2026-05-09T00:01:02Z",
+        payload={"roundNo": 1, "safe": "value"},
+    )
+
+    response = client.get("/api/workbench/events?after_seq=0")
+
+    assert response.status_code == 200
+    payload = response.json()
+    event_payload = next(event for event in payload["events"] if event["globalSeq"] == event_record.global_seq)
+    assert event_payload["schemaVersion"] == "runtime_progress_v1"
+    assert event_payload["idempotencyKey"] == "runtime-search-1"
+    assert event_payload["occurredAt"] == "2026-05-09T00:01:02Z"
+    assert event_payload["createdAt"]
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        row = conn.execute(
+            """
+            SELECT schema_version, idempotency_key, occurred_at
+            FROM session_events
+            WHERE global_seq = ?
+            """,
+            (event_record.global_seq,),
+        ).fetchone()
+    assert row == ("runtime_progress_v1", "runtime-search-1", "2026-05-09T00:01:02Z")
 
 
 def test_workbench_sse_stream_uses_event_stream_and_last_event_id(tmp_path: Path) -> None:

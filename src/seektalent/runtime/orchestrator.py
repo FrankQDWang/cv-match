@@ -82,6 +82,7 @@ from seektalent.models import (
     RuntimeConstraint,
     RoundState,
     RunState,
+    RequirementSheet,
     ScoredCandidate,
     SearchControllerDecision,
     SearchAttempt,
@@ -256,6 +257,9 @@ class RunStageError(RuntimeError):
         self.error_message = message
 
 
+RuntimeStartCallback = Callable[[str], None]
+
+
 class WorkflowRuntime:
     def __init__(
         self,
@@ -334,10 +338,69 @@ class WorkflowRuntime:
         jd: str,
         notes: str,
         progress_callback: ProgressCallback | None = None,
+        runtime_start_callback: RuntimeStartCallback | None = None,
     ) -> RunArtifacts:
         return asyncio.run(
-            self.run_async(job_title=job_title, jd=jd, notes=notes, progress_callback=progress_callback)
+            self.run_async(
+                job_title=job_title,
+                jd=jd,
+                notes=notes,
+                progress_callback=progress_callback,
+                runtime_start_callback=runtime_start_callback,
+            )
         )
+
+    def extract_requirements(
+        self,
+        *,
+        job_title: str,
+        jd: str,
+        notes: str,
+        progress_callback: ProgressCallback | None = None,
+    ) -> RequirementSheet:
+        return asyncio.run(
+            self.extract_requirements_async(
+                job_title=job_title,
+                jd=jd,
+                notes=notes,
+                progress_callback=progress_callback,
+            )
+        )
+
+    async def extract_requirements_async(
+        self,
+        *,
+        job_title: str,
+        jd: str,
+        notes: str,
+        progress_callback: ProgressCallback | None = None,
+    ) -> RequirementSheet:
+        tracer = RunTracer(self.settings.artifacts_path)
+        close_status = "completed"
+        close_failure_summary: str | None = None
+        try:
+            self._write_run_preamble(tracer=tracer, job_title=job_title, jd=jd, notes=notes)
+            self._emit_progress(
+                progress_callback,
+                "run_started",
+                "Starting SeekTalent requirement extraction.",
+                payload={"stage": "requirements"},
+            )
+            self._require_live_llm_config()
+            run_state = await self._build_run_state(
+                job_title=job_title,
+                jd=jd,
+                notes=notes,
+                tracer=tracer,
+                progress_callback=progress_callback,
+            )
+            return run_state.requirement_sheet
+        except Exception as exc:
+            close_status = "failed"
+            close_failure_summary = str(exc)
+            raise
+        finally:
+            tracer.close(status=close_status, failure_summary=close_failure_summary)
 
     async def run_async(
         self,
@@ -346,6 +409,7 @@ class WorkflowRuntime:
         jd: str,
         notes: str,
         progress_callback: ProgressCallback | None = None,
+        runtime_start_callback: RuntimeStartCallback | None = None,
     ) -> RunArtifacts:
         tracer = RunTracer(self.settings.artifacts_path)
         corpus_session = tracer.store.create_root(
@@ -359,6 +423,8 @@ class WorkflowRuntime:
         try:
             self._start_corpus_run(tracer=tracer, job_title=job_title, jd=jd, notes=notes)
             self._start_flywheel_run(tracer=tracer, job_title=job_title, jd=jd, notes=notes)
+            if runtime_start_callback is not None:
+                runtime_start_callback(tracer.run_id)
             self._write_run_preamble(tracer=tracer, job_title=job_title, jd=jd, notes=notes)
             self._emit_progress(
                 progress_callback,
