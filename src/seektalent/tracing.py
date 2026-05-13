@@ -149,7 +149,7 @@ class LLMCallSnapshot(BaseModel):
     prompt_hash: str
     prompt_snapshot_path: str
     output_mode: Literal["native_strict"] = "native_strict"
-    structured_output_mode: Literal["native_json_schema", "prompted_json"]
+    structured_output_mode: Literal["native_json_schema", "prompted_json", "plain_text"]
     thinking_mode: bool
     reasoning_effort: Literal["off", "low", "medium", "high", "xhigh", "max"]
     retries: int

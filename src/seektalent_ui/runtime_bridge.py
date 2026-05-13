@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import asyncio
 from dataclasses import dataclass
 import inspect
@@ -64,21 +64,24 @@ def run_cts_source_run(
     progress_callback: ProgressCallback | None = None,
 ) -> None:
     runtime = runtime_factory(settings)
+    run_method = getattr(runtime, "run", None)
+    if not callable(run_method):
+        raise RuntimeError("Runtime does not support CTS source runs.")
     run_kwargs: dict[str, object] = {
         "job_title": context.session.job_title,
         "jd": context.session.jd_text,
         "notes": _notes_with_triage(context),
         "progress_callback": progress_callback,
     }
-    if _runtime_run_accepts_start_callback(runtime):
+    if _runtime_run_accepts_start_callback(run_method):
         run_kwargs["runtime_start_callback"] = lambda run_id: store.attach_source_run_runtime_run_id(
             context=context,
             runtime_run_id=run_id,
         )
-    if _callable_accepts_keyword(runtime.run, "requirement_cache_scope"):
+    if _callable_accepts_keyword(run_method, "requirement_cache_scope"):
         _seed_approved_requirement_cache(context=context, settings=settings, notes=str(run_kwargs["notes"]))
         run_kwargs["requirement_cache_scope"] = context.session.session_id
-    artifacts = runtime.run(**run_kwargs)
+    artifacts = run_method(**run_kwargs)
     store.complete_cts_source_run_with_candidate_results(context=context, artifacts=artifacts)
 
 
@@ -237,9 +240,9 @@ def _query_terms(context: WorkbenchSourceRunJobContext) -> list[str]:
     return terms or [context.session.job_title]
 
 
-def _runtime_run_accepts_start_callback(runtime: object) -> bool:
+def _runtime_run_accepts_start_callback(run_method: Callable[..., object]) -> bool:
     try:
-        signature = inspect.signature(runtime.run)
+        signature = inspect.signature(run_method)
     except (AttributeError, TypeError, ValueError):
         return False
     parameters = signature.parameters
@@ -299,11 +302,11 @@ def _object_list(value: object, attr: str) -> list[object]:
 
 def _object_attr(value: object, attr: str) -> Any:
     if isinstance(value, dict):
-        return value.get(attr)
+        return {str(key): item for key, item in value.items()}.get(attr)
     return getattr(value, attr, None)
 
 
-def _unique_bounded_strings(values: list[object], *, max_items: int = 20, max_chars: int = 180) -> list[str]:
+def _unique_bounded_strings(values: Sequence[object], *, max_items: int = 20, max_chars: int = 180) -> list[str]:
     results: list[str] = []
     seen: set[str] = set()
     for value in values:

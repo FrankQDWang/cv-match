@@ -18,6 +18,7 @@ from seektalent_ui.models import (
     WorkbenchGraphCandidateListResponse,
     WorkbenchGraphCandidateNodeScope,
     WorkbenchGraphCandidateSummaryResponse,
+    WorkbenchGraphRelationshipKind,
 )
 from seektalent_ui.workbench_store import (
     DEFAULT_TENANT_ID,
@@ -256,10 +257,11 @@ def _cts_round_candidates(
             candidate_key=candidate_key,
             snapshot_sha256=str(snapshot_sha256) if snapshot_sha256 is not None else None,
         )
-        sections = _json_object(doc.get("normalized_sections_json")) if can_materialize else {}
+        materialized_doc = doc if can_materialize else None
+        sections = _json_object(materialized_doc.get("normalized_sections_json")) if materialized_doc is not None else {}
         profile = _json_object(sections.get("profile")) if can_materialize else {}
-        locations = _json_list(doc.get("locations_json")) if can_materialize else []
-        normalized_text = _safe_text(doc.get("normalized_text"), 700) if doc is not None and can_materialize else None
+        locations = _json_list(materialized_doc.get("locations_json")) if materialized_doc is not None else []
+        normalized_text = _safe_text(materialized_doc.get("normalized_text"), 700) if materialized_doc is not None else None
         score = _int_or_none(row.get("overall_score"))
         fit_bucket = _text(row.get("scored_fit_bucket"), 64)
         relationship = _relationship_for_cts(node.node_kind, row)
@@ -533,7 +535,7 @@ def _liepin_detail_approval_candidates(
     return candidates
 
 
-def _relationship_for_cts(node_kind: str, row: dict[str, object]) -> str:
+def _relationship_for_cts(node_kind: str, row: dict[str, object]) -> WorkbenchGraphRelationshipKind:
     if node_kind == "scoring":
         fit_bucket = row.get("scored_fit_bucket")
         if fit_bucket == "fit":
@@ -585,7 +587,7 @@ def _select_review_evidence(
     evidence: list[WorkbenchCandidateEvidence],
     node: GraphNodeRef,
 ) -> WorkbenchCandidateEvidence | None:
-    if node.source_kind in {"cts", "liepin"}:
+    if node.source_kind == "cts" or node.source_kind == "liepin":
         return _select_source_evidence(evidence, node.source_kind)
     return _strongest_evidence(evidence)
 
@@ -749,25 +751,25 @@ def _now_iso() -> str:
 
 def _json_object(value: object) -> dict[str, object]:
     if isinstance(value, dict):
-        return value
+        return {str(key): item for key, item in value.items()}
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError:
             return {}
-        return parsed if isinstance(parsed, dict) else {}
+        return {str(key): item for key, item in parsed.items()} if isinstance(parsed, dict) else {}
     return {}
 
 
 def _json_list(value: object) -> list[object]:
     if isinstance(value, list):
-        return value
+        return list(value)
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError:
             return []
-        return parsed if isinstance(parsed, list) else []
+        return list(parsed) if isinstance(parsed, list) else []
     return []
 
 
@@ -828,7 +830,13 @@ def _looks_like_candidate_placeholder(value: str) -> bool:
 
 
 def _int_or_none(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return int(value)
     try:
-        return int(value) if value is not None else None
+        return int(str(value))
     except (TypeError, ValueError):
         return None

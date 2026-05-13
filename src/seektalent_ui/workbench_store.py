@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal, cast
 
-from seektalent_ui.models import WorkbenchNoteCreatedPayload
+from seektalent_ui.models import WorkbenchNoteCreatedPayload, WorkbenchNoteKind, WorkbenchNoteStatusHint
 from seektalent_ui.redaction import redact_event_payload, redact_text
 
 
@@ -74,6 +74,16 @@ class WorkbenchSourceRunRuntimeLink:
 
 RuntimeLinkRepairStatus = Literal["attached", "already_attached", "runtime_link_missing"]
 GraphCandidateRecoveryState = Literal["ready", "recoverable_empty"]
+NOTE_STATUS_HINTS: set[WorkbenchNoteStatusHint] = {
+    "new_progress",
+    "waiting",
+    "human_action_required",
+    "completed",
+    "failed",
+    "canceled",
+    "unknown",
+}
+NOTE_KINDS: set[WorkbenchNoteKind] = {"progress", "waiting", "human_action", "terminal"}
 
 
 @dataclass(frozen=True)
@@ -1626,8 +1636,8 @@ class WorkbenchStore:
                 eventSeq=0,
                 noteId=note_id,
                 text=_safe_candidate_text(text, 5000) or "",
-                statusHint=_bounded_text(status_hint, 64) or "unknown",
-                noteKind=_bounded_text(note_kind, 64) or "progress",
+                statusHint=_workbench_note_status_hint(status_hint),
+                noteKind=_workbench_note_kind(note_kind),
                 createdAt=now,
             ).model_dump()
             event = _append_workbench_event_conn(
@@ -4780,6 +4790,20 @@ def _bounded_text(value: str | None, max_length: int) -> str | None:
     if len(text) <= max_length:
         return text
     return text[:max_length]
+
+
+def _workbench_note_status_hint(value: str) -> WorkbenchNoteStatusHint:
+    text = _bounded_text(value, 64)
+    if text in NOTE_STATUS_HINTS:
+        return cast(WorkbenchNoteStatusHint, text)
+    return "unknown"
+
+
+def _workbench_note_kind(value: str) -> WorkbenchNoteKind:
+    text = _bounded_text(value, 64)
+    if text in NOTE_KINDS:
+        return cast(WorkbenchNoteKind, text)
+    return "progress"
 
 
 def _like_prefix(value: str) -> str:

@@ -145,6 +145,8 @@ class LiepinProviderAdapter:
             raise LiepinWorkerModeError("Liepin detail fetch requires a compliance store.")
         if connection.provider_account_hash is None:
             raise LiepinWorkerModeError("Liepin detail fetch requires a bound provider account.")
+        if self.worker_client is None:
+            raise LiepinWorkerModeError("Liepin detail fetch requires an explicit worker client.")
         scope = _live_scope_from_request(request)
         detail_context = _detail_context_from_request(request)
         loop_result = await execute_liepin_detail_open_plan(

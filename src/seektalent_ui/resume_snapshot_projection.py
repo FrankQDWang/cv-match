@@ -87,7 +87,7 @@ def _project_doc(
     display_name = _safe_text(profile.get("name"), 160) or _safe_text(fallback.displayName, 160) or ""
     headline = _safe_text(doc.get("current_title"), 160) or _safe_text(fallback.title, 160) or ""
     company = _safe_text(doc.get("current_company"), 160) or _safe_text(fallback.company, 160) or ""
-    location = _safe_text(locations[0], 160) if locations else _safe_text(fallback.location, 160) or ""
+    location = (_safe_text(locations[0], 160) if locations else None) or _safe_text(fallback.location, 160) or ""
     summary = _safe_text(profile.get("summary"), 500) or _safe_text(fallback.summary, 500) or normalized_text
     original_resume = _project_original_resume(corpus=corpus, doc=doc)
     return WorkbenchGraphCandidateResumeSnapshotResponse(
@@ -364,30 +364,30 @@ def _item_title(title: str, fields: list[WorkbenchOriginalResumeFieldResponse], 
 
 
 def _dict_items(value: object) -> list[dict[str, object]]:
-    return [item for item in _json_list(value) if isinstance(item, dict)]
+    return [_json_object(item) for item in _json_list(value) if isinstance(item, dict)]
 
 
 def _json_object(value: object) -> dict[str, object]:
     if isinstance(value, dict):
-        return value
+        return {str(key): item for key, item in value.items()}
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError:
             return {}
-        return parsed if isinstance(parsed, dict) else {}
+        return {str(key): item for key, item in parsed.items()} if isinstance(parsed, dict) else {}
     return {}
 
 
 def _json_list(value: object) -> list[object]:
     if isinstance(value, list):
-        return value
+        return list(value)
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError:
             return []
-        return parsed if isinstance(parsed, list) else []
+        return list(parsed) if isinstance(parsed, list) else []
     return []
 
 

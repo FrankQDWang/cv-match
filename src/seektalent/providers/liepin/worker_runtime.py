@@ -205,7 +205,7 @@ class ManagedLiepinWorkerRuntime:
                 return
 
             if self.monotonic() >= deadline:
-                payload = {"mode": "managed_local", "setup_status": "timeout"}
+                payload: dict[str, object] = {"mode": "managed_local", "setup_status": "timeout"}
                 if on_event is not None:
                     on_event("worker_start_timeout", payload)
                 raise LiepinWorkerModeError("worker_start_timeout", setup_status="timeout")

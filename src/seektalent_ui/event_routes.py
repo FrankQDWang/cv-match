@@ -180,19 +180,28 @@ def _project_event_payload(event: WorkbenchEvent) -> dict[str, object]:
         return _note_created_payload(event).model_dump()
     projected = _drop_broad_runtime_fields(event.payload)
     if isinstance(projected, dict):
-        return projected
+        return {str(key): item for key, item in projected.items()}
     return {"value": projected}
 
 
 def _note_created_payload(event: WorkbenchEvent) -> WorkbenchNoteCreatedPayload:
     payload = dict(event.payload)
-    payload["eventSeq"] = int(payload.get("eventSeq") or event.global_seq)
+    payload["eventSeq"] = _event_seq_value(payload.get("eventSeq"), fallback=event.global_seq)
     payload["createdAt"] = str(payload.get("createdAt") or event.created_at)
     payload["noteId"] = str(payload.get("noteId") or "")
     payload["text"] = str(payload.get("text") or "")
     payload["statusHint"] = str(payload.get("statusHint") or "unknown")
     payload["noteKind"] = str(payload.get("noteKind") or "progress")
     return WorkbenchNoteCreatedPayload.model_validate(payload)
+
+
+def _event_seq_value(value: object, *, fallback: int) -> int:
+    if value is None:
+        return fallback
+    try:
+        return int(str(value))
+    except ValueError:
+        return fallback
 
 
 def _drop_broad_runtime_fields(value: object) -> object:

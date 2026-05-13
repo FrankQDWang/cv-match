@@ -6,9 +6,8 @@ import inspect
 import json
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from datetime import timedelta
-from typing import cast
 
 from pydantic_ai import Agent
 
@@ -201,26 +200,23 @@ class WorkbenchNoteWriter:
             result = run_sync(prompt)
         else:
             maybe_result = agent.run(prompt)
-            result = asyncio.run(maybe_result) if inspect.isawaitable(maybe_result) else maybe_result
+            result = asyncio.run(_await_object(maybe_result)) if inspect.isawaitable(maybe_result) else maybe_result
         output = getattr(result, "output", result)
         if inspect.isawaitable(output):
-            output = asyncio.run(output)
+            output = asyncio.run(_await_object(output))
         return str(output)
 
     def _build_agent(self) -> Agent[None, str]:
         prompt = PromptRegistry(self.settings.prompt_dir).load("workbench_note_writer")
         config = resolve_stage_model_config(self.settings, stage="workbench_note_writer")
         model = build_model(config)
-        return cast(
-            Agent[None, str],
-            Agent(
-                model=model,
-                output_type=str,
-                system_prompt=prompt.content,
-                model_settings=build_model_settings(config),
-                retries=0,
-                output_retries=0,
-            ),
+        return Agent(
+            model=model,
+            output_type=str,
+            system_prompt=prompt.content,
+            model_settings=build_model_settings(config),
+            retries=0,
+            output_retries=0,
         )
 
 
@@ -231,6 +227,10 @@ def _render_note_prompt(context: Mapping[str, object]) -> str:
             json_block("SAFE WORKBENCH CONTEXT", context),
         ]
     )
+
+
+async def _await_object(awaitable: Awaitable[object]) -> object:
+    return await awaitable
 
 
 def _safe_source_run(run: WorkbenchSourceRun) -> dict[str, object]:
@@ -282,8 +282,8 @@ def _runtime_business_facts(events: list[WorkbenchEvent]) -> tuple[list[str], li
             numbers.append(round_no)
             prefix = f"{prefix}_round_{round_no}"
         facts.append(f"{prefix}=seen")
-        inner = event.payload.get("payload")
-        if not isinstance(inner, dict):
+        inner = _mapping_object(event.payload.get("payload"))
+        if inner is None:
             continue
         keyword = _safe_keyword(inner.get("keyword_query"))
         if keyword:
@@ -304,6 +304,12 @@ def _runtime_business_facts(events: list[WorkbenchEvent]) -> tuple[list[str], li
             numbers.append(value)
             facts.append(f"{prefix}_{key}={value}")
     return facts, numbers
+
+
+def _mapping_object(value: object) -> Mapping[str, object] | None:
+    if not isinstance(value, Mapping):
+        return None
+    return {str(key): item for key, item in value.items()}
 
 
 def _safe_numbers_from_source_runs(source_runs: list[WorkbenchSourceRun]) -> list[int]:

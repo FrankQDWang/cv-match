@@ -100,7 +100,7 @@ def export_query_rewriting_dataset(
         "term_events": "flywheel.term_events",
         "term_outcomes": "flywheel.term_outcomes",
     }.items():
-        session.write_jsonl(logical_name, store.rows_for_runs(table, run_ids=run_ids))
+        session.write_jsonl(logical_name, list(store.rows_for_runs(table, run_ids=run_ids)))
     session.write_jsonl("flywheel.query_rewrite_samples", samples)
     store.record_query_rewrite_samples(samples)
 

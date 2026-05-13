@@ -12,7 +12,13 @@ from seektalent.providers.liepin.policy import (
     build_detail_open_plan,
 )
 from seektalent.providers.liepin.security import issue_detail_open_approval_key
-from seektalent.providers.liepin.store import LiepinDetailAttemptRow, LiepinStore
+from seektalent.providers.liepin.client import LiepinWorkerClient
+from seektalent.providers.liepin.store import (
+    DetailAttemptState,
+    DetailConsumptionState,
+    LiepinDetailAttemptRow,
+    LiepinStore,
+)
 from seektalent.providers.liepin.worker_contracts import (
     LiepinDetailOpenRequest,
     LiepinDetailOpenRequestItem,
@@ -31,7 +37,7 @@ class LiepinDetailOpenLoopResult:
 async def execute_liepin_detail_open_plan(
     *,
     store: LiepinStore,
-    worker_client: object,
+    worker_client: LiepinWorkerClient,
     card_candidates: list[LiepinCardCandidate],
     tenant_id: str,
     workspace_id: str,
@@ -111,13 +117,15 @@ async def execute_liepin_detail_open_plan(
             idempotency_key=idempotency_key,
         )
         request_items.append(
-            LiepinDetailOpenRequestItem(
-                request_id=f"detail:{candidate.candidate_id}",
-                attempt_id=attempt.attempt_id,
-                idempotency_key=idempotency_key,
-                approval_key=approval_key,
-                candidate_id=candidate_provider_id,
-                detail_url=candidate.detail_url,
+            LiepinDetailOpenRequestItem.model_validate(
+                {
+                    "requestId": f"detail:{candidate.candidate_id}",
+                    "attemptId": attempt.attempt_id,
+                    "idempotencyKey": idempotency_key,
+                    "approvalKey": approval_key,
+                    "candidateId": candidate_provider_id,
+                    "detailUrl": candidate.detail_url,
+                }
             )
         )
 
@@ -125,12 +133,12 @@ async def execute_liepin_detail_open_plan(
     if not request_items:
         return LiepinDetailOpenLoopResult(plan=plan, attempts=attempts, detail_candidates=[])
     worker_request = LiepinDetailOpenRequest(
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
-        provider_account_hash=provider_account_hash,
-        connection_id=connection_id,
-        provider_day_key=provider_day_key,
-        worker_command_id=worker_command_id,
+        tenantId=tenant_id,
+        workspaceId=workspace_id,
+        providerAccountHash=provider_account_hash,
+        connectionId=connection_id,
+        providerDayKey=provider_day_key,
+        workerCommandId=worker_command_id,
         requests=request_items,
     )
     request_attempt_ids = {item.attempt_id for item in request_items}
@@ -365,7 +373,7 @@ def _with_detail_score_metadata(
     return replace(mapped, candidate=mapped.candidate.model_copy(update={"raw": raw}))
 
 
-def _terminal_state_for_worker_status(status: str) -> tuple[str, str]:
+def _terminal_state_for_worker_status(status: str) -> tuple[DetailAttemptState, DetailConsumptionState]:
     if status == "blocked_by_risk_control":
         return "blocked_by_risk_control", "not_consumed"
     if status == "failed_before_consumption":

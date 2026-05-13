@@ -6,6 +6,7 @@ import hmac
 import json
 import secrets
 import time
+from collections.abc import Mapping
 from typing import Literal
 
 
@@ -121,7 +122,7 @@ def issue_detail_open_approval_key(
     return f"{DETAIL_OPEN_APPROVAL_PREFIX}{encoded_payload}.{signature}"
 
 
-def _encode_json(payload: dict[str, object]) -> str:
+def _encode_json(payload: Mapping[str, object]) -> str:
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
