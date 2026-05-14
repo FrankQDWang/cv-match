@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from pydantic import ValidationError
 
 from seektalent.providers.pi_agent.contracts import NonEmptyStr, PiBoundaryModel
@@ -22,11 +24,12 @@ def render_safe_validation_error(
 ) -> list[SafeValidationIssue]:
     issues: list[SafeValidationIssue] = []
     for issue in error.errors():
+        error_type = _error_type(issue.get("type"))
         issues.append(
             SafeValidationIssue(
                 model_name=model_name,
-                field_path=_field_path(issue.get("loc")),
-                error_type=_error_type(issue.get("type")),
+                field_path=_field_path(issue.get("loc"), error_type),
+                error_type=error_type,
                 schema_version=schema_version,
                 correlation_id=correlation_id,
             )
@@ -34,12 +37,22 @@ def render_safe_validation_error(
     return issues
 
 
-def _field_path(loc: object) -> str:
+def _field_path(loc: object, error_type: str) -> str:
+    if error_type == "extra_forbidden":
+        return "__extra__"
     if isinstance(loc, tuple) and loc:
-        return ".".join(str(part) for part in loc)
+        return ".".join(_safe_loc_part(part) for part in loc)
     if isinstance(loc, list) and loc:
-        return ".".join(str(part) for part in loc)
+        return ".".join(_safe_loc_part(part) for part in loc)
     return "__root__"
+
+
+def _safe_loc_part(part: object) -> str:
+    if isinstance(part, int):
+        return str(part)
+    if isinstance(part, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", part):
+        return part
+    return "__field__"
 
 
 def _error_type(value: object) -> str:

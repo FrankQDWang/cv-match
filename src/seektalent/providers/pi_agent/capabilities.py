@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 RunCommand = Callable[[list[str]], subprocess.CompletedProcess[str]]
+TransportMode = Literal["local_only", "remote_e2e_allowed"]
 
 
 class DokoBotDeclaredOperations(BaseModel):
@@ -58,7 +59,7 @@ class DokoBotActionToolManifest(BaseModel):
     manifest_id: str = Field(min_length=1)
     manifest_version: str = Field(min_length=1)
     provider: Literal["dokobot_compatible"]
-    transport: Literal["local_only", "remote_e2e_allowed"]
+    transport: TransportMode
     declared_operations: DokoBotDeclaredOperations
     forbidden_operations_ack: tuple[str, ...]
     trust_source: Literal["preconfigured_admin"]
@@ -133,7 +134,7 @@ class DokoBotCapabilities(BaseModel):
     remote_mode_available: bool = False
     action_manifest_id: str | None = None
     action_manifest_version: str | None = None
-    action_manifest_transport: Literal["local_only", "remote_e2e_allowed"] | None = None
+    action_manifest_transport: TransportMode | None = None
     action_manifest_trust_source: Literal["preconfigured_admin"] | None = None
     action_manifest_tools: tuple[str, ...] = ()
     capability_error_code: Literal[
@@ -145,11 +146,15 @@ class DokoBotCapabilities(BaseModel):
 
     @property
     def can_execute_liepin_actions(self) -> bool:
+        return self.can_execute_liepin_actions_for_transport("local_only")
+
+    def can_execute_liepin_actions_for_transport(self, requested_transport: TransportMode) -> bool:
         return (
             self.supports_read
             and self.capability_error_code is None
             and bool(self.action_manifest_id)
             and bool(self.action_manifest_version)
+            and self.action_manifest_transport == requested_transport
             and bool(self.action_manifest_tools)
             and self.supports_click
             and self.supports_type
@@ -214,7 +219,7 @@ class DokoBotCapabilityProbe:
         if manifest is None:
             return None
         if self._trusted_action_manifest_ids is None:
-            return manifest
+            return None
         if manifest.manifest_id not in self._trusted_action_manifest_ids:
             return None
         return manifest

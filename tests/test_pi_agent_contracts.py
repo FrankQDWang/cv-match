@@ -169,6 +169,45 @@ def test_safe_validation_error_renderer_does_not_expose_raw_error_payloads() -> 
     assert "candidate_secret_value" not in str(rendered)
 
 
+def test_safe_validation_error_renderer_redacts_extra_field_names() -> None:
+    payload = {
+        "schema_version": "detail-open-grant-v1",
+        "approval_id": "approval_1",
+        "budget_reservation_id": "budget_1",
+        "candidate_ref": "candidate_1",
+        "source_run_id": "source_run_1",
+        "provider": "liepin",
+        "expires_at": datetime.now(UTC) + timedelta(minutes=5),
+        "issued_by": "workflow_runtime",
+        "idempotency_key": "detail_candidate_1_approval_1",
+        "grant_signature": "signature_1",
+        "candidate_secret_value": "raw provider material",
+    }
+    with pytest.raises(ValidationError) as error:
+        DetailOpenGrant(**payload)
+
+    assert "candidate_secret_value" in str(error.value.errors())
+    issues = render_safe_validation_error(
+        error.value,
+        model_name="DetailOpenGrant",
+        schema_version="detail-open-grant-v1",
+        correlation_id="corr_1",
+    )
+    rendered = [issue.model_dump(mode="json") for issue in issues]
+
+    assert rendered == [
+        {
+            "model_name": "DetailOpenGrant",
+            "field_path": "__extra__",
+            "error_type": "extra_forbidden",
+            "schema_version": "detail-open-grant-v1",
+            "correlation_id": "corr_1",
+        }
+    ]
+    assert "candidate_secret_value" not in str(rendered)
+    assert "raw provider material" not in str(rendered)
+
+
 def test_union_validation_errors_hide_nested_raw_input_values() -> None:
     grant_payload = {
         "schema_version": "detail-open-grant-v1",

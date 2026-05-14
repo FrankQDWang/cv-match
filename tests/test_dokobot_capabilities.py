@@ -152,7 +152,11 @@ def test_manifest_with_required_actions_enables_liepin_action_capability() -> No
         return CompletedProcess(command, 1, "", "unexpected command")
 
     manifest = _manifest(manifest_id="dokobot-mcp-browser-tools", manifest_version="2026-05-14")
-    capabilities = DokoBotCapabilityProbe(run_command=fake_runner, action_tool_manifest=manifest).discover()
+    capabilities = DokoBotCapabilityProbe(
+        run_command=fake_runner,
+        action_tool_manifest=manifest,
+        trusted_action_manifest_ids={"dokobot-mcp-browser-tools"},
+    ).discover()
 
     assert capabilities.action_manifest_id == "dokobot-mcp-browser-tools"
     assert capabilities.action_manifest_version == "2026-05-14"
@@ -169,7 +173,11 @@ def test_read_only_or_partial_manifest_fails_closed() -> None:
     valid = _manifest()
     manifest = _manifest(declared_operations={**valid.declared_operations.model_dump(), "type_text": False})
 
-    capabilities = DokoBotCapabilityProbe(run_command=fake_successful_help, action_tool_manifest=manifest).discover()
+    capabilities = DokoBotCapabilityProbe(
+        run_command=fake_successful_help,
+        action_tool_manifest=manifest,
+        trusted_action_manifest_ids={"manifest_1"},
+    ).discover()
 
     assert capabilities.can_execute_liepin_actions is False
 
@@ -231,6 +239,32 @@ def test_manifest_not_in_trusted_allowlist_fails_closed() -> None:
 
     assert capabilities.can_execute_liepin_actions is False
     assert capabilities.capability_error_code == "dokobot_action_manifest_untrusted"
+
+
+def test_manifest_without_trusted_allowlist_fails_closed() -> None:
+    manifest = _manifest()
+
+    capabilities = DokoBotCapabilityProbe(
+        run_command=fake_successful_help,
+        action_tool_manifest=manifest,
+    ).discover()
+
+    assert capabilities.can_execute_liepin_actions is False
+    assert capabilities.capability_error_code == "dokobot_action_manifest_untrusted"
+
+
+def test_remote_manifest_does_not_enable_default_local_liepin_actions() -> None:
+    manifest = _manifest(transport="remote_e2e_allowed")
+
+    capabilities = DokoBotCapabilityProbe(
+        run_command=fake_successful_help,
+        action_tool_manifest=manifest,
+        trusted_action_manifest_ids={"manifest_1"},
+    ).discover()
+
+    assert capabilities.action_manifest_transport == "remote_e2e_allowed"
+    assert capabilities.can_execute_liepin_actions is False
+    assert capabilities.can_execute_liepin_actions_for_transport("remote_e2e_allowed") is True
 
 
 def test_action_booleans_without_manifest_do_not_enable_liepin_actions() -> None:

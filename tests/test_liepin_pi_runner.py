@@ -62,6 +62,8 @@ def _capabilities(*, action: bool) -> DokoBotCapabilities:
         supports_pagination_action=action,
         action_manifest_id="manifest_1" if action else None,
         action_manifest_version="1" if action else None,
+        action_manifest_transport="local_only" if action else None,
+        action_manifest_trust_source="preconfigured_admin" if action else None,
         action_manifest_tools=("click", "fill", "navigate", "turn_page") if action else (),
     )
 
