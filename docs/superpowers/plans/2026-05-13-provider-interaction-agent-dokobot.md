@@ -4,7 +4,7 @@
 
 **Goal:** Split the PI Agent / DokoBot work into independently reviewable implementation plans while keeping one shared design contract.
 
-**Architecture:** The shared spec owns the provider-interaction contract. The linked plans build the system in dependency order: contracts first, DokoBot capability and artifacts second, runtime grants and backend dispatch third, boundary guardrails last.
+**Architecture:** The shared spec owns the provider-interaction contract. The linked plans build the system in dependency order: contracts first, DokoBot capability and artifacts second, runtime grants and backend dispatch third, boundary guardrails fourth, connection safety/action-manifest hardening before live action enablement.
 
 **Tech Stack:** Python 3.12, Pydantic v2, dataclasses, DokoBot CLI plus explicit DokoBot-compatible action manifests, pytest, Bun worker boundary checks.
 
@@ -27,8 +27,12 @@
    - Depends on the contract and DokoBot/artifact plans.
 
 4. `docs/superpowers/plans/2026-05-13-pi-agent-boundary-guards-and-compat.md`
-   - Builds direct authenticated API replay scanning, Bun worker boundary alignment, and the final PI verification gate.
+   - Builds AST-first direct authenticated API replay scanning, Bun worker boundary alignment, route guard hardening, and PI boundary verification.
    - Depends on the first three plans.
+
+5. `docs/superpowers/plans/2026-05-14-pi-agent-connection-safety-and-action-manifest.md`
+   - Builds verified user-owned connection safety gating, strict DokoBot action-manifest trust policy, local-only transport defaults, and safe validation-error rendering.
+   - Depends on the first four plans.
 
 ## Build Gate
 
@@ -37,5 +41,5 @@ Do not execute this index as a build plan. Pick one linked plan at a time, run `
 ## Self-Review
 
 - Spec coverage remains centralized in the shared DokoBot design spec.
-- The former 1316-line implementation plan has been split by independently testable boundary: contracts, DokoBot/artifacts, dispatch/grants, and guardrails.
+- The former 1316-line implementation plan has been split by independently testable boundary: contracts, DokoBot/artifacts, dispatch/grants, guardrails, and connection safety/action-manifest hardening.
 - The old link stays valid as an index so prior review notes still have a landing page.
