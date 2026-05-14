@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import ts from "typescript";
@@ -7,7 +8,21 @@ type BoundaryRule =
   | "playwright-bound-request"
   | "playwright-computed-request"
   | "playwright-request-new-context"
+  | "provider-network-inspection"
+  | "provider-network-interception"
+  | "provider-script-evaluation"
+  | "provider-cookie-header-storage"
+  | "provider-cdp-access"
+  | "provider-in-page-network"
   | "opencli-import";
+
+type ScanProfile = "provider_action" | "session_lifecycle" | "test_fixture";
+
+type BoundaryRegistry = {
+  typescript_forbidden_operation_markers?: string[];
+  typescript_provider_action_forbidden_operation_markers?: string[];
+  typescript_session_lifecycle_allowed_operation_markers?: string[];
+};
 
 export type BoundaryViolation = {
   file: string;
@@ -19,6 +34,20 @@ export type BoundaryViolation = {
 };
 
 const BOUND_REQUEST_OWNERS = new Set(["page", "browserContext", "context", "playwright"]);
+const DOKOBOT_NETWORK_TOOL_NAMES = new Set(["list_network_requests", "get_network_request"]);
+const DOKOBOT_SCRIPT_TOOL_NAMES = new Set(["evaluate_script"]);
+const ROUTE_INTERCEPTION_METHODS = new Set(["route", "fetch", "continue", "fulfill"]);
+const SCRIPT_EVALUATION_METHODS = new Set(["evaluate", "evaluateHandle", "addInitScript"]);
+const COOKIE_HEADER_STORAGE_METHODS = new Set(["addCookies", "setExtraHTTPHeaders", "storageState"]);
+const CDP_METHODS = new Set(["newCDPSession"]);
+const IN_PAGE_NETWORK_GLOBALS = new Set(["fetch", "XMLHttpRequest"]);
+const REGISTRY = loadBoundaryRegistry();
+const TYPESCRIPT_PROVIDER_ACTION_FORBIDDEN_OPERATION_MARKERS = new Set(
+  REGISTRY.typescript_provider_action_forbidden_operation_markers ?? []
+);
+const TYPESCRIPT_SESSION_LIFECYCLE_ALLOWED_OPERATION_MARKERS = new Set(
+  REGISTRY.typescript_session_lifecycle_allowed_operation_markers ?? []
+);
 
 export function findBoundaryViolationsInSource(
   sourceText: string,
@@ -34,6 +63,7 @@ export function findBoundaryViolationsInSource(
   const violations: BoundaryViolation[] = [];
   const playwrightNamespaces = findPlaywrightNamespaceImports(sourceFile);
   const playwrightRequestAliases = findPlaywrightRequestImports(sourceFile);
+  const scanProfile = scanProfileForFile(fileName);
 
   function addViolation(node: ts.Node, rule: BoundaryRule, message: string): void {
     const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
@@ -57,7 +87,11 @@ export function findBoundaryViolationsInSource(
     }
 
     if (ts.isCallExpression(node)) {
-      checkCallExpression(node, sourceFile, addViolation);
+      checkCallExpression(node, sourceFile, addViolation, scanProfile);
+    }
+
+    if (ts.isNewExpression(node)) {
+      checkNewExpression(node, sourceFile, addViolation, scanProfile);
     }
 
     if (isAPIRequestContextReference(node, playwrightNamespaces)) {
@@ -69,7 +103,14 @@ export function findBoundaryViolationsInSource(
     }
 
     if (ts.isPropertyAccessExpression(node)) {
-      checkPropertyAccess(node, sourceFile, addViolation, playwrightRequestAliases, playwrightNamespaces);
+      checkPropertyAccess(
+        node,
+        sourceFile,
+        addViolation,
+        playwrightRequestAliases,
+        playwrightNamespaces,
+        scanProfile
+      );
     }
 
     if (ts.isElementAccessExpression(node)) {
@@ -254,19 +295,90 @@ function checkBindingElement(
 function checkCallExpression(
   node: ts.CallExpression,
   sourceFile: ts.SourceFile,
-  addViolation: (node: ts.Node, rule: BoundaryRule, message: string) => void
+  addViolation: (node: ts.Node, rule: BoundaryRule, message: string) => void,
+  scanProfile: ScanProfile
 ): void {
   const firstArg = node.arguments[0];
-  if (!isOpenCliModuleName(firstArg)) {
-    return;
-  }
-
-  if (node.expression.kind === ts.SyntaxKind.ImportKeyword || isRequireCall(node.expression)) {
+  if (isOpenCliModuleName(firstArg) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || isRequireCall(node.expression))) {
     addViolation(
       node,
       "opencli-import",
       `${node.getText(sourceFile)} dynamically imports forbidden OpenCLI code`
     );
+  }
+
+  checkCallBoundary(node, sourceFile, addViolation, scanProfile);
+}
+
+function checkNewExpression(
+  node: ts.NewExpression,
+  sourceFile: ts.SourceFile,
+  addViolation: (node: ts.Node, rule: BoundaryRule, message: string) => void,
+  scanProfile: ScanProfile
+): void {
+  if (
+    scanProfile === "provider_action" &&
+    ts.isIdentifier(node.expression) &&
+    IN_PAGE_NETWORK_GLOBALS.has(node.expression.text)
+  ) {
+    addViolation(
+      node.expression,
+      "provider-in-page-network",
+      `${node.expression.getText(sourceFile)} is forbidden in provider action code`
+    );
+  }
+}
+
+function checkCallBoundary(
+  node: ts.CallExpression,
+  sourceFile: ts.SourceFile,
+  addViolation: (node: ts.Node, rule: BoundaryRule, message: string) => void,
+  scanProfile: ScanProfile
+): void {
+  const expression = node.expression;
+  if (ts.isIdentifier(expression)) {
+    checkIdentifierCall(expression, sourceFile, addViolation, scanProfile);
+    return;
+  }
+
+  if (!ts.isPropertyAccessExpression(expression)) {
+    return;
+  }
+
+  const name = expression.name.text;
+  const owner = expression.expression.getText(sourceFile);
+  const expressionText = expression.getText(sourceFile);
+
+  if (DOKOBOT_NETWORK_TOOL_NAMES.has(name)) {
+    addViolation(expression, "provider-network-inspection", `${expressionText} inspects provider network requests`);
+    return;
+  }
+  if (DOKOBOT_SCRIPT_TOOL_NAMES.has(name)) {
+    addViolation(expression, "provider-script-evaluation", `${expressionText} evaluates arbitrary page script`);
+    return;
+  }
+  if (ROUTE_INTERCEPTION_METHODS.has(name) && isProviderRouteInterceptionOwner(owner, scanProfile)) {
+    addViolation(expression, "provider-network-interception", `${expressionText} intercepts provider network traffic`);
+    return;
+  }
+  if (name === "waitForResponse" && scanProfile !== "test_fixture") {
+    addViolation(expression, "provider-network-inspection", `${expressionText} observes provider network responses`);
+    return;
+  }
+  if (name === "on" && isForbiddenNetworkEventCall(node) && scanProfile !== "test_fixture") {
+    addViolation(expression, "provider-network-inspection", `${expressionText} observes provider network events`);
+    return;
+  }
+  if (SCRIPT_EVALUATION_METHODS.has(name) && scanProfile !== "test_fixture") {
+    addViolation(expression, "provider-script-evaluation", `${expressionText} evaluates arbitrary page script`);
+    return;
+  }
+  if (COOKIE_HEADER_STORAGE_METHODS.has(name) && isForbiddenStorageCall(name, expressionText, scanProfile)) {
+    addViolation(expression, "provider-cookie-header-storage", `${expressionText} manipulates provider cookies, headers, or storage`);
+    return;
+  }
+  if (CDP_METHODS.has(name)) {
+    addViolation(expression, "provider-cdp-access", `${expressionText} opens a CDP session`);
   }
 }
 
@@ -275,7 +387,8 @@ function checkPropertyAccess(
   sourceFile: ts.SourceFile,
   addViolation: (node: ts.Node, rule: BoundaryRule, message: string) => void,
   playwrightRequestAliases: Set<string>,
-  playwrightNamespaces: Set<string>
+  playwrightNamespaces: Set<string>,
+  scanProfile: ScanProfile
 ): void {
   if (node.name.text === "request" && isBoundRequestOwner(node.expression)) {
     addViolation(
@@ -293,6 +406,26 @@ function checkPropertyAccess(
       node,
       "playwright-request-new-context",
       `${node.getText(sourceFile)} creates a Playwright API request context`
+    );
+  }
+
+  if (node.name.text === "CDPSession") {
+    addViolation(
+      node,
+      "provider-cdp-access",
+      `${node.getText(sourceFile)} references a CDP session type`
+    );
+  }
+
+  if (
+    scanProfile !== "test_fixture" &&
+    ts.isIdentifier(node.expression) &&
+    IN_PAGE_NETWORK_GLOBALS.has(node.expression.text)
+  ) {
+    addViolation(
+      node.expression,
+      "provider-in-page-network",
+      `${node.expression.getText(sourceFile)} is forbidden in provider action code`
     );
   }
 }
@@ -416,7 +549,97 @@ async function collectPath(path: string): Promise<string[]> {
 }
 
 function defaultScanRoots(): string[] {
-  return ["src", "tests", "scripts"];
+  return ["src"];
+}
+
+function checkIdentifierCall(
+  expression: ts.Identifier,
+  sourceFile: ts.SourceFile,
+  addViolation: (node: ts.Node, rule: BoundaryRule, message: string) => void,
+  scanProfile: ScanProfile
+): void {
+  if (DOKOBOT_NETWORK_TOOL_NAMES.has(expression.text)) {
+    addViolation(expression, "provider-network-inspection", `${expression.text} inspects provider network requests`);
+    return;
+  }
+  if (DOKOBOT_SCRIPT_TOOL_NAMES.has(expression.text)) {
+    addViolation(expression, "provider-script-evaluation", `${expression.text} evaluates arbitrary page script`);
+    return;
+  }
+  if (scanProfile !== "test_fixture" && IN_PAGE_NETWORK_GLOBALS.has(expression.text)) {
+    addViolation(
+      expression,
+      "provider-in-page-network",
+      `${expression.getText(sourceFile)} is forbidden in provider action code`
+    );
+  }
+}
+
+function isProviderRouteInterceptionOwner(owner: string, scanProfile: ScanProfile): boolean {
+  if (scanProfile === "test_fixture") {
+    return false;
+  }
+  return owner === "page" || owner === "browserContext" || owner === "context" || owner === "route";
+}
+
+function isForbiddenNetworkEventCall(node: ts.CallExpression): boolean {
+  const firstArg = node.arguments[0];
+  return (
+    firstArg !== undefined &&
+    ts.isStringLiteralLike(firstArg) &&
+    (firstArg.text === "request" || firstArg.text === "response")
+  );
+}
+
+function isForbiddenStorageCall(
+  methodName: string,
+  expressionText: string,
+  scanProfile: ScanProfile
+): boolean {
+  if (scanProfile === "test_fixture") {
+    return false;
+  }
+  if (methodName !== "storageState") {
+    return true;
+  }
+  if (scanProfile === "session_lifecycle") {
+    return !(
+      TYPESCRIPT_SESSION_LIFECYCLE_ALLOWED_OPERATION_MARKERS.has(expressionText) ||
+      TYPESCRIPT_SESSION_LIFECYCLE_ALLOWED_OPERATION_MARKERS.has(lastPathPart(expressionText))
+    );
+  }
+  if (scanProfile === "provider_action") {
+    return (
+      TYPESCRIPT_PROVIDER_ACTION_FORBIDDEN_OPERATION_MARKERS.has(expressionText) ||
+      TYPESCRIPT_PROVIDER_ACTION_FORBIDDEN_OPERATION_MARKERS.has(lastPathPart(expressionText))
+    );
+  }
+  return false;
+}
+
+function lastPathPart(expressionText: string): string {
+  const parts = expressionText.split(".");
+  return parts[parts.length - 1] ?? expressionText;
+}
+
+function scanProfileForFile(fileName: string): ScanProfile {
+  const normalized = fileName.replaceAll("\\", "/");
+  if (normalized.endsWith(".test.ts") || normalized.includes("/tests/")) {
+    return "test_fixture";
+  }
+  if (
+    normalized.endsWith("loginRelay.ts") ||
+    normalized.endsWith("sessionStore.ts") ||
+    normalized.endsWith("server.ts")
+  ) {
+    return "session_lifecycle";
+  }
+  return "provider_action";
+}
+
+function loadBoundaryRegistry(): BoundaryRegistry {
+  const registryUrl = new URL("../../../src/seektalent/providers/pi_agent/boundary_registry.json", import.meta.url);
+  return JSON.parse(readFileSync(registryUrl, "utf8")) as BoundaryRegistry;
 }
 
 if (import.meta.main) {

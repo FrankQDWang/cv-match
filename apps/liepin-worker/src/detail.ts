@@ -1,22 +1,9 @@
 import {
   extractDetailFromDomFallback,
-  extractDetailFromNetwork,
   type WorkerCandidateDetail,
 } from "./extraction";
-import {
-  captureResponsesDuringAction,
-  type CapturedResponseRecord,
-} from "./networkCapture";
-
-type ResponseLike = {
-  url(): string;
-  status(): number;
-  json(): Promise<unknown>;
-};
 
 type PageLike = {
-  on(event: "response", handler: (response: ResponseLike) => void): void;
-  off(event: "response", handler: (response: ResponseLike) => void): void;
   content?: () => Promise<string>;
 };
 
@@ -94,24 +81,7 @@ async function openOneDetail(
   },
   request: DetailOpenRequest
 ): Promise<DetailOpenResult> {
-  const captureOptions =
-    options.postActionCaptureMs === undefined
-      ? {}
-      : { postActionCaptureMs: options.postActionCaptureMs };
-  const captured = await captureResponsesDuringAction(options.page, async () => {
-    await options.openRequest(request);
-  }, captureOptions);
-  const network = detailFromNetwork(captured, request.candidateId);
-  if (network !== null) {
-    return completedResult({
-      request,
-      workerCommandId: options.workerCommandId,
-      candidate: network.detail,
-      rawEvidenceRef: network.rawEvidenceRef,
-      extractionSource: "network",
-    });
-  }
-
+  await options.openRequest(request);
   const html = options.page.content ? await options.page.content() : "";
   const fallback = extractDetailFromDomFallback(html, request.candidateId);
   if (fallback.detail.missingFields.length === 0) {
@@ -193,24 +163,4 @@ function stringPayloadValue(value: unknown, key: string): string | null {
   const payload = objectPayload(value);
   const field = payload[key];
   return typeof field === "string" && field.trim() ? field.trim() : null;
-}
-
-function detailFromNetwork(
-  records: CapturedResponseRecord[],
-  candidateId: string
-): { detail: WorkerCandidateDetail; rawEvidenceRef: string } | null {
-  for (const record of records) {
-    const fixture = record.redactedFixture.payload;
-    if (!fixture || typeof fixture !== "object") {
-      continue;
-    }
-    const detail = extractDetailFromNetwork(fixture);
-    if (detail.missingFields.length === 0 && detail.providerCandidateId === candidateId) {
-      return {
-        detail,
-        rawEvidenceRef: `network:${record.endpointFingerprint}:${record.responseShapeHash}`,
-      };
-    }
-  }
-  return null;
 }

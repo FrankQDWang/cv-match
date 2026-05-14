@@ -79,6 +79,107 @@ describe("liepin worker boundary checker", () => {
     expect(violations.filter((violation) => violation.rule === "opencli-import")).toHaveLength(4);
   });
 
+  it("rejects network inspection, interception, script evaluation, cookies, storage, CDP, and raw in-page network calls", () => {
+    const source = `
+      async function run(
+        tools: any,
+        page: any,
+        browserContext: any,
+        route: any,
+        locator: any,
+        elementHandle: any
+      ) {
+        tools.list_network_requests();
+        tools.get_network_request("request_1");
+        tools.evaluate_script("document.cookie");
+        list_network_requests();
+        get_network_request("request_1");
+        evaluate_script("document.cookie");
+
+        await page.route("**/api/**", route => route.fetch());
+        await browserContext.route("**/api/**", route => route.continue({ headers: {} }));
+        await route.fetch();
+        await route.continue({ method: "POST" });
+        await route.fulfill({ body: "raw" });
+        await page.waitForResponse("**/api/**");
+        page.on("request", request => console.log(request.url()));
+        page.on("response", response => console.log(response.url()));
+
+        await page.evaluate(() => fetch("/api/resume"));
+        await page.evaluateHandle(() => document.cookie);
+        await locator.evaluate(node => node.textContent);
+        await elementHandle.evaluate(node => node.textContent);
+        await page.addInitScript(() => localStorage.setItem("x", "y"));
+        await browserContext.addInitScript(() => sessionStorage.clear());
+        await browserContext.addCookies([]);
+        await browserContext.setExtraHTTPHeaders({});
+        await browserContext.storageState({ path: "auth.json" });
+        await browserContext.newCDPSession(page);
+
+        fetch("/api/resume");
+        new XMLHttpRequest();
+      }
+    `;
+
+    const violations = findBoundaryViolationsInSource(source, "src/cardSearch.ts");
+    const expressions = violations.map((violation) => violation.expression);
+
+    for (const expected of [
+      "tools.list_network_requests",
+      "tools.get_network_request",
+      "tools.evaluate_script",
+      "list_network_requests",
+      "get_network_request",
+      "evaluate_script",
+      "page.route",
+      "browserContext.route",
+      "route.fetch",
+      "route.continue",
+      "route.fulfill",
+      "page.waitForResponse",
+      "page.on",
+      "page.evaluate",
+      "page.evaluateHandle",
+      "locator.evaluate",
+      "elementHandle.evaluate",
+      "page.addInitScript",
+      "browserContext.addInitScript",
+      "browserContext.addCookies",
+      "browserContext.setExtraHTTPHeaders",
+      "browserContext.storageState",
+      "browserContext.newCDPSession",
+      "fetch",
+      "XMLHttpRequest",
+    ]) {
+      expect(expressions).toContain(expected);
+    }
+  });
+
+  it("uses scan profiles so session lifecycle storageState remains allowed but provider action storage primitives do not", () => {
+    const sessionLifecycleSource = `
+      async function complete(session: any, contextOptions: any, storageState: any) {
+        const state = await session.context.storageState();
+        contextOptions.storageState = storageState;
+        return state;
+      }
+    `;
+    expect(findBoundaryViolationsInSource(sessionLifecycleSource, "src/loginRelay.ts")).toEqual([]);
+
+    const providerActionSource = `
+      async function run(browserContext: any) {
+        await browserContext.storageState({ path: "auth.json" });
+        fetch("/api/resume");
+        new XMLHttpRequest();
+      }
+    `;
+    const violations = findBoundaryViolationsInSource(providerActionSource, "src/cardSearch.ts");
+    const expressions = violations.map((violation) => violation.expression);
+
+    expect(expressions).toContain("browserContext.storageState");
+    expect(expressions).toContain("fetch");
+    expect(expressions).toContain("XMLHttpRequest");
+  });
+
   it("allows normal browser automation without worker-side HTTP clients", () => {
     const source = `
       import { chromium } from "playwright";

@@ -10,7 +10,7 @@ import {
   extractDetailFromNetwork,
   extractWorkerCards,
 } from "../src/extraction";
-import { tokenizedCaptureRecord } from "../src/networkCapture";
+import { tokenizedCaptureRecord } from "./helpers/networkCapture";
 
 class FakeResponse {
   constructor(

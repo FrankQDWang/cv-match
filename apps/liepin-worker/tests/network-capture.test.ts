@@ -5,7 +5,7 @@ import {
   endpointFingerprint,
   responseShapeHash,
   tokenizedCaptureRecord,
-} from "../src/networkCapture";
+} from "./helpers/networkCapture";
 
 class FakePage {
   readonly responseHandlers: Array<(response: FakeResponse) => void> = [];

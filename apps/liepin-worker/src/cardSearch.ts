@@ -3,21 +3,9 @@ import {
   extractWorkerCards,
   type WorkerCandidateCard,
 } from "./extraction";
-import { captureResponsesDuringAction } from "./networkCapture";
-
-type ResponseLike = {
-  url(): string;
-  status(): number;
-  json(): Promise<unknown>;
-  request?: () => {
-    method?: () => string;
-  };
-};
 
 type PageLike = {
   goto(url: string, options?: { waitUntil?: "domcontentloaded" | "load" | "networkidle" }): Promise<unknown>;
-  on(event: "response", handler: (response: ResponseLike) => void): void;
-  off(event: "response", handler: (response: ResponseLike) => void): void;
   content?: () => Promise<string>;
 };
 
@@ -63,15 +51,9 @@ export async function searchCards(options: {
   request: CardSearchRequestBody;
   postActionCaptureMs?: number;
 }): Promise<CardSearchResponse> {
-  const captureOptions =
-    options.postActionCaptureMs === undefined
-      ? {}
-      : { postActionCaptureMs: options.postActionCaptureMs };
-  const captured = await captureResponsesDuringAction(options.page, async () => {
-    await options.page.goto(searchUrlForRequest(options.request), { waitUntil: "domcontentloaded" });
-  }, captureOptions);
+  await options.page.goto(searchUrlForRequest(options.request), { waitUntil: "domcontentloaded" });
   const fallbackHtml = options.page.content ? await options.page.content() : "";
-  const extraction = extractWorkerCards({ networkArtifacts: captured, fallbackHtml });
+  const extraction = extractWorkerCards({ networkArtifacts: [], fallbackHtml });
   const rawCandidateCount = extraction.cards.length;
   const cards = extraction.cards.slice(0, options.request.pageSize).map(toPythonWorkerCard);
   const response: CardSearchResponse = {

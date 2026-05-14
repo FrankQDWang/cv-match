@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 
+from seektalent.providers.pi_agent.boundary_patterns import FORBIDDEN_PROVIDER_OPERATIONS
 from seektalent.providers.pi_agent.contracts import (
     PiAgentActionType,
     PiAgentCompletionReason,
@@ -20,20 +21,9 @@ EvidenceRequirement = Literal[
 
 RoutePhase = Literal["pre", "post"]
 
-DIRECT_REQUEST_FORBIDDEN_ACTIONS = (
-    "page.request",
-    "browserContext.request",
-    "APIRequestContext",
-    "list_network_requests",
-    "get_network_request",
-    "evaluate_script",
-    "provider_signature_generation",
-    "stealth_plugin",
-    "proxy_rotation",
-    "header_or_cookie_injection",
-)
+DIRECT_REQUEST_FORBIDDEN_ACTIONS = FORBIDDEN_PROVIDER_OPERATIONS
 
-_FORBIDDEN_ROUTE_SEGMENTS = {"api", "ajax"}
+_FORBIDDEN_ROUTE_SEGMENTS = {"api", "ajax", "graphql", "download", "export"}
 
 
 @dataclass(frozen=True)
@@ -239,11 +229,16 @@ def is_liepin_skill_url_allowed(skill: LiepinPiSkill, url: str, phase: RoutePhas
     parsed = urlparse(url)
     if parsed.scheme not in {"https", "http"}:
         return False
-    if parsed.netloc not in skill.allowed_url_hosts:
+    host = parsed.netloc.lower()
+    if host.startswith("api-") and host.endswith(".liepin.com"):
+        return False
+    if host not in skill.allowed_url_hosts:
         return False
 
     path = parsed.path or "/"
     if _has_forbidden_route_segment(path):
+        return False
+    if _has_forbidden_query_route(parsed.query):
         return False
 
     patterns = (
@@ -255,7 +250,20 @@ def is_liepin_skill_url_allowed(skill: LiepinPiSkill, url: str, phase: RoutePhas
 
 
 def _has_forbidden_route_segment(path: str) -> bool:
-    return any(segment in _FORBIDDEN_ROUTE_SEGMENTS for segment in path.strip("/").split("/"))
+    normalized_path = unquote(path).lower()
+    return any(segment in _FORBIDDEN_ROUTE_SEGMENTS for segment in normalized_path.strip("/").split("/"))
+
+
+def _has_forbidden_query_route(query: str) -> bool:
+    for _, value in parse_qsl(query, keep_blank_values=True):
+        normalized = unquote(value).lower()
+        if "api-" in normalized and "liepin.com" in normalized:
+            return True
+        parsed_value = urlparse(normalized)
+        value_path = parsed_value.path if parsed_value.scheme or parsed_value.netloc else normalized
+        if _has_forbidden_route_segment(value_path):
+            return True
+    return False
 
 
 def _route_matches(path: str, patterns: tuple[str, ...]) -> bool:
