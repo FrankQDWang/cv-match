@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SeekTalent needs account-based authorization while remaining a local-first product. Authorized users may receive access to platform-managed CTS and LLM capability. Unauthorized users must configure their own provider credentials. Platform-managed keys must not be stored as long-lived plaintext secrets on the user's machine.
+SeekTalent needs account-based authorization while remaining a local-first product. Authorized production users should receive platform-managed CTS and LLM capability after account authorization. BYOK remains available for development and advanced local operation, but it is not the primary product path for recruiters or HR users. Platform-managed keys must not be stored as long-lived plaintext secrets on the user's machine.
 
 This spec resolves the central product contradiction: "local program" does not mean "all platform secrets live locally."
 
@@ -11,7 +11,7 @@ This spec resolves the central product contradiction: "local program" does not m
 - Local accounts identify local workbench users and protect local sessions.
 - Remote entitlement identifies whether a user is allowed to use platform-managed CTS and LLM access.
 - Platform-managed CTS and LLM keys do not get written into `.env`, `src/seektalent/default.env`, local SQLite, local artifacts, logs, or ordinary diagnostics.
-- Users without entitlement can run in BYOK mode by supplying their own keys locally.
+- BYOK is a development or advanced local mode. It must stay available for developers and controlled local testing, but ordinary production users should not be forced to bring their own CTS or LLM keys.
 - The app must make the current mode visible:
   - platform-managed;
   - BYOK;
@@ -35,7 +35,7 @@ This spec resolves the central product contradiction: "local program" does not m
    - `bring_your_own_key`;
    - `not_configured`.
 3. Add a key-provider boundary in Python runtime configuration so callers ask for a capability token or credential handle, not raw environment values.
-4. Preserve current BYOK env keys for users who choose local credentials.
+4. Preserve current BYOK env keys for development and advanced local credentials, while keeping platform-managed access as the intended production path.
 5. For platform-managed access, use either a remote proxy call or short-lived scoped token exchange. The implementation plan may start with interfaces and fixture-mode status behavior before any real remote service exists.
 6. Fixture entitlement is not live authorization. It may drive tests, local UI status previews, and deterministic documentation examples, but real CTS/LLM runs must fail closed unless a real remote capability provider or an explicitly test-only runtime fixture is selected.
 7. Doctor and UI must display credential mode without leaking key material.
@@ -46,6 +46,7 @@ This spec resolves the central product contradiction: "local program" does not m
 - This spec does not define public SaaS tenancy.
 - This spec does not store platform keys locally in encrypted form as a workaround.
 - This spec does not remove BYOK.
+- This spec does not make BYOK the ordinary production fallback for recruiters or HR users.
 - This spec does not allow remote entitlement to access local candidate data by default.
 
 ## Security Requirements
@@ -53,8 +54,8 @@ This spec resolves the central product contradiction: "local program" does not m
 - Platform-managed credentials must never appear in local env files.
 - Platform-managed credential responses must be short-lived, scoped, and redacted in exception paths.
 - Any local cache of entitlement status must contain status, expiry, and account id only, not secrets.
-- Logs, artifacts, SSE payloads, workbench events, and audit metadata must pass the existing redaction layer.
-- Tests must prove platform-managed mode can run without `SEEKTALENT_TEXT_LLM_API_KEY`, `SEEKTALENT_CTS_TENANT_KEY`, or `SEEKTALENT_CTS_TENANT_SECRET` being present in local env.
+- Logs, artifacts, SSE payloads, workbench events, and audit metadata must pass the existing redaction layer. Entitlement-specific redaction must be recursive so nested capability handles, tokens, keys, and provider errors are not leaked.
+- Tests must prove a runtime-capable platform-managed provider path does not require `SEEKTALENT_TEXT_LLM_API_KEY`, `SEEKTALENT_CTS_TENANT_KEY`, or `SEEKTALENT_CTS_TENANT_SECRET` in local env.
 - Tests must prove ordinary fixture entitlement alone cannot authorize live platform-managed provider calls.
 - Tests must prove BYOK mode still fails fast when required keys are missing.
 
@@ -72,7 +73,7 @@ or:
 
 ```text
 Entitlement: not active
-Credential mode: BYOK
+Credential mode: BYOK dev/advanced local mode
 Missing: SEEKTALENT_TEXT_LLM_API_KEY, SEEKTALENT_CTS_TENANT_KEY, SEEKTALENT_CTS_TENANT_SECRET
 ```
 
@@ -81,6 +82,7 @@ The workbench settings page should show the same status in business language and
 ## Acceptance Criteria
 
 - `AppSettings` and CLI credential validation distinguish BYOK from platform-managed mode.
+- BYOK is visibly labeled as development or advanced local mode, not the normal production path.
 - Local auth and remote entitlement are represented as separate models.
 - Live platform-managed runs require a real capability provider or an explicitly test-only runtime fixture flag; status fixtures alone fail closed.
 - Redaction tests cover entitlement tokens, remote credential responses, local BYOK keys, and provider errors.
