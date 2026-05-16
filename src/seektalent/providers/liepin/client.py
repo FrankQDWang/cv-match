@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 from typing import Callable, Protocol
@@ -165,7 +166,7 @@ class ManagedLocalLiepinWorkerClient:
         self.http_json = http_json or _default_http_json
 
     async def ensure_ready(self, *, on_event: EventCallback | None = None) -> None:
-        self.runtime.ensure_started(on_event=on_event)
+        await asyncio.to_thread(self.runtime.ensure_started, on_event=on_event)
 
     async def session_status(
         self,
@@ -175,10 +176,10 @@ class ManagedLocalLiepinWorkerClient:
         workspace: str | None = None,
         provider_account_hash: str | None = None,
     ) -> SessionStatus:
-        base_url = self._internal_base_url()
+        base_url = await self._internal_base_url_async()
         return _decode_worker_response(
             decode_session_status,
-            self._request_json(
+            await self._request_json_async(
                 "GET",
                 _session_status_url(
                     base_url,
@@ -198,10 +199,10 @@ class ManagedLocalLiepinWorkerClient:
         workspace_id: str | None = None,
         provider_account_hash: str | None = None,
     ) -> LoginHandoff:
-        base_url = self._internal_base_url()
+        base_url = await self._internal_base_url_async()
         return _decode_worker_response(
             decode_login_handoff,
-            self._request_json(
+            await self._request_json_async(
                 "POST",
                 f"{base_url}/internal/session/login-handoff",
                 json_body=_login_handoff_body(
@@ -214,10 +215,10 @@ class ManagedLocalLiepinWorkerClient:
         )
 
     async def login_relay_snapshot(self, *, connection_id: str) -> LoginRelaySnapshot:
-        base_url = self._internal_base_url()
+        base_url = await self._internal_base_url_async()
         return _decode_worker_response(
             decode_login_relay_snapshot,
-            self._request_json(
+            await self._request_json_async(
                 "GET",
                 f"{base_url}/internal/session/login-relay/snapshot?{parse.urlencode({'connectionId': connection_id})}",
             ),
@@ -233,10 +234,10 @@ class ManagedLocalLiepinWorkerClient:
         text: str | None = None,
         key: str | None = None,
     ) -> LoginRelayInputResult:
-        base_url = self._internal_base_url()
+        base_url = await self._internal_base_url_async()
         return _decode_worker_response(
             decode_login_relay_input_result,
-            self._request_json(
+            await self._request_json_async(
                 "POST",
                 f"{base_url}/internal/session/login-relay/input",
                 json_body=_login_relay_input_body(
@@ -251,10 +252,10 @@ class ManagedLocalLiepinWorkerClient:
         )
 
     async def complete_login_relay(self, *, connection_id: str) -> LoginRelayCompleteResult:
-        base_url = self._internal_base_url()
+        base_url = await self._internal_base_url_async()
         return _decode_worker_response(
             decode_login_relay_complete_result,
-            self._request_json(
+            await self._request_json_async(
                 "POST",
                 f"{base_url}/internal/session/login-relay/complete",
                 json_body={"connectionId": connection_id},
@@ -270,11 +271,11 @@ class ManagedLocalLiepinWorkerClient:
         provider_account_hash: str | None = None,
     ) -> SearchResult:
         await self.ensure_ready()
-        base_url = self._internal_base_url()
+        base_url = await self._internal_base_url_async()
         return _search_result_from_worker_response(
             _decode_worker_response(
                 decode_card_search_response,
-                self._request_json(
+                await self._request_json_async(
                     "POST",
                     f"{base_url}/internal/search/cards",
                     json_body=_search_request_body(
@@ -289,10 +290,10 @@ class ManagedLocalLiepinWorkerClient:
 
     async def open_details(self, request: LiepinDetailOpenRequest) -> LiepinDetailOpenResponse:
         await self.ensure_ready()
-        base_url = self._internal_base_url()
+        base_url = await self._internal_base_url_async()
         return _decode_worker_response(
             decode_detail_open_response,
-            self._request_json(
+            await self._request_json_async(
                 "POST",
                 f"{base_url}/internal/details/open",
                 json_body=request.model_dump(mode="json", by_alias=True),
@@ -302,6 +303,19 @@ class ManagedLocalLiepinWorkerClient:
     def _internal_base_url(self) -> str:
         handle = self.runtime.ensure_started()
         return handle.internal_base_url.rstrip("/")
+
+    async def _internal_base_url_async(self) -> str:
+        handle = await asyncio.to_thread(self.runtime.ensure_started)
+        return handle.internal_base_url.rstrip("/")
+
+    async def _request_json_async(
+        self,
+        method: str,
+        url: str,
+        *,
+        json_body: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return await asyncio.to_thread(self._request_json, method, url, json_body=json_body)
 
     def _request_json(
         self,
@@ -340,7 +354,7 @@ class ExternalHttpLiepinWorkerClient:
     async def ensure_ready(self, *, on_event: EventCallback | None = None) -> None:
         health = _decode_worker_response(
             decode_worker_health,
-            self._request_json("GET", f"{self.base_url}/internal/health"),
+            await self._request_json_async("GET", f"{self.base_url}/internal/health"),
         )
         if health.status != "ok":
             raise LiepinWorkerModeError("Liepin external worker is not ready.", setup_status=health.status)
@@ -355,7 +369,7 @@ class ExternalHttpLiepinWorkerClient:
     ) -> SessionStatus:
         return _decode_worker_response(
             decode_session_status,
-            self._request_json(
+            await self._request_json_async(
                 "GET",
                 _session_status_url(
                     self.base_url,
@@ -377,7 +391,7 @@ class ExternalHttpLiepinWorkerClient:
     ) -> LoginHandoff:
         return _decode_worker_response(
             decode_login_handoff,
-            self._request_json(
+            await self._request_json_async(
                 "POST",
                 f"{self.base_url}/internal/session/login-handoff",
                 json_body=_login_handoff_body(
@@ -392,7 +406,7 @@ class ExternalHttpLiepinWorkerClient:
     async def login_relay_snapshot(self, *, connection_id: str) -> LoginRelaySnapshot:
         return _decode_worker_response(
             decode_login_relay_snapshot,
-            self._request_json(
+            await self._request_json_async(
                 "GET",
                 f"{self.base_url}/internal/session/login-relay/snapshot?{parse.urlencode({'connectionId': connection_id})}",
             ),
@@ -410,7 +424,7 @@ class ExternalHttpLiepinWorkerClient:
     ) -> LoginRelayInputResult:
         return _decode_worker_response(
             decode_login_relay_input_result,
-            self._request_json(
+            await self._request_json_async(
                 "POST",
                 f"{self.base_url}/internal/session/login-relay/input",
                 json_body=_login_relay_input_body(
@@ -427,7 +441,7 @@ class ExternalHttpLiepinWorkerClient:
     async def complete_login_relay(self, *, connection_id: str) -> LoginRelayCompleteResult:
         return _decode_worker_response(
             decode_login_relay_complete_result,
-            self._request_json(
+            await self._request_json_async(
                 "POST",
                 f"{self.base_url}/internal/session/login-relay/complete",
                 json_body={"connectionId": connection_id},
@@ -445,7 +459,7 @@ class ExternalHttpLiepinWorkerClient:
         return _search_result_from_worker_response(
             _decode_worker_response(
                 decode_card_search_response,
-                self._request_json(
+                await self._request_json_async(
                     "POST",
                     f"{self.base_url}/internal/search/cards",
                     json_body=_search_request_body(
@@ -461,12 +475,21 @@ class ExternalHttpLiepinWorkerClient:
     async def open_details(self, request: LiepinDetailOpenRequest) -> LiepinDetailOpenResponse:
         return _decode_worker_response(
             decode_detail_open_response,
-            self._request_json(
+            await self._request_json_async(
                 "POST",
                 f"{self.base_url}/internal/details/open",
                 json_body=request.model_dump(mode="json", by_alias=True),
             ),
         )
+
+    async def _request_json_async(
+        self,
+        method: str,
+        url: str,
+        *,
+        json_body: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return await asyncio.to_thread(self._request_json, method, url, json_body=json_body)
 
     def _request_json(
         self,

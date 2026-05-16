@@ -48,6 +48,7 @@ LocationExecutionMode = Literal["none", "single", "priority_then_fallback", "bal
 LocationExecutionPhase = Literal["priority", "balanced"]
 RuntimeSourceKind = Literal["cts", "liepin"]
 RuntimeEvidenceLevel = Literal["card", "detail", "final"]
+RuntimeSourceCoverageStatus = Literal["complete", "degraded", "empty"]
 FilterField = Literal[
     "company_names",
     "school_names",
@@ -1128,36 +1129,182 @@ class RoundState(BaseModel):
     reflection_advice: ReflectionAdvice | None = None
 
 
+class RuntimeIdentitySignals(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    normalized_name: str | None = None
+    is_masked_name: bool = False
+    current_company_norm: str | None = None
+    current_title_norm: str | None = None
+    school_norms: tuple[str, ...] = ()
+    work_chronology_fingerprints: tuple[str, ...] = ()
+    provider_candidate_key_hash: str | None = None
+    protected_contact_hashes: tuple[str, ...] = ()
+
+    def to_public_payload(self) -> dict[str, object]:
+        return {
+            "normalized_name": self.normalized_name,
+            "is_masked_name": self.is_masked_name,
+            "current_company_norm": self.current_company_norm,
+            "current_title_norm": self.current_title_norm,
+            "school_norms": list(self.school_norms),
+            "work_chronology_fingerprints": list(self.work_chronology_fingerprints),
+            "provider_candidate_key_hash": self.provider_candidate_key_hash,
+            "protected_contact_hash_count": len(self.protected_contact_hashes),
+        }
+
+
+class RuntimeCandidateIdentity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    identity_id: str
+    canonical_identity_id: str
+    resume_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    alias_identity_ids: list[str] = Field(default_factory=list)
+    strongest_signal: str | None = None
+
+    def to_public_payload(self) -> dict[str, object]:
+        return {
+            "identity_id": self.identity_id,
+            "canonical_identity_id": self.canonical_identity_id,
+            "resume_ids": list(self.resume_ids),
+            "evidence_ids": list(self.evidence_ids),
+            "alias_identity_ids": list(self.alias_identity_ids),
+            "strongest_signal": _runtime_public_reason_code(self.strongest_signal),
+        }
+
+
+class RuntimeIdentityConflict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conflict_id: str
+    candidate_identity_ids: tuple[str, ...]
+    reason_code: str
+    evidence_ids: tuple[str, ...] = ()
+
+    def to_public_payload(self) -> dict[str, object]:
+        return {
+            "conflict_id": self.conflict_id,
+            "candidate_identity_ids": list(self.candidate_identity_ids),
+            "reason_code": _runtime_public_reason_code(self.reason_code),
+            "evidence_ids": list(self.evidence_ids),
+        }
+
+
+class RuntimeCanonicalResumeSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    identity_id: str
+    canonical_resume_id: str
+    selected_evidence_id: str | None = None
+    selected_at: str | None = None
+    safe_reason_codes: tuple[str, ...] = ()
+
+    def to_public_payload(self) -> dict[str, object]:
+        return {
+            "identity_id": self.identity_id,
+            "canonical_resume_id": self.canonical_resume_id,
+            "selected_evidence_id": self.selected_evidence_id,
+            "selected_at": self.selected_at,
+            "safe_reason_codes": [_runtime_public_reason_code(value) for value in self.safe_reason_codes],
+        }
+
+
+class RuntimeSourceCoverageSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: RuntimeSourceCoverageStatus
+    selected_source_kinds: tuple[RuntimeSourceKind, ...] = ()
+    completed_source_kinds: tuple[RuntimeSourceKind, ...] = ()
+    blocked_source_kinds: tuple[RuntimeSourceKind, ...] = ()
+    failed_source_kinds: tuple[RuntimeSourceKind, ...] = ()
+    partial_source_kinds: tuple[RuntimeSourceKind, ...] = ()
+    empty_source_kinds: tuple[RuntimeSourceKind, ...] = ()
+    missing_source_kinds: tuple[RuntimeSourceKind, ...] = ()
+    finalization_scope: Literal["selected_sources", "available_sources_only"] = "selected_sources"
+
+    def to_public_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": "runtime_source_coverage_v1",
+            "status": self.status,
+            "selected_source_kinds": list(self.selected_source_kinds),
+            "completed_source_kinds": list(self.completed_source_kinds),
+            "blocked_source_kinds": list(self.blocked_source_kinds),
+            "failed_source_kinds": list(self.failed_source_kinds),
+            "partial_source_kinds": list(self.partial_source_kinds),
+            "empty_source_kinds": list(self.empty_source_kinds),
+            "missing_source_kinds": list(self.missing_source_kinds),
+            "finalization_scope": self.finalization_scope,
+        }
+
+
+class RuntimeFinalizationRevision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision: int
+    runtime_run_id: str
+    reason_code: str
+    selected_source_kinds: tuple[RuntimeSourceKind, ...] = ()
+    candidate_identity_ids: tuple[str, ...] = ()
+    created_at: str | None = None
+    coverage_summary: RuntimeSourceCoverageSummary | None = None
+
+    def to_public_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": "runtime_finalization_revision_v1",
+            "revision": self.revision,
+            "runtime_run_id": self.runtime_run_id,
+            "reason_code": _runtime_public_reason_code(self.reason_code),
+            "selected_source_kinds": list(self.selected_source_kinds),
+            "candidate_identity_ids": list(self.candidate_identity_ids),
+            "created_at": self.created_at,
+            "coverage_summary": self.coverage_summary.to_public_payload() if self.coverage_summary else None,
+        }
+
+
 class RuntimeSourceEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     evidence_id: str
     source: RuntimeSourceKind
     provider: str
+    source_plan_id: str | None = None
+    source_lane_run_id: str | None = None
     evidence_level: RuntimeEvidenceLevel
     candidate_resume_id: str
     provider_candidate_key_hash: str
+    protected_contact_hashes: tuple[str, ...] = ()
+    provider_rank: int | None = None
     query_fingerprint: str | None = None
     provider_snapshot_ref: str | None = None
     safe_summary_ref: str | None = None
+    protected_artifact_ref: str | None = None
     collected_at: str
     score_hint: int | None = None
     reason_code: str | None = None
+    safe_reason_codes: tuple[str, ...] = ()
 
     def to_public_payload(self) -> dict[str, object]:
         return {
             "evidence_id": self.evidence_id,
             "source": self.source,
             "provider": self.provider,
+            "source_plan_id": self.source_plan_id,
+            "source_lane_run_id": self.source_lane_run_id,
             "evidence_level": self.evidence_level,
             "candidate_resume_id": self.candidate_resume_id,
             "provider_candidate_key_hash": self.provider_candidate_key_hash,
+            "protected_contact_hash_count": len(self.protected_contact_hashes),
+            "provider_rank": self.provider_rank,
             "query_fingerprint": _runtime_public_text(self.query_fingerprint),
-            "provider_snapshot_ref": _runtime_public_text(self.provider_snapshot_ref),
-            "safe_summary_ref": _runtime_public_text(self.safe_summary_ref),
+            "provider_snapshot_ref": _runtime_public_artifact_ref(self.provider_snapshot_ref),
+            "safe_summary_ref": _runtime_public_artifact_ref(self.safe_summary_ref),
+            "protected_artifact_ref": _runtime_public_artifact_ref(self.protected_artifact_ref),
             "collected_at": self.collected_at,
             "score_hint": self.score_hint,
-            "reason_code": _runtime_public_text(self.reason_code),
+            "reason_code": _runtime_public_reason_code(self.reason_code),
+            "safe_reason_codes": [_runtime_public_reason_code(value) for value in self.safe_reason_codes],
         }
 
 
@@ -1187,6 +1334,29 @@ _RUNTIME_PUBLIC_SENSITIVE_PATTERNS = (
     re.compile(r"\bBearer\s+\S+", re.IGNORECASE),
     re.compile(r"(?:^|[;\s])[-A-Za-z0-9_]*(?:cookie|secret|token|password|auth)=[^;\s]+", re.IGNORECASE),
 )
+_RUNTIME_PUBLIC_REASON_CODES = {
+    "blocked_approval_missing",
+    "blocked_backend_unavailable",
+    "blocked_budget_exhausted",
+    "blocked_compliance",
+    "blocked_login_required",
+    "cancelled_by_user",
+    "card_rank_budget",
+    "detail_enrichment_applied",
+    "detail_evidence",
+    "failed_internal_error",
+    "failed_provider_error",
+    "high_value_card",
+    "login_required",
+    "matched_card_terms",
+    "partial_budget_exhausted",
+    "partial_timeout",
+    "provider_rank_preserved",
+    "source_card_candidate",
+    "source_detail_candidate",
+    "source_lanes_completed",
+    "source_lanes_degraded",
+}
 
 
 def _runtime_public_text(value: str | None) -> str | None:
@@ -1200,6 +1370,19 @@ def _runtime_public_text(value: str | None) -> str | None:
     return value
 
 
+def _runtime_public_reason_code(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value if value in _RUNTIME_PUBLIC_REASON_CODES else "unknown_reason"
+
+
+def _runtime_public_artifact_ref(value: str | None) -> str | None:
+    text = _runtime_public_text(value)
+    if text is None or text == _RUNTIME_PUBLIC_REDACTED:
+        return None
+    return text if text.startswith("artifact://") else None
+
+
 class RunState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1211,6 +1394,14 @@ class RunState(BaseModel):
     candidate_store: dict[str, ResumeCandidate] = Field(default_factory=dict)
     normalized_store: dict[str, NormalizedResume] = Field(default_factory=dict)
     source_evidence_by_resume_id: dict[str, list[RuntimeSourceEvidence]] = Field(default_factory=dict)
+    source_evidence_by_identity_id: dict[str, list[RuntimeSourceEvidence]] = Field(default_factory=dict)
+    candidate_identity_by_resume_id: dict[str, str] = Field(default_factory=dict)
+    candidate_identities: dict[str, RuntimeCandidateIdentity] = Field(default_factory=dict)
+    identity_aliases_by_canonical_id: dict[str, list[str]] = Field(default_factory=dict)
+    identity_conflicts: list[RuntimeIdentityConflict] = Field(default_factory=list)
+    canonical_resume_by_identity_id: dict[str, RuntimeCanonicalResumeSelection] = Field(default_factory=dict)
+    source_coverage_summary: RuntimeSourceCoverageSummary | None = None
+    finalization_revisions: list[RuntimeFinalizationRevision] = Field(default_factory=list)
     scorecards_by_resume_id: dict[str, ScoredCandidate] = Field(default_factory=dict)
     top_pool_ids: list[str] = Field(default_factory=list)
     round_history: list[RoundState] = Field(default_factory=list)

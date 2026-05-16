@@ -340,6 +340,79 @@ describe('buildRunStory', () => {
     });
   });
 
+  it('projects runtime source public state into source queue and final graph details', () => {
+    const story = buildRunStory({
+      session: session({
+        runtimeSourceState: {
+          selectedSourceKinds: ['cts', 'liepin'],
+          coverageStatus: 'degraded',
+          finalizationRevision: 1,
+          finalizationReasonCode: 'source_lanes_degraded',
+          sources: [
+            {
+              sourceKind: 'cts',
+              status: 'completed',
+              eventType: 'source_lane_completed',
+              eventSeq: 2,
+              cardsSeenCount: 10,
+              cardsFilteredCount: 0,
+              candidatesCount: 10,
+              detailRecommendationsCount: 0,
+              detailState: null,
+            },
+            {
+              sourceKind: 'liepin',
+              status: 'partial',
+              eventType: 'detail_recommended',
+              eventSeq: 4,
+              cardsSeenCount: 30,
+              cardsFilteredCount: 8,
+              candidatesCount: 5,
+              detailRecommendationsCount: 4,
+              detailState: 'detail_recommended',
+            },
+          ],
+          identityMergeCount: 2,
+          ambiguousDuplicateCount: 1,
+          canonicalResumeSelectedCount: 9,
+        },
+      }),
+      events,
+      candidateReviewItems: [candidateReviewItem()],
+      sourceFilter: 'all',
+    });
+
+    expect(story.graphNodes.find((node) => node.id === 'cts-source-start')?.detail).toBe('扫描 10 · 命中 10');
+    expect(story.graphNodes.find((node) => node.id === 'liepin-source-start')?.detailPayload).toMatchObject({
+      kind: 'sourceQueue',
+      runtimeStatus: 'partial',
+      runtimeEventType: 'detail_recommended',
+      runtimeCardsSeenCount: 30,
+      runtimeCardsFilteredCount: 8,
+      runtimeCandidatesCount: 5,
+      runtimeDetailRecommendationsCount: 4,
+      runtimeDetailState: 'detail_recommended',
+    });
+    expect(story.graphNodes.find((node) => node.id === 'final-shortlist')?.detailPayload).toMatchObject({
+      kind: 'aggregation',
+      coverageStatus: 'degraded',
+      finalizationRevision: 1,
+      finalizationReasonCode: 'source_lanes_degraded',
+      identityMergeCount: 2,
+      ambiguousDuplicateCount: 1,
+      canonicalResumeSelectedCount: 9,
+      sourceStates: [
+        expect.objectContaining({ sourceKind: 'cts', status: 'completed', candidatesCount: 10 }),
+        expect.objectContaining({
+          sourceKind: 'liepin',
+          status: 'partial',
+          cardsFilteredCount: 8,
+          detailRecommendationsCount: 4,
+        }),
+      ],
+    });
+  });
+
   it('keeps selected queued or blocked sources visible in the all-sources graph', () => {
     const story = buildRunStory({
       session: session({

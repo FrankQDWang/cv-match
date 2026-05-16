@@ -45,6 +45,17 @@ async def run_liepin_source_lane(
             attempt=request.attempt,
         )
     if request.lane_mode == "detail":
+        if not _detail_lease_matches_request(
+            request=request,
+            runtime_run_id=runtime_run_id,
+            source_plan_id=source_plan_id,
+        ):
+            return _blocked_detail_result(
+                runtime_run_id=runtime_run_id,
+                source_plan_id=source_plan_id,
+                source_lane_run_id=source_lane_run_id,
+                attempt=request.attempt,
+            )
         return await _run_detail_lane(
             settings=settings,
             request=request,
@@ -58,6 +69,7 @@ async def run_liepin_source_lane(
 
     context = request.liepin_context or {}
     query_terms = list(request.source_query_terms or _basic_source_query_terms(request))
+    budget = request.source_budget_policy
     client = worker_client or build_liepin_worker_client(settings)
     provider = _build_provider(settings=settings, worker_client=client)
     search_result = await provider.search(
@@ -68,7 +80,7 @@ async def run_liepin_source_lane(
             adapter_notes=[request.notes or ""],
             runtime_constraints=[],
             fetch_mode="summary",
-            page_size=30,
+            page_size=budget.liepin_card_page_size,
             provider_context={
                 "liepin_tenant_id": _context_text(context, "tenant_id", default="local"),
                 "liepin_workspace_id": _context_text(context, "workspace_id", default="default"),
@@ -89,22 +101,29 @@ async def run_liepin_source_lane(
         source="liepin",
         label="Liepin",
         backend_mode="runtime_source_lane",
+        max_cards=budget.liepin_max_cards,
+        max_details=budget.liepin_max_detail_recommendations,
+        source_budget_policy=budget,
     )
-    candidates = tuple(search_result.candidates)
+    candidates = tuple(search_result.candidates[: budget.liepin_max_cards])
     collected_at = datetime.now().astimezone().isoformat(timespec="seconds")
     evidence_updates = tuple(
         _source_evidence_for_candidate(
             source_plan=source_plan,
             candidate=candidate,
             collected_at=collected_at,
+            source_lane_run_id=source_lane_run_id,
+            provider_rank=index,
         )
-        for candidate in candidates
+        for index, candidate in enumerate(candidates, start=1)
     )
     detail_recommendations = _detail_recommendations_for_candidates(
         source_plan_id=source_plan_id,
         candidates=candidates,
         evidence_updates=evidence_updates,
         query_terms=query_terms,
+        max_recommendations=budget.liepin_max_detail_recommendations,
+        budget_policy_version=budget.policy_version,
     )
     return RuntimeSourceLaneResult(
         runtime_run_id=runtime_run_id,
@@ -170,6 +189,7 @@ async def _run_detail_lane(
         label="Liepin",
         lane_mode="detail",
         backend_mode="runtime_source_lane",
+        source_budget_policy=request.source_budget_policy,
     )
     candidates = tuple(search_result.candidates)
     collected_at = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -179,8 +199,10 @@ async def _run_detail_lane(
             candidate=candidate,
             collected_at=collected_at,
             evidence_level="detail",
+            source_lane_run_id=source_lane_run_id,
+            provider_rank=index,
         )
-        for candidate in candidates
+        for index, candidate in enumerate(candidates, start=1)
     )
     provider_snapshot_refs = tuple(
         ref
@@ -305,6 +327,8 @@ def _source_evidence_for_candidate(
     candidate: ResumeCandidate,
     collected_at: str,
     evidence_level: str = "card",
+    source_lane_run_id: str | None = None,
+    provider_rank: int | None = None,
 ) -> RuntimeSourceEvidence:
     provider_candidate_key = candidate.source_resume_id or candidate.dedup_key or candidate.resume_id
     provider_candidate_key_hash = hashlib.sha256(
@@ -314,15 +338,19 @@ def _source_evidence_for_candidate(
         evidence_id=f"{source_plan.source_plan_id}:liepin:{provider_candidate_key_hash}",
         source="liepin",
         provider="liepin",
+        source_plan_id=source_plan.source_plan_id,
+        source_lane_run_id=source_lane_run_id,
         evidence_level=evidence_level,
         candidate_resume_id=candidate.resume_id,
         provider_candidate_key_hash=provider_candidate_key_hash,
+        provider_rank=provider_rank,
         query_fingerprint=None,
         provider_snapshot_ref=_candidate_ref(candidate, "provider_snapshot_ref", "raw_payload_artifact_ref"),
         safe_summary_ref=_candidate_ref(candidate, "safe_summary_ref"),
         collected_at=collected_at,
         score_hint=None,
         reason_code="source_detail_candidate" if evidence_level == "detail" else "source_card_candidate",
+        safe_reason_codes=("source_detail_candidate" if evidence_level == "detail" else "source_card_candidate",),
     )
 
 
@@ -332,6 +360,8 @@ def _detail_recommendations_for_candidates(
     candidates: tuple[ResumeCandidate, ...],
     evidence_updates: tuple[RuntimeSourceEvidence, ...],
     query_terms: Collection[str],
+    max_recommendations: int,
+    budget_policy_version: str,
 ) -> tuple[RuntimeDetailRecommendation, ...]:
     recommendations: list[RuntimeDetailRecommendation] = []
     for candidate, evidence in zip(candidates, evidence_updates, strict=True):
@@ -339,6 +369,7 @@ def _detail_recommendations_for_candidates(
         matched_terms = [term.strip() for term in query_terms if term.strip() and term.strip().casefold() in searchable]
         if len(matched_terms) < 2:
             continue
+        card_policy_rank = len(recommendations) + 1
         recommendations.append(
             RuntimeDetailRecommendation(
                 recommendation_id=f"{source_plan_id}:detail:{candidate.resume_id}",
@@ -347,12 +378,26 @@ def _detail_recommendations_for_candidates(
                 candidate_resume_id=candidate.resume_id,
                 provider_candidate_key_hash=evidence.provider_candidate_key_hash,
                 value_score=min(100, 40 + len(matched_terms) * 20),
+                provider_rank=evidence.provider_rank,
+                card_policy_rank=card_policy_rank,
+                hard_filter_status="hard_filter_passed",
+                budget_reason_code="within_run_detail_budget",
                 reason_code="matched_card_terms",
                 safe_reason=f"Agent recommends opening detail after matched card terms: {', '.join(matched_terms[:3])}",
+                safe_reason_codes=(
+                    "matched_card_terms",
+                    "provider_rank_preserved",
+                    "card_rank_budget",
+                    "hard_filter_passed",
+                    "within_run_detail_budget",
+                ),
                 provider_snapshot_ref=evidence.provider_snapshot_ref,
                 safe_summary_ref=evidence.safe_summary_ref,
+                budget_policy_version=budget_policy_version,
             )
         )
+        if len(recommendations) >= max_recommendations:
+            break
     return tuple(recommendations)
 
 
@@ -412,6 +457,26 @@ def _detail_provider_context(
         "liepin_detail_already_seen_weak_fingerprints_json": lease.already_seen_weak_fingerprints_json,
         "liepin_detail_score_metadata_json": lease.score_metadata_json,
     }
+
+
+def _detail_lease_matches_request(
+    *,
+    request: RuntimeSourceLaneRequest,
+    runtime_run_id: str,
+    source_plan_id: str,
+) -> bool:
+    lease = request.approved_detail_lease
+    if lease is None:
+        return False
+    if lease.source != "liepin":
+        return False
+    if lease.runtime_run_id is not None and lease.runtime_run_id != runtime_run_id:
+        return False
+    if lease.source_plan_id is not None and lease.source_plan_id != source_plan_id:
+        return False
+    if lease.source_evidence_id is not None and lease.source_evidence_id != lease.candidate_evidence_id:
+        return False
+    return True
 
 
 def _build_provider(*, settings: AppSettings, worker_client: LiepinWorkerClient) -> LiepinProviderAdapter:

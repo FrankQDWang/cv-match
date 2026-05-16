@@ -49,6 +49,8 @@ from seektalent_ui.models import (
     WorkbenchProviderActionResponse,
     WorkbenchRequirementTriageResponse,
     WorkbenchRequirementTriageUpdateRequest,
+    WorkbenchRuntimeSourceLaneStateResponse,
+    WorkbenchRuntimeSourceStateResponse,
     WorkbenchSecurityAuditEventListResponse,
     WorkbenchSecurityAuditEventResponse,
     WorkbenchSessionCreateRequest,
@@ -84,6 +86,7 @@ from seektalent_ui.workbench_store import (
     WorkbenchDetailOpenRequest,
     WorkbenchProviderAction,
     WorkbenchRequirementTriage,
+    WorkbenchRuntimeSourceLaneLatestState,
     WorkbenchSecurityAuditEvent,
     WorkbenchSession,
     WorkbenchSourceConnection,
@@ -245,7 +248,14 @@ def list_sessions(
         connection.source_kind: connection for connection in store.list_source_connections(user=user)
     }
     return WorkbenchSessionListResponse(
-        sessions=[_session_response(session, connections) for session in store.list_workbench_sessions(user=user)]
+        sessions=[
+            _session_response(
+                session,
+                connections,
+                runtime_source_state=_runtime_source_state_response(store=store, user=user, session=session),
+            )
+            for session in store.list_workbench_sessions(user=user)
+        ]
     )
 
 
@@ -278,7 +288,11 @@ def create_session(
     connections: dict[str, WorkbenchSourceConnection] = {
         connection.source_kind: connection for connection in store.list_source_connections(user=user)
     }
-    return _session_response(session, connections)
+    return _session_response(
+        session,
+        connections,
+        runtime_source_state=_runtime_source_state_response(store=store, user=user, session=session),
+    )
 
 
 @router.get("/api/workbench/sessions/{session_id}", response_model=WorkbenchSessionResponse)
@@ -294,7 +308,11 @@ def get_session(
     connections: dict[str, WorkbenchSourceConnection] = {
         connection.source_kind: connection for connection in store.list_source_connections(user=user)
     }
-    return _session_response(session, connections)
+    return _session_response(
+        session,
+        connections,
+        runtime_source_state=_runtime_source_state_response(store=store, user=user, session=session),
+    )
 
 
 @router.get(
@@ -1256,6 +1274,7 @@ def _workspace_response(workspace: WorkbenchWorkspace) -> WorkbenchWorkspaceResp
 def _session_response(
     session: WorkbenchSession,
     connections: dict[str, WorkbenchSourceConnection] | None = None,
+    runtime_source_state: WorkbenchRuntimeSourceStateResponse | None = None,
 ) -> WorkbenchSessionResponse:
     connections = connections or {}
     source_runs = [_source_run_response(source_run) for source_run in session.source_runs]
@@ -1271,7 +1290,148 @@ def _session_response(
         requirementTriage=_triage_response(session.requirement_triage),
         sourceRuns=source_runs,
         sourceCards=source_cards,
+        runtimeSourceState=runtime_source_state,
     )
+
+
+def _runtime_source_state_response(
+    *,
+    store: WorkbenchStore,
+    user: WorkbenchUser,
+    session: WorkbenchSession,
+) -> WorkbenchRuntimeSourceStateResponse:
+    latest_states = store.list_runtime_source_lane_latest_state(user=user, session_id=session.session_id)
+    latest_by_source = {state.source_kind: state for state in latest_states}
+    sources = [
+        _runtime_source_lane_state_response(source_run, latest_by_source.get(source_run.source_kind))
+        for source_run in session.source_runs
+    ]
+    coverage_status, revision, reason_code = _runtime_source_coverage_fields(session, latest_states, sources)
+    return WorkbenchRuntimeSourceStateResponse(
+        selectedSourceKinds=[source_run.source_kind for source_run in session.source_runs],
+        coverageStatus=coverage_status,
+        finalizationRevision=revision,
+        finalizationReasonCode=reason_code,
+        identityMergeCount=_runtime_source_merge_count(latest_states, "identity_merge_count"),
+        ambiguousDuplicateCount=_runtime_source_merge_count(latest_states, "ambiguous_duplicate_count"),
+        canonicalResumeSelectedCount=_runtime_source_merge_count(latest_states, "canonical_resume_selected_count"),
+        sources=sources,
+    )
+
+
+def _runtime_source_lane_state_response(
+    source_run: WorkbenchSourceRun,
+    latest_state: WorkbenchRuntimeSourceLaneLatestState | None,
+) -> WorkbenchRuntimeSourceLaneStateResponse:
+    payload = latest_state.payload if latest_state is not None else {}
+    safe_counts = payload.get("safe_counts")
+    if not isinstance(safe_counts, dict):
+        safe_counts = {}
+    status = str((latest_state.status if latest_state is not None else source_run.status) or "pending")
+    if status not in {"pending", "running", "completed", "partial", "blocked", "failed", "cancelled"}:
+        status = "pending"
+    return WorkbenchRuntimeSourceLaneStateResponse(
+        sourceKind=source_run.source_kind,
+        status=status,  # type: ignore[arg-type]
+        eventType=latest_state.event_type if latest_state is not None else None,
+        eventSeq=latest_state.event_seq if latest_state is not None else None,
+        cardsSeenCount=_safe_count(safe_counts.get("cards_seen"), fallback=source_run.cards_scanned_count),
+        cardsFilteredCount=_safe_count(safe_counts.get("cards_filtered"), fallback=0),
+        candidatesCount=_safe_count(safe_counts.get("candidates"), fallback=source_run.unique_candidates_count),
+        detailRecommendationsCount=_safe_count(safe_counts.get("detail_recommendations"), fallback=0),
+        detailState=_runtime_source_detail_state(latest_state),
+    )
+
+
+def _runtime_source_coverage_fields(
+    session: WorkbenchSession,
+    latest_states: list[WorkbenchRuntimeSourceLaneLatestState],
+    sources: list[WorkbenchRuntimeSourceLaneStateResponse],
+) -> tuple[str, int | None, str | None]:
+    for state in sorted(latest_states, key=lambda item: item.event_seq, reverse=True):
+        coverage = state.payload.get("source_coverage_summary")
+        finalization = state.payload.get("finalization_revision")
+        if isinstance(coverage, dict):
+            status = str(coverage.get("status") or "")
+            if status in {"complete", "degraded", "empty"}:
+                revision = _safe_int(finalization.get("revision")) if isinstance(finalization, dict) else None
+                reason = str(finalization.get("reason_code")) if isinstance(finalization, dict) else None
+                return status, revision, reason
+
+    source_statuses = {source.status for source in sources}
+    if source_statuses.intersection({"running", "pending"}) or any(run.status == "queued" for run in session.source_runs):
+        return "pending", None, None
+    if all(source.status == "completed" for source in sources):
+        if any(source.candidatesCount for source in sources):
+            return "complete", None, None
+        return "empty", None, None
+    if source_statuses.intersection({"partial", "blocked", "failed", "cancelled"}):
+        return "degraded", None, None
+    return "pending", None, None
+
+
+def _runtime_source_detail_state(
+    latest_state: WorkbenchRuntimeSourceLaneLatestState | None,
+) -> str | None:
+    if latest_state is None or latest_state.source_kind != "liepin":
+        return None
+    payload_value = latest_state.payload.get("detail_state")
+    if isinstance(payload_value, str) and payload_value in {
+        "detail_recommended",
+        "pending_approval",
+        "leased",
+        "completed",
+        "blocked",
+    }:
+        return payload_value
+    if latest_state.event_type == "detail_recommended":
+        return "detail_recommended"
+    if latest_state.event_type == "detail_leased":
+        return "leased"
+    if latest_state.event_type == "detail_completed":
+        return "completed"
+    if latest_state.event_type == "detail_blocked":
+        return "blocked"
+    return None
+
+
+def _runtime_source_merge_count(
+    latest_states: list[WorkbenchRuntimeSourceLaneLatestState],
+    key: str,
+) -> int:
+    for state in sorted(latest_states, key=lambda item: item.event_seq, reverse=True):
+        merge_summary = state.payload.get("merge_summary")
+        if not isinstance(merge_summary, dict):
+            continue
+        value = _safe_int(merge_summary.get(key))
+        if value is not None:
+            return max(value, 0)
+    if key == "canonical_resume_selected_count":
+        for state in sorted(latest_states, key=lambda item: item.event_seq, reverse=True):
+            finalization = state.payload.get("finalization_revision")
+            if not isinstance(finalization, dict):
+                continue
+            candidate_ids = finalization.get("candidate_identity_ids")
+            if isinstance(candidate_ids, list):
+                return len(candidate_ids)
+    return 0
+
+
+def _safe_count(value: object, *, fallback: int = 0) -> int:
+    parsed = _safe_int(value)
+    if parsed is None:
+        return fallback
+    return max(parsed, 0)
+
+
+def _safe_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
 
 
 def _source_run_response(source_run: WorkbenchSourceRun) -> WorkbenchSourceRunResponse:

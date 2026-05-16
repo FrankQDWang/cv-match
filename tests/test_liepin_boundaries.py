@@ -335,7 +335,7 @@ def test_managed_local_worker_lifecycle_is_python_owned_and_redacted():
 
     assert isinstance(client.runtime, ManagedLiepinWorkerRuntime)
     assert "ManagedLiepinWorkerRuntime.shared(settings)" in client_source
-    assert "self.runtime.ensure_started(on_event=on_event)" in client_source
+    assert "asyncio.to_thread(self.runtime.ensure_started, on_event=on_event)" in client_source
     assert "setup_status=\"missing_bun\"" in runtime_source
     assert "setup_status=\"non_loopback_bind_host\"" in runtime_source
     assert "setup_status=\"port_unavailable\"" in runtime_source

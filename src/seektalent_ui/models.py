@@ -367,6 +367,38 @@ class WorkbenchSourceCardResponse(BaseModel):
     connectionWarningMessage: str | None = None
 
 
+RuntimeSourceDisplayStatus = Literal["pending", "running", "completed", "partial", "blocked", "failed", "cancelled"]
+RuntimeSourceCoverageStatus = Literal["pending", "complete", "degraded", "empty"]
+RuntimeSourceDetailState = Literal["detail_recommended", "pending_approval", "leased", "completed", "blocked"]
+
+
+class WorkbenchRuntimeSourceLaneStateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sourceKind: SourceKind
+    status: RuntimeSourceDisplayStatus
+    eventType: str | None = None
+    eventSeq: int | None = None
+    cardsSeenCount: int = 0
+    cardsFilteredCount: int = 0
+    candidatesCount: int = 0
+    detailRecommendationsCount: int = 0
+    detailState: RuntimeSourceDetailState | None = None
+
+
+class WorkbenchRuntimeSourceStateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selectedSourceKinds: list[SourceKind]
+    coverageStatus: RuntimeSourceCoverageStatus
+    finalizationRevision: int | None = None
+    finalizationReasonCode: str | None = None
+    identityMergeCount: int = 0
+    ambiguousDuplicateCount: int = 0
+    canonicalResumeSelectedCount: int = 0
+    sources: list[WorkbenchRuntimeSourceLaneStateResponse]
+
+
 class WorkbenchSessionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -380,6 +412,7 @@ class WorkbenchSessionResponse(BaseModel):
     requirementTriage: WorkbenchRequirementTriageResponse
     sourceRuns: list[WorkbenchSourceRunResponse]
     sourceCards: list[WorkbenchSourceCardResponse]
+    runtimeSourceState: WorkbenchRuntimeSourceStateResponse | None = None
 
 
 class WorkbenchSessionListResponse(BaseModel):

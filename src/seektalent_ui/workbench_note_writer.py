@@ -282,6 +282,50 @@ def _runtime_business_facts(events: list[WorkbenchEvent]) -> tuple[list[str], li
             numbers.append(round_no)
             prefix = f"{prefix}_round_{round_no}"
         facts.append(f"{prefix}=seen")
+        source = _safe_fact_token(str(event.payload.get("source") or ""))
+        if source:
+            facts.append(f"{prefix}_source={source}")
+        status = _safe_fact_token(str(event.payload.get("status") or ""))
+        if status:
+            facts.append(f"{prefix}_status={status}")
+        safe_counts = _mapping_object(event.payload.get("safe_counts"))
+        if safe_counts is not None:
+            for key, raw_value in safe_counts.items():
+                safe_key = _safe_fact_token(str(key))
+                value = _optional_int(raw_value)
+                if not safe_key or value is None:
+                    continue
+                numbers.append(value)
+                facts.append(f"{prefix}_{safe_key}={value}")
+        coverage = _mapping_object(event.payload.get("source_coverage_summary"))
+        if coverage is not None:
+            coverage_status = _safe_fact_token(str(coverage.get("status") or ""))
+            if coverage_status:
+                facts.append(f"{prefix}_coverage_status={coverage_status}")
+            selected_sources = _string_list(coverage.get("selected_source_kinds"))
+            if selected_sources:
+                numbers.append(len(selected_sources))
+                facts.append(f"{prefix}_selected_source_count={len(selected_sources)}")
+            for key in (
+                "blocked_source_kinds",
+                "failed_source_kinds",
+                "partial_source_kinds",
+                "empty_source_kinds",
+                "missing_source_kinds",
+            ):
+                values = _string_list(coverage.get(key))
+                if values:
+                    numbers.append(len(values))
+                    facts.append(f"{prefix}_{key}_count={len(values)}")
+        finalization = _mapping_object(event.payload.get("finalization_revision"))
+        if finalization is not None:
+            revision = _optional_int(finalization.get("revision"))
+            if revision is not None:
+                numbers.append(revision)
+                facts.append(f"{prefix}_finalization_revision={revision}")
+            reason_code = _safe_fact_token(str(finalization.get("reason_code") or ""))
+            if reason_code:
+                facts.append(f"{prefix}_finalization_reason_code={reason_code}")
         inner = _mapping_object(event.payload.get("payload"))
         if inner is None:
             continue
@@ -310,6 +354,12 @@ def _mapping_object(value: object) -> Mapping[str, object] | None:
     if not isinstance(value, Mapping):
         return None
     return {str(key): item for key, item in value.items()}
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str)]
 
 
 def _safe_numbers_from_source_runs(source_runs: list[WorkbenchSourceRun]) -> list[int]:

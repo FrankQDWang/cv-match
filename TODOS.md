@@ -34,11 +34,16 @@
 
 **Deferred items:**
 
+- Human card-review UI: let recruiters review Liepin cards before approval or detail opening once the Runtime recommendation contract is stable.
+- Manual detail-open approval UI: expose approved-detail request, lease, budget, and audit state without letting Workbench execute provider logic directly.
+- Manual source budget editing UI: allow user-visible CTS/Liepin budget changes after the runtime-owned budget policy has enough guardrails.
 - Candidate Evidence Graph: model candidate identity, source evidence, artifact refs, action traces, detail recommendations, scorecards, and finalization decisions as an inspectable graph.
 - Source Capability Descriptor: add a small descriptor for future API/browser/research sources without creating a broad plugin marketplace.
 - Trusted browser action conformance: expand DokoBot and future browser backends with domain policy, dry-run support, action audit, and conformance tests before enabling action execution.
 - Lane health, cost, and quality metrics: track latency, cards seen, selected candidates, detail opens, duplicate rate, blocked rate, cost estimate, and marginal quality for later Runtime source strategy optimization.
 - Progressive enrichment: split card search, detail recommendation, approved detail fetch, and verification lanes once the first card/detail API boundary is stable.
+- Offline entity-merge evaluation set: create redacted, replayable same-person/different-person cases to measure false-positive and false-negative identity merge rates, especially for masked Liepin names.
+- Trace context alignment: map runtime run id, source plan id, source lane run id, attempt, and event sequence to a standard trace/correlation format if source lanes later become out-of-process.
 - A2A bridge evaluation: revisit only if PI Agent becomes out-of-process with separate lifecycle, identity, capability discovery, and negotiated task execution.
 - Provider candidate hash migration: evaluate tenant-scoped HMAC provider-key hashes without breaking existing Workbench data.
 - Artifact access controls: expand protected artifact classification, retention, open audit, and notes/graph resolution policy beyond the first source-lane safety contract.

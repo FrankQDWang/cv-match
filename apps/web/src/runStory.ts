@@ -12,6 +12,8 @@ import type {
   WorkbenchNotePayload,
   WorkbenchRequirementTriage,
   WorkbenchRequirementTriageInput,
+  WorkbenchRuntimeSourceLaneState,
+  WorkbenchRuntimeSourceState,
   WorkbenchSession,
 } from './types';
 
@@ -143,6 +145,7 @@ export function buildRunStory(input: BuildRunStoryInput): RunStory {
       : scopeCandidateReviewItems(candidateReviewItems, sourceFilter);
   const candidateScores = candidateScoresFromInputs(scopedEvents, scopedCandidateReviewItems);
   const finalReport = finalReportFromEvents(allRuntimeEvents);
+  const runtimeSourceState = runtimeSourceStateForFilter(session.runtimeSourceState ?? null, sourceFilter);
   const hasSourceEvents = scopedEvents.some((event) => event.sourceKind !== null);
   const hasCompletion = scopedEvents.some((event) =>
     event.eventName === 'source_run_completed' || event.eventName === 'runtime_run_completed',
@@ -279,6 +282,7 @@ export function buildRunStory(input: BuildRunStoryInput): RunStory {
     fallbackAnchor: anchor,
     finalReport,
     hasCompletion,
+    runtimeSourceState,
   });
 
   return {
@@ -428,6 +432,7 @@ function appendCtsLane({
   const sourceLabel = sourceLabels[sourceKind];
   const baseY = laneBaseY(sourceKind, allMode);
   const sourceCard = session.sourceCards.find((card) => card.sourceKind === sourceKind);
+  const runtimeLaneState = runtimeLaneStateForSource(session.runtimeSourceState ?? null, sourceKind);
   const rounds = roundSummaries(runtimeEvents);
   const started = firstEvent(events, ['source_run_started', 'source_run_queued', 'runtime_run_started']);
   if (events.length === 0 && rounds.length === 0 && !sourceCard) {
@@ -440,7 +445,12 @@ function appendCtsLane({
     at: graphNodes.length,
     kind: '检索',
     label: `${sourceLabel} 队列`,
-    detail: sourceCard ? sourceCardDetail(sourceCard.cardsScannedCount, sourceCard.uniqueCandidatesCount) : '等待 CTS 检索',
+    detail: sourceCard
+      ? sourceCardDetail(
+          runtimeLaneState?.cardsSeenCount ?? sourceCard.cardsScannedCount,
+          runtimeLaneState?.candidatesCount ?? sourceCard.uniqueCandidatesCount,
+        )
+      : '等待 CTS 检索',
     x: 34,
     y: baseY,
     tone: 'teal',
@@ -448,7 +458,12 @@ function appendCtsLane({
     sourceLabel,
     lane: sourceKind,
     detailKind: 'sourceQueue',
-    detailPayload: sourceQueuePayload(sourceCard, sourceKind, started?.sourceRunId ?? sourceCard?.sourceRunId ?? null),
+    detailPayload: sourceQueuePayload(
+      sourceCard,
+      sourceKind,
+      started?.sourceRunId ?? sourceCard?.sourceRunId ?? null,
+      runtimeLaneState,
+    ),
     eventIds: started ? [eventId(started)] : [],
     sourceRunId: started?.sourceRunId ?? sourceCard?.sourceRunId ?? null,
     candidateReviewItemIds: [],
@@ -690,6 +705,7 @@ function appendLiepinLane({
   const sourceLabel = sourceLabels[sourceKind];
   const baseY = laneBaseY(sourceKind, allMode);
   const sourceCard = session.sourceCards.find((card) => card.sourceKind === sourceKind);
+  const runtimeLaneState = runtimeLaneStateForSource(session.runtimeSourceState ?? null, sourceKind);
   const visibleReviewItems = scopeCandidateReviewItems(candidateReviewItems, sourceKind);
   const visibleDetailRequests = scopeDetailOpenRequests(detailOpenRequests);
   const detailFields = detailRequestFields(visibleDetailRequests);
@@ -717,7 +733,12 @@ function appendLiepinLane({
     sourceLabel,
     lane: sourceKind,
     detailKind: 'sourceQueue',
-    detailPayload: sourceQueuePayload(sourceCard, sourceKind, started?.sourceRunId ?? sourceCard?.sourceRunId ?? null),
+    detailPayload: sourceQueuePayload(
+      sourceCard,
+      sourceKind,
+      started?.sourceRunId ?? sourceCard?.sourceRunId ?? null,
+      runtimeLaneState,
+    ),
     eventIds: started ? [eventId(started)] : [],
     sourceRunId: started?.sourceRunId ?? sourceCard?.sourceRunId ?? null,
     candidateReviewItemIds: safeCandidateReviewItemIds,
@@ -903,6 +924,7 @@ function appendFinalNode({
   graphNodes,
   hasCompletion,
   logEntries,
+  runtimeSourceState,
   sourceTerminalNodes,
 }: {
   candidateScores: CandidateScore[];
@@ -912,6 +934,7 @@ function appendFinalNode({
   graphNodes: RecruiterGraphNode[];
   hasCompletion: boolean;
   logEntries: RecruiterLogEntry[];
+  runtimeSourceState: WorkbenchRuntimeSourceState | null;
   sourceTerminalNodes: string[];
 }): string | null {
   if (candidateScores.length === 0 && !hasCompletion) {
@@ -938,6 +961,13 @@ function appendFinalNode({
       bestScore: highScore,
       finalReport: finalReport.report,
       stopReason: finalReport.stopReason,
+      coverageStatus: runtimeSourceState?.coverageStatus ?? null,
+      finalizationRevision: runtimeSourceState?.finalizationRevision ?? null,
+      finalizationReasonCode: runtimeSourceState?.finalizationReasonCode ?? null,
+      identityMergeCount: runtimeSourceState?.identityMergeCount ?? 0,
+      ambiguousDuplicateCount: runtimeSourceState?.ambiguousDuplicateCount ?? 0,
+      canonicalResumeSelectedCount: runtimeSourceState?.canonicalResumeSelectedCount ?? 0,
+      sourceStates: runtimeSourceState?.sources ?? [],
     },
     eventIds: finalReport.eventId ? [finalReport.eventId] : [],
     sourceRunId: null,
@@ -1026,6 +1056,7 @@ function sourceQueuePayload(
   sourceCard: WorkbenchSession['sourceCards'][number] | undefined,
   sourceKind: SourceKind,
   sourceRunId: string | null,
+  runtimeLaneState: WorkbenchRuntimeSourceLaneState | null,
 ): RecruiterGraphNode['detailPayload'] {
   const warningCode = sourceCard?.warningCode ?? sourceCard?.connectionWarningCode ?? null;
   const warningMessage = displaySafeWarning(warningCode, sourceCard?.warningMessage ?? sourceCard?.connectionWarningMessage ?? null);
@@ -1042,7 +1073,54 @@ function sourceQueuePayload(
     detailOpenBlockedCount: sourceCard?.detailOpenBlockedCount ?? 0,
     warningCode,
     warningMessage,
+    runtimeStatus: runtimeLaneState?.status ?? null,
+    runtimeEventType: runtimeLaneState?.eventType ?? null,
+    runtimeEventSeq: runtimeLaneState?.eventSeq ?? null,
+    runtimeCardsSeenCount: runtimeLaneState?.cardsSeenCount ?? 0,
+    runtimeCardsFilteredCount: runtimeLaneState?.cardsFilteredCount ?? 0,
+    runtimeCandidatesCount: runtimeLaneState?.candidatesCount ?? 0,
+    runtimeDetailRecommendationsCount: runtimeLaneState?.detailRecommendationsCount ?? 0,
+    runtimeDetailState: runtimeLaneState?.detailState ?? null,
   };
+}
+
+function runtimeLaneStateForSource(
+  runtimeSourceState: WorkbenchRuntimeSourceState | null,
+  sourceKind: SourceKind,
+): WorkbenchRuntimeSourceLaneState | null {
+  return runtimeSourceState?.sources.find((source) => source.sourceKind === sourceKind) ?? null;
+}
+
+function runtimeSourceStateForFilter(
+  runtimeSourceState: WorkbenchRuntimeSourceState | null,
+  sourceFilter: SourceFilter,
+): WorkbenchRuntimeSourceState | null {
+  if (!runtimeSourceState || sourceFilter === 'all') {
+    return runtimeSourceState;
+  }
+  const sources = runtimeSourceState.sources.filter((source) => source.sourceKind === sourceFilter);
+  if (sources.length === 0) {
+    return null;
+  }
+  return {
+    ...runtimeSourceState,
+    selectedSourceKinds: [sourceFilter],
+    sources,
+    coverageStatus: coverageStatusFromLaneStates(sources),
+  };
+}
+
+function coverageStatusFromLaneStates(sources: WorkbenchRuntimeSourceLaneState[]): WorkbenchRuntimeSourceState['coverageStatus'] {
+  if (sources.some((source) => source.status === 'pending' || source.status === 'running')) {
+    return 'pending';
+  }
+  if (sources.some((source) => ['partial', 'blocked', 'failed', 'cancelled'].includes(source.status))) {
+    return 'degraded';
+  }
+  if (sources.every((source) => source.status === 'completed' && source.candidatesCount === 0)) {
+    return 'empty';
+  }
+  return 'complete';
 }
 
 function finalReportFromEvents(runtimeEvents: RuntimeEventData[]): FinalReport {

@@ -46,6 +46,9 @@ export type WorkbenchSourceConnectionStatus =
   | 'expired'
   | 'blocked'
   | 'disconnected';
+export type RuntimeSourceDisplayStatus = 'pending' | 'running' | 'completed' | 'partial' | 'blocked' | 'failed' | 'cancelled';
+export type RuntimeSourceCoverageStatus = 'pending' | 'complete' | 'degraded' | 'empty';
+export type RuntimeSourceDetailState = 'detail_recommended' | 'pending_approval' | 'leased' | 'completed' | 'blocked';
 
 export type WorkbenchRequirementTriage = {
   sessionId: string;
@@ -91,6 +94,29 @@ export type WorkbenchSourceCard = WorkbenchSourceRun & {
   connectionWarningMessage?: string | null;
 };
 
+export type WorkbenchRuntimeSourceLaneState = {
+  sourceKind: SourceKind;
+  status: RuntimeSourceDisplayStatus;
+  eventType: string | null;
+  eventSeq: number | null;
+  cardsSeenCount: number;
+  cardsFilteredCount: number;
+  candidatesCount: number;
+  detailRecommendationsCount: number;
+  detailState: RuntimeSourceDetailState | null;
+};
+
+export type WorkbenchRuntimeSourceState = {
+  selectedSourceKinds: SourceKind[];
+  coverageStatus: RuntimeSourceCoverageStatus;
+  finalizationRevision: number | null;
+  finalizationReasonCode: string | null;
+  identityMergeCount: number;
+  ambiguousDuplicateCount: number;
+  canonicalResumeSelectedCount: number;
+  sources: WorkbenchRuntimeSourceLaneState[];
+};
+
 export type WorkbenchSession = {
   sessionId: string;
   workspaceId: string;
@@ -102,6 +128,7 @@ export type WorkbenchSession = {
   requirementTriage: WorkbenchRequirementTriage;
   sourceRuns: WorkbenchSourceRun[];
   sourceCards: WorkbenchSourceCard[];
+  runtimeSourceState?: WorkbenchRuntimeSourceState | null;
 };
 
 export type WorkbenchSessionListResponse = {

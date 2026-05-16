@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import threading
+import time
 from types import SimpleNamespace
 from typing import Any
 from urllib.error import HTTPError
@@ -374,6 +376,46 @@ def test_external_http_client_search_posts_safe_body_and_maps_worker_cards() -> 
             "timeout": settings.liepin_worker_timeout_seconds,
         }
     ]
+
+
+def test_external_http_client_search_does_not_block_event_loop_during_sync_http() -> None:
+    async def run_search_with_blocking_http() -> None:
+        settings = make_settings(
+            liepin_worker_mode="external_http",
+            liepin_worker_base_url="http://127.0.0.1:8123",
+            liepin_api_token="worker-token",
+        )
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocking_http_json(*args: object, **kwargs: object) -> dict[str, object]:
+            del args, kwargs
+            entered.set()
+            release.wait(timeout=1.0)
+            return _worker_card_search_response()
+
+        client = ExternalHttpLiepinWorkerClient(settings, http_json=blocking_http_json)
+        timer = threading.Timer(0.25, release.set)
+        timer.start()
+        started_at = time.perf_counter()
+        search_task = asyncio.create_task(
+            client.search(
+                _request(),
+                round_no=3,
+                trace_id="trace-3",
+                provider_account_hash="acct-hash",
+            )
+        )
+        await asyncio.sleep(0.05)
+        elapsed = time.perf_counter() - started_at
+        assert elapsed < 0.15
+        assert entered.is_set()
+        release.set()
+        result = await search_task
+        timer.cancel()
+        assert len(result.candidates) == 1
+
+    asyncio.run(run_search_with_blocking_http())
 
 
 def test_managed_local_client_search_uses_runtime_url_and_maps_worker_cards() -> None:

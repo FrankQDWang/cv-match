@@ -82,6 +82,8 @@ from seektalent.models import (
     RuntimeConstraint,
     RoundState,
     RunState,
+    RuntimeFinalizationRevision,
+    RuntimeSourceCoverageSummary,
     RuntimeSourceEvidence,
     RequirementSheet,
     ScoredCandidate,
@@ -155,13 +157,13 @@ from seektalent.runtime.runtime_reports import (
     render_run_summary as render_run_summary_direct,
 )
 from seektalent.runtime.source_lanes import (
+    RuntimeDetailEnrichmentResult,
     RuntimeSourceLaneEvent,
     RuntimeSourceLanePlan,
     RuntimeSourceLaneRequest,
     RuntimeSourceLaneResult,
     apply_source_lane_result,
     build_runtime_source_plan,
-    clone_run_state_for_source_lane,
 )
 from seektalent.runtime.retrieval_runtime import (
     LogicalQueryState,
@@ -239,6 +241,9 @@ class RunArtifacts:
     normalized_store: dict[str, NormalizedResume]
     evaluation_result: EvaluationResult | None
     terminal_stop_guidance: StopGuidance | None
+    finalization_revision: RuntimeFinalizationRevision | None = None
+    source_coverage_summary: RuntimeSourceCoverageSummary | None = None
+    run_state: RunState | None = None
 
 
 @dataclass
@@ -414,6 +419,73 @@ class WorkflowRuntime:
             )
         raise ValueError(f"Unsupported source lane request source: {request.source}")
 
+    async def apply_approved_detail_lane_to_run_async(
+        self,
+        *,
+        base_run_artifacts: RunArtifacts,
+        base_finalization_revision: int,
+        detail_lane_request: RuntimeSourceLaneRequest,
+        liepin_worker_client: LiepinWorkerClient | None = None,
+    ) -> RuntimeDetailEnrichmentResult:
+        if base_run_artifacts.run_state is None:
+            raise RunStageError("source_lanes", "Approved detail enrichment requires base run state.")
+        if base_run_artifacts.finalization_revision is None:
+            raise RunStageError("source_lanes", "Approved detail enrichment requires base finalization revision.")
+        if base_run_artifacts.finalization_revision.revision != base_finalization_revision:
+            raise RunStageError("source_lanes", "Approved detail enrichment received stale base finalization revision.")
+        if detail_lane_request.source != "liepin" or detail_lane_request.lane_mode != "detail":
+            raise RunStageError("source_lanes", "Approved detail enrichment requires a Liepin detail lane request.")
+        if detail_lane_request.runtime_run_id is not None and detail_lane_request.runtime_run_id != base_run_artifacts.run_id:
+            raise RunStageError("source_lanes", "Approved detail lease is bound to a different runtime run.")
+
+        run_state = base_run_artifacts.run_state
+        lane_result = await self.run_source_lane_async(detail_lane_request, liepin_worker_client=liepin_worker_client)
+        selected_sources = base_run_artifacts.finalization_revision.selected_source_kinds or ("cts", "liepin")
+        source_order = {source: index for index, source in enumerate(selected_sources)}
+        apply_source_lane_result(run_state=run_state, result=lane_result, source_order=source_order)
+        unscored_candidates = [
+            run_state.candidate_store[resume_id]
+            for resume_id in run_state.seen_resume_ids
+            if resume_id in run_state.candidate_store and resume_id not in run_state.scorecards_by_resume_id
+        ]
+        tracer = RunTracer(self.settings.artifacts_path)
+        try:
+            if unscored_candidates:
+                await self._score_round(
+                    round_no=max(1, self.settings.max_rounds + base_finalization_revision + 1),
+                    new_candidates=unscored_candidates,
+                    run_state=run_state,
+                    tracer=tracer,
+                    runtime_only_constraints=[],
+                )
+            identity_top_candidates = self._apply_identity_top_pool(run_state)
+        finally:
+            tracer.close()
+
+        finalization_revision = RuntimeFinalizationRevision(
+            revision=base_finalization_revision + 1,
+            runtime_run_id=base_run_artifacts.run_id,
+            reason_code="detail_enrichment_applied",
+            selected_source_kinds=selected_sources,
+            candidate_identity_ids=tuple(
+                run_state.candidate_identity_by_resume_id.get(candidate.resume_id, candidate.resume_id)
+                for candidate in identity_top_candidates
+            ),
+            created_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+            coverage_summary=run_state.source_coverage_summary,
+        )
+        run_state.finalization_revisions.append(finalization_revision)
+        base_run_artifacts.finalization_revision = finalization_revision
+        base_run_artifacts.source_coverage_summary = run_state.source_coverage_summary
+        base_run_artifacts.candidate_store = run_state.candidate_store
+        base_run_artifacts.normalized_store = run_state.normalized_store
+        return RuntimeDetailEnrichmentResult(
+            runtime_run_id=base_run_artifacts.run_id,
+            base_finalization_revision=base_finalization_revision,
+            lane_result=lane_result,
+            finalization_revision=finalization_revision,
+        )
+
     async def extract_requirements_async(
         self,
         *,
@@ -588,6 +660,9 @@ class WorkflowRuntime:
                 terminal_stop_guidance=(
                     terminal_controller_round.stop_guidance if terminal_controller_round is not None else None
                 ),
+                finalization_revision=run_state.finalization_revisions[-1] if run_state.finalization_revisions else None,
+                source_coverage_summary=run_state.source_coverage_summary,
+                run_state=run_state,
             )
         except Exception as exc:  # noqa: BLE001
             stage = exc.stage if isinstance(exc, RunStageError) else "runtime"
@@ -811,48 +886,21 @@ class WorkflowRuntime:
         progress_callback: ProgressCallback | None = None,
     ) -> tuple[list[ScoredCandidate], str, int, TerminalControllerRound | None]:
         source_order = {lane.source: index for index, lane in enumerate(source_plan)}
-        lane_results: list[RuntimeSourceLaneResult] = []
-        for lane in source_plan:
-            if lane.source == "cts":
-                result = await self._run_cts_source_lane(
-                    run_state=run_state,
-                    tracer=tracer,
-                    source_plan=lane,
-                    progress_callback=progress_callback,
-                )
-            elif lane.source == "liepin":
-                if lane.backend_mode == "blocked":
-                    result = self._blocked_source_lane_result(
+        lane_tasks: dict[str, asyncio.Task[RuntimeSourceLaneResult]] = {}
+        async with asyncio.TaskGroup() as task_group:
+            for lane in source_plan:
+                lane_tasks[lane.source_plan_id] = task_group.create_task(
+                    self._run_source_lane_safely(
                         lane=lane,
-                        reason_code="blocked_backend_unavailable",
+                        run_state=run_state,
+                        tracer=tracer,
+                        liepin_context=liepin_context,
+                        progress_callback=progress_callback,
                     )
-                else:
-                    try:
-                        result = await self._run_liepin_source_lane_request(
-                            RuntimeSourceLaneRequest(
-                                source="liepin",
-                                lane_mode="card",
-                                job_title=run_state.input_truth.job_title,
-                                jd=run_state.input_truth.jd,
-                                notes=run_state.input_truth.notes,
-                                runtime_run_id=tracer.run_id,
-                                source_plan_id=lane.source_plan_id,
-                                source_lane_run_id=f"{lane.source_plan_id}:lane:1",
-                                source_query_terms=self._source_lane_query_terms(run_state),
-                                liepin_context=liepin_context or {},
-                            )
-                        )
-                    except Exception:  # noqa: BLE001
-                        result = self._blocked_source_lane_result(
-                            lane=lane,
-                            reason_code="failed_provider_error",
-                            safe_error_summary="Liepin provider lane failed before completion.",
-                            status="failed",
-                            retryable=True,
-                        )
-            else:
-                raise RunStageError("source_lanes", f"Unsupported runtime source lane: {lane.source}.")
-            lane_results.append(result)
+                )
+
+        lane_results = [lane_tasks[lane.source_plan_id].result() for lane in source_plan]
+        for result in lane_results:
             self._write_source_lane_result_artifact(tracer=tracer, result=result)
 
         for result in lane_results:
@@ -872,27 +920,156 @@ class WorkflowRuntime:
                 tracer=tracer,
                 runtime_only_constraints=[],
             )
+        identity_top_candidates = self._apply_identity_top_pool(run_state)
 
-        source_statuses = {result.source: result.status for result in lane_results}
-        degraded_sources = [
-            result.source
-            for result in lane_results
-            if result.status in {"blocked", "failed", "cancelled"} or result.status == "partial"
-        ]
-        coverage_status = "degraded" if degraded_sources else "complete"
+        coverage_summary = self._source_coverage_summary(source_plan=source_plan, lane_results=lane_results)
+        run_state.source_coverage_summary = coverage_summary
+        finalization_revision = RuntimeFinalizationRevision(
+            revision=1,
+            runtime_run_id=tracer.run_id,
+            reason_code="source_lanes_completed" if coverage_summary.status == "complete" else "source_lanes_degraded",
+            selected_source_kinds=coverage_summary.selected_source_kinds,
+            candidate_identity_ids=tuple(
+                run_state.candidate_identity_by_resume_id.get(candidate.resume_id, candidate.resume_id)
+                for candidate in identity_top_candidates
+            ),
+            created_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+            coverage_summary=coverage_summary,
+        )
+        run_state.finalization_revisions = [finalization_revision]
         tracer.write_json(
             "runtime.source_coverage",
             {
-                "schema_version": "runtime_source_coverage_v1",
                 "runtime_run_id": tracer.run_id,
-                "source_statuses": source_statuses,
-                "source_coverage_status": coverage_status,
-                "missing_sources": degraded_sources,
-                "finalization_scope": "available_sources_only" if degraded_sources else "selected_sources",
+                "source_statuses": {result.source: result.status for result in lane_results},
+                **coverage_summary.to_public_payload(),
             },
         )
-        stop_reason = "source_lanes_degraded" if degraded_sources else "source_lanes_completed"
-        return top_candidates(run_state), stop_reason, score_round_no if unscored_candidates else 0, None
+        stop_reason = "source_lanes_completed" if coverage_summary.status == "complete" else "source_lanes_degraded"
+        return identity_top_candidates, stop_reason, score_round_no if unscored_candidates else 0, None
+
+    def _apply_identity_top_pool(self, run_state: RunState) -> list[ScoredCandidate]:
+        if not run_state.candidate_identity_by_resume_id:
+            run_state.top_pool_ids = [candidate.resume_id for candidate in top_candidates(run_state)[:TOP_K]]
+            return top_candidates(run_state)[:TOP_K]
+
+        selected: list[ScoredCandidate] = []
+        seen_identity_ids: set[str] = set()
+        scored_candidates = sorted(run_state.scorecards_by_resume_id.values(), key=scored_candidate_sort_key)
+        for scored in scored_candidates:
+            identity_id = run_state.candidate_identity_by_resume_id.get(scored.resume_id, scored.resume_id)
+            if identity_id in seen_identity_ids:
+                continue
+            canonical = run_state.canonical_resume_by_identity_id.get(identity_id)
+            selected_resume_id = canonical.canonical_resume_id if canonical is not None else scored.resume_id
+            selected_score = run_state.scorecards_by_resume_id.get(selected_resume_id, scored)
+            selected.append(selected_score)
+            seen_identity_ids.add(identity_id)
+            if len(selected) >= TOP_K:
+                break
+        run_state.top_pool_ids = [candidate.resume_id for candidate in selected]
+        return selected
+
+    def _source_coverage_summary(
+        self,
+        *,
+        source_plan: tuple[RuntimeSourceLanePlan, ...],
+        lane_results: list[RuntimeSourceLaneResult],
+    ) -> RuntimeSourceCoverageSummary:
+        selected_sources = tuple(lane.source for lane in source_plan)
+        result_by_source = {result.source: result for result in lane_results}
+        completed: list[str] = []
+        blocked: list[str] = []
+        failed: list[str] = []
+        partial: list[str] = []
+        empty: list[str] = []
+        missing: list[str] = []
+        for source in selected_sources:
+            result = result_by_source.get(source)
+            if result is None:
+                missing.append(source)
+                continue
+            if result.status == "blocked":
+                blocked.append(source)
+            elif result.status == "failed":
+                failed.append(source)
+            elif result.status in {"partial", "cancelled"}:
+                partial.append(source)
+            elif result.status == "completed" and result.candidate_store_updates:
+                completed.append(source)
+            elif result.status == "completed":
+                empty.append(source)
+
+        any_candidates = any(result.candidate_store_updates for result in lane_results)
+        if not any_candidates:
+            status = "empty"
+        elif blocked or failed or partial or empty or missing:
+            status = "degraded"
+        else:
+            status = "complete"
+        return RuntimeSourceCoverageSummary(
+            status=status,
+            selected_source_kinds=selected_sources,
+            completed_source_kinds=tuple(cast(Any, completed)),
+            blocked_source_kinds=tuple(cast(Any, blocked)),
+            failed_source_kinds=tuple(cast(Any, failed)),
+            partial_source_kinds=tuple(cast(Any, partial)),
+            empty_source_kinds=tuple(cast(Any, empty)),
+            missing_source_kinds=tuple(cast(Any, missing)),
+            finalization_scope="selected_sources" if status == "complete" else "available_sources_only",
+        )
+
+    async def _run_source_lane_safely(
+        self,
+        *,
+        lane: RuntimeSourceLanePlan,
+        run_state: RunState,
+        tracer: RunTracer,
+        liepin_context: dict[str, object] | None,
+        progress_callback: ProgressCallback | None,
+    ) -> RuntimeSourceLaneResult:
+        try:
+            if lane.source == "cts":
+                return await self._run_cts_source_lane(
+                    run_state=run_state,
+                    tracer=tracer,
+                    source_plan=lane,
+                    progress_callback=progress_callback,
+                )
+            if lane.source == "liepin":
+                if lane.backend_mode == "blocked":
+                    return self._blocked_source_lane_result(
+                        lane=lane,
+                        reason_code="blocked_backend_unavailable",
+                    )
+                return await self._run_liepin_source_lane_request(
+                    RuntimeSourceLaneRequest(
+                        source="liepin",
+                        lane_mode="card",
+                        job_title=run_state.input_truth.job_title,
+                        jd=run_state.input_truth.jd,
+                        notes=run_state.input_truth.notes,
+                        runtime_run_id=tracer.run_id,
+                        source_plan_id=lane.source_plan_id,
+                        source_lane_run_id=f"{lane.source_plan_id}:lane:1",
+                        source_query_terms=self._source_lane_query_terms(run_state),
+                        source_budget_policy=lane.source_budget_policy,
+                        liepin_context=liepin_context or {},
+                    )
+                )
+            raise RunStageError("source_lanes", f"Unsupported runtime source lane: {lane.source}.")
+        except asyncio.CancelledError:
+            raise
+        except RunStageError:
+            raise
+        except Exception:  # noqa: BLE001
+            return self._blocked_source_lane_result(
+                lane=lane,
+                reason_code="failed_provider_error",
+                safe_error_summary=f"{lane.label} provider lane failed before completion.",
+                status="failed",
+                retryable=True,
+            )
 
     def _blocked_source_lane_result(
         self,
@@ -904,7 +1081,13 @@ class WorkflowRuntime:
         retryable: bool = False,
     ) -> RuntimeSourceLaneResult:
         source_lane_run_id = f"{lane.source_plan_id}:lane:1"
-        event_type = "source_lane_blocked" if status == "blocked" else "source_lane_partial"
+        event_type_by_status = {
+            "blocked": "source_lane_blocked",
+            "failed": "source_lane_failed",
+            "cancelled": "source_lane_cancelled",
+            "partial": "source_lane_partial",
+        }
+        event_type = event_type_by_status.get(status, "source_lane_partial")
         return RuntimeSourceLaneResult(
             runtime_run_id=lane.runtime_run_id,
             source_plan_id=lane.source_plan_id,
@@ -975,7 +1158,6 @@ class WorkflowRuntime:
     ) -> RuntimeSourceLaneResult:
         if source_plan.source != "cts":
             raise ValueError(f"CTS source lane received non-CTS plan: {source_plan.source}")
-        lane_state = clone_run_state_for_source_lane(run_state)
         source_lane_run_id = f"{source_plan.source_plan_id}:lane:1"
         started_event = RuntimeSourceLaneEvent(
             schema_version="runtime_source_lane_event_v1",
@@ -988,11 +1170,33 @@ class WorkflowRuntime:
             event_type="source_lane_started",
             status=None,
         )
-        await self._run_rounds(
-            run_state=lane_state,
-            tracer=tracer,
-            progress_callback=progress_callback,
+        query_terms = list(self._source_lane_query_terms(run_state))
+        query = CTSQuery(
+            query_role="exploit",
+            lane_type="exploit",
+            query_instance_id=f"{source_plan.source_plan_id}:query:1",
+            query_fingerprint=hashlib.sha256(" ".join(query_terms).encode("utf-8")).hexdigest(),
+            query_terms=query_terms,
+            keyword_query=" ".join(query_terms),
+            page=1,
+            page_size=source_plan.source_budget_policy.cts_page_size,
+            rationale="Runtime multi-source CTS single-page lane.",
         )
+        search_result = await self.retrieval_runtime.search_once(
+            attempt_query=query,
+            runtime_constraints=[],
+            round_no=1,
+            attempt_no=1,
+            tracer=tracer,
+            provider_context={
+                "runtime_source_lane_mode": "cts_single_page",
+                "target_new": str(source_plan.source_budget_policy.cts_page_size),
+                "max_pages": "1",
+                "allow_pagination": "false",
+            },
+        )
+        del progress_callback
+        candidates = tuple(search_result.candidates[: source_plan.source_budget_policy.cts_page_size])
         completed_event = RuntimeSourceLaneEvent(
             schema_version="runtime_source_lane_event_v1",
             runtime_run_id=tracer.run_id,
@@ -1003,8 +1207,12 @@ class WorkflowRuntime:
             event_seq=2,
             event_type="source_lane_completed",
             status="completed",
-            safe_counts={"candidates": len(lane_state.candidate_store)},
+            safe_counts={
+                "raw_candidates": int(search_result.raw_candidate_count or len(search_result.candidates)),
+                "candidates": len(candidates),
+            },
         )
+        collected_at = datetime.now().astimezone().isoformat(timespec="seconds")
         return RuntimeSourceLaneResult(
             runtime_run_id=tracer.run_id,
             source_plan_id=source_plan.source_plan_id,
@@ -1013,16 +1221,17 @@ class WorkflowRuntime:
             lane_mode="card",
             attempt=1,
             status="completed",
-            candidate_store_updates=dict(lane_state.candidate_store),
-            normalized_store_updates=dict(lane_state.normalized_store),
+            candidate_store_updates={candidate.resume_id: candidate for candidate in candidates},
+            raw_candidate_count=search_result.raw_candidate_count,
             source_evidence_updates=tuple(
                 self._source_evidence_for_candidate(
                     source="cts",
                     source_plan=source_plan,
                     candidate=candidate,
-                    collected_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+                    collected_at=collected_at,
+                    provider_rank=index,
                 )
-                for candidate in lane_state.candidate_store.values()
+                for index, candidate in enumerate(candidates, start=1)
             ),
             events=(started_event, completed_event),
         )
@@ -1034,6 +1243,7 @@ class WorkflowRuntime:
         source_plan: RuntimeSourceLanePlan,
         candidate: ResumeCandidate,
         collected_at: str,
+        provider_rank: int | None = None,
     ) -> RuntimeSourceEvidence:
         provider_candidate_key = candidate.source_resume_id or candidate.dedup_key or candidate.resume_id
         provider_candidate_key_hash = hashlib.sha256(
@@ -1050,9 +1260,12 @@ class WorkflowRuntime:
             evidence_id=f"{source_plan.source_plan_id}:{source}:{provider_candidate_key_hash}",
             source=source,
             provider=source,
+            source_plan_id=source_plan.source_plan_id,
+            source_lane_run_id=f"{source_plan.source_plan_id}:lane:1",
             evidence_level="card",
             candidate_resume_id=candidate.resume_id,
             provider_candidate_key_hash=provider_candidate_key_hash,
+            provider_rank=provider_rank,
             query_fingerprint=None,
             provider_snapshot_ref=provider_snapshot_ref,
             safe_summary_ref=safe_summary_ref,

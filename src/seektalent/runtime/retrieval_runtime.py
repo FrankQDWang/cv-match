@@ -1068,16 +1068,20 @@ class RetrievalRuntime:
         round_no: int,
         attempt_no: int,
         tracer: RunTracer,
+        provider_context: dict[str, str] | None = None,
     ) -> SearchResult:
-        return await self.retrieval_service.search(
-            query_terms=attempt_query.query_terms,
-            query_role=_provider_query_role(attempt_query.query_role),
-            keyword_query=attempt_query.keyword_query,
-            adapter_notes=attempt_query.adapter_notes,
-            provider_filters=attempt_query.native_filters,
-            runtime_constraints=runtime_constraints,
-            page_size=attempt_query.page_size,
-            round_no=round_no,
-            trace_id=f"{tracer.run_id}-r{round_no}-a{attempt_no}",
-            cursor=str(attempt_query.page),
-        )
+        search_kwargs = {
+            "query_terms": attempt_query.query_terms,
+            "query_role": _provider_query_role(attempt_query.query_role),
+            "keyword_query": attempt_query.keyword_query,
+            "adapter_notes": attempt_query.adapter_notes,
+            "provider_filters": attempt_query.native_filters,
+            "runtime_constraints": runtime_constraints,
+            "page_size": attempt_query.page_size,
+            "round_no": round_no,
+            "trace_id": f"{tracer.run_id}-r{round_no}-a{attempt_no}",
+            "cursor": str(attempt_query.page),
+        }
+        if provider_context is not None:
+            search_kwargs["provider_context"] = provider_context
+        return await self.retrieval_service.search(**search_kwargs)

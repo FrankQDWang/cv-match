@@ -72,6 +72,19 @@ class WorkbenchSourceRunRuntimeLink:
     runtime_run_id: str | None
 
 
+@dataclass(frozen=True)
+class WorkbenchRuntimeSourceLaneLatestState:
+    source_run_id: str
+    source_kind: Literal["cts", "liepin"]
+    runtime_run_id: str | None
+    source_lane_run_id: str
+    attempt: int
+    event_seq: int
+    event_type: str
+    status: str | None
+    payload: dict[str, object]
+
+
 RuntimeLinkRepairStatus = Literal["attached", "already_attached", "runtime_link_missing"]
 GraphCandidateRecoveryState = Literal["ready", "recoverable_empty"]
 NOTE_STATUS_HINTS: set[WorkbenchNoteStatusHint] = {
@@ -833,6 +846,29 @@ class WorkbenchStore:
             source_runs = _source_runs_by_session(conn, [session_id]).get(session_id, [])
             triage = _triage_by_session(conn, [session_id])[session_id]
         return _session_from_row(row, source_runs, triage)
+
+    def list_runtime_source_lane_latest_state(
+        self,
+        *,
+        user: WorkbenchUser,
+        session_id: str,
+    ) -> list[WorkbenchRuntimeSourceLaneLatestState]:
+        self._initialize()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT source_run_id, source_kind, runtime_run_id, source_lane_run_id,
+                       attempt, event_seq, event_type, status, payload_json
+                FROM runtime_source_lane_latest_state
+                WHERE tenant_id = ?
+                  AND workspace_id = ?
+                  AND user_id = ?
+                  AND session_id = ?
+                ORDER BY source_kind ASC, source_lane_run_id ASC
+                """,
+                (DEFAULT_TENANT_ID, user.workspace_id, user.user_id, session_id),
+            ).fetchall()
+        return [_runtime_source_lane_latest_state_from_row(row) for row in rows]
 
     def list_source_connections(self, *, user: WorkbenchUser) -> list[WorkbenchSourceConnection]:
         self._initialize()
@@ -3553,6 +3589,45 @@ class WorkbenchStore:
                 ON session_events(tenant_id, workspace_id, user_id, session_id, idempotency_key)
                 WHERE event_name = 'workbench_note_created' AND idempotency_key IS NOT NULL;
 
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_session_events_runtime_source_lane_idempotency
+                ON session_events(tenant_id, workspace_id, user_id, session_id, idempotency_key)
+                WHERE idempotency_key IS NOT NULL
+                  AND event_name IN (
+                    'runtime_source_plan_created',
+                    'runtime_source_lane_started',
+                    'runtime_source_lane_completed',
+                    'runtime_source_lane_blocked',
+                    'runtime_source_lane_partial',
+                    'runtime_source_lane_failed',
+                    'runtime_source_lane_cancelled',
+                    'runtime_detail_recommended',
+                    'runtime_detail_approved',
+                    'runtime_detail_leased',
+                    'runtime_detail_completed',
+                    'runtime_detail_blocked'
+                  );
+
+                CREATE TABLE IF NOT EXISTS runtime_source_lane_latest_state (
+                    tenant_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    source_run_id TEXT NOT NULL,
+                    source_kind TEXT NOT NULL CHECK(source_kind IN ('cts', 'liepin')),
+                    runtime_run_id TEXT,
+                    source_lane_run_id TEXT NOT NULL,
+                    attempt INTEGER NOT NULL,
+                    event_seq INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    status TEXT,
+                    payload_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, workspace_id, user_id, session_id, source_run_id, source_lane_run_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_runtime_source_lane_latest_session
+                ON runtime_source_lane_latest_state(tenant_id, workspace_id, session_id, source_kind);
+
                 CREATE TABLE IF NOT EXISTS workbench_note_writer_leases (
                     tenant_id TEXT NOT NULL,
                     workspace_id TEXT NOT NULL,
@@ -4520,6 +4595,20 @@ def _event_from_row(row: sqlite3.Row) -> WorkbenchEvent:
     )
 
 
+def _runtime_source_lane_latest_state_from_row(row: sqlite3.Row) -> WorkbenchRuntimeSourceLaneLatestState:
+    return WorkbenchRuntimeSourceLaneLatestState(
+        source_run_id=row["source_run_id"],
+        source_kind=row["source_kind"],
+        runtime_run_id=row["runtime_run_id"],
+        source_lane_run_id=row["source_lane_run_id"],
+        attempt=row["attempt"],
+        event_seq=row["event_seq"],
+        event_type=row["event_type"],
+        status=row["status"],
+        payload=_json_to_dict(row["payload_json"]),
+    )
+
+
 def _evidence_by_review_item(
     conn: sqlite3.Connection,
     review_item_ids: list[str],
@@ -4723,6 +4812,9 @@ def _append_runtime_source_lane_event_conn(
     idempotency_key: str,
     payload: dict[str, object],
 ) -> WorkbenchEvent:
+    safe_idempotency_key = _bounded_text(idempotency_key, 160)
+    if not safe_idempotency_key:
+        raise ValueError("Runtime source lane event idempotency key is required.")
     existing = conn.execute(
         """
         SELECT *
@@ -4733,11 +4825,42 @@ def _append_runtime_source_lane_event_conn(
           AND session_id = ?
           AND idempotency_key = ?
         """,
-        (tenant_id, workspace_id, user_id, session_id, idempotency_key),
+        (tenant_id, workspace_id, user_id, session_id, safe_idempotency_key),
     ).fetchone()
     if existing is not None:
-        return _event_from_row(existing)
-    return _append_workbench_event_conn(
+        event = _event_from_row(existing)
+    else:
+        try:
+            event = _append_workbench_event_conn(
+                conn,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                session_id=session_id,
+                source_run_id=source_run_id,
+                source_kind=source_kind,
+                event_name=event_name,
+                schema_version=schema_version,
+                idempotency_key=safe_idempotency_key,
+                payload=payload,
+            )
+        except sqlite3.IntegrityError:
+            existing = conn.execute(
+                """
+                SELECT *
+                FROM session_events
+                WHERE tenant_id = ?
+                  AND workspace_id = ?
+                  AND user_id = ?
+                  AND session_id = ?
+                  AND idempotency_key = ?
+                """,
+                (tenant_id, workspace_id, user_id, session_id, safe_idempotency_key),
+            ).fetchone()
+            if existing is None:
+                raise
+            event = _event_from_row(existing)
+    _upsert_runtime_source_lane_latest_state_conn(
         conn,
         tenant_id=tenant_id,
         workspace_id=workspace_id,
@@ -4745,10 +4868,84 @@ def _append_runtime_source_lane_event_conn(
         session_id=session_id,
         source_run_id=source_run_id,
         source_kind=source_kind,
-        event_name=event_name,
-        schema_version=schema_version,
-        idempotency_key=idempotency_key,
-        payload=payload,
+        payload=event.payload,
+    )
+    return event
+
+
+def _upsert_runtime_source_lane_latest_state_conn(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    workspace_id: str,
+    user_id: str,
+    session_id: str,
+    source_run_id: str,
+    source_kind: Literal["cts", "liepin"],
+    payload: dict[str, object],
+) -> None:
+    source_lane_run_id = _safe_candidate_text(payload.get("source_lane_run_id"), 256)
+    if not source_lane_run_id:
+        return
+    attempt = _int_or_none(payload.get("attempt")) or 0
+    event_seq = _int_or_none(payload.get("event_seq")) or 0
+    runtime_run_id = _safe_candidate_text(payload.get("runtime_run_id"), 256)
+    event_type = _safe_candidate_text(payload.get("event_type"), 128) or "unknown"
+    status = _safe_candidate_text(payload.get("status"), 64)
+    redacted_payload = redact_event_payload(payload)
+    if not isinstance(redacted_payload, dict):
+        redacted_payload = {"value": redacted_payload}
+    existing = conn.execute(
+        """
+        SELECT attempt, event_seq
+        FROM runtime_source_lane_latest_state
+        WHERE tenant_id = ?
+          AND workspace_id = ?
+          AND user_id = ?
+          AND session_id = ?
+          AND source_run_id = ?
+          AND source_lane_run_id = ?
+        """,
+        (tenant_id, workspace_id, user_id, session_id, source_run_id, source_lane_run_id),
+    ).fetchone()
+    if existing is not None and (int(existing["attempt"]), int(existing["event_seq"])) > (attempt, event_seq):
+        return
+    now = _now_iso()
+    conn.execute(
+        """
+        INSERT INTO runtime_source_lane_latest_state (
+            tenant_id, workspace_id, user_id, session_id, source_run_id, source_kind,
+            runtime_run_id, source_lane_run_id, attempt, event_seq, event_type, status,
+            payload_json, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(tenant_id, workspace_id, user_id, session_id, source_run_id, source_lane_run_id)
+        DO UPDATE SET
+            source_kind = excluded.source_kind,
+            runtime_run_id = excluded.runtime_run_id,
+            attempt = excluded.attempt,
+            event_seq = excluded.event_seq,
+            event_type = excluded.event_type,
+            status = excluded.status,
+            payload_json = excluded.payload_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            tenant_id,
+            workspace_id,
+            user_id,
+            session_id,
+            source_run_id,
+            source_kind,
+            runtime_run_id,
+            source_lane_run_id,
+            attempt,
+            event_seq,
+            event_type,
+            status,
+            json.dumps(redacted_payload, sort_keys=True, separators=(",", ":")),
+            now,
+        ),
     )
 
 
@@ -4884,6 +5081,16 @@ def _json_to_list(raw_value: str) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if isinstance(item, str)]
+
+
+def _json_to_dict(raw_value: str) -> dict[str, object]:
+    try:
+        value = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
 
 
 def _normalize_email(email: str) -> str:

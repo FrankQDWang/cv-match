@@ -38,6 +38,7 @@ WORKBENCH_REQUIRED_TABLES = frozenset(
         "detail_open_requests",
         "external_write_intents",
         "login_attempts",
+        "runtime_source_lane_latest_state",
         "security_audit_events",
         "session_events",
         "session_requirement_triage",
@@ -180,6 +181,23 @@ WORKBENCH_REQUIRED_COLUMNS = {
             "created_at",
         }
     ),
+    "runtime_source_lane_latest_state": frozenset(
+        {
+            "tenant_id",
+            "workspace_id",
+            "user_id",
+            "session_id",
+            "source_run_id",
+            "source_kind",
+            "source_lane_run_id",
+            "attempt",
+            "event_seq",
+            "event_type",
+            "status",
+            "payload_json",
+            "updated_at",
+        }
+    ),
     "source_connections": frozenset(
         {
             "connection_id",
@@ -225,8 +243,10 @@ WORKBENCH_REQUIRED_INDEXES = frozenset(
         "idx_security_audit_events_action",
         "idx_security_audit_events_scope",
         "idx_session_events_global",
+        "idx_session_events_runtime_source_lane_idempotency",
         "idx_session_events_session",
         "idx_session_events_workbench_note_idempotency",
+        "idx_runtime_source_lane_latest_session",
         "idx_sessions_owner",
         "idx_sessions_user_updated",
         "idx_sessions_workspace_updated",

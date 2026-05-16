@@ -3,6 +3,8 @@ import type {
   WorkbenchAuthState,
   WorkbenchCandidateEvidenceLevel,
   WorkbenchRequirementTriageInput,
+  WorkbenchRuntimeSourceLaneState,
+  WorkbenchRuntimeSourceState,
   WorkbenchSourceConnectionStatus,
   WorkbenchSourceStatus,
 } from './types';
@@ -66,6 +68,14 @@ export type RecruiterGraphDetailPayload =
       detailOpenBlockedCount: number;
       warningCode: string | null;
       warningMessage: string | null;
+      runtimeStatus?: WorkbenchRuntimeSourceLaneState['status'] | null;
+      runtimeEventType?: string | null;
+      runtimeEventSeq?: number | null;
+      runtimeCardsSeenCount?: number;
+      runtimeCardsFilteredCount?: number;
+      runtimeCandidatesCount?: number;
+      runtimeDetailRecommendationsCount?: number;
+      runtimeDetailState?: WorkbenchRuntimeSourceLaneState['detailState'] | null;
     }
   | {
       kind: 'ctsRoundQuery';
@@ -123,6 +133,13 @@ export type RecruiterGraphDetailPayload =
       bestScore: number | null;
       finalReport: string | null;
       stopReason: string | null;
+      coverageStatus?: WorkbenchRuntimeSourceState['coverageStatus'] | null;
+      finalizationRevision?: number | null;
+      finalizationReasonCode?: string | null;
+      identityMergeCount?: number;
+      ambiguousDuplicateCount?: number;
+      canonicalResumeSelectedCount?: number;
+      sourceStates?: WorkbenchRuntimeSourceLaneState[];
     };
 
 export type RecruiterGraphNode = {

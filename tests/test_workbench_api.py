@@ -34,6 +34,7 @@ from seektalent_ui.server import RunRegistry, create_app
 from seektalent_ui.workbench_store import WorkbenchSourceRunJob
 from seektalent_ui.workbench_store import WorkbenchSourceRunJobContext
 from seektalent_ui.workbench_store import WorkbenchUser
+from seektalent_ui.workbench_store import _append_runtime_source_lane_event_conn
 from seektalent.storage.json import sha256_json
 from tests.settings_factory import make_settings
 
@@ -716,6 +717,105 @@ def test_authenticated_session_creation_returns_default_source_cards(tmp_path: P
     assert listed[0]["sourceCards"] == payload["sourceCards"]
 
 
+def test_session_runtime_source_state_uses_public_latest_lane_payloads(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+
+    payload = _create_session(client)
+    session_id = payload["sessionId"]
+    runs = {run["sourceKind"]: run for run in payload["sourceRuns"]}
+    now = "2026-05-15T00:00:00+00:00"
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        for source, status, event_type, event_seq, safe_counts in (
+            ("cts", "completed", "source_lane_completed", 2, {"cards_seen": 10, "candidates": 10}),
+            (
+                "liepin",
+                "partial",
+                "detail_recommended",
+                3,
+                {"cards_seen": 30, "cards_filtered": 8, "detail_recommendations": 4},
+            ),
+        ):
+            source_run_id = runs[source]["sourceRunId"]
+            lane_payload = {
+                "schema_version": "runtime_source_lane_event_v1",
+                "runtime_run_id": "runtime-run-1",
+                "source_plan_id": f"runtime-run-1:source:{source}",
+                "source_lane_run_id": f"runtime-run-1:lane:{source}",
+                "attempt": 1,
+                "event_seq": event_seq,
+                "event_type": event_type,
+                "source": source,
+                "status": status,
+                "safe_counts": safe_counts,
+                "source_coverage_summary": {
+                    "status": "degraded",
+                    "selected_source_kinds": ["cts", "liepin"],
+                    "completed_source_kinds": ["cts"],
+                    "partial_source_kinds": ["liepin"],
+                    "finalization_scope": "available_sources_only",
+                },
+                "finalization_revision": {
+                    "revision": 1,
+                    "reason_code": "source_lanes_degraded",
+                    "candidate_identity_ids": ["identity-1"],
+                },
+                "merge_summary": {
+                    "identity_merge_count": 2,
+                    "ambiguous_duplicate_count": 1,
+                    "canonical_resume_selected_count": 9,
+                },
+                "raw_resume": "SECRET-RAW-RESUME",
+            }
+            conn.execute(
+                """
+                INSERT INTO runtime_source_lane_latest_state (
+                    tenant_id, workspace_id, user_id, session_id, source_run_id, source_kind,
+                    runtime_run_id, source_lane_run_id, attempt, event_seq, event_type, status,
+                    payload_json, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "local",
+                    payload["workspaceId"],
+                    payload["ownerUserId"],
+                    session_id,
+                    source_run_id,
+                    source,
+                    "runtime-run-1",
+                    f"runtime-run-1:lane:{source}",
+                    1,
+                    event_seq,
+                    event_type,
+                    status,
+                    json.dumps(lane_payload),
+                    now,
+                ),
+            )
+
+    refreshed = client.get(f"/api/workbench/sessions/{session_id}")
+
+    assert refreshed.status_code == 200
+    state = refreshed.json()["runtimeSourceState"]
+    assert state["selectedSourceKinds"] == ["cts", "liepin"]
+    assert state["coverageStatus"] == "degraded"
+    assert state["finalizationRevision"] == 1
+    sources = {source["sourceKind"]: source for source in state["sources"]}
+    assert sources["cts"]["status"] == "completed"
+    assert sources["cts"]["cardsSeenCount"] == 10
+    assert sources["cts"]["candidatesCount"] == 10
+    assert sources["liepin"]["status"] == "partial"
+    assert sources["liepin"]["cardsSeenCount"] == 30
+    assert sources["liepin"]["cardsFilteredCount"] == 8
+    assert sources["liepin"]["detailState"] == "detail_recommended"
+    assert sources["liepin"]["detailRecommendationsCount"] == 4
+    assert state["identityMergeCount"] == 2
+    assert state["ambiguousDuplicateCount"] == 1
+    assert state["canonicalResumeSelectedCount"] == 9
+    assert "SECRET-RAW-RESUME" not in repr(state)
+
+
 def test_authenticated_session_creation_can_request_cts_only(tmp_path: Path) -> None:
     client = _client(tmp_path)
     _bootstrap_and_login(client)
@@ -1280,7 +1380,21 @@ def test_liepin_card_level_source_run_persists_card_evidence_without_opening_det
     assert "runtime_source_lane_completed" in event_names
     assert "candidate_review_item_upserted" in event_names
     assert "source_run_completed" in event_names
-    assert not any("detail" in event_name for event_name in event_names)
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        latest = conn.execute(
+            """
+            SELECT source_kind, event_type, event_seq, status, payload_json
+            FROM runtime_source_lane_latest_state
+            WHERE source_run_id = ?
+            """,
+            (source_run_id,),
+        ).fetchone()
+    assert latest is not None
+    assert latest["source_kind"] == "liepin"
+    assert latest["event_type"] in {"source_lane_completed", "detail_recommended"}
+    assert latest["event_seq"] >= 1
+    assert "must-not-leak" not in latest["payload_json"]
 
     queue = client.get(f"/api/workbench/sessions/{session_id}/candidates")
     assert queue.status_code == 200
@@ -3573,6 +3687,128 @@ def test_workbench_note_created_idempotency_persists_single_event(tmp_path: Path
 
     store._initialized = False
     store._initialize()
+
+
+def test_runtime_source_lane_event_idempotency_has_database_invariant(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client)
+    db_path = _db_path(tmp_path)
+
+    event_values = (
+        "local",
+        "default",
+        session["ownerUserId"],
+        session["sessionId"],
+        1,
+        "source-run-1",
+        "liepin",
+        "runtime_source_lane_completed",
+        "runtime_source_lane_event_v1",
+        "lane-1:1:2",
+        json.dumps({"event_type": "source_lane_completed"}, sort_keys=True),
+        "2026-05-15T00:00:00Z",
+        "2026-05-15T00:00:00Z",
+    )
+    with sqlite3.connect(db_path) as conn:
+        indexes = {row[1] for row in conn.execute("PRAGMA index_list(session_events)").fetchall()}
+        assert "idx_session_events_runtime_source_lane_idempotency" in indexes
+        conn.execute(
+            """
+            INSERT INTO session_events (
+                tenant_id, workspace_id, user_id, session_id, session_seq,
+                source_run_id, source_kind, event_name, schema_version, idempotency_key,
+                payload_redacted_json, occurred_at, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            event_values,
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                """
+                INSERT INTO session_events (
+                    tenant_id, workspace_id, user_id, session_id, session_seq,
+                    source_run_id, source_kind, event_name, schema_version, idempotency_key,
+                    payload_redacted_json, occurred_at, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                event_values,
+            )
+
+
+def test_runtime_source_lane_event_idempotency_keeps_latest_state_on_replay(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+    session = _create_session(client)
+    first_payload = {
+        "schema_version": "runtime_source_lane_event_v1",
+        "runtime_run_id": "run-1",
+        "source_plan_id": "plan-1",
+        "source_lane_run_id": "lane-1",
+        "source": "liepin",
+        "attempt": 1,
+        "event_seq": 2,
+        "event_type": "source_lane_completed",
+        "status": "completed",
+        "safe_counts": {"cards_seen": 1},
+    }
+    replay_payload = {
+        **first_payload,
+        "status": "failed",
+        "safe_counts": {"cards_seen": 99},
+    }
+
+    with sqlite3.connect(_db_path(tmp_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        first = _append_runtime_source_lane_event_conn(
+            conn,
+            tenant_id="local",
+            workspace_id="default",
+            user_id=session["ownerUserId"],
+            session_id=session["sessionId"],
+            source_run_id="source-run-1",
+            source_kind="liepin",
+            event_name="runtime_source_lane_completed",
+            schema_version="runtime_source_lane_event_v1",
+            idempotency_key="lane-1:1:2",
+            payload=first_payload,
+        )
+        second = _append_runtime_source_lane_event_conn(
+            conn,
+            tenant_id="local",
+            workspace_id="default",
+            user_id=session["ownerUserId"],
+            session_id=session["sessionId"],
+            source_run_id="source-run-1",
+            source_kind="liepin",
+            event_name="runtime_source_lane_completed",
+            schema_version="runtime_source_lane_event_v1",
+            idempotency_key="lane-1:1:2",
+            payload=replay_payload,
+        )
+        event_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM session_events
+            WHERE session_id = ? AND idempotency_key = ?
+            """,
+            (session["sessionId"], "lane-1:1:2"),
+        ).fetchone()[0]
+        latest = conn.execute(
+            """
+            SELECT status, payload_json
+            FROM runtime_source_lane_latest_state
+            WHERE session_id = ? AND source_lane_run_id = ?
+            """,
+            (session["sessionId"], "lane-1"),
+        ).fetchone()
+
+    assert second.global_seq == first.global_seq
+    assert event_count == 1
+    assert latest["status"] == "completed"
+    assert json.loads(latest["payload_json"])["safe_counts"] == {"cards_seen": 1}
 
 
 def test_workbench_note_writer_lease_claim_release_and_expired_claim(tmp_path: Path) -> None:

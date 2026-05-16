@@ -108,10 +108,26 @@ function PayloadDetail({ payload }: { payload: RecruiterGraphDetailPayload }) {
       return (
         <>
           <DetailRow label="渠道" value={sourceLabels[payload.sourceKind]} />
-          <DetailRow label="状态" value={payload.status ?? '暂无状态'} />
-          <DetailRow label="授权" value={payload.authState ?? payload.connectionStatus ?? '暂无授权状态'} />
+          <DetailRow label="状态" value={sourceRunStatusLabel(payload.status)} />
+          <DetailRow label="授权" value={authStatusLabel(payload.authState ?? payload.connectionStatus)} />
           <DetailRow label="已扫描" value={`${String(payload.cardsScannedCount)} 张`} />
           <DetailRow label="去重候选人" value={`${String(payload.uniqueCandidatesCount)} 人`} />
+          {payload.runtimeStatus ? <DetailRow label="运行状态" value={runtimeStatusLabel(payload.runtimeStatus)} /> : null}
+          {payload.runtimeEventType ? <DetailRow label="最新事件" value={runtimeEventLabel(payload.runtimeEventType)} /> : null}
+          {payload.runtimeEventSeq !== null && payload.runtimeEventSeq !== undefined ? (
+            <DetailRow label="事件序号" value={payload.runtimeEventSeq} />
+          ) : null}
+          {payload.runtimeStatus ? (
+            <>
+              <DetailRow label="运行扫描" value={`${String(payload.runtimeCardsSeenCount ?? 0)} 张`} />
+              <DetailRow label="已过滤" value={`${String(payload.runtimeCardsFilteredCount ?? 0)} 张`} />
+              <DetailRow label="运行候选人" value={`${String(payload.runtimeCandidatesCount ?? 0)} 人`} />
+              <DetailRow label="详情推荐" value={`${String(payload.runtimeDetailRecommendationsCount ?? 0)} 个`} />
+              {payload.runtimeDetailState ? (
+                <DetailRow label="详情状态" value={detailStateLabel(payload.runtimeDetailState)} />
+              ) : null}
+            </>
+          ) : null}
           <DetailBlock title="提示" value={payload.warningMessage} />
         </>
       );
@@ -139,6 +155,38 @@ function PayloadDetail({ payload }: { payload: RecruiterGraphDetailPayload }) {
         <>
           <DetailRow label="候选人数" value={`${String(payload.candidateCount)} 人`} />
           <DetailRow label="最高分" value={scoreText(payload.bestScore)} />
+          {payload.coverageStatus ? <DetailRow label="覆盖状态" value={coverageStatusLabel(payload.coverageStatus)} /> : null}
+          {payload.finalizationRevision ? <DetailRow label="完成版本" value={payload.finalizationRevision} /> : null}
+          {payload.finalizationReasonCode ? (
+            <DetailRow label="完成原因" value={finalizationReasonLabel(payload.finalizationReasonCode)} />
+          ) : null}
+          {payload.identityMergeCount ? <DetailRow label="已合并身份" value={`${String(payload.identityMergeCount)} 个`} /> : null}
+          {payload.ambiguousDuplicateCount ? (
+            <DetailRow label="待确认重复" value={`${String(payload.ambiguousDuplicateCount)} 个`} />
+          ) : null}
+          {payload.canonicalResumeSelectedCount ? (
+            <DetailRow label="标准简历" value={`${String(payload.canonicalResumeSelectedCount)} 份`} />
+          ) : null}
+          {payload.sourceStates && payload.sourceStates.length > 0 ? (
+            <DetailList
+              title="渠道状态"
+              values={payload.sourceStates.map((source) =>
+                [
+                  sourceLabels[source.sourceKind],
+                  runtimeStatusLabel(source.status),
+                  `已扫描 ${String(source.cardsSeenCount)}`,
+                  source.cardsFilteredCount > 0 ? `已过滤 ${String(source.cardsFilteredCount)}` : null,
+                  `候选人 ${String(source.candidatesCount)}`,
+                  source.detailRecommendationsCount > 0
+                    ? `详情推荐 ${String(source.detailRecommendationsCount)}`
+                    : null,
+                  source.detailState ? detailStateLabel(source.detailState) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · '),
+              )}
+            />
+          ) : null}
           <DetailBlock title="最终报告" value={payload.finalReport} />
           {payload.stopReason ? <DetailRow label="结束原因" value={payload.stopReason} /> : null}
         </>
@@ -233,6 +281,91 @@ function sourceLabel(sourceKind: RecruiterGraphNode['sourceKind']) {
 
 function scoreText(score: number | null) {
   return score === null ? '暂无分数' : `${String(score)} 分`;
+}
+
+function sourceRunStatusLabel(status: string | null | undefined) {
+  return statusLabel(status, {
+    queued: '等待中',
+    blocked: '已阻塞',
+    running: '运行中',
+    completed: '已完成',
+    failed: '失败',
+  });
+}
+
+function authStatusLabel(status: string | null | undefined) {
+  return statusLabel(status, {
+    not_required: '无需授权',
+    login_required: '需要登录',
+    login_in_progress: '登录中',
+    verification_required: '需要验证',
+    connected: '已连接',
+    expired: '已过期',
+    blocked: '已阻塞',
+    disconnected: '未连接',
+  });
+}
+
+function runtimeStatusLabel(status: string | null | undefined) {
+  return statusLabel(status, {
+    pending: '等待中',
+    running: '运行中',
+    completed: '已完成',
+    partial: '部分完成',
+    blocked: '已阻塞',
+    failed: '失败',
+    cancelled: '已取消',
+  });
+}
+
+function runtimeEventLabel(eventType: string | null | undefined) {
+  return statusLabel(eventType, {
+    source_lane_started: '渠道已启动',
+    source_lane_completed: '渠道已完成',
+    source_lane_blocked: '渠道已阻塞',
+    source_lane_partial: '渠道部分完成',
+    source_lane_failed: '渠道失败',
+    source_lane_cancelled: '渠道已取消',
+    detail_recommended: '已推荐详情',
+    detail_approved: '详情已批准',
+    detail_leased: '详情已预留',
+    detail_completed: '详情已完成',
+    detail_blocked: '详情已阻塞',
+  });
+}
+
+function coverageStatusLabel(status: string | null | undefined) {
+  return statusLabel(status, {
+    pending: '等待覆盖',
+    complete: '全部覆盖',
+    degraded: '覆盖不完整',
+    empty: '无候选人',
+  });
+}
+
+function detailStateLabel(status: string | null | undefined) {
+  return statusLabel(status, {
+    detail_recommended: '已推荐详情',
+    pending_approval: '等待批准',
+    leased: '已预留详情',
+    completed: '详情已完成',
+    blocked: '详情已阻塞',
+  });
+}
+
+function finalizationReasonLabel(reason: string | null | undefined) {
+  return statusLabel(reason, {
+    source_lanes_completed: '所有渠道已完成',
+    source_lanes_degraded: '部分渠道不可用',
+    detail_enrichment_applied: '详情已补充',
+  });
+}
+
+function statusLabel(value: string | null | undefined, labels: Record<string, string>) {
+  if (!value) {
+    return '暂无状态';
+  }
+  return labels[value] ?? value;
 }
 
 function textFromRecord(value: Record<string, unknown>) {
