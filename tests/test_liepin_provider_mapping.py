@@ -4,7 +4,11 @@ import pytest
 from pydantic import ValidationError
 
 from seektalent.providers.liepin.mapper import map_liepin_worker_card, map_liepin_worker_detail
-from seektalent.providers.liepin.worker_contracts import LiepinWorkerCandidateCard, LiepinWorkerCandidateDetail
+from seektalent.providers.liepin.worker_contracts import (
+    LiepinSafeCardSummary,
+    LiepinWorkerCandidateCard,
+    LiepinWorkerCandidateDetail,
+)
 
 
 ALLOWED_RAW_KEYS = {
@@ -100,6 +104,89 @@ def test_card_mapping_keeps_raw_payload_out_of_resume_candidate_raw() -> None:
     assert "one@example.com" not in str(mapped.candidate.raw)
     assert "Private card resume summary" not in str(mapped.candidate.raw)
     assert mapped.candidate.raw["raw_payload_artifact_ref"] == "worker://cards/candidate-1.json"
+
+
+def test_worker_card_accepts_allowlisted_safe_card_summary() -> None:
+    card = _worker_card().model_copy(
+        update={
+            "safe_card_summary": LiepinSafeCardSummary(
+                current_or_recent_company="Acme",
+                current_or_recent_title="Backend Engineer",
+                skill_tags=("Python", "FastAPI"),
+                masked_name=True,
+            )
+        }
+    )
+
+    mapped = map_liepin_worker_card(card, raw_payload_artifact_ref="worker://cards/candidate-1.json")
+
+    assert mapped.candidate.raw["safe_card_summary"] == {
+        "display_title": None,
+        "current_or_recent_company": "Acme",
+        "current_or_recent_title": "Backend Engineer",
+        "work_years": None,
+        "age": None,
+        "city": None,
+        "expected_city": None,
+        "education_level": None,
+        "school_names": [],
+        "major_names": [],
+        "skill_tags": ["Python", "FastAPI"],
+        "job_intention": None,
+        "recent_experience_text": None,
+        "masked_name": True,
+    }
+
+
+def test_worker_card_preserves_pi_safe_hash_and_artifact_refs() -> None:
+    card = _worker_card().model_copy(
+        update={
+            "payload": {
+                "providerCandidateKeyHash": "hmac-provider-key-1",
+                "safeSummaryRef": "artifact://public-summary/pi-card/run-1/1",
+                "protectedSnapshotRef": "artifact://protected/pi-card/run-1/1",
+                "actionTraceRef": "artifact://protected/pi-trace/run-1",
+            },
+            "provider_subject_id": None,
+            "synthetic_candidate_fingerprint": "fingerprint-from-provider-hash",
+            "identity_confidence": "synthetic_fingerprint",
+        }
+    )
+
+    mapped = map_liepin_worker_card(card)
+
+    assert mapped.candidate.raw["provider_candidate_key_hash"] == "hmac-provider-key-1"
+    assert mapped.candidate.raw["safe_summary_ref"] == "artifact://public-summary/pi-card/run-1/1"
+    assert mapped.candidate.raw["provider_snapshot_ref"] == "artifact://protected/pi-card/run-1/1"
+    assert mapped.candidate.raw["action_trace_ref"] == "artifact://protected/pi-trace/run-1"
+
+
+def test_worker_card_rejects_unknown_safe_card_summary_fields() -> None:
+    payload = _worker_card().model_dump(mode="json")
+    payload["safeCardSummary"] = {
+        "current_or_recent_title": "Backend Engineer",
+        "cookie": "session=secret",
+    }
+
+    with pytest.raises(ValidationError):
+        LiepinWorkerCandidateCard.model_validate(payload)
+
+
+def test_safe_card_summary_does_not_copy_raw_payload_contact_material() -> None:
+    card = _worker_card().model_copy(
+        update={
+            "safe_card_summary": LiepinSafeCardSummary(
+                current_or_recent_title="Backend Engineer",
+                recent_experience_text="Built FastAPI services",
+            )
+        }
+    )
+
+    mapped = map_liepin_worker_card(card, raw_payload_artifact_ref="worker://cards/candidate-1.json")
+
+    assert "13800000000" not in str(mapped.candidate.raw["safe_card_summary"])
+    assert "one@example.com" not in str(mapped.candidate.raw["safe_card_summary"])
+    assert "session=secret" not in str(mapped.candidate.raw["safe_card_summary"])
 
 
 def test_detail_mapping_keeps_raw_payload_and_detail_body_out_of_resume_candidate_raw() -> None:

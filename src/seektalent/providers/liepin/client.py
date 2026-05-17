@@ -38,6 +38,11 @@ from seektalent.providers.liepin.worker_runtime import ManagedLiepinWorkerRuntim
 
 EventCallback = Callable[[str, dict[str, object]], None]
 DecodedWorkerPayload = TypeVar("DecodedWorkerPayload")
+LIVE_LIEPIN_WORKER_MODES = frozenset({"managed_local", "external_http", "pi_agent"})
+
+
+def is_live_liepin_worker_mode(worker_mode: str) -> bool:
+    return worker_mode in LIVE_LIEPIN_WORKER_MODES
 
 
 class LiepinWorkerClient(Protocol):
@@ -272,7 +277,7 @@ class ManagedLocalLiepinWorkerClient:
     ) -> SearchResult:
         await self.ensure_ready()
         base_url = await self._internal_base_url_async()
-        return _search_result_from_worker_response(
+        return liepin_card_search_response_to_search_result(
             _decode_worker_response(
                 decode_card_search_response,
                 await self._request_json_async(
@@ -456,7 +461,7 @@ class ExternalHttpLiepinWorkerClient:
         trace_id: str,
         provider_account_hash: str | None = None,
     ) -> SearchResult:
-        return _search_result_from_worker_response(
+        return liepin_card_search_response_to_search_result(
             _decode_worker_response(
                 decode_card_search_response,
                 await self._request_json_async(
@@ -514,9 +519,46 @@ def build_liepin_worker_client(settings: AppSettings) -> LiepinWorkerClient:
         return ManagedLocalLiepinWorkerClient(settings)
     if settings.liepin_worker_mode == "external_http":
         return ExternalHttpLiepinWorkerClient(settings)
+    if settings.liepin_worker_mode == "pi_agent":
+        return build_liepin_pi_worker_client(settings)
     raise LiepinWorkerModeError(
         "Liepin worker mode is disabled; no worker client can be built.",
         setup_status="disabled",
+    )
+
+
+def build_liepin_pi_worker_client(settings: AppSettings) -> LiepinWorkerClient:
+    from seektalent.providers.liepin.pi_executor import HmacProviderKeyHasher, PiLiepinExecutor
+    from seektalent.providers.liepin.pi_worker_client import LiepinPiWorkerClient
+    from seektalent.providers.pi_agent.payload_firewall import LocalPiArtifactRegistry
+    from seektalent.providers.pi_agent.pi_external import PiRpcAgentClient
+
+    if settings.liepin_worker_mode != "pi_agent":
+        raise LiepinWorkerModeError("Liepin PI worker requires liepin_worker_mode=pi_agent.")
+    if not settings.liepin_account_binding_secret:
+        raise LiepinWorkerModeError(
+            "liepin_account_binding_secret is required when liepin_worker_mode=pi_agent.",
+            code="blocked_backend_unavailable",
+        )
+    artifact_registry = LocalPiArtifactRegistry(settings.artifacts_path)
+    client = PiRpcAgentClient(
+        command=settings.liepin_pi_command_argv,
+        skill_path=settings.liepin_pi_skill_file_path,
+        dokobot_tool_name=settings.liepin_pi_dokobot_tool_name,
+        timeout_seconds=settings.liepin_pi_timeout_seconds,
+        artifact_root=artifact_registry.artifact_root_for_pi,
+    )
+    executor = PiLiepinExecutor(
+        client=client,
+        key_hasher=HmacProviderKeyHasher(settings.liepin_account_binding_secret, material_resolver=artifact_registry),
+        artifact_registry=artifact_registry,
+    )
+    return LiepinPiWorkerClient(
+        executor=executor,
+        session_id="local-pi-agent",
+        connection_id="liepin-pi-agent",
+        provider_account_lock_key="liepin-pi-agent",
+        dokobot_tool_name=settings.liepin_pi_dokobot_tool_name,
     )
 
 
@@ -647,7 +689,7 @@ def _safe_provider_filter_value(value: ConstraintValue) -> object | None:
     return None
 
 
-def _search_result_from_worker_response(response: LiepinCardSearchResponse) -> SearchResult:
+def liepin_card_search_response_to_search_result(response: LiepinCardSearchResponse) -> SearchResult:
     mapped = [map_liepin_worker_card(card) for card in response.cards]
     return SearchResult(
         candidates=[item.candidate for item in mapped],

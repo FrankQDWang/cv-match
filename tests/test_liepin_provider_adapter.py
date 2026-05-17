@@ -449,6 +449,36 @@ def test_session_account_hash_mismatch_blocks_before_search(tmp_path: Path) -> N
     assert worker.calls == ["ensure_ready", "session_status"]
 
 
+def test_pi_agent_mode_uses_live_compliance_branch(tmp_path: Path) -> None:
+    settings = make_settings(
+        provider_name="liepin",
+        liepin_worker_mode="pi_agent",
+        liepin_account_binding_secret="runtime-secret",
+    )
+    store, gate_ref, connection_id = _live_store(tmp_path)
+    mapped = map_liepin_worker_card(_card("candidate-a", {"title": "Python Engineer"}))
+    worker = RecordingWorkerClient(
+        search_result=SearchResult(
+            candidates=[mapped.candidate],
+            provider_snapshots=[mapped.provider_snapshot],
+            raw_candidate_count=1,
+        )
+    )
+    adapter = LiepinProviderAdapter(settings, worker_client=worker, store=store)
+
+    result = asyncio.run(
+        adapter.search(
+            _request(provider_context=_live_filters(gate_ref, connection_id)),
+            round_no=1,
+            trace_id="trace-1",
+        )
+    )
+
+    assert result.raw_candidate_count == 1
+    assert worker.calls == ["ensure_ready", "session_status", "search"]
+    assert worker.search_requests[0][3] == "account-hash-a"
+
+
 def test_registry_fake_fixture_mode_builds_explicit_fixture_worker() -> None:
     settings = make_settings(
         provider_name="liepin",

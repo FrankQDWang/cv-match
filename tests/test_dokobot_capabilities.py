@@ -238,7 +238,7 @@ def test_manifest_not_in_trusted_allowlist_fails_closed() -> None:
     ).discover()
 
     assert capabilities.can_execute_liepin_actions is False
-    assert capabilities.capability_error_code == "dokobot_action_manifest_untrusted"
+    assert capabilities.capability_error_code == "dokobot_tool_manifest_untrusted"
 
 
 def test_manifest_without_trusted_allowlist_fails_closed() -> None:
@@ -250,7 +250,7 @@ def test_manifest_without_trusted_allowlist_fails_closed() -> None:
     ).discover()
 
     assert capabilities.can_execute_liepin_actions is False
-    assert capabilities.capability_error_code == "dokobot_action_manifest_untrusted"
+    assert capabilities.capability_error_code == "dokobot_tool_manifest_untrusted"
 
 
 def test_remote_manifest_does_not_enable_default_local_liepin_actions() -> None:

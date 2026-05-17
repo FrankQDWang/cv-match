@@ -21,6 +21,7 @@ from seektalent.providers.liepin.client import (
     _default_http_json,
     build_liepin_worker_client,
 )
+from seektalent.providers.liepin.pi_worker_client import LiepinPiWorkerClient
 from seektalent.providers.liepin.worker_contracts import (
     LoginHandoff,
     RedactedWorkerDiagnostics,
@@ -103,6 +104,27 @@ def test_build_managed_local_client_for_live_capable_local_mode() -> None:
     client = build_liepin_worker_client(settings)
 
     assert isinstance(client, ManagedLocalLiepinWorkerClient)
+
+
+def test_pi_agent_mode_requires_rpc_command(tmp_path) -> None:
+    skill_path = tmp_path / "liepin_search_cards.md"
+    skill_path.write_text("---\nname: liepin-search-cards\n---\n", encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="liepin_pi_command"):
+        make_settings(
+            liepin_worker_mode="pi_agent",
+            liepin_pi_command="pi",
+            liepin_pi_skill_path=str(skill_path),
+            liepin_account_binding_secret="runtime-secret",
+        )
+
+
+def test_build_pi_agent_client_for_pi_backed_mode() -> None:
+    settings = make_settings(liepin_worker_mode="pi_agent", liepin_account_binding_secret="runtime-secret")
+
+    client = build_liepin_worker_client(settings)
+
+    assert isinstance(client, LiepinPiWorkerClient)
 
 
 def test_external_http_client_requires_external_mode() -> None:

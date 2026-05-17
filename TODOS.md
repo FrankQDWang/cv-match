@@ -39,7 +39,7 @@
 - Manual source budget editing UI: allow user-visible CTS/Liepin budget changes after the runtime-owned budget policy has enough guardrails.
 - Candidate Evidence Graph: model candidate identity, source evidence, artifact refs, action traces, detail recommendations, scorecards, and finalization decisions as an inspectable graph.
 - Source Capability Descriptor: add a small descriptor for future API/browser/research sources without creating a broad plugin marketplace.
-- Trusted browser action conformance: expand DokoBot and future browser backends with domain policy, dry-run support, action audit, and conformance tests before enabling action execution.
+- Trusted browser action conformance: after the first live DokoBot action path lands, expand DokoBot and future browser backends with dry-run support, broader action audit, richer domain policy, and reusable conformance tests.
 - Lane health, cost, and quality metrics: track latency, cards seen, selected candidates, detail opens, duplicate rate, blocked rate, cost estimate, and marginal quality for later Runtime source strategy optimization.
 - Progressive enrichment: split card search, detail recommendation, approved detail fetch, and verification lanes once the first card/detail API boundary is stable.
 - Offline entity-merge evaluation set: create redacted, replayable same-person/different-person cases to measure false-positive and false-negative identity merge rates, especially for masked Liepin names.
@@ -48,6 +48,11 @@
 - Provider candidate hash migration: evaluate tenant-scoped HMAC provider-key hashes without breaking existing Workbench data.
 - Artifact access controls: expand protected artifact classification, retention, open audit, and notes/graph resolution policy beyond the first source-lane safety contract.
 - Runtime request object expansion: move the full `WorkflowRuntime.run(...)` API to a richer request object when budgets, actor context, artifact policy, and entitlement policy become real runtime inputs.
+- Generic ProviderAgentExecutor protocol: extract a reusable provider-agent executor interface after the Liepin Pi path proves stable across real runs.
+- Full Pi/DokoBot trace replay harness: store replayable protected golden traces for browser-agent regression testing beyond the first card-mode trace validator.
+- Multi-action backend support: evaluate browser_mcp, Pi extension browser tools, and human-assisted mode only after the Pi+DokoBot path is stable; do not add fallback selection in the first implementation.
+- Artifact registry expansion for external agents: add retention, protected-open audit, and UI access policy for Pi/DokoBot protected artifacts beyond the first minimal local registry and protected material resolver.
+- Provider-agent capability descriptor: define a small source capability descriptor once at least one more browser source is planned; avoid building a plugin marketplace.
 
 **Effort:** XL
 **Priority:** P2

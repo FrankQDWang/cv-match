@@ -4,8 +4,15 @@ import asyncio
 
 from seektalent.core.retrieval.provider_contract import ProviderSnapshot, SearchRequest, SearchResult
 from seektalent.models import ResumeCandidate
+from seektalent.providers.liepin.client import LiepinWorkerModeError
 import seektalent.providers.liepin.runtime_lane as runtime_lane
-from seektalent.providers.liepin.runtime_lane import liepin_backend_posture, run_liepin_source_lane
+from seektalent.providers.liepin.runtime_lane import (
+    liepin_backend_posture,
+    run_liepin_source_lane,
+    runtime_safe_reason_code_from_pi_failure_code,
+)
+from seektalent.providers.liepin.worker_contracts import LiepinWorkerPartialSearchError
+from seektalent.providers.pi_agent.contracts import PiAgentFailureCode
 from seektalent.runtime.source_lanes import RuntimeApprovedDetailLease, RuntimeSourceBudgetPolicy, RuntimeSourceLaneRequest
 from seektalent.storage.json import sha256_json
 from tests.settings_factory import make_settings
@@ -74,9 +81,9 @@ class FakeWorker:
         raise AssertionError("card runtime lane must not fetch details")
 
 
-def test_liepin_backend_posture_records_worker_modes_without_dokobot_action_fallback() -> None:
+def test_liepin_backend_posture_records_worker_modes_without_pi_agent_fallback() -> None:
     assert liepin_backend_posture(make_settings(liepin_worker_mode="managed_local")) == {
-        "backend_mode": "legacy_worker_compat",
+        "backend_mode": "worker_compat",
         "reason": "managed_local",
     }
     assert liepin_backend_posture(
@@ -86,6 +93,12 @@ def test_liepin_backend_posture_records_worker_modes_without_dokobot_action_fall
         "backend_mode": "blocked",
         "reason": "no_live_action_backend",
     }
+
+
+def test_liepin_backend_posture_records_pi_agent_as_live_mode() -> None:
+    assert liepin_backend_posture(
+        make_settings(liepin_worker_mode="pi_agent", liepin_account_binding_secret="runtime-secret")
+    ) == {"backend_mode": "pi_agent", "reason": "pi_agent"}
 
 
 def test_liepin_runtime_lane_uses_provider_adapter_context_and_public_payload_is_safe() -> None:
@@ -118,6 +131,83 @@ def test_liepin_runtime_lane_uses_provider_adapter_context_and_public_payload_is
     assert worker.search_calls[0]["provider_account_hash"] == "acct_hash_123"
     assert result.detail_recommendations[0].candidate_resume_id == "liepin-candidate-1"
     assert "must-not-leak" not in repr(result.to_public_payload())
+
+
+def test_liepin_runtime_lane_preserves_pi_provider_hash_and_artifact_refs_in_evidence() -> None:
+    class PiMappedWorker(FakeWorker):
+        async def search(
+            self,
+            request: SearchRequest,
+            *,
+            round_no: int,
+            trace_id: str,
+            provider_account_hash: str | None = None,
+        ) -> SearchResult:
+            self.search_calls.append(
+                {
+                    "provider_context": request.provider_context,
+                    "round_no": round_no,
+                    "trace_id": trace_id,
+                    "provider_account_hash": provider_account_hash,
+                }
+            )
+            raw = {
+                "provider_candidate_key_hash": "stable-pi-provider-hash",
+                "provider_snapshot_ref": "artifact://protected/pi-card/run-1/1",
+                "safe_summary_ref": "artifact://public-summary/pi-card/run-1/1",
+                "safe_card_summary": {
+                    "current_or_recent_title": "Backend Engineer",
+                    "skill_tags": ["FastAPI", "ranking"],
+                },
+            }
+            candidate = ResumeCandidate(
+                resume_id="pi-fingerprint-resume",
+                source_resume_id=None,
+                snapshot_sha256=sha256_json(raw),
+                dedup_key="pi-fingerprint-resume",
+                search_text="FastAPI ranking backend engineer.",
+                raw=raw,
+            )
+            snapshot = ProviderSnapshot(
+                provider_name="liepin",
+                payload_kind="card",
+                raw_payload=raw,
+                normalized_text="FastAPI ranking backend engineer.",
+                provider_subject_id=None,
+                provider_listing_id=None,
+                synthetic_candidate_fingerprint="pi-fingerprint-resume",
+                identity_confidence="synthetic_fingerprint",
+                extraction_source="dom_fallback",
+                extractor_version="pi-agent-liepin-card-v1",
+                pii_classification="no_direct_contact",
+                retention_policy="provider_snapshot_30d",
+                access_scope="local_run_only",
+                redaction_state="redacted",
+                score_evidence_source="card_only",
+            )
+            return SearchResult(candidates=[candidate], provider_snapshots=[snapshot], raw_candidate_count=1)
+
+    request = RuntimeSourceLaneRequest(
+        source="liepin",
+        lane_mode="card",
+        job_title="Backend Engineer",
+        jd="FastAPI ranking",
+        notes=None,
+        runtime_run_id="runtime-run-1",
+        source_lane_run_id="lane-run-1",
+        source_query_terms=("FastAPI", "ranking"),
+        liepin_context={"provider_account_hash": "acct_hash_123"},
+    )
+
+    result = asyncio.run(run_liepin_source_lane(settings=make_settings(), request=request, worker_client=PiMappedWorker()))
+
+    evidence = result.source_evidence_updates[0]
+    assert evidence.provider_candidate_key_hash == "stable-pi-provider-hash"
+    assert evidence.provider_snapshot_ref == "artifact://protected/pi-card/run-1/1"
+    assert evidence.safe_summary_ref == "artifact://public-summary/pi-card/run-1/1"
+    assert result.detail_recommendations[0].provider_candidate_key_hash == "stable-pi-provider-hash"
+    assert result.detail_recommendations[0].provider_snapshot_ref == "artifact://protected/pi-card/run-1/1"
+    assert result.detail_recommendations[0].safe_summary_ref == "artifact://public-summary/pi-card/run-1/1"
 
 
 def test_liepin_runtime_card_lane_passes_compliance_gate_to_live_adapter() -> None:
@@ -234,6 +324,9 @@ def test_liepin_card_policy_keeps_provider_rank_primary_after_hard_filters_and_b
 
     provider_request = worker.search_calls[0]["request"]
     assert provider_request.page_size == 5
+    assert provider_request.provider_context["liepin_card_page_size"] == "5"
+    assert provider_request.provider_context["liepin_max_cards"] == "5"
+    assert provider_request.provider_context["liepin_max_pages"] == "1"
     assert [item.candidate_resume_id for item in result.detail_recommendations] == ["rank-1", "rank-2"]
     assert [item.provider_rank for item in result.detail_recommendations] == [1, 2]
     assert [item.card_policy_rank for item in result.detail_recommendations] == [1, 2]
@@ -241,6 +334,182 @@ def test_liepin_card_policy_keeps_provider_rank_primary_after_hard_filters_and_b
     assert {item.budget_reason_code for item in result.detail_recommendations} == {"within_run_detail_budget"}
     assert all("safe_reason" not in item.to_public_payload() for item in result.detail_recommendations)
     assert result.events[-1].safe_counts == {"detail_recommendations": 2}
+
+
+def test_liepin_runtime_lane_normalizes_blocked_worker_error_codes() -> None:
+    class BlockedWorker(FakeWorker):
+        async def search(
+            self,
+            request: SearchRequest,
+            *,
+            round_no: int,
+            trace_id: str,
+            provider_account_hash: str | None = None,
+        ) -> SearchResult:
+            del request, round_no, trace_id, provider_account_hash
+            raise LiepinWorkerModeError("raw risk_control secret-token", code="risk_control")
+
+    request = RuntimeSourceLaneRequest(
+        source="liepin",
+        lane_mode="card",
+        job_title="Backend Engineer",
+        jd="FastAPI retrieval",
+        notes=None,
+        runtime_run_id="runtime-run-1",
+        source_lane_run_id="lane-run-1",
+        source_query_terms=("FastAPI", "ranking"),
+        liepin_context={"provider_account_hash": "acct_hash_123"},
+    )
+
+    result = asyncio.run(
+        run_liepin_source_lane(settings=make_settings(), request=request, worker_client=BlockedWorker())
+    )
+
+    assert result.status == "blocked"
+    assert result.blocked_reason_code == "blocked_compliance"
+    assert result.stop_reason_code == "blocked_compliance"
+    payload = repr(result.to_public_payload())
+    assert "risk_control" not in payload
+    assert "secret-token" not in payload
+
+
+def test_liepin_runtime_lane_preserves_partial_worker_cards_with_safe_reason() -> None:
+    class PartialWorker(FakeWorker):
+        async def search(
+            self,
+            request: SearchRequest,
+            *,
+            round_no: int,
+            trace_id: str,
+            provider_account_hash: str | None = None,
+        ) -> SearchResult:
+            del request, round_no, trace_id, provider_account_hash
+            raw_payload = {"candidateId": "partial-provider-id"}
+            partial = SearchResult(
+                candidates=[
+                    ResumeCandidate(
+                        resume_id="partial-candidate-1",
+                        source_resume_id="partial-provider-id",
+                        snapshot_sha256=sha256_json(raw_payload),
+                        dedup_key="partial-dedup",
+                        search_text="FastAPI ranking backend systems.",
+                        raw={},
+                    )
+                ],
+                provider_snapshots=[
+                    ProviderSnapshot(
+                        provider_name="liepin",
+                        payload_kind="card",
+                        raw_payload=raw_payload,
+                        normalized_text="FastAPI ranking backend systems.",
+                        provider_subject_id="partial-provider-id",
+                        provider_listing_id=None,
+                        synthetic_candidate_fingerprint="partial-dedup",
+                        identity_confidence="provider_subject_id",
+                        extraction_source="test",
+                        extractor_version="test",
+                        pii_classification="no_direct_contact",
+                        retention_policy="provider_snapshot_7d",
+                        access_scope="local_run_only",
+                        redaction_state="raw_provider_payload",
+                        score_evidence_source="card_only",
+                    )
+                ],
+                raw_candidate_count=3,
+            )
+            raise LiepinWorkerPartialSearchError(
+                "page_timeout raw transport text",
+                code="page_timeout",
+                partial_search_result=partial,
+                cards_collected=1,
+            )
+
+    request = RuntimeSourceLaneRequest(
+        source="liepin",
+        lane_mode="card",
+        job_title="Backend Engineer",
+        jd="FastAPI retrieval",
+        notes=None,
+        runtime_run_id="runtime-run-1",
+        source_lane_run_id="lane-run-1",
+        source_query_terms=("FastAPI", "ranking"),
+        liepin_context={"provider_account_hash": "acct_hash_123"},
+    )
+
+    result = asyncio.run(
+        run_liepin_source_lane(settings=make_settings(), request=request, worker_client=PartialWorker())
+    )
+
+    assert result.status == "partial"
+    assert result.stop_reason_code == "partial_timeout"
+    assert result.blocked_reason_code is None
+    assert list(result.candidate_store_updates) == ["partial-candidate-1"]
+    assert result.events[0].event_type == "source_lane_partial"
+    payload = repr(result.to_public_payload())
+    assert "partial_timeout" in payload
+    assert "page_timeout" not in payload
+    assert "raw transport text" not in payload
+
+
+def test_pi_failure_codes_map_to_runtime_safe_reason_codes() -> None:
+    assert runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.LOGIN_EXPIRED) == "blocked_login_required"
+    assert runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.VERIFICATION_REQUIRED) == "blocked_compliance"
+    assert runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.RISK_CONTROL) == "blocked_compliance"
+    assert (
+        runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.DOKOBOT_TOOL_CAPABILITY_UNAVAILABLE)
+        == "blocked_backend_unavailable"
+    )
+    assert (
+        runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.PROVIDER_CONNECTION_LOCKED)
+        == "blocked_backend_unavailable"
+    )
+    assert runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.PAGE_TIMEOUT) == "failed_provider_error"
+    assert (
+        runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.PAGE_TIMEOUT, cards_collected=True)
+        == "partial_timeout"
+    )
+    assert runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.SELECTOR_DRIFT) == "failed_provider_error"
+    assert runtime_safe_reason_code_from_pi_failure_code(PiAgentFailureCode.EXTRACTION_FAILURE) == "failed_provider_error"
+    assert runtime_safe_reason_code_from_pi_failure_code("blocked_backend_unavailable") == "blocked_backend_unavailable"
+    assert runtime_safe_reason_code_from_pi_failure_code("blocked_permission_required") == "blocked_compliance"
+    assert runtime_safe_reason_code_from_pi_failure_code("partial_timeout", cards_collected=True) == "partial_timeout"
+    assert runtime_safe_reason_code_from_pi_failure_code("unknown") == "failed_provider_error"
+
+
+def test_liepin_runtime_lane_builds_live_store_for_pi_agent(monkeypatch, tmp_path) -> None:
+    captured_stores: list[object] = []
+
+    class FakeProvider:
+        def __init__(self, settings, *, worker_client=None, store=None):
+            del settings, worker_client
+            captured_stores.append(store)
+
+        async def search(self, request: SearchRequest, *, round_no: int, trace_id: str) -> SearchResult:
+            del request, round_no, trace_id
+            return SearchResult(candidates=[], provider_snapshots=[], raw_candidate_count=0, exhausted=True)
+
+    monkeypatch.setattr(runtime_lane, "LiepinProviderAdapter", FakeProvider)
+    request = RuntimeSourceLaneRequest(
+        source="liepin",
+        lane_mode="card",
+        job_title="Backend Engineer",
+        jd="FastAPI retrieval",
+        notes=None,
+        runtime_run_id="runtime-run-1",
+        source_lane_run_id="lane-run-1",
+        source_query_terms=("FastAPI", "ranking"),
+        liepin_context={"provider_account_hash": "acct_hash_123"},
+    )
+    settings = make_settings(
+        liepin_worker_mode="pi_agent",
+        liepin_connector_db_path=str(tmp_path / "liepin.sqlite3"),
+        liepin_account_binding_secret="runtime-secret",
+    )
+
+    asyncio.run(run_liepin_source_lane(settings=settings, request=request, worker_client=FakeWorker()))
+
+    assert captured_stores
+    assert captured_stores[0].__class__.__name__ == "LiepinStore"
 
 
 def test_liepin_runtime_detail_lane_executes_provider_detail_mode_with_approved_lease(monkeypatch) -> None:
