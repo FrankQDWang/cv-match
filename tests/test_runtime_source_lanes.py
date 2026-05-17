@@ -575,6 +575,27 @@ def test_detail_recommendations_are_top_level_result_fields() -> None:
     assert "events" not in payload["detail_recommendations"][0]
 
 
+def test_card_policy_reason_codes_are_public_allowlisted() -> None:
+    recommendation = RuntimeDetailRecommendation(
+        recommendation_id="rec-card-policy",
+        source="liepin",
+        source_evidence_id="evidence-1",
+        candidate_resume_id="resume-1",
+        provider_candidate_key_hash="hash-1",
+        hard_filter_status="obvious_role_mismatch",
+        budget_reason_code="insufficient_card_signal",
+        reason_code="must_have_zero_overlap",
+        safe_reason_codes=("hard_location_mismatch", "hard_education_mismatch"),
+    )
+
+    payload = recommendation.to_public_payload()
+
+    assert payload["hard_filter_status"] == "obvious_role_mismatch"
+    assert payload["budget_reason_code"] == "insufficient_card_signal"
+    assert payload["reason_code"] == "must_have_zero_overlap"
+    assert payload["safe_reason_codes"] == ["hard_location_mismatch", "hard_education_mismatch"]
+
+
 def test_runtime_budget_policy_public_payload_is_count_only() -> None:
     policy = RuntimeSourceBudgetPolicy(
         max_cts_pages=1,

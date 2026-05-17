@@ -12,6 +12,7 @@ from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.providers.liepin.client import EventCallback
 from seektalent.providers.liepin.client import LiepinWorkerClient
 from seektalent.providers.liepin.client import LiepinWorkerModeError
+from seektalent.providers.liepin.client import is_live_liepin_worker_mode
 from seektalent.providers.liepin.models import LiepinConnectionRow
 from seektalent.providers.liepin.policy import LiepinCardCandidate
 from seektalent.providers.liepin.store import LiepinStore
@@ -170,7 +171,7 @@ class LiepinProviderAdapter:
         if self.worker_client is None:
             raise LiepinWorkerModeError("Liepin provider search requires an explicit worker client.")
         connection: LiepinConnectionRow | None = None
-        if self.settings.liepin_worker_mode in {"managed_local", "external_http"}:
+        if is_live_liepin_worker_mode(self.settings.liepin_worker_mode):
             scope = _live_scope_from_request(request)
             connection = self._enforce_live_compliance(scope)
             await self.worker_client.ensure_ready(on_event=self.worker_event_callback)

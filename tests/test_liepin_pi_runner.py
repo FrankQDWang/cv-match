@@ -5,7 +5,11 @@ import json
 
 import pytest
 
-from seektalent.providers.liepin.pi_runner import LiepinPiRunner, SearchCardsExecutor
+from seektalent.providers.liepin.pi_runner import LiepinPiCardSearchResult, LiepinPiRunner, SearchCardsExecutor
+from seektalent.providers.liepin.worker_contracts import (
+    LiepinCardSearchResponse,
+    LiepinWorkerCandidateCard,
+)
 from seektalent.providers.pi_agent.capabilities import DokoBotCapabilities
 from seektalent.providers.pi_agent.contracts import (
     PiAgentFailureCode,
@@ -26,6 +30,7 @@ SEARCH_KWARGS = {
     "keyword_query": "Python",
     "query_terms": ["Python"],
     "max_pages": 1,
+    "page_size": 10,
     "max_cards": 10,
 }
 
@@ -83,6 +88,27 @@ def _runner(
         trace_artifact_writer=_trace_writer,
         dokobot_search_cards=dokobot_search_cards,
         legacy_search_cards=legacy_search_cards,
+    )
+
+
+def _card_response() -> LiepinCardSearchResponse:
+    return LiepinCardSearchResponse(
+        cards=[
+            LiepinWorkerCandidateCard(
+                payload={"safe_summary_ref": "artifact://summary/liepin/card-1"},
+                normalized_text="FastAPI ranking platform",
+                provider_subject_id="provider-1",
+                synthetic_candidate_fingerprint="fingerprint-1",
+                identity_confidence="provider_subject_id",
+                extraction_source="dom_fallback",
+                extractor_version="test",
+                pii_classification="no_direct_contact",
+                retention_policy="provider_snapshot_7d",
+                access_scope="local_run_only",
+                redaction_state="redacted",
+            )
+        ],
+        raw_candidate_count=1,
     )
 
 
@@ -258,17 +284,20 @@ def test_dokobot_action_mode_never_calls_legacy_backend_as_fallback() -> None:
 def test_dokobot_action_mode_dispatches_when_capability_is_available() -> None:
     called = False
 
-    def dokobot_search_cards(**kwargs: object) -> PiAgentResult:
+    def dokobot_search_cards(**kwargs: object) -> LiepinPiCardSearchResult:
         nonlocal called
         called = True
-        return PiAgentResult(
-            schema_version="pi-agent-result-v1",
-            status=PiAgentResultStatus.SUCCEEDED,
-            action_trace_ref=_trace_writer(
-                b'{"schema_version":"pi-agent-action-trace-v1","interaction_id":"trace_ok"}',
-                ProtectedArtifactClass.REDACTED_EVIDENCE,
-                "liepin-trace-redaction-v1",
+        return LiepinPiCardSearchResult(
+            pi_result=PiAgentResult(
+                schema_version="pi-agent-result-v1",
+                status=PiAgentResultStatus.SUCCEEDED,
+                action_trace_ref=_trace_writer(
+                    b'{"schema_version":"pi-agent-action-trace-v1","interaction_id":"trace_ok"}',
+                    ProtectedArtifactClass.REDACTED_EVIDENCE,
+                    "liepin-trace-redaction-v1",
+                ),
             ),
+            card_search=_card_response(),
         )
 
     runner = _runner(
@@ -281,6 +310,8 @@ def test_dokobot_action_mode_dispatches_when_capability_is_available() -> None:
 
     assert called is True
     assert result.status == PiAgentResultStatus.SUCCEEDED
+    assert result.card_search is not None
+    assert result.card_search.cards[0].normalized_text == "FastAPI ranking platform"
 
 
 def test_dokobot_action_mode_requires_executor_when_capability_is_available() -> None:

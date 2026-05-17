@@ -11,6 +11,7 @@ from seektalent.providers.pi_agent.capabilities import DokoBotCapabilities
 from seektalent.providers.pi_agent.contracts import (
     PiAgentActionTraceEntry,
     PiAgentActionType,
+    PiAgentCompletionReason,
     PiAgentFailureCode,
     PiAgentResult,
     PiAgentResultStatus,
@@ -19,11 +20,34 @@ from seektalent.providers.pi_agent.contracts import (
     PiAgentTaskType,
     ProtectedArtifactClass,
 )
+from seektalent.providers.liepin.worker_contracts import LiepinCardSearchResponse
 from seektalent.providers.pi_agent.locks import InMemoryPiConnectionLock
 
 
 TraceArtifactWriter = Callable[[bytes, ProtectedArtifactClass, str], PiArtifactRef]
 SEARCH_CARDS_SKILL_ID = get_liepin_pi_skill(PiAgentTaskType.LIEPIN_SEARCH_CARDS).skill_id
+
+
+@dataclass(frozen=True, kw_only=True)
+class LiepinPiCardSearchResult:
+    pi_result: PiAgentResult
+    card_search: LiepinCardSearchResponse | None = None
+
+    def __post_init__(self) -> None:
+        if self.pi_result.status == PiAgentResultStatus.SUCCEEDED and self.card_search is None:
+            raise ValueError("card_search is required for successful Liepin PI card search")
+
+    @property
+    def status(self) -> PiAgentResultStatus:
+        return self.pi_result.status
+
+    @property
+    def stop_reason(self) -> PiAgentFailureCode | PiAgentCompletionReason | None:
+        return self.pi_result.stop_reason
+
+    @property
+    def action_trace_ref(self) -> PiArtifactRef:
+        return self.pi_result.action_trace_ref
 
 
 class SearchCardsExecutor(Protocol):
@@ -37,8 +61,9 @@ class SearchCardsExecutor(Protocol):
         keyword_query: str,
         query_terms: list[str],
         max_pages: int,
+        page_size: int,
         max_cards: int,
-    ) -> PiAgentResult: ...
+    ) -> LiepinPiCardSearchResult: ...
 
 
 @dataclass
@@ -60,8 +85,9 @@ class LiepinPiRunner:
         keyword_query: str,
         query_terms: list[str],
         max_pages: int,
+        page_size: int,
         max_cards: int,
-    ) -> PiAgentResult:
+    ) -> LiepinPiCardSearchResult:
         if not self.connection_lock.acquire(
             connection_id=connection_id,
             provider_account_lock_key=provider_account_lock_key,
@@ -82,6 +108,7 @@ class LiepinPiRunner:
                 keyword_query=keyword_query,
                 query_terms=query_terms,
                 max_pages=max_pages,
+                page_size=page_size,
                 max_cards=max_cards,
             )
         finally:
@@ -101,8 +128,9 @@ class LiepinPiRunner:
         keyword_query: str,
         query_terms: list[str],
         max_pages: int,
+        page_size: int,
         max_cards: int,
-    ) -> PiAgentResult:
+    ) -> LiepinPiCardSearchResult:
         if self.backend_mode in {PiBackendMode.DISABLED, PiBackendMode.DOKOBOT_READ_ONLY}:
             return self._blocked_result(
                 source_run_id=source_run_id,
@@ -127,6 +155,7 @@ class LiepinPiRunner:
                 keyword_query=keyword_query,
                 query_terms=query_terms,
                 max_pages=max_pages,
+                page_size=page_size,
                 max_cards=max_cards,
             )
         if self.backend_mode == PiBackendMode.LEGACY_WORKER_COMPAT:
@@ -144,18 +173,22 @@ class LiepinPiRunner:
                 keyword_query=keyword_query,
                 query_terms=query_terms,
                 max_pages=max_pages,
+                page_size=page_size,
                 max_cards=max_cards,
             )
         if self.backend_mode == PiBackendMode.FAKE_FIXTURE:
-            return PiAgentResult(
-                schema_version="pi-agent-result-v1",
-                status=PiAgentResultStatus.SUCCEEDED,
-                action_trace_ref=self._write_trace(
-                    source_run_id=source_run_id,
-                    connection_id=connection_id,
-                    result_code="ok",
-                    failure_code=None,
+            return LiepinPiCardSearchResult(
+                pi_result=PiAgentResult(
+                    schema_version="pi-agent-result-v1",
+                    status=PiAgentResultStatus.SUCCEEDED,
+                    action_trace_ref=self._write_trace(
+                        source_run_id=source_run_id,
+                        connection_id=connection_id,
+                        result_code="ok",
+                        failure_code=None,
+                    ),
                 ),
+                card_search=LiepinCardSearchResponse(cards=[], exhausted=True, raw_candidate_count=0),
             )
         raise ValueError(f"unsupported PI backend mode: {self.backend_mode}")
 
@@ -165,16 +198,18 @@ class LiepinPiRunner:
         source_run_id: str,
         connection_id: str,
         failure_code: PiAgentFailureCode,
-    ) -> PiAgentResult:
-        return PiAgentResult(
-            schema_version="pi-agent-result-v1",
-            status=PiAgentResultStatus.BLOCKED,
-            stop_reason=failure_code,
-            action_trace_ref=self._write_trace(
-                source_run_id=source_run_id,
-                connection_id=connection_id,
-                result_code="blocked",
-                failure_code=failure_code,
+    ) -> LiepinPiCardSearchResult:
+        return LiepinPiCardSearchResult(
+            pi_result=PiAgentResult(
+                schema_version="pi-agent-result-v1",
+                status=PiAgentResultStatus.BLOCKED,
+                stop_reason=failure_code,
+                action_trace_ref=self._write_trace(
+                    source_run_id=source_run_id,
+                    connection_id=connection_id,
+                    result_code="blocked",
+                    failure_code=failure_code,
+                ),
             ),
         )
 

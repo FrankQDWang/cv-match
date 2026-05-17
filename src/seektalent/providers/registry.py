@@ -6,6 +6,7 @@ from seektalent.providers.cts import CTSProviderAdapter
 from seektalent.providers.liepin import LiepinProviderAdapter
 from seektalent.providers.liepin.client import build_liepin_worker_client
 from seektalent.providers.liepin.client import LiepinWorkerClient
+from seektalent.providers.liepin.client import is_live_liepin_worker_mode
 from seektalent.providers.liepin.store import LiepinStore
 from seektalent.providers.liepin.adapter import ProviderConnectionSafetyResolver
 
@@ -28,7 +29,7 @@ def get_provider_adapter_for_source(
         if settings.liepin_worker_mode == "disabled":
             raise ValueError("Liepin provider cannot be selected while liepin_worker_mode is disabled.")
         store = liepin_store
-        if store is None and settings.liepin_worker_mode in {"managed_local", "external_http"}:
+        if store is None and is_live_liepin_worker_mode(settings.liepin_worker_mode):
             store = LiepinStore(settings.resolve_workspace_path(settings.liepin_connector_db_path))
         return LiepinProviderAdapter(
             settings,

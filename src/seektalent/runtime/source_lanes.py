@@ -69,10 +69,15 @@ _SAFE_REASON_CODES = {
     "detail_evidence",
     "failed_internal_error",
     "failed_provider_error",
+    "hard_education_mismatch",
     "hard_filter_passed",
+    "hard_location_mismatch",
     "high_value_card",
+    "insufficient_card_signal",
     "login_required",
     "matched_card_terms",
+    "must_have_zero_overlap",
+    "obvious_role_mismatch",
     "partial_budget_exhausted",
     "partial_timeout",
     "provider_rank_preserved",
@@ -441,7 +446,14 @@ def build_runtime_source_plan(
             continue
 
         worker_mode = str(getattr(settings, "liepin_worker_mode", "disabled"))
-        backend_mode = "blocked" if worker_mode == "disabled" else "legacy_worker_compat"
+        if worker_mode == "disabled":
+            backend_mode = "blocked"
+        elif worker_mode == "dokobot_action":
+            backend_mode = "dokobot_action"
+        elif worker_mode == "fake_fixture":
+            backend_mode = "fake_fixture"
+        else:
+            backend_mode = "legacy_worker_compat"
         safe_posture = {"worker_mode": worker_mode, **dict(liepin_context or {})}
         plans.append(
             RuntimeSourceLanePlan(

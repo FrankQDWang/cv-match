@@ -1,27 +1,45 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Collection, Mapping
 from datetime import datetime
+from typing import cast
 
 from seektalent.config import AppSettings
-from seektalent.core.retrieval.provider_contract import SearchRequest
+from seektalent.core.retrieval.provider_contract import SearchRequest, SearchResult
 from seektalent.models import ResumeCandidate, RuntimeSourceEvidence
 from seektalent.providers.liepin.adapter import LiepinProviderAdapter
-from seektalent.providers.liepin.client import LiepinWorkerClient, build_liepin_worker_client
+from seektalent.providers.liepin.card_policy import (
+    LiepinCardDecisionAction,
+    LiepinCardSummary,
+    build_liepin_card_decisions,
+)
+from seektalent.providers.liepin.client import (
+    LiepinWorkerClient,
+    LiepinWorkerModeError,
+    build_liepin_worker_client,
+    is_live_liepin_worker_mode,
+)
 from seektalent.providers.liepin.store import LiepinStore
+from seektalent.providers.liepin.worker_contracts import LiepinWorkerPartialSearchError
+from seektalent.providers.pi_agent.contracts import PiAgentFailureCode
 from seektalent.runtime.source_lanes import (
     RuntimeDetailRecommendation,
+    RuntimeSourceLaneEventType,
     RuntimeSourceLaneEvent,
     RuntimeSourceLanePlan,
     RuntimeSourceLaneRequest,
     RuntimeSourceLaneResult,
+    RuntimeSourceLaneStatus,
 )
 
 
 def liepin_backend_posture(settings: AppSettings) -> dict[str, str]:
     worker_mode = settings.liepin_worker_mode
-    if worker_mode in {"managed_local", "external_http"}:
+    if worker_mode == "dokobot_action":
+        return {"backend_mode": "dokobot_action", "reason": worker_mode}
+    if is_live_liepin_worker_mode(worker_mode):
         return {"backend_mode": "legacy_worker_compat", "reason": worker_mode}
     if worker_mode == "fake_fixture" and settings.liepin_allow_fake_fixture_worker:
         return {"backend_mode": "fake_fixture", "reason": "explicit_test_fixture"}
@@ -72,29 +90,81 @@ async def run_liepin_source_lane(
     budget = request.source_budget_policy
     client = worker_client or build_liepin_worker_client(settings)
     provider = _build_provider(settings=settings, worker_client=client)
-    search_result = await provider.search(
-        SearchRequest(
-            query_terms=query_terms,
-            query_role="primary",
-            keyword_query=" ".join(query_terms),
-            adapter_notes=[request.notes or ""],
-            runtime_constraints=[],
-            fetch_mode="summary",
-            page_size=budget.liepin_card_page_size,
-            provider_context={
-                "liepin_tenant_id": _context_text(context, "tenant_id", default="local"),
-                "liepin_workspace_id": _context_text(context, "workspace_id", default="default"),
-                "liepin_actor_id": _context_text(context, "actor_id", default="local"),
-                "liepin_connection_id": _context_text(context, "connection_id"),
-                "liepin_compliance_gate_ref": _context_text(context, "compliance_gate_ref"),
-                "liepin_provider_account_hash": _context_text(context, "provider_account_hash"),
-                "query_instance_id": source_lane_run_id,
-                "query_fingerprint": hashlib.sha256(" ".join(query_terms).encode("utf-8")).hexdigest(),
-            },
-        ),
-        round_no=1,
-        trace_id=source_lane_run_id,
+    search_request = SearchRequest(
+        query_terms=query_terms,
+        query_role="primary",
+        keyword_query=" ".join(query_terms),
+        adapter_notes=[request.notes or ""],
+        runtime_constraints=[],
+        fetch_mode="summary",
+        page_size=budget.liepin_card_page_size,
+        provider_context={
+            "liepin_tenant_id": _context_text(context, "tenant_id", default="local"),
+            "liepin_workspace_id": _context_text(context, "workspace_id", default="default"),
+            "liepin_actor_id": _context_text(context, "actor_id", default="local"),
+            "liepin_connection_id": _context_text(context, "connection_id"),
+            "liepin_compliance_gate_ref": _context_text(context, "compliance_gate_ref"),
+            "liepin_provider_account_hash": _context_text(context, "provider_account_hash"),
+            "liepin_card_page_size": str(budget.liepin_card_page_size),
+            "liepin_max_cards": str(budget.liepin_max_cards),
+            "liepin_max_pages": str(_liepin_max_pages(budget)),
+            "query_instance_id": source_lane_run_id,
+            "query_fingerprint": hashlib.sha256(" ".join(query_terms).encode("utf-8")).hexdigest(),
+        },
     )
+    try:
+        search_result = await provider.search(
+            search_request,
+            round_no=1,
+            trace_id=source_lane_run_id,
+        )
+    except LiepinWorkerPartialSearchError as error:
+        stop_reason_code = runtime_safe_reason_code_from_pi_failure_code(
+            error.code,
+            cards_collected=error.cards_collected > 0,
+        )
+        return _card_lane_result_from_search_result(
+            request=request,
+            search_result=error.partial_search_result,
+            runtime_run_id=runtime_run_id,
+            source_plan_id=source_plan_id,
+            source_lane_run_id=source_lane_run_id,
+            query_terms=query_terms,
+            status="partial",
+            stop_reason_code=stop_reason_code,
+        )
+    except LiepinWorkerModeError as error:
+        reason_code = runtime_safe_reason_code_from_pi_failure_code(error.code)
+        return _blocked_card_result(
+            runtime_run_id=runtime_run_id,
+            source_plan_id=source_plan_id,
+            source_lane_run_id=source_lane_run_id,
+            attempt=request.attempt,
+            reason_code=reason_code,
+        )
+    return _card_lane_result_from_search_result(
+        request=request,
+        search_result=search_result,
+        runtime_run_id=runtime_run_id,
+        source_plan_id=source_plan_id,
+        source_lane_run_id=source_lane_run_id,
+        query_terms=query_terms,
+        status="completed",
+    )
+
+
+def _card_lane_result_from_search_result(
+    *,
+    request: RuntimeSourceLaneRequest,
+    search_result: SearchResult,
+    runtime_run_id: str,
+    source_plan_id: str,
+    source_lane_run_id: str,
+    query_terms: list[str],
+    status: RuntimeSourceLaneStatus,
+    stop_reason_code: str | None = None,
+) -> RuntimeSourceLaneResult:
+    budget = request.source_budget_policy
     source_plan = RuntimeSourceLanePlan(
         source_plan_id=source_plan_id,
         runtime_run_id=runtime_run_id,
@@ -122,6 +192,7 @@ async def run_liepin_source_lane(
         candidates=candidates,
         evidence_updates=evidence_updates,
         query_terms=query_terms,
+        role_title=request.job_title,
         max_recommendations=budget.liepin_max_detail_recommendations,
         budget_policy_version=budget.policy_version,
     )
@@ -132,7 +203,7 @@ async def run_liepin_source_lane(
         source="liepin",
         lane_mode="card",
         attempt=request.attempt,
-        status="completed",
+        status=status,
         candidate_store_updates={candidate.resume_id: candidate for candidate in candidates},
         source_evidence_updates=evidence_updates,
         detail_recommendations=detail_recommendations,
@@ -146,7 +217,10 @@ async def run_liepin_source_lane(
             raw_candidate_count=search_result.raw_candidate_count,
             candidate_count=len(candidates),
             detail_recommendation_count=len(detail_recommendations),
+            status=status,
+            stop_reason_code=stop_reason_code,
         ),
+        stop_reason_code=stop_reason_code,
     )
 
 
@@ -278,6 +352,42 @@ def _blocked_detail_result(
     )
 
 
+def _blocked_card_result(
+    *,
+    runtime_run_id: str,
+    source_plan_id: str,
+    source_lane_run_id: str,
+    attempt: int,
+    reason_code: str,
+) -> RuntimeSourceLaneResult:
+    return RuntimeSourceLaneResult(
+        runtime_run_id=runtime_run_id,
+        source_plan_id=source_plan_id,
+        source_lane_run_id=source_lane_run_id,
+        source="liepin",
+        lane_mode="card",
+        attempt=attempt,
+        status="blocked",
+        blocked_reason_code=reason_code,
+        stop_reason_code=reason_code,
+        retryable=reason_code in {"blocked_backend_unavailable", "failed_provider_error"},
+        events=(
+            RuntimeSourceLaneEvent(
+                schema_version="runtime_source_lane_event_v1",
+                runtime_run_id=runtime_run_id,
+                source_plan_id=source_plan_id,
+                source_lane_run_id=source_lane_run_id,
+                source="liepin",
+                attempt=attempt,
+                event_seq=1,
+                event_type="source_lane_blocked",
+                status="blocked",
+                safe_reason_code=reason_code,
+            ),
+        ),
+    )
+
+
 def _card_lane_events(
     *,
     runtime_run_id: str,
@@ -287,7 +397,13 @@ def _card_lane_events(
     raw_candidate_count: int | None,
     candidate_count: int,
     detail_recommendation_count: int,
+    status: RuntimeSourceLaneStatus,
+    stop_reason_code: str | None = None,
 ) -> tuple[RuntimeSourceLaneEvent, ...]:
+    event_type = cast(
+        RuntimeSourceLaneEventType,
+        "source_lane_partial" if status == "partial" else "source_lane_completed",
+    )
     events = [
         RuntimeSourceLaneEvent(
             schema_version="runtime_source_lane_event_v1",
@@ -297,9 +413,10 @@ def _card_lane_events(
             source="liepin",
             attempt=attempt,
             event_seq=1,
-            event_type="source_lane_completed",
-            status="completed",
+            event_type=event_type,
+            status=status,
             safe_counts={"cards_seen": int(raw_candidate_count or candidate_count), "candidates": candidate_count},
+            safe_reason_code=stop_reason_code,
         )
     ]
     if detail_recommendation_count:
@@ -360,16 +477,31 @@ def _detail_recommendations_for_candidates(
     candidates: tuple[ResumeCandidate, ...],
     evidence_updates: tuple[RuntimeSourceEvidence, ...],
     query_terms: Collection[str],
+    role_title: str,
     max_recommendations: int,
     budget_policy_version: str,
 ) -> tuple[RuntimeDetailRecommendation, ...]:
+    evidence_by_resume_id = {item.candidate_resume_id: item for item in evidence_updates}
+    candidate_by_resume_id = {candidate.resume_id: candidate for candidate in candidates}
+    decisions = build_liepin_card_decisions(
+        cards=[
+            _card_summary_for_candidate(
+                candidate=candidate,
+                provider_rank=evidence_by_resume_id[candidate.resume_id].provider_rank or index,
+            )
+            for index, candidate in enumerate(candidates, start=1)
+            if candidate.resume_id in evidence_by_resume_id
+        ],
+        query_terms=tuple(query_terms),
+        role_title=role_title,
+        max_detail_recommendations=max_recommendations,
+    )
     recommendations: list[RuntimeDetailRecommendation] = []
-    for candidate, evidence in zip(candidates, evidence_updates, strict=True):
-        searchable = candidate.search_text.casefold()
-        matched_terms = [term.strip() for term in query_terms if term.strip() and term.strip().casefold() in searchable]
-        if len(matched_terms) < 2:
+    for decision in decisions:
+        if decision.action != LiepinCardDecisionAction.RECOMMEND_DETAIL:
             continue
-        card_policy_rank = len(recommendations) + 1
+        candidate = candidate_by_resume_id[decision.candidate_resume_id]
+        evidence = evidence_by_resume_id[decision.candidate_resume_id]
         recommendations.append(
             RuntimeDetailRecommendation(
                 recommendation_id=f"{source_plan_id}:detail:{candidate.resume_id}",
@@ -377,28 +509,69 @@ def _detail_recommendations_for_candidates(
                 source_evidence_id=evidence.evidence_id,
                 candidate_resume_id=candidate.resume_id,
                 provider_candidate_key_hash=evidence.provider_candidate_key_hash,
-                value_score=min(100, 40 + len(matched_terms) * 20),
-                provider_rank=evidence.provider_rank,
-                card_policy_rank=card_policy_rank,
-                hard_filter_status="hard_filter_passed",
-                budget_reason_code="within_run_detail_budget",
-                reason_code="matched_card_terms",
-                safe_reason=f"Agent recommends opening detail after matched card terms: {', '.join(matched_terms[:3])}",
-                safe_reason_codes=(
-                    "matched_card_terms",
-                    "provider_rank_preserved",
-                    "card_rank_budget",
-                    "hard_filter_passed",
-                    "within_run_detail_budget",
-                ),
+                value_score=decision.value_score,
+                provider_rank=decision.provider_rank,
+                card_policy_rank=decision.card_policy_rank,
+                hard_filter_status=decision.hard_filter_status,
+                budget_reason_code=decision.budget_reason_code,
+                reason_code=_primary_card_policy_reason(decision.reason_codes),
+                safe_reason="Agent recommends opening detail after matched card terms.",
+                safe_reason_codes=decision.reason_codes,
                 provider_snapshot_ref=evidence.provider_snapshot_ref,
                 safe_summary_ref=evidence.safe_summary_ref,
                 budget_policy_version=budget_policy_version,
             )
         )
-        if len(recommendations) >= max_recommendations:
-            break
     return tuple(recommendations)
+
+
+def _card_summary_for_candidate(*, candidate: ResumeCandidate, provider_rank: int) -> LiepinCardSummary:
+    raw = candidate.raw if isinstance(candidate.raw, dict) else {}
+    safe_summary = raw.get("safe_card_summary")
+    summary = safe_summary if isinstance(safe_summary, dict) else {}
+    return LiepinCardSummary(
+        candidate_resume_id=candidate.resume_id,
+        provider_rank=provider_rank,
+        display_title=_summary_string(summary, "display_title"),
+        current_or_recent_company=_summary_string(summary, "current_or_recent_company"),
+        current_or_recent_title=_summary_string(summary, "current_or_recent_title"),
+        work_years=_summary_int(summary, "work_years"),
+        age=_summary_int(summary, "age"),
+        city=_summary_string(summary, "city"),
+        expected_city=_summary_string(summary, "expected_city"),
+        education_level=_summary_string(summary, "education_level"),
+        school_names=_summary_string_tuple(summary, "school_names"),
+        major_names=_summary_string_tuple(summary, "major_names"),
+        skill_tags=_summary_string_tuple(summary, "skill_tags"),
+        job_intention=_summary_string(summary, "job_intention"),
+        recent_experience_text=_summary_string(summary, "recent_experience_text"),
+        normalized_card_text=candidate.search_text,
+        masked_name=bool(summary.get("masked_name", False)),
+    )
+
+
+def _summary_string(summary: dict[object, object], key: str) -> str | None:
+    value = summary.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _summary_int(summary: dict[object, object], key: str) -> int | None:
+    value = summary.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _summary_string_tuple(summary: dict[object, object], key: str) -> tuple[str, ...]:
+    value = summary.get(key)
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
+
+
+def _primary_card_policy_reason(reason_codes: tuple[str, ...]) -> str:
+    for reason in ("matched_card_terms", "high_value_card", "card_rank_budget"):
+        if reason in reason_codes:
+            return reason
+    return reason_codes[-1] if reason_codes else "matched_card_terms"
 
 
 def _context_text(context: Mapping[str, object], key: str, *, default: str | None = None) -> str | None:
@@ -481,9 +654,40 @@ def _detail_lease_matches_request(
 
 def _build_provider(*, settings: AppSettings, worker_client: LiepinWorkerClient) -> LiepinProviderAdapter:
     store = None
-    if settings.liepin_worker_mode in {"managed_local", "external_http"}:
+    if is_live_liepin_worker_mode(settings.liepin_worker_mode):
         store = LiepinStore(settings.resolve_workspace_path(settings.liepin_connector_db_path))
     return LiepinProviderAdapter(settings, worker_client=worker_client, store=store)
+
+
+def _liepin_max_pages(budget) -> int:
+    page_size = max(1, budget.liepin_card_page_size)
+    return max(1, math.ceil(budget.liepin_max_cards / page_size))
+
+
+def runtime_safe_reason_code_from_pi_failure_code(
+    failure_code: PiAgentFailureCode | str | None,
+    *,
+    cards_collected: bool = False,
+) -> str:
+    if isinstance(failure_code, str):
+        try:
+            failure_code = PiAgentFailureCode(failure_code)
+        except ValueError:
+            return "failed_provider_error"
+    if failure_code == PiAgentFailureCode.LOGIN_EXPIRED:
+        return "blocked_login_required"
+    if failure_code in {PiAgentFailureCode.VERIFICATION_REQUIRED, PiAgentFailureCode.RISK_CONTROL}:
+        return "blocked_compliance"
+    if failure_code in {
+        PiAgentFailureCode.DOKOBOT_ACTION_CAPABILITY_UNAVAILABLE,
+        PiAgentFailureCode.PROVIDER_CONNECTION_LOCKED,
+    }:
+        return "blocked_backend_unavailable"
+    if failure_code == PiAgentFailureCode.PAGE_TIMEOUT:
+        return "partial_timeout" if cards_collected else "failed_provider_error"
+    if failure_code in {PiAgentFailureCode.SELECTOR_DRIFT, PiAgentFailureCode.EXTRACTION_FAILURE}:
+        return "failed_provider_error"
+    return "failed_provider_error"
 
 
 def _candidate_ref(candidate: ResumeCandidate, *keys: str) -> str | None:

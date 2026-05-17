@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from hashlib import sha256
 import json
+from pathlib import Path
 from typing import Any
 from typing import Callable, Protocol
 from typing import TypeVar
@@ -38,6 +40,11 @@ from seektalent.providers.liepin.worker_runtime import ManagedLiepinWorkerRuntim
 
 EventCallback = Callable[[str, dict[str, object]], None]
 DecodedWorkerPayload = TypeVar("DecodedWorkerPayload")
+LIVE_LIEPIN_WORKER_MODES = frozenset({"managed_local", "external_http", "dokobot_action"})
+
+
+def is_live_liepin_worker_mode(worker_mode: str) -> bool:
+    return worker_mode in LIVE_LIEPIN_WORKER_MODES
 
 
 class LiepinWorkerClient(Protocol):
@@ -272,7 +279,7 @@ class ManagedLocalLiepinWorkerClient:
     ) -> SearchResult:
         await self.ensure_ready()
         base_url = await self._internal_base_url_async()
-        return _search_result_from_worker_response(
+        return liepin_card_search_response_to_search_result(
             _decode_worker_response(
                 decode_card_search_response,
                 await self._request_json_async(
@@ -456,7 +463,7 @@ class ExternalHttpLiepinWorkerClient:
         trace_id: str,
         provider_account_hash: str | None = None,
     ) -> SearchResult:
-        return _search_result_from_worker_response(
+        return liepin_card_search_response_to_search_result(
             _decode_worker_response(
                 decode_card_search_response,
                 await self._request_json_async(
@@ -514,9 +521,89 @@ def build_liepin_worker_client(settings: AppSettings) -> LiepinWorkerClient:
         return ManagedLocalLiepinWorkerClient(settings)
     if settings.liepin_worker_mode == "external_http":
         return ExternalHttpLiepinWorkerClient(settings)
+    if settings.liepin_worker_mode == "dokobot_action":
+        return build_liepin_pi_worker_client(settings)
     raise LiepinWorkerModeError(
         "Liepin worker mode is disabled; no worker client can be built.",
         setup_status="disabled",
+    )
+
+
+def build_liepin_pi_worker_client(settings: AppSettings) -> LiepinWorkerClient:
+    from seektalent.providers.liepin.dokobot_actions import DokoBotLiepinSearchCardsExecutor
+    from seektalent.providers.liepin.pi_runner import LiepinPiRunner
+    from seektalent.providers.liepin.pi_worker_client import LiepinPiWorkerClient
+    from seektalent.providers.pi_agent.capabilities import DokoBotActionToolManifest, DokoBotCapabilityProbe
+    from seektalent.providers.pi_agent.contracts import PiBackendMode
+    from seektalent.providers.pi_agent.dokobot_action_transport import DokoBotActionTransportSession
+    from seektalent.providers.pi_agent.locks import InMemoryPiConnectionLock
+
+    if settings.liepin_worker_mode != "dokobot_action":
+        raise LiepinWorkerModeError("Liepin PI worker requires liepin_worker_mode=dokobot_action.")
+    manifest_path_value = settings.liepin_dokobot_action_manifest_path
+    if manifest_path_value is None:
+        raise LiepinWorkerModeError(
+            "liepin_dokobot_action_manifest_path is required when liepin_worker_mode=dokobot_action.",
+            code="dokobot_action_capability_unavailable",
+        )
+    manifest_path = _resolve_settings_path(settings, manifest_path_value)
+    try:
+        manifest = DokoBotActionToolManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise LiepinWorkerModeError(
+            "Liepin DokoBot action manifest is unavailable.",
+            code="dokobot_action_capability_unavailable",
+        ) from exc
+    capabilities = DokoBotCapabilityProbe(
+        action_tool_manifest=manifest,
+        trusted_action_manifest_ids=set(settings.liepin_dokobot_trusted_manifest_ids),
+    ).discover()
+    session = DokoBotActionTransportSession(
+        capabilities=capabilities,
+        action_surface=None,
+        artifact_writer=_pi_artifact_ref_for_content,
+    )
+    runner = LiepinPiRunner(
+        backend_mode=PiBackendMode.DOKOBOT_ACTION,
+        dokobot_capabilities=capabilities,
+        connection_lock=InMemoryPiConnectionLock(),
+        trace_artifact_writer=_pi_artifact_ref_for_content,
+        dokobot_search_cards=DokoBotLiepinSearchCardsExecutor(session=session),
+    )
+    return LiepinPiWorkerClient(
+        runner,
+        session_id="local-dokobot-action",
+        connection_id="liepin-dokobot-action",
+        provider_account_lock_key="liepin-dokobot-action",
+        session_probe=session,
+    )
+
+
+def _resolve_settings_path(settings: AppSettings, value: str) -> Path:
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path
+    return settings.resolve_workspace_path(value)
+
+
+def _pi_artifact_ref_for_content(
+    content: bytes,
+    artifact_class: object,
+    policy_id: str,
+) -> object:
+    from seektalent.providers.pi_agent.contracts import PiArtifactRef, ProtectedArtifactClass
+
+    if not isinstance(artifact_class, ProtectedArtifactClass):
+        raise ValueError("unsupported PI artifact class")
+    content_hash = sha256(content).hexdigest()
+    return PiArtifactRef(
+        artifact_class=artifact_class,
+        artifact_ref=f"{artifact_class.value}/{content_hash}",
+        content_sha256=content_hash,
+        redaction_policy_id=policy_id
+        if artifact_class in {ProtectedArtifactClass.REDACTED_EVIDENCE, ProtectedArtifactClass.SAFE_SUMMARY}
+        else None,
+        protection_policy_id=policy_id if artifact_class == ProtectedArtifactClass.PROTECTED_PROVIDER_SNAPSHOT else None,
     )
 
 
@@ -647,7 +734,7 @@ def _safe_provider_filter_value(value: ConstraintValue) -> object | None:
     return None
 
 
-def _search_result_from_worker_response(response: LiepinCardSearchResponse) -> SearchResult:
+def liepin_card_search_response_to_search_result(response: LiepinCardSearchResponse) -> SearchResult:
     mapped = [map_liepin_worker_card(card) for card in response.cards]
     return SearchResult(
         candidates=[item.candidate for item in mapped],

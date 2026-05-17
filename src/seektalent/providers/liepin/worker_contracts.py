@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
+from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.providers.liepin.models import LiepinAccessScope
 from seektalent.providers.liepin.models import LiepinExtractionSource
 from seektalent.providers.liepin.models import LiepinIdentityConfidence
@@ -27,6 +28,20 @@ class LiepinWorkerModeError(RuntimeError):
         super().__init__(message)
         self.setup_status = setup_status
         self.code = code or setup_status
+
+
+class LiepinWorkerPartialSearchError(LiepinWorkerModeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        partial_search_result: SearchResult,
+        cards_collected: int,
+    ) -> None:
+        super().__init__(message, code=code)
+        self.partial_search_result = partial_search_result
+        self.cards_collected = cards_collected
 
 
 class WorkerHealth(BaseModel):
@@ -92,6 +107,25 @@ class RedactedWorkerDiagnostics(BaseModel):
     stderr: Literal["[redacted]"] | None = None
 
 
+class LiepinSafeCardSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    display_title: str | None = None
+    current_or_recent_company: str | None = None
+    current_or_recent_title: str | None = None
+    work_years: int | None = None
+    age: int | None = None
+    city: str | None = None
+    expected_city: str | None = None
+    education_level: str | None = None
+    school_names: tuple[str, ...] = ()
+    major_names: tuple[str, ...] = ()
+    skill_tags: tuple[str, ...] = ()
+    job_intention: str | None = None
+    recent_experience_text: str | None = None
+    masked_name: bool = False
+
+
 class LiepinWorkerCandidateCard(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -107,6 +141,7 @@ class LiepinWorkerCandidateCard(BaseModel):
     retention_policy: LiepinRetentionPolicy
     access_scope: LiepinAccessScope
     redaction_state: LiepinRedactionState
+    safe_card_summary: LiepinSafeCardSummary | None = Field(default=None, alias="safeCardSummary")
 
 
 class LiepinCardSearchResponse(BaseModel):

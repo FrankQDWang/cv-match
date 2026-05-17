@@ -24,7 +24,7 @@ def _safe_raw(
     raw_payload_artifact_ref: str | None,
     score_evidence_source: LiepinScoreEvidenceSource,
 ) -> dict[str, object]:
-    return {
+    raw: dict[str, object] = {
         "provider": "liepin",
         "provider_subject_id": worker_candidate.provider_subject_id,
         "provider_listing_id": worker_candidate.provider_listing_id,
@@ -39,6 +39,9 @@ def _safe_raw(
         "raw_payload_artifact_ref": raw_payload_artifact_ref,
         "score_evidence_source": score_evidence_source,
     }
+    if isinstance(worker_candidate, LiepinWorkerCandidateCard) and worker_candidate.safe_card_summary is not None:
+        raw["safe_card_summary"] = worker_candidate.safe_card_summary.model_dump(mode="json")
+    return raw
 
 
 def _map_candidate(
