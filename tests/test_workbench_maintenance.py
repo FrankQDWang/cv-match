@@ -490,7 +490,7 @@ def test_restore_checks_backup_and_replaces_workbench_database(tmp_path: Path) -
         "job_title": "Restored AI Search Lead",
         "source_kinds": ["cts", "liepin"],
         "candidate_count": 1,
-        "candidate_badges": ["Liepin"],
+        "candidate_badges": ["Liepin card"],
         "detail_request_count": 1,
         "detail_ledger_status": "leased",
     }

@@ -384,11 +384,28 @@ async function mockWorkbenchApi(page: Page) {
 		if (requestUrl.pathname === '/api/auth/me') {
 			return json({ user });
 		}
+		if (requestUrl.pathname === '/api/workbench/dev-mode/status') {
+			return json({
+				mode: 'settings',
+				overallStatus: 'configured',
+				components: [],
+				credentials: {},
+				sources: {},
+				dataRoots: { dataRoots: {} }
+			});
+		}
 		if (requestUrl.pathname === '/api/workbench/sessions') {
 			return json({ sessions: [session] });
 		}
 		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}`) {
 			return json(session);
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/final-top10`) {
+			return json({
+				items: [],
+				coverageStatus: 'complete',
+				finalizationRevision: 1
+			});
 		}
 		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/candidates`) {
 			return json({ items: [reviewCandidate] });

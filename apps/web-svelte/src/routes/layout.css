@@ -21,7 +21,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
 	font: inherit;
 }
 
@@ -106,6 +107,12 @@ a {
 	padding: 0 14px;
 }
 
+.button.secondary {
+	border-color: oklch(78% 0.035 154);
+	background: white;
+	color: oklch(34% 0.09 154);
+}
+
 .button:disabled {
 	cursor: not-allowed;
 	opacity: 0.62;
@@ -119,6 +126,280 @@ a {
 .sessions-page,
 .session-detail-page {
 	padding: 24px;
+}
+
+.sessions-workbench-layout,
+.session-control-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+	gap: 16px;
+	margin-bottom: 20px;
+}
+
+.readiness-panel,
+.session-create-panel,
+.source-status-card,
+.triage-panel,
+.run-control-panel,
+.candidate-queue,
+.detail-recommendation-panel {
+	border: 1px solid oklch(85% 0.018 82);
+	border-radius: 8px;
+	background: oklch(99% 0.006 88);
+	padding: 16px;
+}
+
+.readiness-panel h2,
+.session-create-panel h2,
+.source-status-card h2,
+.triage-panel h2,
+.run-control-panel h2,
+.candidate-queue h2,
+.detail-recommendation-panel h2 {
+	margin: 4px 0 0;
+	font-size: 18px;
+	letter-spacing: 0;
+}
+
+.readiness-grid,
+.source-status-strip {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 10px;
+	margin-top: 14px;
+}
+
+.readiness-item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: start;
+	border: 1px solid oklch(88% 0.014 82);
+	border-radius: 8px;
+	background: white;
+	padding: 12px;
+}
+
+.readiness-item strong,
+.readiness-item p {
+	margin: 0;
+}
+
+.readiness-item p,
+.source-note,
+.source-warning,
+.candidate-queue small,
+.candidate-queue li p,
+.detail-recommendation-panel p,
+.empty-state {
+	color: oklch(45% 0.03 88);
+}
+
+.readiness-item span {
+	border-radius: 999px;
+	background: oklch(94% 0.025 154);
+	color: oklch(34% 0.09 154);
+	font-size: 12px;
+	font-weight: 650;
+	padding: 4px 8px;
+}
+
+.readiness-item.warning span,
+.readiness-item.blocked span {
+	background: oklch(94% 0.045 54);
+	color: oklch(38% 0.11 42);
+}
+
+.readiness-item.ready span {
+	background: oklch(93% 0.045 154);
+	color: oklch(32% 0.11 154);
+}
+
+.session-create-form {
+	display: grid;
+	gap: 12px;
+	margin-top: 14px;
+}
+
+.session-create-form label {
+	display: grid;
+	gap: 6px;
+	color: oklch(32% 0.035 88);
+	font-size: 14px;
+	font-weight: 650;
+}
+
+.session-create-form input,
+.session-create-form textarea {
+	width: 100%;
+	box-sizing: border-box;
+	border: 1px solid oklch(82% 0.018 82);
+	border-radius: 6px;
+	background: white;
+	color: inherit;
+	padding: 10px 12px;
+	resize: vertical;
+}
+
+.source-selector,
+.run-control-actions,
+.source-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+
+.source-selector label {
+	display: inline-flex;
+	gap: 6px;
+	align-items: center;
+	border: 1px solid oklch(84% 0.018 82);
+	border-radius: 999px;
+	background: white;
+	padding: 6px 10px;
+}
+
+.source-status-strip {
+	margin: 16px 0;
+}
+
+.source-status-card {
+	min-width: 0;
+}
+
+.source-status-card.completed {
+	border-color: oklch(74% 0.07 154);
+}
+
+.source-status-card.blocked,
+.source-status-card.failed {
+	border-color: oklch(72% 0.09 32);
+}
+
+.source-status-card.running {
+	border-color: oklch(72% 0.07 248);
+}
+
+.source-status-card dl,
+.detail-recommendation-panel dl {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+	margin: 14px 0 0;
+}
+
+.source-status-card dt,
+.detail-recommendation-panel dt {
+	color: oklch(48% 0.035 95);
+	font-size: 12px;
+}
+
+.source-status-card dd,
+.detail-recommendation-panel dd {
+	margin: 2px 0 0;
+	font-weight: 700;
+}
+
+.source-warning {
+	margin: 10px 0 0;
+	color: oklch(40% 0.13 35);
+}
+
+.triage-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 12px;
+	margin-top: 14px;
+}
+
+.triage-grid section {
+	border: 1px solid oklch(88% 0.014 82);
+	border-radius: 8px;
+	background: white;
+	padding: 12px;
+}
+
+.triage-grid h3,
+.triage-grid p,
+.triage-grid ul {
+	margin: 0;
+}
+
+.triage-grid h3 {
+	margin-bottom: 8px;
+	font-size: 14px;
+}
+
+.triage-grid ul {
+	padding-left: 18px;
+}
+
+.run-control-panel,
+.detail-recommendation-panel {
+	align-self: start;
+}
+
+.run-control-actions {
+	margin-top: 14px;
+}
+
+.candidate-queue {
+	margin-bottom: 16px;
+}
+
+.candidate-queue ol {
+	display: grid;
+	gap: 10px;
+	margin: 14px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.candidate-queue li {
+	display: grid;
+	grid-template-columns: 40px minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: start;
+	border: 1px solid oklch(88% 0.014 82);
+	border-radius: 8px;
+	background: white;
+	padding: 12px;
+}
+
+.candidate-queue p {
+	margin: 4px 0;
+}
+
+.rank,
+.score {
+	display: inline-flex;
+	width: 32px;
+	height: 32px;
+	align-items: center;
+	justify-content: center;
+	border-radius: 999px;
+	background: oklch(92% 0.05 154);
+	color: oklch(32% 0.1 154);
+	font-weight: 750;
+}
+
+.score {
+	background: oklch(93% 0.04 248);
+	color: oklch(34% 0.11 248);
+}
+
+.source-badges {
+	margin-top: 8px;
+}
+
+.source-badges span {
+	border-radius: 999px;
+	background: oklch(94% 0.018 88);
+	color: oklch(38% 0.04 88);
+	font-size: 12px;
+	font-weight: 650;
+	padding: 4px 8px;
 }
 
 .page-head {
@@ -212,10 +493,31 @@ a {
 		grid-template-columns: minmax(0, 1fr) 320px;
 		gap: 12px;
 	}
+
+	.sessions-workbench-layout,
+	.session-control-grid {
+		grid-template-columns: 1fr;
+	}
 }
 
 @media (max-width: 820px) {
 	.workbench-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.candidate-queue li {
+		grid-template-columns: 32px minmax(0, 1fr);
+	}
+
+	.candidate-queue .score {
+		grid-column: 2;
+		justify-self: start;
+	}
+}
+
+@media (max-width: 520px) {
+	.source-status-card dl,
+	.detail-recommendation-panel dl {
 		grid-template-columns: 1fr;
 	}
 }

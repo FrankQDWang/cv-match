@@ -377,6 +377,7 @@ class WorkbenchRuntimeSourceLaneStateResponse(BaseModel):
 
     sourceKind: SourceKind
     status: RuntimeSourceDisplayStatus
+    reasonCode: str | None = None
     eventType: str | None = None
     eventSeq: int | None = None
     cardsSeenCount: int = 0
@@ -397,6 +398,43 @@ class WorkbenchRuntimeSourceStateResponse(BaseModel):
     ambiguousDuplicateCount: int = 0
     canonicalResumeSelectedCount: int = 0
     sources: list[WorkbenchRuntimeSourceLaneStateResponse]
+
+
+class WorkbenchDevModeComponentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    label: str
+    status: str
+    reasonCode: str | None = None
+    authNote: str | None = None
+
+
+class WorkbenchDevModeDataRootResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    label: str
+    status: str
+    reasonCode: str
+
+
+class WorkbenchDevModeDataRootPostureResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    roots: dict[str, WorkbenchDevModeDataRootResponse]
+
+
+class WorkbenchDevModeStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["settings", "raw_env_diagnostics"]
+    overallStatus: str
+    components: list[WorkbenchDevModeComponentResponse]
+    credentials: dict[str, WorkbenchDevModeComponentResponse]
+    sources: dict[str, WorkbenchDevModeComponentResponse]
+    dataRoots: WorkbenchDevModeDataRootPostureResponse
 
 
 class WorkbenchSessionResponse(BaseModel):
@@ -677,6 +715,45 @@ class WorkbenchCandidateEvidenceResponse(BaseModel):
     strengths: list[str]
     weaknesses: list[str]
     createdAt: str
+
+
+class WorkbenchFinalTopCandidateEvidenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidenceId: str
+    sourceRunId: str
+    sourceKind: SourceKind
+    evidenceLevel: WorkbenchCandidateEvidenceLevel
+    score: int | None = None
+    fitBucket: str | None = None
+
+
+class WorkbenchFinalTopCandidateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewItemId: str
+    runtimeIdentityId: str
+    canonicalReviewItemId: str
+    mergedReviewItemIds: list[str]
+    rank: int
+    displayName: str
+    title: str
+    company: str
+    location: str
+    summary: str
+    aggregateScore: int | None = None
+    fitBucket: str | None = None
+    sourceBadges: list[str]
+    evidenceLevel: WorkbenchCandidateEvidenceLevel
+    sourceEvidence: list[WorkbenchFinalTopCandidateEvidenceResponse]
+
+
+class WorkbenchFinalTopCandidateListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[WorkbenchFinalTopCandidateResponse]
+    coverageStatus: RuntimeSourceCoverageStatus
+    finalizationRevision: int | None = None
 
 
 class WorkbenchGraphCandidateSummaryResponse(BaseModel):

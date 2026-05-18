@@ -122,6 +122,24 @@ Memory rows must not store candidate PII or raw resume/profile material by defau
 
 The current implementation includes a first-class `security_audit_events` table and admin-only audit API for implemented sensitive workbench actions such as bootstrap, login/logout, source connection changes, Liepin detail policy changes, detail-open approval decisions, provider open actions, backup/restore, and feature-gate startup state. Audit metadata is redacted before persistence and must not contain passwords, session tokens, CSRF tokens, cookies, auth headers, browser storage, CDP endpoints, raw provider payloads, or raw resume/profile content.
 
+## Dev Mode BYOK Svelte Workbench
+
+The Svelte Workbench is the dev-mode pilot surface for the local dual-source milestone. It supports local BYOK readiness checks, session creation, requirement triage, CTS/Liepin source selection, source-run start, source status, strategy graph, candidate queue, and safe resume snapshots.
+
+Run the focused milestone verification gate:
+
+```bash
+./scripts/verify-dev-workbench.sh
+```
+
+Live Liepin smoke is manual and explicit:
+
+```bash
+uv run seektalent liepin-smoke --live --worker-mode pi_agent --keyword "python" --page-size 1 --max-detail-opens 1
+```
+
+The smoke command requires local BYOK settings, Pi RPC configuration, DokoBot available inside Pi, and an already logged-in Liepin browser session. It is not part of the default automated gate.
+
 ## Runtime And Error Boundaries
 
 Source runs are durable workbench records. The UI should treat source cards as the current materialized state and SSE as the progress stream, not as the source of truth after refresh.

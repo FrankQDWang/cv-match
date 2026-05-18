@@ -71,3 +71,17 @@ bun run api:gen && bun run check && bun run lint && bun run test && bun run buil
   - Not measured in this spike.
 - Justified dirty-file deviation:
   - `TODOS.md` was updated to preserve deferred migration follow-ups from this spike: seeded live-backend fixture, Svelte Flow/ELK bundle splitting, OpenAPI drift checks, UI route selection, ESLint boundary rules, and polling-vs-SSE decision.
+
+## Dev Mode BYOK Dual-Source Milestone
+
+The Svelte app now covers dev-mode BYOK readiness, session creation, explicit CTS/Liepin source selection, requirement triage controls, source-run start, source status, unified Top 10 candidate queue, and Liepin detail recommendation visibility.
+
+The backend contract for this milestone is not a frontend-only mock. It includes safe readiness diagnostics, blank-triage approval rejection, Runtime lane status propagation into Workbench source runs, source badge semantics, and an identity-level final Top 10 endpoint.
+
+Verification added for this milestone:
+
+- Python semantic gate: `SEEKTALENT_VERIFY_PYTHON_ONLY=1 ./scripts/verify-dev-workbench.sh`
+- Svelte unit/component/API coverage: readiness display helpers, API wrappers, source-run controls, candidate queue, and component harness.
+- Playwright dual-source milestone e2e: readiness, session creation, triage generation/approval, source start, degraded Liepin state, final Top 10 badges, detail recommendation posture, mobile overflow check, and no raw leak strings.
+
+Known follow-ups remain: split Svelte Flow/ELK from the detail-route bundle, add the OpenAPI drift gate to CI, decide the production UI component route, and add seeded live-backend fixtures with non-trivial Workbench data.

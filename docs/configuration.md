@@ -231,6 +231,23 @@ The local-first CLI and local workbench keep business data on the user's machine
 
 Repository-local and known sync-folder roots are acceptable only as source-checkout development warnings. Packaged or production users should use a non-repository local data root such as the user's `.seektalent` directory.
 
+## Dev Mode BYOK Readiness
+
+For the first local dual-source Svelte milestone, BYOK readiness is diagnostic. The Workbench may report whether text LLM, CTS, Liepin/Pi settings, and local data-root posture are configured or risky, but it must not display API keys, tokens, cookies, command secrets, protected artifact paths, raw provider payloads, or sensitive local filesystem paths.
+
+Required live variables:
+
+| Variable | Notes |
+| --- | --- |
+| `SEEKTALENT_TEXT_LLM_API_KEY` | User-provided text LLM key. |
+| `SEEKTALENT_CTS_TENANT_KEY` | User-provided CTS tenant key. |
+| `SEEKTALENT_CTS_TENANT_SECRET` | User-provided CTS tenant secret. |
+| `SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent` | Enables the Pi-backed Liepin executor. |
+| `SEEKTALENT_LIEPIN_PI_COMMAND=pi --mode rpc --no-session` | Pi RPC command; do not put secrets in it. |
+| `SEEKTALENT_LIEPIN_PI_SKILL_PATH=src/seektalent/providers/pi_agent/pi_skills/liepin_search_cards.md` | Repo-owned Liepin card-search skill. |
+| `SEEKTALENT_LIEPIN_PI_DOKOBOT_TOOL_NAME=dokobot` | DokoBot MCP tool name inside Pi. |
+| `SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=<local non-placeholder secret>` | Local HMAC/account-binding secret. |
+
 ## Eval Variables
 
 Eval is off by default. Enable it with `SEEKTALENT_ENABLE_EVAL=true` or the CLI `--enable-eval` flag.

@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import secrets
 import threading
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -23,6 +25,7 @@ from pydantic import ValidationError
 from sse_starlette import EventSourceResponse
 
 from seektalent.config import AppSettings, load_process_env
+from seektalent.dev_mode import DevModeStatus, build_dev_mode_env_diagnostics
 from seektalent.providers.liepin.compliance import ComplianceGate
 from seektalent.providers.liepin.models import SubjectType
 from seektalent.providers.liepin.security import issue_stream_token, read_stream_token_payload
@@ -188,11 +191,13 @@ def create_app(
     settings: AppSettings | None = None,
     *,
     network_guard: NetworkGuard | None = None,
+    dev_mode_env_diagnostics: DevModeStatus | None = None,
 ) -> FastAPI:
     app_settings = settings or registry.settings
     store = LiepinStore(_liepin_db_path(app_settings))
     app = FastAPI(title="SeekTalent UI API")
     app.state.settings = app_settings
+    app.state.dev_mode_env_diagnostics = dev_mode_env_diagnostics
     app.state.workbench_graph_secret = secrets.token_urlsafe(32)
     app.state.workbench_store = WorkbenchStore(_workbench_db_path(app_settings))
     app.state.workbench_store.reconcile_expired_running_jobs()
@@ -963,10 +968,20 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(str(exc))
         return 2
-    settings = AppSettings().with_overrides(
-        mock_cts=args.mock_cts,
-        workbench_enabled=False if args.disable_workbench else None,
-    )
+    dev_mode_env_diagnostics = None
+    try:
+        settings = AppSettings().with_overrides(
+            mock_cts=args.mock_cts,
+            workbench_enabled=False if args.disable_workbench else None,
+        )
+    except ValidationError as exc:
+        if not _can_recover_with_dev_mode_env_diagnostics(exc, os.environ):
+            raise
+        dev_mode_env_diagnostics = build_dev_mode_env_diagnostics(os.environ, workspace_root=Path.cwd())
+        settings = AppSettings(_env_file=None, liepin_worker_mode="disabled").with_overrides(
+            mock_cts=args.mock_cts,
+            workbench_enabled=False if args.disable_workbench else None,
+        )
     registry = RunRegistry(settings)
     network_guard = build_network_guard(
         bind_host=args.host,
@@ -977,10 +992,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(render_startup_diagnostics(network_guard))
     try:
-        uvicorn.run(create_app(registry, settings=settings, network_guard=network_guard), host=args.host, port=args.port)
+        uvicorn.run(
+            create_app(
+                registry,
+                settings=settings,
+                network_guard=network_guard,
+                dev_mode_env_diagnostics=dev_mode_env_diagnostics,
+            ),
+            host=args.host,
+            port=args.port,
+        )
     except KeyboardInterrupt:
         return 0
     return 0
+
+
+def _can_recover_with_dev_mode_env_diagnostics(exc: ValidationError, env: Mapping[str, str]) -> bool:
+    if env.get("SEEKTALENT_LIEPIN_WORKER_MODE", "").strip() != "pi_agent":
+        return False
+    message = str(exc)
+    return any(
+        token in message
+        for token in (
+            "liepin_account_binding_secret",
+            "liepin_pi_command",
+            "liepin_pi_skill_path",
+            "liepin_pi_dokobot_tool_name",
+        )
+    )
 
 
 if __name__ == "__main__":

@@ -3,6 +3,10 @@ import type { components } from './schema';
 
 type BootstrapAdminInput = components['schemas']['WorkbenchBootstrapRequest'];
 type LoginInput = components['schemas']['WorkbenchLoginRequest'];
+type WorkbenchSessionCreateInput = components['schemas']['WorkbenchSessionCreateRequest'];
+type WorkbenchRequirementTriageUpdateInput =
+	components['schemas']['WorkbenchRequirementTriageUpdateRequest'];
+type LiepinPolicyUpdateInput = components['schemas']['WorkbenchSourceRunPolicyUpdateRequest'];
 type WorkbenchEvent = components['schemas']['WorkbenchEventResponse'];
 type GraphCandidateQuery = {
 	node_id: string;
@@ -41,9 +45,53 @@ export async function listSessions() {
 	return requireData(await api.GET('/api/workbench/sessions'));
 }
 
+export async function createSession(input: WorkbenchSessionCreateInput) {
+	return requireData(await api.POST('/api/workbench/sessions', { body: input }));
+}
+
 export async function getSession(sessionId: string) {
 	return requireData(
 		await api.GET('/api/workbench/sessions/{session_id}', {
+			params: { path: { session_id: sessionId } }
+		})
+	);
+}
+
+export async function getDevModeStatus() {
+	return requireData(await api.GET('/api/workbench/dev-mode/status'));
+}
+
+export async function prepareRequirementTriage(sessionId: string) {
+	return requireData(
+		await api.POST('/api/workbench/sessions/{session_id}/triage/prepare', {
+			params: { path: { session_id: sessionId } }
+		})
+	);
+}
+
+export async function updateRequirementTriage(
+	sessionId: string,
+	input: WorkbenchRequirementTriageUpdateInput
+) {
+	return requireData(
+		await api.PUT('/api/workbench/sessions/{session_id}/triage', {
+			params: { path: { session_id: sessionId } },
+			body: input
+		})
+	);
+}
+
+export async function approveRequirementTriage(sessionId: string) {
+	return requireData(
+		await api.POST('/api/workbench/sessions/{session_id}/triage/approve', {
+			params: { path: { session_id: sessionId } }
+		})
+	);
+}
+
+export async function startSessionSourceRuns(sessionId: string) {
+	return requireData(
+		await api.POST('/api/workbench/sessions/{session_id}/start', {
 			params: { path: { session_id: sessionId } }
 		})
 	);
@@ -53,6 +101,38 @@ export async function listCandidateReviewItems(sessionId: string) {
 	return requireData(
 		await api.GET('/api/workbench/sessions/{session_id}/candidates', {
 			params: { path: { session_id: sessionId } }
+		})
+	);
+}
+
+export async function listFinalTopCandidates(sessionId: string) {
+	return requireData(
+		await api.GET('/api/workbench/sessions/{session_id}/final-top10', {
+			params: { path: { session_id: sessionId } }
+		})
+	);
+}
+
+export async function listSourceConnections() {
+	return requireData(await api.GET('/api/workbench/source-connections'));
+}
+
+export async function getLiepinSourceRunPolicy(sessionId: string) {
+	return requireData(
+		await api.GET('/api/workbench/sessions/{session_id}/source-runs/liepin/policy', {
+			params: { path: { session_id: sessionId } }
+		})
+	);
+}
+
+export async function updateLiepinSourceRunPolicy(
+	sessionId: string,
+	input: LiepinPolicyUpdateInput
+) {
+	return requireData(
+		await api.PUT('/api/workbench/sessions/{session_id}/source-runs/liepin/policy', {
+			params: { path: { session_id: sessionId } },
+			body: input
 		})
 	);
 }

@@ -219,6 +219,8 @@ class WorkbenchCandidateEvidence:
     source_run_id: str
     source_kind: Literal["cts", "liepin"]
     evidence_level: CandidateEvidenceLevel
+    provider_candidate_key_hash: str
+    runtime_identity_id: str | None
     resume_id: str
     score: int | None
     fit_bucket: str | None
@@ -1260,6 +1262,11 @@ class WorkbenchStore:
             conn.execute("BEGIN IMMEDIATE")
             if not _session_exists_for_user(conn, user=user, session_id=session_id):
                 return None
+            triage = _triage_by_session(conn, [session_id]).get(session_id)
+            if triage is None:
+                return None
+            if not _triage_has_visible_criteria(triage):
+                raise PermissionError("requirement_triage_empty")
             conn.execute(
                 """
                 UPDATE session_requirement_triage
@@ -2108,10 +2115,20 @@ class WorkbenchStore:
                 """
                 UPDATE source_runs
                 SET cards_scanned_count = ?,
-                    unique_candidates_count = ?
+                    unique_candidates_count = ?,
+                    status = ?,
+                    warning_code = ?,
+                    warning_message = ?
                 WHERE source_run_id = ?
                 """,
-                (cards_scanned_count, len(review_item_ids), context.job.source_run_id),
+                (
+                    cards_scanned_count,
+                    len(review_item_ids),
+                    "completed",
+                    None,
+                    None,
+                    context.job.source_run_id,
+                ),
             )
             _append_workbench_event_conn(
                 conn,
@@ -2174,10 +2191,20 @@ class WorkbenchStore:
                 """
                 UPDATE source_runs
                 SET cards_scanned_count = ?,
-                    unique_candidates_count = ?
+                    unique_candidates_count = ?,
+                    status = ?,
+                    warning_code = ?,
+                    warning_message = ?
                 WHERE source_run_id = ?
                 """,
-                (cards_scanned_count, len(review_item_ids), context.job.source_run_id),
+                (
+                    cards_scanned_count,
+                    len(review_item_ids),
+                    _liepin_source_run_status_from_lane_result(result),
+                    _liepin_warning_code_from_lane_result(result),
+                    _liepin_warning_message_from_lane_result(result),
+                    context.job.source_run_id,
+                ),
             )
             _append_workbench_event_conn(
                 conn,
@@ -2195,7 +2222,10 @@ class WorkbenchStore:
                     "uniqueCandidatesCount": len(review_item_ids),
                 },
             )
-            for event in _object_list(_attr(result, "events")):
+            runtime_events = _object_list(_attr(result, "events"))
+            if not runtime_events:
+                runtime_events = [_synthetic_runtime_source_lane_event(result)]
+            for event in runtime_events:
                 event_payload = _runtime_source_lane_event_payload(event)
                 if event_payload is None:
                     continue
@@ -2218,10 +2248,13 @@ class WorkbenchStore:
             self._finish_source_run_job_conn(
                 conn,
                 row=row,
-                status="completed",
-                error_message=None,
-                event_name="source_run_completed",
+                status=_liepin_job_status_from_lane_result(result),
+                error_message=_liepin_job_error_from_lane_result(result),
+                event_name=_liepin_source_run_event_name_from_lane_result(result),
                 now=now,
+                source_status=_liepin_source_run_status_from_lane_result(result),
+                warning_code=_liepin_warning_code_from_lane_result(result),
+                warning_message=_liepin_warning_message_from_lane_result(result),
             )
         return self._list_candidate_review_items_by_ids(
             user=WorkbenchUser(
@@ -2257,6 +2290,7 @@ class WorkbenchStore:
             return []
         candidate_store = getattr(artifacts, "candidate_store", {}) or {}
         normalized_store = getattr(artifacts, "normalized_store", {}) or {}
+        runtime_identity_by_resume_id = _runtime_identity_by_resume_id_from_artifacts(artifacts)
         review_item_ids: list[str] = []
         for candidate in final_candidates:
             provider_resume_id = _safe_candidate_text(_attr(candidate, "resume_id"), 128)
@@ -2288,6 +2322,7 @@ class WorkbenchStore:
             provider_key_hash = _sha256_text(
                 _safe_candidate_text(_attr(raw_candidate, "source_resume_id"), 256) or provider_resume_id
             )
+            runtime_identity_id = runtime_identity_by_resume_id.get(provider_resume_id)
             conn.execute(
                 """
                 INSERT INTO candidate_review_items (
@@ -2330,13 +2365,16 @@ class WorkbenchStore:
                 INSERT INTO candidate_evidence (
                     evidence_id, review_item_id, tenant_id, workspace_id, user_id, session_id,
                     source_run_id, source_kind, evidence_level, provider_candidate_key_hash,
-                    resume_id, score, fit_bucket, matched_must_haves_json,
+                    runtime_identity_id, resume_id, score, fit_bucket, matched_must_haves_json,
                     matched_preferences_json, missing_risks_json, strengths_json, weaknesses_json,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'final', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'final', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(evidence_id) DO UPDATE SET
                     review_item_id = excluded.review_item_id,
+                    provider_candidate_key_hash = excluded.provider_candidate_key_hash,
+                    runtime_identity_id = excluded.runtime_identity_id,
+                    resume_id = excluded.resume_id,
                     score = excluded.score,
                     fit_bucket = excluded.fit_bucket,
                     matched_must_haves_json = excluded.matched_must_haves_json,
@@ -2355,6 +2393,7 @@ class WorkbenchStore:
                     context.job.source_run_id,
                     context.job.source_kind,
                     provider_key_hash,
+                    runtime_identity_id,
                     workbench_resume_id,
                     score,
                     fit_bucket,
@@ -2483,6 +2522,7 @@ class WorkbenchStore:
             if should_request_detail:
                 missing_risks.append("Agent recommends detail review before final outreach.")
             provider_key_hash = _sha256_text(provider_key)
+            runtime_identity_id = None
             conn.execute(
                 """
                 INSERT INTO candidate_review_items (
@@ -2525,13 +2565,16 @@ class WorkbenchStore:
                 INSERT INTO candidate_evidence (
                     evidence_id, review_item_id, tenant_id, workspace_id, user_id, session_id,
                     source_run_id, source_kind, evidence_level, provider_candidate_key_hash,
-                    resume_id, score, fit_bucket, matched_must_haves_json,
+                    runtime_identity_id, resume_id, score, fit_bucket, matched_must_haves_json,
                     matched_preferences_json, missing_risks_json, strengths_json, weaknesses_json,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'liepin', 'card', ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'liepin', 'card', ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)
                 ON CONFLICT(evidence_id) DO UPDATE SET
                     review_item_id = excluded.review_item_id,
+                    provider_candidate_key_hash = excluded.provider_candidate_key_hash,
+                    runtime_identity_id = excluded.runtime_identity_id,
+                    resume_id = excluded.resume_id,
                     score = excluded.score,
                     fit_bucket = excluded.fit_bucket,
                     matched_must_haves_json = excluded.matched_must_haves_json,
@@ -2548,6 +2591,7 @@ class WorkbenchStore:
                     context.session.session_id,
                     context.job.source_run_id,
                     provider_key_hash,
+                    runtime_identity_id,
                     workbench_resume_id,
                     auto_score,
                     "card_recommended" if should_request_detail else "card",
@@ -3259,7 +3303,13 @@ class WorkbenchStore:
         error_message: str | None,
         event_name: str,
         now: str,
+        source_status: Literal["queued", "blocked", "running", "completed", "failed"] | None = None,
+        warning_code: str | None = None,
+        warning_message: str | None = None,
     ) -> None:
+        final_source_status = source_status or status
+        final_warning_code = warning_code if source_status is not None else ("runtime_failed" if status == "failed" else None)
+        final_warning_message = warning_message if source_status is not None else redact_text(error_message)
         conn.execute(
             """
             UPDATE source_run_jobs
@@ -3275,9 +3325,9 @@ class WorkbenchStore:
             WHERE source_run_id = ?
             """,
             (
-                status,
-                "runtime_failed" if status == "failed" else None,
-                redact_text(error_message),
+                final_source_status,
+                final_warning_code,
+                final_warning_message,
                 row["source_run_id"],
             ),
         )
@@ -3681,6 +3731,7 @@ class WorkbenchStore:
                     source_kind TEXT NOT NULL CHECK(source_kind IN ('cts', 'liepin')),
                     evidence_level TEXT NOT NULL CHECK(evidence_level IN ('card', 'detail', 'final')),
                     provider_candidate_key_hash TEXT NOT NULL,
+                    runtime_identity_id TEXT,
                     resume_id TEXT NOT NULL,
                     score INTEGER,
                     fit_bucket TEXT,
@@ -3826,6 +3877,7 @@ class WorkbenchStore:
             _ensure_column(conn, "source_runs", "unique_candidates_count", "INTEGER NOT NULL DEFAULT 0")
             _ensure_column(conn, "source_runs", "detail_open_used_count", "INTEGER NOT NULL DEFAULT 0")
             _ensure_column(conn, "source_runs", "detail_open_blocked_count", "INTEGER NOT NULL DEFAULT 0")
+            _ensure_column(conn, "candidate_evidence", "runtime_identity_id", "TEXT")
             _backfill_completed_cts_source_run_counts(conn)
         self._initialized = True
 
@@ -4638,6 +4690,8 @@ def _candidate_evidence_from_row(row: sqlite3.Row) -> WorkbenchCandidateEvidence
         source_run_id=row["source_run_id"],
         source_kind=row["source_kind"],
         evidence_level=row["evidence_level"],
+        provider_candidate_key_hash=row["provider_candidate_key_hash"],
+        runtime_identity_id=row["runtime_identity_id"],
         resume_id=row["resume_id"],
         score=row["score"],
         fit_bucket=row["fit_bucket"],
@@ -4650,11 +4704,21 @@ def _candidate_evidence_from_row(row: sqlite3.Row) -> WorkbenchCandidateEvidence
     )
 
 
+def _source_badge_for_evidence(evidence: WorkbenchCandidateEvidence) -> str:
+    if evidence.source_kind == "cts":
+        return "CTS final" if evidence.evidence_level == "final" else "CTS"
+    if evidence.evidence_level == "detail":
+        return "Liepin detail"
+    return "Liepin card"
+
+
 def _review_item_from_row(
     row: sqlite3.Row,
     evidence: list[WorkbenchCandidateEvidence],
 ) -> WorkbenchCandidateReviewItem:
-    source_badges = sorted({"CTS" if item.source_kind == "cts" else "Liepin" for item in evidence})
+    source_badges = _unique_list(_source_badge_for_evidence(item) for item in evidence)
+    if len({item.source_kind for item in evidence}) > 1:
+        source_badges.append("Multiple sources")
     evidence_level = _strongest_evidence_level(evidence)
     matched_must_haves = _unique_list(value for item in evidence for value in item.matched_must_haves)
     matched_preferences = _unique_list(value for item in evidence for value in item.matched_preferences)
@@ -4684,6 +4748,104 @@ def _review_item_from_row(
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
+
+
+def _triage_has_visible_criteria(triage: WorkbenchRequirementTriage) -> bool:
+    return any(
+        values
+        for values in (
+            triage.must_haves,
+            triage.nice_to_haves,
+            triage.synonyms,
+            triage.seniority_filters,
+            triage.exclusions,
+            triage.generated_query_hints,
+        )
+    )
+
+
+def _liepin_lane_status(result: object) -> str:
+    status = _safe_candidate_text(_attr(result, "status"), 64)
+    return status or "completed"
+
+
+def _liepin_job_status_from_lane_result(result: object) -> Literal["completed", "failed"]:
+    return "failed" if _liepin_lane_status(result) in {"blocked", "failed", "cancelled"} else "completed"
+
+
+def _liepin_source_run_status_from_lane_result(result: object) -> Literal["queued", "blocked", "running", "completed", "failed"]:
+    status = _liepin_lane_status(result)
+    if status == "blocked":
+        return "blocked"
+    if status in {"failed", "cancelled"}:
+        return "failed"
+    return "completed"
+
+
+def _liepin_warning_code_from_lane_result(result: object) -> str | None:
+    status = _liepin_lane_status(result)
+    if status == "blocked":
+        return _safe_candidate_text(_attr(result, "blocked_reason_code"), 128) or "blocked_backend_unavailable"
+    if status == "partial":
+        return _safe_candidate_text(_attr(result, "stop_reason_code"), 128) or "partial_timeout"
+    if status == "cancelled":
+        return "cancelled_by_user"
+    if status == "failed":
+        return "runtime_failed"
+    return None
+
+
+def _liepin_warning_message_from_lane_result(result: object) -> str | None:
+    status = _liepin_lane_status(result)
+    if status in {"completed"}:
+        return None
+    return redact_text(_safe_candidate_text(_attr(result, "safe_error_summary"), 500) or f"Liepin lane ended with status {status}.")
+
+
+def _liepin_job_error_from_lane_result(result: object) -> str | None:
+    if _liepin_job_status_from_lane_result(result) == "completed":
+        return None
+    return _liepin_warning_message_from_lane_result(result)
+
+
+def _liepin_source_run_event_name_from_lane_result(result: object) -> str:
+    status = _liepin_lane_status(result)
+    if status == "blocked":
+        return "source_run_blocked"
+    if status in {"failed", "cancelled"}:
+        return "source_run_failed"
+    return "source_run_completed"
+
+
+def _synthetic_runtime_source_lane_event(result: object) -> dict[str, object]:
+    status = _liepin_lane_status(result)
+    event_type_by_status = {
+        "completed": "source_lane_completed",
+        "blocked": "source_lane_blocked",
+        "partial": "source_lane_partial",
+        "failed": "source_lane_failed",
+        "cancelled": "source_lane_cancelled",
+    }
+    raw_candidate_count = _int_or_none(_attr(result, "raw_candidate_count")) or 0
+    return {
+        "schema_version": "runtime_source_lane_event_v1",
+        "runtime_run_id": _safe_candidate_text(_attr(result, "runtime_run_id"), 256) or "runtime",
+        "source_plan_id": _safe_candidate_text(_attr(result, "source_plan_id"), 256) or "runtime:source:liepin",
+        "source_lane_run_id": _safe_candidate_text(_attr(result, "source_lane_run_id"), 256) or "runtime:lane:liepin",
+        "source": "liepin",
+        "attempt": _int_or_none(_attr(result, "attempt")) or 1,
+        "event_seq": 1,
+        "event_type": event_type_by_status.get(status, "source_lane_completed"),
+        "status": status,
+        "safe_counts": {
+            "cards_seen": raw_candidate_count,
+            "candidates": len(_object_list(_attr(result, "candidates"))),
+            "detail_recommendations": len(_object_list(_attr(result, "detail_recommendations"))),
+        },
+        "blocked_reason_code": _safe_candidate_text(_attr(result, "blocked_reason_code"), 128),
+        "stop_reason_code": _safe_candidate_text(_attr(result, "stop_reason_code"), 128),
+        "safe_reason_code": _liepin_warning_code_from_lane_result(result),
+    }
 
 
 def _strongest_evidence_level(evidence: list[WorkbenchCandidateEvidence]) -> CandidateEvidenceLevel:
@@ -5142,6 +5304,20 @@ def _safe_list(value: object, max_items: int, max_length: int) -> list[str]:
         text = _safe_candidate_text(item, max_length)
         if text:
             result.append(text)
+    return result
+
+
+def _runtime_identity_by_resume_id_from_artifacts(artifacts: object) -> dict[str, str]:
+    run_state = getattr(artifacts, "run_state", None)
+    value = getattr(run_state, "candidate_identity_by_resume_id", None)
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, str] = {}
+    for resume_id, identity_id in value.items():
+        safe_resume_id = _safe_candidate_text(resume_id, 128)
+        safe_identity_id = _safe_candidate_text(identity_id, 256)
+        if safe_resume_id and safe_identity_id:
+            result[safe_resume_id] = safe_identity_id
     return result
 
 

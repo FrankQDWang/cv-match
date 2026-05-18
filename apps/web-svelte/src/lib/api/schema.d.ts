@@ -124,6 +124,40 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/workbench/sessions/{session_id}/final-top10': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List Final Top Candidates */
+		get: operations['list_final_top_candidates_api_workbench_sessions__session_id__final_top10_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/workbench/dev-mode/status': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Dev Mode Status */
+		get: operations['get_dev_mode_status_api_workbench_dev_mode_status_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/workbench/sessions/{session_id}/graph-candidates': {
 		parameters: {
 			query?: never;
@@ -1301,6 +1335,60 @@ export interface components {
 			/** Updatedat */
 			updatedAt: string;
 		};
+		/** WorkbenchDevModeComponentResponse */
+		WorkbenchDevModeComponentResponse: {
+			/** Name */
+			name: string;
+			/** Label */
+			label: string;
+			/** Status */
+			status: string;
+			/** Reasoncode */
+			reasonCode?: string | null;
+			/** Authnote */
+			authNote?: string | null;
+		};
+		/** WorkbenchDevModeDataRootPostureResponse */
+		WorkbenchDevModeDataRootPostureResponse: {
+			/** Status */
+			status: string;
+			/** Roots */
+			roots: {
+				[key: string]: components['schemas']['WorkbenchDevModeDataRootResponse'];
+			};
+		};
+		/** WorkbenchDevModeDataRootResponse */
+		WorkbenchDevModeDataRootResponse: {
+			/** Name */
+			name: string;
+			/** Label */
+			label: string;
+			/** Status */
+			status: string;
+			/** Reasoncode */
+			reasonCode: string;
+		};
+		/** WorkbenchDevModeStatusResponse */
+		WorkbenchDevModeStatusResponse: {
+			/**
+			 * Mode
+			 * @enum {string}
+			 */
+			mode: 'settings' | 'raw_env_diagnostics';
+			/** Overallstatus */
+			overallStatus: string;
+			/** Components */
+			components: components['schemas']['WorkbenchDevModeComponentResponse'][];
+			/** Credentials */
+			credentials: {
+				[key: string]: components['schemas']['WorkbenchDevModeComponentResponse'];
+			};
+			/** Sources */
+			sources: {
+				[key: string]: components['schemas']['WorkbenchDevModeComponentResponse'];
+			};
+			dataRoots: components['schemas']['WorkbenchDevModeDataRootPostureResponse'];
+		};
 		/** WorkbenchEventListResponse */
 		WorkbenchEventListResponse: {
 			/** Events */
@@ -1332,6 +1420,75 @@ export interface components {
 			occurredAt: string;
 			/** Createdat */
 			createdAt: string;
+		};
+		/** WorkbenchFinalTopCandidateEvidenceResponse */
+		WorkbenchFinalTopCandidateEvidenceResponse: {
+			/** Evidenceid */
+			evidenceId: string;
+			/** Sourcerunid */
+			sourceRunId: string;
+			/**
+			 * Sourcekind
+			 * @enum {string}
+			 */
+			sourceKind: 'cts' | 'liepin';
+			/**
+			 * Evidencelevel
+			 * @enum {string}
+			 */
+			evidenceLevel: 'card' | 'detail' | 'final';
+			/** Score */
+			score?: number | null;
+			/** Fitbucket */
+			fitBucket?: string | null;
+		};
+		/** WorkbenchFinalTopCandidateListResponse */
+		WorkbenchFinalTopCandidateListResponse: {
+			/** Items */
+			items: components['schemas']['WorkbenchFinalTopCandidateResponse'][];
+			/**
+			 * Coveragestatus
+			 * @enum {string}
+			 */
+			coverageStatus: 'pending' | 'complete' | 'degraded' | 'empty';
+			/** Finalizationrevision */
+			finalizationRevision?: number | null;
+		};
+		/** WorkbenchFinalTopCandidateResponse */
+		WorkbenchFinalTopCandidateResponse: {
+			/** Reviewitemid */
+			reviewItemId: string;
+			/** Runtimeidentityid */
+			runtimeIdentityId: string;
+			/** Canonicalreviewitemid */
+			canonicalReviewItemId: string;
+			/** Mergedreviewitemids */
+			mergedReviewItemIds: string[];
+			/** Rank */
+			rank: number;
+			/** Displayname */
+			displayName: string;
+			/** Title */
+			title: string;
+			/** Company */
+			company: string;
+			/** Location */
+			location: string;
+			/** Summary */
+			summary: string;
+			/** Aggregatescore */
+			aggregateScore?: number | null;
+			/** Fitbucket */
+			fitBucket?: string | null;
+			/** Sourcebadges */
+			sourceBadges: string[];
+			/**
+			 * Evidencelevel
+			 * @enum {string}
+			 */
+			evidenceLevel: 'card' | 'detail' | 'final';
+			/** Sourceevidence */
+			sourceEvidence: components['schemas']['WorkbenchFinalTopCandidateEvidenceResponse'][];
 		};
 		/** WorkbenchGraphCandidateCoverageResponse */
 		WorkbenchGraphCandidateCoverageResponse: {
@@ -1718,6 +1875,8 @@ export interface components {
 			 * @enum {string}
 			 */
 			status: 'pending' | 'running' | 'completed' | 'partial' | 'blocked' | 'failed' | 'cancelled';
+			/** Reasoncode */
+			reasonCode?: string | null;
 			/** Eventtype */
 			eventType?: string | null;
 			/** Eventseq */
@@ -2390,6 +2549,70 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['WorkbenchCandidateReviewQueueResponse'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	list_final_top_candidates_api_workbench_sessions__session_id__final_top10_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: {
+				seektalent_workbench_session?: string | null;
+			};
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['WorkbenchFinalTopCandidateListResponse'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	get_dev_mode_status_api_workbench_dev_mode_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: {
+				seektalent_workbench_session?: string | null;
+			};
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['WorkbenchDevModeStatusResponse'];
 				};
 			};
 			/** @description Validation Error */

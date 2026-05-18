@@ -93,4 +93,61 @@ describe('workbench API functions', () => {
 			'/api/workbench/sessions/session%201/graph-candidates?node_id=node%2F1&limit=25&cursor=cursor-1'
 		]);
 	});
+
+	it('calls the dev-mode and dual-source workbench endpoints', async () => {
+		const requests: string[] = [];
+		const fetchMock = vi.fn(async (request: Request) => {
+			const url = new URL(request.url);
+			requests.push(`${request.method} ${url.pathname}`);
+			if (url.pathname === '/api/workbench/dev-mode/status') {
+				return jsonResponse({
+					mode: 'settings',
+					overallStatus: 'configured',
+					components: [],
+					credentials: {},
+					sources: {},
+					dataRoots: { dataRoots: {} }
+				});
+			}
+			if (url.pathname.endsWith('/final-top10')) {
+				return jsonResponse({ items: [], coverageStatus: 'empty', finalizationRevision: 1 });
+			}
+			if (url.pathname.endsWith('/start')) {
+				return jsonResponse({ sessionId: 'session-1', sourceRuns: [], blockedSources: [] });
+			}
+			if (url.pathname.endsWith('/triage/approve')) {
+				return jsonResponse({
+					sessionId: 'session-1',
+					status: 'approved',
+					mustHaves: ['Svelte'],
+					niceToHaves: [],
+					synonyms: [],
+					seniorityFilters: [],
+					exclusions: [],
+					generatedQueryHints: [],
+					updatedAt: '2026-05-17T00:00:00Z'
+				});
+			}
+			return jsonResponse({});
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const {
+			approveRequirementTriage,
+			getDevModeStatus,
+			listFinalTopCandidates,
+			startSessionSourceRuns
+		} = await import('./workbench');
+
+		await getDevModeStatus();
+		await listFinalTopCandidates('session-1');
+		await approveRequirementTriage('session-1');
+		await startSessionSourceRuns('session-1');
+
+		expect(requests).toEqual([
+			'GET /api/workbench/dev-mode/status',
+			'GET /api/workbench/sessions/session-1/final-top10',
+			'POST /api/workbench/sessions/session-1/triage/approve',
+			'POST /api/workbench/sessions/session-1/start'
+		]);
+	});
 });

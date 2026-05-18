@@ -46,6 +46,23 @@ def test_resume_snapshot_status_contract_matches_returned_states() -> None:
     assert set(get_args(WorkbenchResumeSnapshotStatus)) == {"ready", "snapshot_forbidden", "snapshot_not_found"}
 
 
+def test_dev_mode_status_route_returns_safe_payload(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    _bootstrap_and_login(client)
+
+    response = client.get("/api/workbench/dev-mode/status")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    raw = json.dumps(payload, sort_keys=True)
+    assert payload["mode"] in {"settings", "raw_env_diagnostics"}
+    assert payload["overallStatus"] in {"ready", "warning", "needs_setup", "invalid"}
+    assert "components" in payload
+    assert "dataRoots" in payload
+    assert "local-development-liepin-api-token" not in raw
+    assert str(tmp_path) not in raw
+
+
 class FakeWorkbenchRuntime:
     started = threading.Event()
     release = threading.Event()
@@ -308,6 +325,23 @@ def _started_source(payload: dict, source_kind: str) -> dict:
 
 
 def _approve_triage(client: TestClient, session_id: str) -> dict:
+    current = client.get(f"/api/workbench/sessions/{session_id}/triage")
+    assert current.status_code == 200, current.text
+    triage = current.json()
+    if not any(triage[field] for field in ("mustHaves", "niceToHaves", "synonyms", "seniorityFilters", "exclusions", "generatedQueryHints")):
+        update = client.put(
+            f"/api/workbench/sessions/{session_id}/triage",
+            headers=_csrf_header(client),
+            json={
+                "mustHaves": ["Python"],
+                "niceToHaves": [],
+                "synonyms": [],
+                "seniorityFilters": [],
+                "exclusions": [],
+                "generatedQueryHints": ["python engineer"],
+            },
+        )
+        assert update.status_code == 200, update.text
     response = client.post(
         f"/api/workbench/sessions/{session_id}/triage/approve",
         headers=_csrf_header(client),
@@ -1403,7 +1437,7 @@ def test_liepin_card_level_source_run_persists_card_evidence_without_opening_det
     assert items[0]["title"] == "Senior Backend Engineer"
     assert items[0]["company"] == "Redacted Cloud"
     assert items[0]["location"] == "Shanghai"
-    assert items[0]["sourceBadges"] == ["Liepin"]
+    assert items[0]["sourceBadges"] == ["Liepin card"]
     assert items[0]["evidenceLevel"] == "card"
     assert items[0]["evidence"][0]["sourceKind"] == "liepin"
     assert items[0]["evidence"][0]["evidenceLevel"] == "card"
@@ -3449,7 +3483,7 @@ def test_cts_runtime_results_create_candidate_review_queue_without_raw_payload(t
     assert item["location"] == "Shanghai"
     assert item["aggregateScore"] == 91
     assert item["fitBucket"] == "fit"
-    assert item["sourceBadges"] == ["CTS"]
+    assert item["sourceBadges"] == ["CTS final"]
     assert item["evidenceLevel"] == "final"
     assert item["matchedMustHaves"] == ["FastAPI", "retrieval systems"]
     assert item["missingRisks"] == ["Limited public benchmark ownership", "benchmark depth unclear"]

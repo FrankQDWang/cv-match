@@ -214,7 +214,8 @@ def test_liepin_api_is_fastapi_uvicorn_and_not_legacy_stdlib_routes(tmp_path):
     assert isinstance(app, FastAPI)
     server_source = _read_source(SRC / "seektalent_ui" / "server.py")
     legacy_source = inspect.getsource(create_server)
-    assert "uvicorn.run(create_app(" in server_source
+    assert "uvicorn.run(" in server_source
+    assert "create_app(" in server_source
     assert '"/api/liepin' not in legacy_source
     assert "Liepin runs require the FastAPI scoped API." in legacy_source
 

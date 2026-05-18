@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 
 from seektalent.config import AppSettings
+from seektalent.dev_mode import DevModeStatus, build_dev_mode_status
 from seektalent.providers.liepin.client import build_liepin_worker_client
 from seektalent.providers.liepin.compliance import ComplianceGate
 from seektalent.providers.liepin.store import LiepinStore
@@ -33,6 +34,10 @@ from seektalent_ui.models import (
     WorkbenchCandidateReviewItemResponse,
     WorkbenchCandidateReviewItemUpdateRequest,
     WorkbenchCandidateReviewQueueResponse,
+    WorkbenchDevModeComponentResponse,
+    WorkbenchDevModeDataRootPostureResponse,
+    WorkbenchDevModeDataRootResponse,
+    WorkbenchDevModeStatusResponse,
     WorkbenchDetailOpenCandidateSnapshotResponse,
     WorkbenchDetailOpenRequestStatus,
     WorkbenchDetailOpenRejectRequest,
@@ -40,6 +45,7 @@ from seektalent_ui.models import (
     WorkbenchDetailOpenRequestListResponse,
     WorkbenchDetailOpenRequestResponse,
     WorkbenchDetailOpenLedgerResponse,
+    WorkbenchFinalTopCandidateListResponse,
     WorkbenchGraphCandidateListResponse,
     WorkbenchGraphCandidateResumeSnapshotResponse,
     WorkbenchGraphCandidateSummaryResponse,
@@ -75,6 +81,7 @@ from seektalent_ui.models import (
     WorkbenchUserResponse,
     WorkbenchWorkspaceResponse,
 )
+from seektalent_ui.final_top_candidates import project_final_top_candidates
 from seektalent_ui.resume_snapshot_projection import build_resume_snapshot_response
 from seektalent_ui.workbench_candidate_graph import (
     DEFAULT_GRAPH_CANDIDATE_LIMIT,
@@ -105,6 +112,16 @@ from seektalent_ui.workbench_store import (
 
 
 router = APIRouter()
+
+RUNTIME_SOURCE_REASON_CODES = {
+    "blocked_backend_unavailable",
+    "failed_provider_error",
+    "login_required",
+    "partial_timeout",
+    "cancelled_by_user",
+    "liepin_connection_not_connected",
+    "runtime_failed",
+}
 
 
 def _append_waiting_running_note(
@@ -336,6 +353,42 @@ def list_candidate_review_items(
     return WorkbenchCandidateReviewQueueResponse(
         items=[_candidate_review_item_response(item, graph_candidates.get(item.review_item_id)) for item in items]
     )
+
+
+@router.get(
+    "/api/workbench/sessions/{session_id}/final-top10",
+    response_model=WorkbenchFinalTopCandidateListResponse,
+)
+def list_final_top_candidates(
+    session_id: str,
+    request: Request,
+    user: WorkbenchUser = Depends(require_current_user),
+) -> WorkbenchFinalTopCandidateListResponse:
+    store = get_workbench_store(request)
+    session = store.get_workbench_session(user=user, session_id=session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    items = store.list_candidate_review_items(user=user, session_id=session_id)
+    if items is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    runtime_source_state = _runtime_source_state_response(store=store, user=user, session=session)
+    return WorkbenchFinalTopCandidateListResponse(
+        items=project_final_top_candidates(items, limit=10),
+        coverageStatus=runtime_source_state.coverageStatus,
+        finalizationRevision=runtime_source_state.finalizationRevision,
+    )
+
+
+@router.get("/api/workbench/dev-mode/status", response_model=WorkbenchDevModeStatusResponse)
+def get_dev_mode_status(
+    request: Request,
+    user: WorkbenchUser = Depends(require_current_user),
+) -> WorkbenchDevModeStatusResponse:
+    del user
+    payload = getattr(request.app.state, "dev_mode_env_diagnostics", None)
+    if payload is None:
+        payload = build_dev_mode_status(_workbench_app_settings(request))
+    return _dev_mode_status_response(payload)
 
 
 @router.get(
@@ -826,7 +879,12 @@ def approve_requirement_triage(
     user: WorkbenchUser = Depends(require_csrf_user),
 ) -> WorkbenchRequirementTriageResponse:
     store = get_workbench_store(request)
-    triage = store.approve_requirement_triage(user=user, session_id=session_id)
+    try:
+        triage = store.approve_requirement_triage(user=user, session_id=session_id)
+    except PermissionError as exc:
+        if str(exc) == "requirement_triage_empty":
+            raise HTTPException(status_code=409, detail="requirement_triage_empty") from exc
+        raise
     if triage is None:
         raise HTTPException(status_code=404, detail="Not found.")
     return _triage_response(triage)
@@ -1336,9 +1394,16 @@ def _runtime_source_lane_state_response(
     if status not in {"pending", "running", "completed", "partial", "blocked", "failed", "cancelled"}:
         status = "pending"
     display_status = cast(RuntimeSourceDisplayStatus, status)
+    reason_code = _runtime_source_reason_code(
+        payload.get("safe_reason_code"),
+        payload.get("blocked_reason_code"),
+        payload.get("stop_reason_code"),
+        source_run.warning_code,
+    )
     return WorkbenchRuntimeSourceLaneStateResponse(
         sourceKind=source_run.source_kind,
         status=display_status,
+        reasonCode=reason_code,
         eventType=latest_state.event_type if latest_state is not None else None,
         eventSeq=latest_state.event_seq if latest_state is not None else None,
         cardsSeenCount=_safe_count(typed_safe_counts.get("cards_seen"), fallback=source_run.cards_scanned_count),
@@ -1347,6 +1412,14 @@ def _runtime_source_lane_state_response(
         detailRecommendationsCount=_safe_count(typed_safe_counts.get("detail_recommendations"), fallback=0),
         detailState=_runtime_source_detail_state(latest_state),
     )
+
+
+def _runtime_source_reason_code(*values: object) -> str | None:
+    for value in values:
+        text = str(value).strip() if value is not None else ""
+        if text in RUNTIME_SOURCE_REASON_CODES:
+            return text
+    return None
 
 
 def _runtime_source_coverage_fields(
@@ -1584,6 +1657,46 @@ def _triage_response(triage: WorkbenchRequirementTriage) -> WorkbenchRequirement
         createdAt=triage.created_at,
         updatedAt=triage.updated_at,
         approvedAt=triage.approved_at,
+    )
+
+
+def _dev_mode_status_response(payload: DevModeStatus) -> WorkbenchDevModeStatusResponse:
+    component_responses = [
+        WorkbenchDevModeComponentResponse(
+            name=item.name,
+            label=item.label,
+            status=item.status,
+            reasonCode=item.reasonCode,
+            authNote=item.authNote,
+        )
+        for item in payload.components
+    ]
+    components_by_name = {item.name: item for item in component_responses}
+    credential_names = {"text_llm", "cts", "liepin_account_binding_secret"}
+    source_names = {"liepin_worker_mode", "liepin_pi_command", "liepin_pi_skill", "liepin_pi_dokobot_tool"}
+    roots = {
+        item.name: WorkbenchDevModeDataRootResponse(
+            name=item.name,
+            label=item.label,
+            status=item.status,
+            reasonCode=item.reasonCode,
+        )
+        for item in payload.dataRoots
+    }
+    data_root_status = "safe"
+    if any(root.status == "error" for root in roots.values()):
+        data_root_status = "error"
+    elif any(root.status == "warning" for root in roots.values()):
+        data_root_status = "warning"
+    elif any(root.status == "unknown" for root in roots.values()):
+        data_root_status = "unknown"
+    return WorkbenchDevModeStatusResponse(
+        mode=payload.mode,
+        overallStatus=payload.overallStatus,
+        components=component_responses,
+        credentials={name: item for name, item in components_by_name.items() if name in credential_names},
+        sources={name: item for name, item in components_by_name.items() if name in source_names},
+        dataRoots=WorkbenchDevModeDataRootPostureResponse(status=data_root_status, roots=roots),
     )
 
 

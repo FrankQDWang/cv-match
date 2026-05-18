@@ -1,0 +1,403 @@
+import { expect, type Page, test } from '@playwright/test';
+
+const SESSION_ID = 'session-dev-mode';
+const RAW_LEAK_STRINGS = ['secret-token', 'cookie', 'Authorization', 'raw_provider_payload'];
+
+const user = {
+	userId: 'user-dev',
+	email: 'dev@example.com',
+	displayName: 'Dev Recruiter',
+	role: 'admin',
+	workspaceId: 'workspace-dev'
+};
+
+type TriageFixture = {
+	sessionId: string;
+	status: string;
+	mustHaves: string[];
+	niceToHaves: string[];
+	synonyms: string[];
+	seniorityFilters: string[];
+	exclusions: string[];
+	generatedQueryHints: string[];
+	createdAt: string;
+	updatedAt: string;
+	approvedAt: string | null;
+};
+
+type SourceFixture = {
+	sourceRunId: string;
+	sourceKind: 'cts' | 'liepin';
+	label: string;
+	status: string;
+	authState: string;
+	cardsScannedCount: number;
+	uniqueCandidatesCount: number;
+	detailOpenUsedCount: number;
+	detailOpenBlockedCount: number;
+	warningCode: string | null;
+	warningMessage: string | null;
+	connectionId?: string;
+	connectionStatus?: string;
+	connectionWarningCode?: string | null;
+	connectionWarningMessage?: string | null;
+};
+
+const devModeStatus = {
+	mode: 'settings',
+	overallStatus: 'configured',
+	components: [
+		{
+			name: 'text_llm',
+			label: 'Text LLM',
+			status: 'configured',
+			reasonCode: null,
+			authNote: 'BYOK ready'
+		},
+		{
+			name: 'liepin_pi',
+			label: 'Liepin Pi Agent',
+			status: 'needs_setup',
+			reasonCode: 'dokobot_session_not_checked',
+			authNote: 'DokoBot lives inside Pi'
+		}
+	],
+	credentials: {},
+	sources: {},
+	dataRoots: { dataRoots: {} }
+};
+
+const draftTriage: TriageFixture = {
+	sessionId: SESSION_ID,
+	status: 'draft',
+	mustHaves: [],
+	niceToHaves: [],
+	synonyms: [],
+	seniorityFilters: [],
+	exclusions: [],
+	generatedQueryHints: [],
+	createdAt: '2026-05-18T00:00:00Z',
+	updatedAt: '2026-05-18T00:00:00Z',
+	approvedAt: null
+};
+
+const preparedTriage = {
+	...draftTriage,
+	mustHaves: ['Svelte Workbench', '多源候选人检索'],
+	niceToHaves: ['Liepin card 判断'],
+	synonyms: ['agentic sourcing'],
+	generatedQueryHints: ['Svelte Workbench recruiting agent']
+};
+
+const approvedTriage = {
+	...preparedTriage,
+	status: 'approved',
+	approvedAt: '2026-05-18T00:01:00Z'
+};
+
+const queuedSources: SourceFixture[] = [
+	{
+		sourceRunId: 'src-cts-dev',
+		sourceKind: 'cts',
+		label: 'CTS',
+		status: 'queued',
+		authState: 'not_required',
+		cardsScannedCount: 0,
+		uniqueCandidatesCount: 0,
+		detailOpenUsedCount: 0,
+		detailOpenBlockedCount: 0,
+		warningCode: null,
+		warningMessage: null
+	},
+	{
+		sourceRunId: 'src-liepin-dev',
+		sourceKind: 'liepin',
+		label: 'Liepin',
+		status: 'queued',
+		authState: 'login_required',
+		cardsScannedCount: 0,
+		uniqueCandidatesCount: 0,
+		detailOpenUsedCount: 0,
+		detailOpenBlockedCount: 0,
+		warningCode: null,
+		warningMessage: null,
+		connectionId: 'conn-liepin-dev',
+		connectionStatus: 'connected',
+		connectionWarningCode: null,
+		connectionWarningMessage: null
+	}
+];
+
+const completedSources: SourceFixture[] = [
+	{
+		...queuedSources[0]!,
+		status: 'completed',
+		cardsScannedCount: 10,
+		uniqueCandidatesCount: 8
+	},
+	{
+		...queuedSources[1]!,
+		status: 'blocked',
+		cardsScannedCount: 18,
+		uniqueCandidatesCount: 4,
+		detailOpenBlockedCount: 2,
+		warningCode: 'blocked_backend_unavailable',
+		warningMessage: null
+	}
+];
+
+const runtimeSourceState = {
+	sessionId: SESSION_ID,
+	status: 'degraded',
+	coverageStatus: 'degraded',
+	finalizationRevision: 1,
+	finalizationReasonCode: 'source_lane_degraded',
+	identityMergeCount: 1,
+	ambiguousDuplicateCount: 0,
+	canonicalResumeSelectedCount: 1,
+	sources: [
+		{
+			sourceKind: 'cts',
+			status: 'completed',
+			cardsSeenCount: 10,
+			cardsFilteredCount: 1,
+			candidatesCount: 8,
+			detailRecommendationsCount: 0,
+			detailState: null,
+			reasonCode: null,
+			lastEventType: 'source_lane_completed',
+			lastEventSeq: 2,
+			updatedAt: '2026-05-18T00:02:00Z'
+		},
+		{
+			sourceKind: 'liepin',
+			status: 'blocked',
+			cardsSeenCount: 18,
+			cardsFilteredCount: 5,
+			candidatesCount: 4,
+			detailRecommendationsCount: 2,
+			detailState: 'recommended',
+			reasonCode: 'blocked_backend_unavailable',
+			lastEventType: 'source_lane_blocked',
+			lastEventSeq: 3,
+			updatedAt: '2026-05-18T00:03:00Z'
+		}
+	]
+};
+
+const finalTop10 = {
+	items: [
+		{
+			reviewItemId: 'review-canonical',
+			runtimeIdentityId: 'identity-1',
+			canonicalReviewItemId: 'review-canonical',
+			mergedReviewItemIds: ['review-cts', 'review-liepin'],
+			rank: 1,
+			displayName: 'Candidate A',
+			title: 'Senior Frontend Platform Engineer',
+			company: 'SearchCo',
+			location: 'Shanghai',
+			summary: 'CTS and Liepin card both matched the same identity.',
+			aggregateScore: 92,
+			fitBucket: 'fit',
+			sourceBadges: ['CTS final', 'Liepin card', 'Multiple sources'],
+			evidenceLevel: 'final',
+			sourceEvidence: [
+				{
+					evidenceId: 'ev-cts',
+					sourceRunId: 'src-cts-dev',
+					sourceKind: 'cts',
+					evidenceLevel: 'final',
+					score: 92,
+					fitBucket: 'fit'
+				},
+				{
+					evidenceId: 'ev-liepin',
+					sourceRunId: 'src-liepin-dev',
+					sourceKind: 'liepin',
+					evidenceLevel: 'card',
+					score: 88,
+					fitBucket: 'fit'
+				}
+			]
+		}
+	],
+	coverageStatus: 'degraded',
+	finalizationRevision: 1
+};
+
+test.describe('Dev-mode BYOK dual-source Workbench', () => {
+	test('creates a dual-source session and shows degraded Liepin coverage without leaking raw data', async ({
+		page
+	}) => {
+		await mockDevModeWorkbenchApi(page);
+		await page.setViewportSize({ width: 1440, height: 920 });
+		await page.goto('/sessions');
+
+		await expect(page.getByRole('heading', { name: '本地运行准备' })).toBeVisible();
+		await expect(page.getByText('Liepin Pi Agent')).toBeVisible();
+		await page.getByLabel('职位名称').fill('Dev Mode Svelte UI Engineer');
+		await page.getByLabel('JD').fill('Build a local BYOK Svelte UI for CTS and Liepin sourcing.');
+		await page.getByLabel('补充说明').fill('First milestone local demo.');
+		await page.getByRole('button', { name: '创建会话' }).click();
+
+		await expect(page.getByRole('heading', { name: 'Dev Mode Svelte UI Engineer' })).toBeVisible();
+		await expect(page.getByRole('button', { name: '启动双源检索' })).toBeDisabled();
+		await page.getByRole('button', { name: '生成标准' }).click();
+		await expect(
+			page.locator('.triage-panel li', { hasText: 'Svelte Workbench' }).first()
+		).toBeVisible();
+		await page.getByRole('button', { name: '确认标准' }).click();
+		await page.getByRole('button', { name: '启动双源检索' }).click();
+
+		await expect(page.getByText('CTS final', { exact: true })).toBeVisible();
+		await expect(page.getByText('Liepin card', { exact: true })).toBeVisible();
+		await expect(page.getByText('Multiple sources', { exact: true })).toBeVisible();
+		await expect(page.getByText('Candidate A')).toBeVisible();
+		await expect(page.getByText('已阻塞')).toBeVisible();
+		await expect(page.getByText('Liepin 浏览器执行暂不可用。')).toBeVisible();
+		await expect(page.getByText('推荐', { exact: true })).toBeVisible();
+		await expect(page.getByText('recommended')).toBeVisible();
+
+		for (const raw of RAW_LEAK_STRINGS) {
+			await expect(page.getByText(raw, { exact: false })).toHaveCount(0);
+		}
+		await assertNoHorizontalOverflow(page);
+
+		await page.setViewportSize({ width: 390, height: 860 });
+		await expect(page.getByRole('heading', { name: '候选人队列' })).toBeVisible();
+		await assertNoHorizontalOverflow(page);
+	});
+});
+
+async function mockDevModeWorkbenchApi(page: Page) {
+	let sessionCreated = false;
+	let triage = draftTriage;
+	let sources = queuedSources;
+	let sourceState: typeof runtimeSourceState = {
+		...runtimeSourceState,
+		status: 'pending',
+		coverageStatus: 'pending',
+		sources: runtimeSourceState.sources.map((source) => ({ ...source, status: 'queued' }))
+	};
+
+	await page.route('**/api/**', async (route) => {
+		const requestUrl = new URL(route.request().url());
+		const json = (payload: unknown, status = 200) =>
+			route.fulfill({
+				status,
+				contentType: 'application/json',
+				headers: { 'X-CSRF-Token': 'dev-mode-csrf' },
+				body: JSON.stringify(payload)
+			});
+
+		if (requestUrl.pathname === '/api/auth/me') {
+			return json({ user });
+		}
+		if (requestUrl.pathname === '/api/workbench/dev-mode/status') {
+			return json(devModeStatus);
+		}
+		if (requestUrl.pathname === '/api/workbench/sessions') {
+			if (route.request().method() === 'POST') {
+				sessionCreated = true;
+				return json(buildSession({ triage, sources, sourceState }), 201);
+			}
+			return json({
+				sessions: sessionCreated ? [buildSession({ triage, sources, sourceState })] : []
+			});
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}`) {
+			return json(buildSession({ triage, sources, sourceState }));
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/triage/prepare`) {
+			triage = preparedTriage;
+			return json(triage);
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/triage/approve`) {
+			triage = approvedTriage;
+			return json(triage);
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/start`) {
+			sources = completedSources;
+			sourceState = runtimeSourceState;
+			return json(
+				{
+					sessionId: SESSION_ID,
+					sourceRuns: sources.map((source) => ({
+						sourceRunId: source.sourceRunId,
+						sourceKind: source.sourceKind,
+						status: source.status,
+						jobId: `job-${source.sourceKind}`
+					})),
+					blockedSources: []
+				},
+				202
+			);
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/candidates`) {
+			return json({ items: [] });
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/final-top10`) {
+			return json(
+				sourceState.coverageStatus === 'pending'
+					? { items: [], coverageStatus: 'pending', finalizationRevision: null }
+					: finalTop10
+			);
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/events`) {
+			return json({ events: [] });
+		}
+		if (requestUrl.pathname === `/api/workbench/sessions/${SESSION_ID}/graph-candidates`) {
+			return json({
+				nodeId: requestUrl.searchParams.get('node_id') ?? 'unknown',
+				nodeScope: { sessionId: SESSION_ID, source: 'all', roundId: null, nodeKind: 'final' },
+				items: [],
+				nextCursor: null,
+				totalSourceResults: 0,
+				totalGraphCandidates: 0,
+				totalEstimate: null,
+				coverage: {
+					sourceResultIdsSeen: [],
+					missingSafeIdentityCount: 0,
+					missingSnapshotCount: 0,
+					forbiddenSnapshotCount: 0,
+					droppedRows: 0
+				},
+				truncated: false,
+				generatedAt: '2026-05-18T00:05:00Z',
+				recoveryState: 'ready',
+				recoveryReason: null
+			});
+		}
+		return json({ detail: `Unhandled mock route ${requestUrl.pathname}` }, 404);
+	});
+}
+
+function buildSession({
+	triage,
+	sources,
+	sourceState
+}: {
+	triage: typeof draftTriage;
+	sources: typeof queuedSources;
+	sourceState: typeof runtimeSourceState;
+}) {
+	return {
+		sessionId: SESSION_ID,
+		workspaceId: 'workspace-dev',
+		ownerUserId: 'user-dev',
+		jobTitle: 'Dev Mode Svelte UI Engineer',
+		jdText: 'Build a local BYOK Svelte UI for CTS and Liepin sourcing.',
+		notes: 'First milestone local demo.',
+		status: 'draft',
+		requirementTriage: triage,
+		sourceRuns: sources,
+		sourceCards: sources,
+		runtimeSourceState: sourceState
+	};
+}
+
+async function assertNoHorizontalOverflow(page: Page) {
+	const overflow = await page.evaluate(() => document.body.scrollWidth - window.innerWidth);
+	expect(overflow).toBeLessThanOrEqual(1);
+}

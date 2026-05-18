@@ -37,7 +37,7 @@ function errorMessage(error: unknown, status: number) {
 }
 
 function defaultBaseUrl() {
-	return typeof window === 'undefined' ? 'http://127.0.0.1' : '';
+	return typeof window === 'undefined' ? 'http://127.0.0.1' : window.location.origin;
 }
 
 export function createApiClient(options: CreateApiClientOptions = {}) {
