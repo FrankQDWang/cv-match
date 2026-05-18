@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
+import re
 
 from seektalent.providers.liepin.pi_executor import HmacProviderKeyHasher, PiLiepinExecutor
 from seektalent.providers.pi_agent.pi_external import PiRpcAgentClient, PiRpcTaskResult, PiRpcTaskStatus
@@ -348,16 +348,15 @@ def test_session_probe_rejects_non_ready_account_material() -> None:
 
 
 def test_runtime_and_workbench_do_not_import_old_dokobot_action_surface() -> None:
-    result = subprocess.run(
-        [
-            "rg",
-            "-n",
-            "DokoBotActionSurface|DokoBotActionTransportSession|DokoBotLiepinSearchCardsExecutor|DOKOBOT_ACTION|LEGACY_WORKER_COMPAT|dokobot_action|legacy_worker_compat",
-            "src/seektalent",
-        ],
-        check=False,
-        text=True,
-        capture_output=True,
+    forbidden_pattern = re.compile(
+        "DokoBotActionSurface|DokoBotActionTransportSession|DokoBotLiepinSearchCardsExecutor|"
+        "DOKOBOT_ACTION|LEGACY_WORKER_COMPAT|dokobot_action|legacy_worker_compat"
     )
+    matches: list[str] = []
+    for path in Path("src/seektalent").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            if forbidden_pattern.search(line):
+                matches.append(f"{path}:{line_no}:{line.strip()}")
 
-    assert result.returncode == 1, result.stdout
+    assert not matches, "\n".join(matches)
