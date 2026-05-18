@@ -1,0 +1,96 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+function jsonResponse(body: unknown) {
+	return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+}
+
+function event(globalSeq: number) {
+	return {
+		globalSeq,
+		sessionSeq: globalSeq,
+		sessionId: 'session-1',
+		sourceRunId: null,
+		sourceKind: null,
+		eventName: 'candidate_seen',
+		schemaVersion: '1',
+		idempotencyKey: null,
+		payload: {},
+		occurredAt: '2026-05-17T00:00:00Z',
+		createdAt: '2026-05-17T00:00:00Z'
+	};
+}
+
+function graphCandidateListResponse(nodeId: string) {
+	return {
+		nodeId,
+		nodeScope: {
+			sessionId: 'session 1',
+			source: 'all',
+			roundId: null,
+			nodeKind: 'recall'
+		},
+		items: [],
+		nextCursor: null,
+		totalSourceResults: 0,
+		totalGraphCandidates: 0,
+		totalEstimate: null,
+		coverage: {
+			sourceResultIdsSeen: [],
+			missingSafeIdentityCount: 0,
+			missingSnapshotCount: 0,
+			forbiddenSnapshotCount: 0,
+			droppedRows: 0
+		},
+		truncated: false,
+		generatedAt: '2026-05-17T00:00:00Z',
+		recoveryState: 'ready',
+		recoveryReason: null
+	};
+}
+
+afterEach(() => {
+	vi.resetModules();
+	vi.unstubAllGlobals();
+});
+
+describe('workbench API functions', () => {
+	it('paginates session events until the endpoint returns a short page', async () => {
+		const requests: string[] = [];
+		const fetchMock = vi.fn(async (request: Request) => {
+			const url = new URL(request.url);
+			requests.push(`${url.pathname}${url.search}`);
+			const afterSeq = Number(url.searchParams.get('after_seq') ?? '0');
+			const count = afterSeq === 0 ? 200 : 1;
+			const events = Array.from({ length: count }, (_, index) => event(afterSeq + index + 1));
+			return jsonResponse({ events });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { listSessionEvents } = await import('./workbench');
+
+		const result = await listSessionEvents('session-1');
+
+		expect(result.events).toHaveLength(201);
+		expect(requests).toEqual([
+			'/api/workbench/sessions/session-1/events?after_seq=0&limit=200',
+			'/api/workbench/sessions/session-1/events?after_seq=200&limit=200'
+		]);
+	});
+
+	it('uses generated path and query parameters for graph candidates', async () => {
+		const requests: string[] = [];
+		const fetchMock = vi.fn(async (request: Request) => {
+			const url = new URL(request.url);
+			requests.push(`${url.pathname}${url.search}`);
+			return jsonResponse(graphCandidateListResponse('node/1'));
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { listGraphCandidates } = await import('./workbench');
+
+		const result = await listGraphCandidates('session 1', 'node/1', 'cursor-1', 25);
+
+		expect(result.nodeId).toBe('node/1');
+		expect(requests).toEqual([
+			'/api/workbench/sessions/session%201/graph-candidates?node_id=node%2F1&limit=25&cursor=cursor-1'
+		]);
+	});
+});

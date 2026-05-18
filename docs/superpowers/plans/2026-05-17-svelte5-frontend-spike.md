@@ -266,7 +266,7 @@ Set scripts to this shape:
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "api:gen": "openapi-typescript http://127.0.0.1:8011/openapi.json -o src/lib/api/schema.d.ts"
+    "api:gen": "openapi-typescript http://127.0.0.1:8012/openapi.json -o src/lib/api/schema.d.ts"
   }
 }
 ```
@@ -307,7 +307,7 @@ export default defineConfig({
     port: 5178,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8011',
+      '/api': 'http://127.0.0.1:8012',
     },
   },
   test: {
@@ -411,20 +411,20 @@ Run from repo root if the isolated backend is not already running:
 ```bash
 export SEEKTALENT_SPIKE_WORKSPACE_ROOT="${SEEKTALENT_SPIKE_WORKSPACE_ROOT:-$(mktemp -d)}"
 export SEEKTALENT_WORKSPACE_ROOT="$SEEKTALENT_SPIKE_WORKSPACE_ROOT"
-uv run seektalent-ui-api --host 127.0.0.1 --port 8011
+uv run seektalent-ui-api --host 127.0.0.1 --port 8012
 ```
 
 Expected:
 
-- Backend listens on `127.0.0.1:8011`.
+- Backend listens on `127.0.0.1:8012`.
 - Workbench state is written under `$SEEKTALENT_SPIKE_WORKSPACE_ROOT/.seektalent`, not the developer's normal local workspace.
 - Reuse this same isolated backend for `api:gen` and live backend smoke. Do not start a second backend on the same port later.
 
 In another shell or session, verify:
 
 ```bash
-curl -s -o /tmp/seektalent-openapi.json -w "%{http_code}\n" http://127.0.0.1:8011/openapi.json
-curl -s -o /tmp/seektalent-auth-me.json -w "%{http_code}\n" http://127.0.0.1:8011/api/auth/me
+curl -s -o /tmp/seektalent-openapi.json -w "%{http_code}\n" http://127.0.0.1:8012/openapi.json
+curl -s -o /tmp/seektalent-auth-me.json -w "%{http_code}\n" http://127.0.0.1:8012/api/auth/me
 ```
 
 Expected:
@@ -1686,10 +1686,10 @@ Use the isolated backend started in Task 3. If it is no longer running, restart 
 
 ```bash
 export SEEKTALENT_WORKSPACE_ROOT="$(mktemp -d)"
-uv run seektalent-ui-api --host 127.0.0.1 --port 8011
+uv run seektalent-ui-api --host 127.0.0.1 --port 8012
 ```
 
-Do not run this against the developer's normal `.seektalent` workspace, and do not start a second backend if port `8011` is already occupied by the Task 3 isolated backend.
+Do not run this against the developer's normal `.seektalent` workspace, and do not start a second backend if port `8012` is already occupied by the Task 3 isolated backend.
 
 Then validate the real auth/session contract with HTTP calls or a small Playwright/API test:
 

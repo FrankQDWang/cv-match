@@ -60,6 +60,25 @@
 
 ## Frontend
 
+### Svelte 5 Migration Follow-Ups
+
+**What:** Harden the SvelteKit spike into a migration-ready frontend path before replacing the React app.
+
+**Why:** The spike proved the Svelte 5 + SvelteKit + OpenAPI + Svelte Query + Svelte Flow direction, but full migration still needs real backend fixtures, production bundle work, and stronger contract automation.
+
+**Deferred items:**
+
+- Add a seeded live-backend integration fixture with at least one real non-trivial Workbench session, graph-candidates result, and resume snapshot.
+- Split Svelte Flow and ELK from the initial detail route bundle with dynamic import; move ELK layout to a Web Worker if 50/100/300-node smoke tests show main-thread jank.
+- Add OpenAPI schema drift checks in CI so generated frontend types stay aligned with FastAPI response models.
+- Choose one UI route for the Svelte app, such as Skeleton or shadcn-svelte plus Bits UI, before migrating broad CRUD/form surfaces.
+- Add ESLint boundary rules that prevent route/components from raw `fetch`, direct generated-client imports, or imports from `apps/web/src`.
+- Decide whether event updates remain polling-first or get a later SSE adapter; the spike only proves polling.
+
+**Effort:** L
+**Priority:** P1
+**Depends on:** Svelte 5 frontend spike report, seeded Workbench data, and the next approved migration slice.
+
 ### Storybook Component Catalog
 
 **What:** Introduce Storybook for stable workbench components such as source cards, candidate cards, detail approval queues, and session rail states.
