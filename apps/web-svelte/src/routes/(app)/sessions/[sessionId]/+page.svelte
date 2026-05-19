@@ -29,7 +29,7 @@
 	import { workbenchKeys } from '$lib/query/keys';
 	import type { RecruiterGraphNode } from '$lib/workbench/recruiterAnimation';
 	import type { WorkbenchRequirementTriageInput } from '$lib/workbench/recruiterAnimation';
-	import { buildRunStory } from '$lib/workbench/runStory';
+	import { buildRunStory, displayTriageFromStory } from '$lib/workbench/runStory';
 	import type { WorkbenchGraphCandidateSummary, WorkbenchSession } from '$lib/workbench/types';
 
 	let { data } = $props<{ data: { sessionId: string } }>();
@@ -102,7 +102,7 @@
 	);
 	const reviewCriteria = $derived(
 		sessionQuery.data && story
-			? displayTriageFromStory(sessionQuery.data, story.criteria)
+			? displayTriageFromStory(sessionQuery.data.requirementTriage, story.criteria)
 			: emptyCriteria()
 	);
 	const triageHasInput = $derived(hasTriageInput(reviewCriteria));
@@ -235,13 +235,6 @@
 			return;
 		}
 		startMutation.mutate();
-	}
-
-	function displayTriageFromStory(
-		session: WorkbenchSession,
-		runtimeCriteria: WorkbenchRequirementTriageInput
-	): WorkbenchRequirementTriageInput {
-		return hasTriageInput(session.requirementTriage) ? session.requirementTriage : runtimeCriteria;
 	}
 
 	function emptyCriteria(): WorkbenchRequirementTriageInput {

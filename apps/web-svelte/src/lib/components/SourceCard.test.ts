@@ -67,4 +67,41 @@ describe('SourceCard', () => {
 		expect(screen.queryByText('Liepin login is not connected yet.')).not.toBeInTheDocument();
 		expect(screen.queryByText('connection not connected')).not.toBeInTheDocument();
 	});
+
+	it('shows browser-channel unavailable status before stale login state', () => {
+		render(SourceCard, {
+			props: {
+				card: {
+					...liepinLoginRequiredCard,
+					connectionStatus: 'login_required',
+					connectionWarningCode: 'login_required'
+				},
+				session: {
+					runtimeSourceState: {
+						sources: [
+							{
+								sourceKind: 'liepin',
+								status: 'blocked',
+								eventType: 'source_lane_blocked',
+								eventSeq: 2,
+								reasonCode: 'liepin_browser_probe_unavailable',
+								cardsSeenCount: 0,
+								cardsFilteredCount: 0,
+								candidatesCount: 0,
+								detailRecommendationsCount: 0,
+								detailState: null
+							}
+						]
+					}
+				} as unknown as WorkbenchSession,
+				triageApproved: true
+			}
+		});
+
+		expect(screen.getByText('通道不可用')).toBeInTheDocument();
+		expect(screen.queryByText('需登录猎聘')).not.toBeInTheDocument();
+		expect(
+			screen.getByText('浏览器检索通道暂不可用，请确认本机应用和浏览器助手正常后重试。')
+		).toBeInTheDocument();
+	});
 });

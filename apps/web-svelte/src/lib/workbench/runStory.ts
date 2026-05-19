@@ -428,9 +428,8 @@ function workbenchNoteLogEntries(events: WorkbenchEvent[]): RunStoryLogEntry[] {
 export function displayTriageFromStory(
 	triage: WorkbenchRequirementTriage,
 	criteria: WorkbenchRequirementTriageInput
-): WorkbenchRequirementTriage {
+): WorkbenchRequirementTriageInput {
 	return {
-		...triage,
 		mustHaves: chooseVisibleList(triage.mustHaves, criteria.mustHaves),
 		niceToHaves: chooseVisibleList(triage.niceToHaves, criteria.niceToHaves),
 		synonyms: chooseVisibleList(triage.synonyms, criteria.synonyms),
@@ -801,16 +800,16 @@ function appendLiepinLane({
 
 	const startId = 'liepin-source-start';
 	const started = firstEvent(events, ['source_run_started', 'source_run_queued']);
+	const queueDetail = liepinQueueDetail(sourceCard, runtimeLaneState);
 	graphNodes.push({
 		id: startId,
 		at: graphNodes.length,
 		kind: '检索',
 		label: `${sourceLabel} 队列`,
-		detail:
-			sourceCard?.connectionStatus === 'connected' ? '账号已连接，串行抓取简介' : '等待猎聘登录',
+		detail: queueDetail,
 		x: 34,
 		y: baseY,
-		tone: sourceCard?.connectionStatus === 'connected' ? 'teal' : 'amber',
+		tone: queueDetail === '账号已连接，串行抓取简介' ? 'teal' : 'amber',
 		sourceKind,
 		sourceLabel,
 		lane: sourceKind,
@@ -1157,7 +1156,8 @@ function sourceQueuePayload(
 	sourceRunId: string | null,
 	runtimeLaneState: WorkbenchRuntimeSourceLaneState | null
 ): RecruiterGraphNode['detailPayload'] & { kind: 'sourceQueue' } {
-	const warningCode = sourceCard?.warningCode ?? sourceCard?.connectionWarningCode ?? null;
+	const warningCode =
+		runtimeLaneState?.reasonCode ?? sourceCard?.warningCode ?? sourceCard?.connectionWarningCode ?? null;
 	const warningMessage = displaySafeWarning(
 		warningCode,
 		sourceCard?.warningMessage ?? sourceCard?.connectionWarningMessage ?? null
@@ -1184,6 +1184,25 @@ function sourceQueuePayload(
 		runtimeDetailRecommendationsCount: runtimeLaneState?.detailRecommendationsCount ?? 0,
 		runtimeDetailState: runtimeLaneState?.detailState ?? null
 	};
+}
+
+function liepinQueueDetail(
+	sourceCard: WorkbenchSession['sourceCards'][number] | undefined,
+	runtimeLaneState: WorkbenchRuntimeSourceLaneState | null
+): string {
+	if (
+		runtimeLaneState?.reasonCode === 'liepin_browser_probe_unavailable' ||
+		runtimeLaneState?.reasonCode === 'blocked_backend_unavailable'
+	) {
+		return '浏览器通道不可用';
+	}
+	if (runtimeLaneState?.reasonCode === 'liepin_browser_account_mismatch') {
+		return '猎聘账号不一致';
+	}
+	if (sourceCard?.connectionStatus === 'connected') {
+		return '账号已连接，串行抓取简介';
+	}
+	return '等待猎聘登录';
 }
 
 function runtimeLaneStateForSource(

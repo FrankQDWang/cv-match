@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildRunStory } from './runStory';
+import { buildRunStory, displayTriageFromStory } from './runStory';
 
 type BuildRunStoryInput = Parameters<typeof buildRunStory>[0];
 type WorkbenchSession = BuildRunStoryInput['session'];
@@ -215,6 +215,29 @@ describe('buildRunStory', () => {
 	it('uses safe Liepin browser reason copy in source queue details', () => {
 		const story = buildRunStory({
 			session: session({
+				runtimeSourceState: {
+					selectedSourceKinds: ['cts', 'liepin'],
+					coverageStatus: 'degraded',
+					finalizationRevision: 1,
+					finalizationReasonCode: 'source_lanes_degraded',
+					identityMergeCount: 0,
+					ambiguousDuplicateCount: 0,
+					canonicalResumeSelectedCount: 0,
+					sources: [
+						{
+							sourceKind: 'liepin',
+							status: 'blocked',
+							eventType: 'source_lane_blocked',
+							eventSeq: 2,
+							reasonCode: 'liepin_browser_probe_unavailable',
+							cardsSeenCount: 0,
+							cardsFilteredCount: 0,
+							candidatesCount: 0,
+							detailRecommendationsCount: 0,
+							detailState: null
+						}
+					]
+				},
 				sourceCards: [
 					{
 						sourceRunId: 'src-cts',
@@ -254,11 +277,48 @@ describe('buildRunStory', () => {
 			story.graphNodes.find((node) => node.id === 'liepin-source-start')?.detailPayload
 		).toMatchObject({
 			kind: 'sourceQueue',
-			warningCode: 'liepin_browser_login_required',
-			warningMessage: '请先在本机 Chrome 登录猎聘并保持会话有效，系统会在检索时使用该登录态。'
+			warningCode: 'liepin_browser_probe_unavailable',
+			warningMessage: '浏览器检索通道暂不可用，请确认本机应用和浏览器助手正常后重试。'
 		});
+		expect(story.graphNodes.find((node) => node.id === 'liepin-source-start')?.detail).toBe(
+			'浏览器通道不可用'
+		);
 	});
+
+	it('projects visible triage criteria without response-only fields', () => {
+		const visible = displayTriageFromStory(
+			triage({
+				status: 'draft',
+				mustHaves: ['saved must'],
+				niceToHaves: [],
+				synonyms: [],
+				seniorityFilters: [],
+				exclusions: [],
+				generatedQueryHints: []
+			}),
+			{
+				mustHaves: ['runtime must'],
+				niceToHaves: ['runtime nice'],
+				synonyms: ['runtime synonym'],
+				seniorityFilters: [],
+				exclusions: [],
+				generatedQueryHints: ['runtime query']
+			}
+		);
+
+		expect(visible).toEqual({
+			mustHaves: ['saved must'],
+			niceToHaves: ['runtime nice'],
+			synonyms: ['runtime synonym'],
+			seniorityFilters: [],
+			exclusions: [],
+			generatedQueryHints: ['runtime query']
+		});
+		expect(visible).not.toHaveProperty('sessionId');
+		expect(visible).not.toHaveProperty('status');
+		expect(visible).not.toHaveProperty('createdAt');
 	});
+});
 
 	function triage(overrides: Partial<WorkbenchRequirementTriage> = {}): WorkbenchRequirementTriage {
 	return {

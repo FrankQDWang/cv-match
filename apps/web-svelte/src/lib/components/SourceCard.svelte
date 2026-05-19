@@ -45,7 +45,22 @@
 		return 'ready';
 	}
 
-	function sourceStatusText(status: string, sourceCard: WorkbenchSourceCard) {
+	function sourceStatusText(
+		status: string,
+		sourceCard: WorkbenchSourceCard,
+		runtimeReasonCode: string | null | undefined
+	) {
+		if (sourceCard.sourceKind === 'liepin') {
+			if (
+				runtimeReasonCode === 'liepin_browser_probe_unavailable' ||
+				runtimeReasonCode === 'blocked_backend_unavailable'
+			) {
+				return '通道不可用';
+			}
+			if (runtimeReasonCode === 'liepin_browser_account_mismatch') {
+				return '账号不一致';
+			}
+		}
 		const liepinLoginReasonCodes = new Set([
 			'login_required',
 			'liepin_browser_login_required',
@@ -114,7 +129,9 @@
 		<span class={`source-dot ${statusTone}`} aria-hidden="true"></span>
 	</div>
 	<div class="source-progress-row">
-		<span class={`source-status-pill ${statusTone}`}>{sourceStatusText(displayStatus, card)}</span>
+		<span class={`source-status-pill ${statusTone}`}
+			>{sourceStatusText(displayStatus, card, runtimeLane?.reasonCode)}</span
+		>
 		<span>
 			扫描 <strong>{scannedCount}</strong> · 命中 <strong>{hitCount}</strong>
 		</span>
