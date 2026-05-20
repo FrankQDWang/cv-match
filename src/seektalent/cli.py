@@ -1590,12 +1590,12 @@ def _pi_agent_init_command(args: argparse.Namespace) -> int:
         args.dokobot_mcp_args_json,
         "SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON",
         default_value="[]",
-    )
+    ) or "[]"
     dokobot_direct_tools_json = _arg_or_env(
         args.dokobot_direct_tools_json,
         "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON",
         default_value="[]",
-    )
+    ) or "[]"
     dokobot_mcp_args = _json_string_tuple_arg(dokobot_mcp_args_json, field_name="dokobot_mcp_args_json")
     dokobot_direct_tools = _json_string_tuple_arg(
         dokobot_direct_tools_json,
