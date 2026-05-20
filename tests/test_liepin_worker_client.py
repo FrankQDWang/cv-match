@@ -4,6 +4,7 @@ import asyncio
 import io
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.error import HTTPError
@@ -32,7 +33,7 @@ from seektalent.providers.liepin.worker_contracts import (
     decode_session_status,
     decode_worker_health,
 )
-from tests.settings_factory import make_settings
+from tests.settings_factory import make_pi_agent_settings, make_settings
 
 
 def _request() -> SearchRequest:
@@ -119,8 +120,8 @@ def test_pi_agent_mode_requires_rpc_command(tmp_path) -> None:
         )
 
 
-def test_build_pi_agent_client_for_pi_backed_mode() -> None:
-    settings = make_settings(liepin_worker_mode="pi_agent", liepin_account_binding_secret="runtime-secret")
+def test_build_pi_agent_client_for_pi_backed_mode(tmp_path: Path) -> None:
+    settings = make_pi_agent_settings(tmp_path)
 
     client = build_liepin_worker_client(settings)
 

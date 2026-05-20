@@ -12,7 +12,7 @@ from seektalent.core.retrieval.provider_contract import SearchResult
 from seektalent.models import ResumeCandidate
 from seektalent.providers import get_provider_adapter
 from seektalent.providers import get_provider_adapter_for_source
-from tests.settings_factory import make_settings
+from tests.settings_factory import make_pi_agent_settings, make_settings
 
 
 def test_provider_registry_returns_cts_adapter() -> None:
@@ -102,11 +102,10 @@ def test_liepin_external_http_requires_worker_base_url() -> None:
 
 def test_provider_registry_creates_live_store_for_pi_agent(tmp_path: Path) -> None:
     worker = object()
-    settings = make_settings(
+    settings = make_pi_agent_settings(
+        tmp_path,
         provider_name="cts",
-        liepin_worker_mode="pi_agent",
         liepin_connector_db_path=str(tmp_path / "liepin.sqlite3"),
-        liepin_account_binding_secret="runtime-secret",
     )
 
     provider = get_provider_adapter_for_source(settings, "liepin", liepin_worker_client=worker)
