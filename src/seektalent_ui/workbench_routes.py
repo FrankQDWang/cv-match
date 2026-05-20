@@ -138,6 +138,11 @@ RUNTIME_SOURCE_REASON_CODES = {
     "liepin_pi_account_secret_missing",
     "liepin_pi_mcp_config_missing",
     "liepin_pi_mcp_config_invalid",
+    "liepin_pi_mcp_adapter_missing",
+    "liepin_pi_mcp_adapter_unavailable",
+    "liepin_pi_dokobot_mcp_command_missing",
+    "liepin_pi_dokobot_mcp_config_mismatch",
+    "liepin_pi_dokobot_mcp_tool_names_missing",
     "liepin_pi_dokobot_mcp_missing",
     "liepin_pi_dokobot_tool_unobserved",
     "runtime_failed",
@@ -1249,7 +1254,25 @@ async def _ensure_liepin_browser_session_ready_for_start(
 ) -> _LiepinStartProbeResult:
     connection, _created = store.get_or_create_liepin_source_connection(user=user)
     try:
+        _workbench_app_settings(request).liepin_dokobot_observed_tools
+    except ValueError:
+        if store.mark_liepin_connection_login_required(
+            user=user,
+            connection_id=connection.connection_id,
+            warning_code="liepin_pi_mcp_config_invalid",
+            warning_message=_liepin_start_probe_warning_message("liepin_pi_mcp_config_invalid"),
+            session_id=session_id,
+            source_run_id=source_run_id,
+        ) is None:
+            return _LiepinStartProbeResult(ready=True)
+        return _LiepinStartProbeResult(
+            ready=False,
+            reason_code="liepin_pi_mcp_config_invalid",
+            warning_message=_liepin_start_probe_warning_message("liepin_pi_mcp_config_invalid"),
+        )
+    try:
         worker_client = _liepin_worker_client(request)
+        await worker_client.ensure_ready()
         status: SessionStatus = await worker_client.session_status(
             connection_id=connection.connection_id,
             tenant=DEFAULT_TENANT_ID,
@@ -1258,6 +1281,8 @@ async def _ensure_liepin_browser_session_ready_for_start(
         )
     except LiepinWorkerModeError as exc:
         reason = _liepin_start_probe_error_reason(exc)
+        if reason == LIEPIN_BROWSER_PROBE_UNAVAILABLE_CODE:
+            reason = _liepin_dev_mode_setup_reason(request) or reason
         warning_message = _liepin_start_probe_warning_message(reason)
         if store.mark_liepin_connection_login_required(
             user=user,
@@ -1354,6 +1379,23 @@ def _liepin_start_probe_error_reason(exc: LiepinWorkerModeError) -> str:
     if code in RUNTIME_SOURCE_REASON_CODES and (code.startswith("liepin_pi_") or code.startswith("liepin_browser_")):
         return code
     return LIEPIN_BROWSER_PROBE_UNAVAILABLE_CODE
+
+
+def _liepin_dev_mode_setup_reason(request: Request) -> str | None:
+    diagnostics = getattr(request.app.state, "dev_mode_env_diagnostics", None)
+    if diagnostics is None:
+        return None
+    components = getattr(diagnostics, "components", ())
+    for component in components:
+        code = getattr(component, "reasonCode", None)
+        if (
+            isinstance(code, str)
+            and code in RUNTIME_SOURCE_REASON_CODES
+            and code.startswith("liepin_pi_")
+            and code != "liepin_pi_disabled"
+        ):
+            return code
+    return None
 
 
 def _liepin_start_probe_warning_message(reason_code: str) -> str:

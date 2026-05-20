@@ -585,6 +585,7 @@ def build_liepin_pi_worker_client(settings: AppSettings) -> LiepinWorkerClient:
         connection_id="liepin-pi-agent",
         provider_account_lock_key="liepin-pi-agent",
         dokobot_tool_name=settings.liepin_pi_dokobot_tool_name,
+        expected_observed_tool_names=settings.liepin_dokobot_observed_tools,
     )
 
 

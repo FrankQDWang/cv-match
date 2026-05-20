@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
+from seektalent.dev_mode import build_dev_mode_env_diagnostics
 from seektalent.providers.liepin.worker_contracts import LiepinWorkerModeError
 from seektalent.providers.liepin.worker_contracts import SessionStatus
 
@@ -44,12 +46,21 @@ class ProbeLiepinWorker(FakeLiepinCardWorkerClient):
         status: str,
         provider_account_hash: str | None = "acct_hash_ready",
         error: Exception | None = None,
+        readiness_error: Exception | None = None,
     ) -> None:
         super().__init__()
         self.status = status
         self.provider_account_hash = provider_account_hash
         self.error = error
+        self.readiness_error = readiness_error
+        self.readiness_calls = 0
         self.probe_calls: list[dict[str, object]] = []
+
+    async def ensure_ready(self, *, on_event=None) -> None:
+        del on_event
+        self.readiness_calls += 1
+        if self.readiness_error is not None:
+            raise self.readiness_error
 
     async def session_status(
         self,
@@ -245,6 +256,129 @@ def test_start_session_blocks_only_liepin_when_browser_login_is_required(tmp_pat
         assert liepin_runtime["reasonCode"] == "liepin_browser_login_required"
         assert_no_probe_leaks(response.text)
         _assert_public_probe_surfaces_do_not_leak(client, session["sessionId"])
+
+
+def test_start_session_preserves_recovered_dev_mode_pi_setup_reason(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        _bootstrap_and_login(client)
+        pi_bin = tmp_path / "bin" / "pi"
+        pi_bin.parent.mkdir(parents=True)
+        pi_bin.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+        pi_bin.chmod(0o755)
+        provider_extension = tmp_path / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions"
+        provider_extension.mkdir(parents=True)
+        (provider_extension / "bailian_deepseek.ts").write_text("provider", encoding="utf-8")
+        skill_path = tmp_path / "liepin_search_cards.md"
+        skill_path.write_text("Liepin skill", encoding="utf-8")
+        mcp_path = tmp_path / ".pi" / "mcp.json"
+        mcp_path.parent.mkdir(parents=True)
+        mcp_path.write_text('{"mcpServers":{"dokobot":{"command":"dokobot-mcp","args":[]}}}', encoding="utf-8")
+        client.app.state.dev_mode_env_diagnostics = build_dev_mode_env_diagnostics(
+            {
+                "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
+                "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-binding-secret",
+                "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                    f"{pi_bin} --mode rpc --no-session "
+                    "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                    "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+                ),
+                "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill_path),
+                "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH": str(mcp_path),
+                "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND": "dokobot-mcp",
+                "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON": '["dokobot_read_page"]',
+            },
+            workspace_root=tmp_path,
+        )
+        session = _create_session(client, source_kinds=["cts", "liepin"])
+        _approve_triage(client, session["sessionId"])
+
+        response = client.post(
+            f"/api/workbench/sessions/{session['sessionId']}/start",
+            headers=_csrf_header(client),
+        )
+        payload = response.json()
+
+        assert response.status_code == 202, response.text
+        assert [run["sourceKind"] for run in payload["sourceRuns"]] == ["cts"]
+        assert payload["blockedSources"] == [
+            {
+                "sourceRunId": _started_source(session, "liepin")["sourceRunId"],
+                "sourceKind": "liepin",
+                "reason": "liepin_pi_mcp_adapter_missing",
+            }
+        ]
+        _session, liepin_card = _get_liepin_card(client, session["sessionId"])
+        assert liepin_card["warningCode"] == "liepin_pi_mcp_adapter_missing"
+        assert_no_probe_leaks(response.text)
+
+
+def test_start_session_blocks_liepin_when_readiness_missing_observed_tools(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        _bootstrap_and_login(client)
+        worker = ProbeLiepinWorker(
+            status="ready",
+            readiness_error=LiepinWorkerModeError(
+                "observed tool names missing: /secret/path",
+                code="liepin_pi_dokobot_mcp_tool_names_missing",
+            ),
+        )
+        _install_probe_worker(client, worker)
+
+        session = _create_session(client, source_kinds=["cts", "liepin"])
+        _approve_triage(client, session["sessionId"])
+
+        response = client.post(
+            f"/api/workbench/sessions/{session['sessionId']}/start",
+            headers=_csrf_header(client),
+        )
+        payload = response.json()
+
+        assert response.status_code == 202, response.text
+        assert worker.readiness_calls == 1
+        assert worker.probe_calls == []
+        assert [run["sourceKind"] for run in payload["sourceRuns"]] == ["cts"]
+        assert payload["blockedSources"] == [
+            {
+                "sourceRunId": _started_source(session, "liepin")["sourceRunId"],
+                "sourceKind": "liepin",
+                "reason": "liepin_pi_dokobot_mcp_tool_names_missing",
+            }
+        ]
+        _session, liepin_card = _get_liepin_card(client, session["sessionId"])
+        assert liepin_card["warningCode"] == "liepin_pi_dokobot_mcp_tool_names_missing"
+        assert_no_probe_leaks(response.text)
+
+
+def test_start_session_maps_bad_observed_tools_json_to_safe_reason(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        _bootstrap_and_login(client)
+        worker = ProbeLiepinWorker(status="ready")
+        _install_probe_worker(client, worker)
+        client.app.state.settings.liepin_dokobot_observed_tools_json = "not-json"
+
+        session = _create_session(client, source_kinds=["cts", "liepin"])
+        _approve_triage(client, session["sessionId"])
+
+        response = client.post(
+            f"/api/workbench/sessions/{session['sessionId']}/start",
+            headers=_csrf_header(client),
+        )
+        payload = response.json()
+
+        assert response.status_code == 202, response.text
+        assert worker.readiness_calls == 0
+        assert worker.probe_calls == []
+        assert [run["sourceKind"] for run in payload["sourceRuns"]] == ["cts"]
+        assert payload["blockedSources"] == [
+            {
+                "sourceRunId": _started_source(session, "liepin")["sourceRunId"],
+                "sourceKind": "liepin",
+                "reason": "liepin_pi_mcp_config_invalid",
+            }
+        ]
+        _session, liepin_card = _get_liepin_card(client, session["sessionId"])
+        assert liepin_card["warningCode"] == "liepin_pi_mcp_config_invalid"
+        assert "not-json" not in response.text
 
 
 def test_start_session_blocks_liepin_when_probe_backend_is_unavailable(tmp_path) -> None:

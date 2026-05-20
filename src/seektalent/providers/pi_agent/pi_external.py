@@ -7,7 +7,7 @@ import shlex
 import subprocess
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -66,7 +66,13 @@ class PiExternalTaskResult:
     events: tuple[dict[str, object], ...] = ()
 
 
-def build_pi_rpc_argv(command: str, *, skill_path: Path) -> tuple[str, ...]:
+def build_pi_rpc_argv(
+    command: str,
+    *,
+    skill_path: Path,
+    required_extension_markers: tuple[str, ...] = (),
+    extension_root: Path | None = None,
+) -> tuple[str, ...]:
     if not skill_path.is_file():
         raise ValueError("liepin_pi_skill_path must point to a readable file")
     argv = tuple(shlex.split(command))
@@ -78,6 +84,13 @@ def build_pi_rpc_argv(command: str, *, skill_path: Path) -> tuple[str, ...]:
         raise ValueError("liepin_pi_command must include --no-session")
     if "--skill" in argv:
         raise ValueError("liepin_pi_command must not inline --skill; use liepin_pi_skill_path")
+    extensions = _extension_values(argv)
+    for marker in required_extension_markers:
+        extension = _extension_matching(extensions, marker)
+        if extension is None:
+            raise ValueError("liepin_pi_command must include required extension")
+        if extension_root is not None and not _extension_file_exists(extension, root=extension_root):
+            raise ValueError("liepin_pi_command required extension file does not exist")
     result = [part for part in argv if part != "--no-skills"]
     result.extend(["--no-skills", "--skill", str(skill_path)])
     return tuple(result)
@@ -289,6 +302,30 @@ def _arg_value(argv: tuple[str, ...], flag: str) -> str | None:
     if index + 1 >= len(argv):
         return None
     return argv[index + 1]
+
+
+def _extension_values(argv: Sequence[str]) -> tuple[str, ...]:
+    values: list[str] = []
+    for index, part in enumerate(argv):
+        if part == "--extension" and index + 1 < len(argv):
+            values.append(argv[index + 1])
+        elif part.startswith("--extension="):
+            values.append(part.split("=", 1)[1])
+    return tuple(values)
+
+
+def _extension_matching(extensions: Sequence[str], marker: str) -> str | None:
+    for extension in extensions:
+        if marker in extension:
+            return extension
+    return None
+
+
+def _extension_file_exists(extension: str, *, root: Path) -> bool:
+    path = Path(extension)
+    if not path.is_absolute():
+        path = root / path
+    return path.is_file()
 
 
 def _external_code_for_rpc_status(status: PiRpcTaskStatus) -> PiExternalAgentErrorCode:

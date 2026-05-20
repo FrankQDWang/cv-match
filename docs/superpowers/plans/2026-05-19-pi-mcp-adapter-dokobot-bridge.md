@@ -1,6 +1,6 @@
 # Pi MCP Adapter DokoBot Bridge Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make SeekTalent's Pi-first Liepin path load a pinned Pi MCP adapter and treat DokoBot MCP command/tool registration as an explicit, proven dependency instead of a fake static `.pi/mcp.json` assumption.
 
@@ -61,7 +61,7 @@ Linked spec: [2026-05-19-pi-mcp-adapter-dokobot-bridge-design.md](../specs/2026-
 - Modify: `apps/web-svelte/package.json`
 - Modify: `apps/web-svelte/bun.lock`
 
-- [ ] **Step 1: Add the dependency**
+- [x] **Step 1: Add the dependency**
 
 In `apps/web-svelte/package.json`, add this dependency next to `@earendil-works/pi-coding-agent`:
 
@@ -71,7 +71,7 @@ In `apps/web-svelte/package.json`, add this dependency next to `@earendil-works/
 
 Keep `@earendil-works/pi-coding-agent` unchanged.
 
-- [ ] **Step 2: Regenerate Bun lockfile**
+- [x] **Step 2: Regenerate Bun lockfile**
 
 Run:
 
@@ -82,7 +82,7 @@ bun install
 
 Expected: `bun.lock` updates and `node_modules/pi-mcp-adapter/index.ts` exists.
 
-- [ ] **Step 3: Verify the adapter entry exists**
+- [x] **Step 3: Verify the adapter entry exists**
 
 Run:
 
@@ -100,7 +100,7 @@ Expected: exit code `0`.
 - Modify: `src/seektalent/default.env`
 - Test: `tests/test_liepin_config.py`
 
-- [ ] **Step 1: Write failing config tests**
+- [x] **Step 1: Write failing config tests**
 
 Append to `tests/test_liepin_config.py`:
 
@@ -133,7 +133,7 @@ def test_liepin_dokobot_mcp_json_fields_are_normalized(monkeypatch: pytest.Monke
     assert settings.liepin_dokobot_observed_tools == ("dokobot_read_page", "dokobot_click", "dokobot_type_text")
 ```
 
-- [ ] **Step 2: Run the focused failing tests**
+- [x] **Step 2: Run the focused failing tests**
 
 Run:
 
@@ -143,7 +143,7 @@ uv run pytest tests/test_liepin_config.py::test_liepin_dokobot_mcp_config_defaul
 
 Expected: fail because the settings fields do not exist yet.
 
-- [ ] **Step 3: Add settings fields and JSON tuple parser**
+- [x] **Step 3: Add settings fields and JSON tuple parser**
 
 In `src/seektalent/config.py`, add fields to `AppSettings`:
 
@@ -195,7 +195,7 @@ import json
 
 In the existing settings normalizer, treat empty `liepin_dokobot_mcp_command` as `None` and strip `liepin_dokobot_mcp_server_name`, defaulting it back to `dokobot` when empty.
 
-- [ ] **Step 4: Update default env**
+- [x] **Step 4: Update default env**
 
 Add to `src/seektalent/default.env`:
 
@@ -208,7 +208,7 @@ SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON=[]
 SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=[]
 ```
 
-- [ ] **Step 5: Update CLI env discovery**
+- [x] **Step 5: Update CLI env discovery**
 
 In `src/seektalent/cli.py`, add the new variables to `OPTIONAL_RUNTIME_ENV_VARS`:
 
@@ -222,7 +222,7 @@ In `src/seektalent/cli.py`, add the new variables to `OPTIONAL_RUNTIME_ENV_VARS`
 
 This keeps `seektalent inspect --json` and docs discovery aligned with the root `.env` contract. Do not include configured values in public inspect output.
 
-- [ ] **Step 6: Run the config tests**
+- [x] **Step 6: Run the config tests**
 
 Run:
 
@@ -240,7 +240,7 @@ Expected: pass.
 - Modify: `tests/test_pi_dokobot_local_setup.py`
 - Modify: `tests/test_dev_mode_readiness.py`
 
-- [ ] **Step 1: Write failing local setup tests**
+- [x] **Step 1: Write failing local setup tests**
 
 Add these tests to `tests/test_pi_dokobot_local_setup.py`:
 
@@ -288,7 +288,11 @@ def test_static_setup_reports_missing_dokobot_mcp_command(tmp_path: Path) -> Non
         {
             "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
             "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-secret",
-            "SEEKTALENT_LIEPIN_PI_COMMAND": "pi --mode rpc --no-session",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                "pi --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+            ),
             "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill),
             "SEEKTALENT_LIEPIN_PI_DOKOBOT_TOOL_NAME": "dokobot",
             "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME": "dokobot",
@@ -304,13 +308,48 @@ def test_static_setup_reports_missing_dokobot_mcp_command(tmp_path: Path) -> Non
     assert str(tmp_path) not in json.dumps(status.to_public_payload())
 
 
+def test_static_setup_reports_missing_pi_mcp_adapter_extension(tmp_path: Path) -> None:
+    skill = tmp_path / "liepin_search_cards.md"
+    skill.write_text("Liepin skill", encoding="utf-8")
+
+    status = build_pi_agent_local_setup_status(
+        {
+            "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
+            "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-secret",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                "pi --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts"
+            ),
+            "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill),
+            "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND": "dokobot-mcp",
+            "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON": '["dokobot_read_page"]',
+        },
+        workspace_root=tmp_path,
+        which=lambda name: "/usr/local/bin/pi" if name == "pi" else None,
+    )
+
+    assert status.overall_status == "needs_setup"
+    assert status.components["pi_command"].reason_code == "liepin_pi_mcp_adapter_missing"
+
+
 def test_static_setup_reports_missing_dokobot_tool_names(tmp_path: Path) -> None:
     skill = tmp_path / "liepin_search_cards.md"
     skill.write_text("Liepin skill", encoding="utf-8")
     mcp_config = tmp_path / ".pi" / "mcp.json"
     mcp_config.parent.mkdir()
     mcp_config.write_text(
-        json.dumps({"mcpServers": {"dokobot": {"command": "dokobot-mcp", "args": [], "lifecycle": "lazy"}}}),
+        json.dumps(
+            {
+                "mcpServers": {
+                    "dokobot": {
+                        "command": "dokobot-mcp",
+                        "args": [],
+                        "lifecycle": "lazy",
+                        "directTools": ["read_page"],
+                    }
+                }
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -318,12 +357,16 @@ def test_static_setup_reports_missing_dokobot_tool_names(tmp_path: Path) -> None
         {
             "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
             "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-secret",
-            "SEEKTALENT_LIEPIN_PI_COMMAND": "pi --mode rpc --no-session",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                "pi --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+            ),
             "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill),
             "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH": str(mcp_config),
             "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME": "dokobot",
             "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND": "dokobot-mcp",
-            "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON": "[]",
+            "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON": '["read_page"]',
             "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON": "[]",
         },
         workspace_root=tmp_path,
@@ -332,19 +375,65 @@ def test_static_setup_reports_missing_dokobot_tool_names(tmp_path: Path) -> None
 
     assert status.overall_status == "needs_setup"
     assert status.reason_code == "liepin_pi_dokobot_mcp_tool_names_missing"
+
+
+def test_static_setup_reports_dokobot_mcp_config_mismatch(tmp_path: Path) -> None:
+    skill = tmp_path / "liepin_search_cards.md"
+    skill.write_text("Liepin skill", encoding="utf-8")
+    mcp_config = tmp_path / ".pi" / "mcp.json"
+    mcp_config.parent.mkdir()
+    mcp_config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "dokobot": {
+                        "command": "dokobot-mcp",
+                        "args": ["--old"],
+                        "lifecycle": "lazy",
+                        "directTools": ["old_read"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = build_pi_agent_local_setup_status(
+        {
+            "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
+            "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-secret",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                "pi --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+            ),
+            "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill),
+            "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH": str(mcp_config),
+            "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME": "dokobot",
+            "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND": "dokobot-mcp",
+            "SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON": '["--stdio"]',
+            "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON": '["read_page"]',
+            "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON": '["dokobot_read_page"]',
+        },
+        workspace_root=tmp_path,
+        which=lambda name: "/usr/local/bin/pi" if name == "pi" else None,
+    )
+
+    assert status.overall_status == "needs_setup"
+    assert status.components["dokobot_mcp"].reason_code == "liepin_pi_dokobot_mcp_config_mismatch"
 ```
 
-- [ ] **Step 2: Run the failing tests**
+- [x] **Step 2: Run the failing tests**
 
 Run:
 
 ```bash
-uv run pytest tests/test_pi_dokobot_local_setup.py::test_init_reports_missing_dokobot_mcp_command_without_writing tests/test_pi_dokobot_local_setup.py::test_init_writes_explicit_dokobot_mcp_command_and_direct_tools tests/test_pi_dokobot_local_setup.py::test_static_setup_reports_missing_dokobot_mcp_command -q
+uv run pytest tests/test_pi_dokobot_local_setup.py::test_init_reports_missing_dokobot_mcp_command_without_writing tests/test_pi_dokobot_local_setup.py::test_init_writes_explicit_dokobot_mcp_command_and_direct_tools tests/test_pi_dokobot_local_setup.py::test_static_setup_reports_missing_dokobot_mcp_command tests/test_pi_dokobot_local_setup.py::test_static_setup_reports_missing_pi_mcp_adapter_extension tests/test_pi_dokobot_local_setup.py::test_static_setup_reports_missing_dokobot_tool_names tests/test_pi_dokobot_local_setup.py::test_static_setup_reports_dokobot_mcp_config_mismatch -q
 ```
 
 Expected: fail because `init_project_pi_mcp_config` does not accept the new arguments and still writes a fake `dokobot` command.
 
-- [ ] **Step 3: Extend local setup signatures**
+- [x] **Step 3: Extend local setup signatures**
 
 Change `init_project_pi_mcp_config(...)` to accept:
 
@@ -378,7 +467,7 @@ if dokobot_direct_tools:
     expected_server["directTools"] = list(dokobot_direct_tools)
 ```
 
-- [ ] **Step 4: Make static diagnostics use the new env keys**
+- [x] **Step 4: Make static diagnostics use the new env keys**
 
 In `_dokobot_mcp_component(...)`, read:
 
@@ -392,17 +481,35 @@ if not configured_command:
 Load `server = mcp_servers.get(configured_server_name)`. After loading the MCP server, verify:
 
 ```python
+expected_args = _json_string_tuple_env(env, "SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON")
+expected_direct_tools = _json_string_tuple_env(env, "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON")
+server_args = tuple(str(item).strip() for item in server.get("args") or ())
+server_direct_tools = tuple(str(item).strip() for item in server.get("directTools") or ())
 if str(server.get("command") or "").strip() != configured_command:
     return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_dokobot_mcp_missing")
+if server_args != expected_args or server_direct_tools != expected_direct_tools:
+    return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_dokobot_mcp_config_mismatch")
 ```
 
-If `SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON` is empty and `SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON` is empty, return:
+Add a small local helper such as `_json_string_tuple_env(...)` that accepts missing/empty values as `()` and raises `ValueError` when the JSON is malformed or not an array of non-empty strings. `_dokobot_mcp_component(...)` should catch that validation error and return `PiAgentLocalSetupComponent("invalid", "liepin_pi_mcp_config_invalid")`. Do not silently ignore malformed args/directTools JSON.
+
+If `SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON` is empty, return:
 
 ```python
 PiAgentLocalSetupComponent("needs_setup", "liepin_pi_dokobot_mcp_tool_names_missing")
 ```
 
-- [ ] **Step 5: Feed new keys through dev-mode readiness**
+`SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON` must be non-empty for live readiness. `SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON` may be empty or non-empty, but it is adapter configuration only and must never be treated as Runtime observed-tool proof.
+
+In `_pi_command_component(...)`, parse `--extension` arguments with the same helper shape used in Task 4. Return:
+
+```python
+PiAgentLocalSetupComponent("needs_setup", "liepin_pi_mcp_adapter_missing")
+```
+
+when `pi-mcp-adapter/index.ts` is missing from extension values. Do not report this as generic `liepin_pi_command_invalid`; missing adapter is a user-actionable setup state and should leave CTS/Workbench usable.
+
+- [x] **Step 5: Feed new keys through dev-mode readiness**
 
 In `src/seektalent/dev_mode.py`, update `_pi_mcp_components_from_settings(...)` so the synthetic env passed to `build_pi_agent_local_setup_status(...)` includes:
 
@@ -442,19 +549,22 @@ def test_dev_mode_status_uses_configured_dokobot_mcp_env(monkeypatch: pytest.Mon
     monkeypatch.setenv("SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET", "secret")
     monkeypatch.setenv(
         "SEEKTALENT_LIEPIN_PI_COMMAND",
-        "pi --mode rpc --no-session --extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts",
+        "pi --mode rpc --no-session "
+        "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+        "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts",
     )
     monkeypatch.setenv("SEEKTALENT_LIEPIN_PI_SKILL_PATH", str(skill))
     monkeypatch.setenv("SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH", str(mcp_config))
     monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND", "dokobot-mcp")
     monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON", '["read_page","click","type_text"]')
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON", '["dokobot_read_page","dokobot_click","dokobot_type_text"]')
 
     status = build_dev_mode_status(AppSettings())
 
     assert any(item.name == "liepin_pi_dokobot_mcp" and item.status == "configured" for item in status.components)
 ```
 
-- [ ] **Step 6: Run local setup tests**
+- [x] **Step 6: Run local setup tests**
 
 Run:
 
@@ -473,7 +583,7 @@ Expected: pass.
 - Modify: `tests/test_pi_external_agent.py`
 - Modify: `tests/test_liepin_config.py`
 
-- [ ] **Step 1: Write failing command validation tests**
+- [x] **Step 1: Write failing command validation tests**
 
 Append to `tests/test_pi_external_agent.py`:
 
@@ -528,19 +638,35 @@ def test_build_pi_rpc_argv_rejects_missing_provider_extension(tmp_path: Path) ->
             skill_path=skill_path,
             required_extension_markers=("pi_extensions/bailian_deepseek.ts", "pi-mcp-adapter/index.ts"),
         )
+
+
+def test_build_pi_rpc_argv_does_not_accept_marker_outside_extension_arg(tmp_path: Path) -> None:
+    skill_path = _skill(tmp_path)
+    command = (
+        "pi --mode rpc --no-session "
+        "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+        "--model pi-mcp-adapter/index.ts"
+    )
+
+    with pytest.raises(ValueError, match="liepin_pi_command must include required extension"):
+        build_pi_rpc_argv(
+            command,
+            skill_path=skill_path,
+            required_extension_markers=("pi_extensions/bailian_deepseek.ts", "pi-mcp-adapter/index.ts"),
+        )
 ```
 
-- [ ] **Step 2: Run the failing tests**
+- [x] **Step 2: Run the failing tests**
 
 Run:
 
 ```bash
-uv run pytest tests/test_pi_external_agent.py::test_build_pi_rpc_argv_preserves_required_provider_and_mcp_extensions tests/test_pi_external_agent.py::test_build_pi_rpc_argv_rejects_missing_mcp_adapter_extension tests/test_pi_external_agent.py::test_build_pi_rpc_argv_rejects_missing_provider_extension -q
+uv run pytest tests/test_pi_external_agent.py::test_build_pi_rpc_argv_preserves_required_provider_and_mcp_extensions tests/test_pi_external_agent.py::test_build_pi_rpc_argv_rejects_missing_mcp_adapter_extension tests/test_pi_external_agent.py::test_build_pi_rpc_argv_rejects_missing_provider_extension tests/test_pi_external_agent.py::test_build_pi_rpc_argv_does_not_accept_marker_outside_extension_arg -q
 ```
 
 Expected: fail because `build_pi_rpc_argv` has no `required_extension_markers` parameter.
 
-- [ ] **Step 3: Extend `build_pi_rpc_argv`**
+- [x] **Step 3: Extend `build_pi_rpc_argv`**
 
 Change the signature in `src/seektalent/providers/pi_agent/pi_external.py`:
 
@@ -553,18 +679,35 @@ def build_pi_rpc_argv(
 ) -> tuple[str, ...]:
 ```
 
-After validating `--no-session`, add:
+After validating `--no-session`, add a real extension parser:
 
 ```python
-joined = " ".join(argv)
+def _extension_values(argv: Sequence[str]) -> tuple[str, ...]:
+    values: list[str] = []
+    for index, part in enumerate(argv):
+        if part == "--extension" and index + 1 < len(argv):
+            values.append(argv[index + 1])
+        elif part.startswith("--extension="):
+            values.append(part.split("=", 1)[1])
+    return tuple(values)
+```
+
+If `Sequence` is not imported in `src/seektalent/providers/pi_agent/pi_external.py`, add it to the existing `collections.abc` import.
+
+Then validate markers only against extension values:
+
+```python
+extensions = _extension_values(argv)
 for marker in required_extension_markers:
-    if marker not in joined:
+    if not any(marker in extension for extension in extensions):
         raise ValueError("liepin_pi_command must include required extension")
 ```
 
 Keep the existing `--skill` rejection and `--no-skills --skill` append behavior unchanged.
 
-- [ ] **Step 4: Enforce required extension markers from AppSettings**
+Do not use `" ".join(argv)` for this check. A marker inside `--model`, prompt text, or another unrelated argument must not satisfy the extension requirement.
+
+- [x] **Step 4: Enforce required extension markers from AppSettings**
 
 Append to `tests/test_liepin_config.py`:
 
@@ -622,7 +765,9 @@ return build_pi_rpc_argv(
 
 This is the critical integration step. Extending `build_pi_rpc_argv(...)` alone is not enough; `validate_liepin_worker_config(...)` must exercise the marker check through `self.liepin_pi_command_argv`.
 
-- [ ] **Step 5: Run Pi external and config tests**
+Update existing successful `pi_agent` tests in `tests/test_liepin_config.py` and helper construction in `tests/test_pi_external_agent.py` so they either pass `required_extension_markers=()` for low-level parser behavior or include both required `--extension` values when exercising `AppSettings(liepin_worker_mode="pi_agent")`. No successful `pi_agent` settings test may keep using bare `pi --mode rpc --no-session` after this task.
+
+- [x] **Step 5: Run Pi external and config tests**
 
 Run:
 
@@ -639,7 +784,9 @@ Expected: pass.
 - Modify: `scripts/start-dev-workbench.sh`
 - Test: `tests/test_pi_dokobot_local_setup.py`
 
-- [ ] **Step 1: Add script expectations to a Python test**
+**Execution ordering:** Task 5's launcher wiring calls the CLI flags introduced in Task 6. If implementing linearly, write and run Task 5 Steps 1-2 first, complete Task 6, then return to Task 5 Steps 3-4. Do not enable the `seektalent pi-agent init --dokobot-*` launcher call before Task 6 is implemented.
+
+- [x] **Step 1: Add script expectations to a Python test**
 
 Append to `tests/test_pi_dokobot_local_setup.py`:
 
@@ -649,15 +796,18 @@ def test_dev_launcher_mentions_pinned_pi_mcp_adapter() -> None:
 
     assert "node_modules/pi-mcp-adapter/index.ts" in script
     assert "--extension $PI_MCP_ADAPTER_EXTENSION" in script
+    assert "PI_MCP_ADAPTER_EXTENSION_ARG" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON" in script
     assert 'if [[ -n "$DOKOBOT_MCP_COMMAND" ]]' in script
     assert "DokoBot MCP command is not configured" in script
+    assert "Pi MCP adapter is missing; starting Workbench with Liepin browser channel blocked." in script
+    assert "Repo-local Pi MCP adapter is missing: apps/web-svelte/node_modules/pi-mcp-adapter/index.ts\" >&2\n  exit 1" not in script
 ```
 
-- [ ] **Step 2: Run the failing launcher test**
+- [x] **Step 2: Run the failing launcher test**
 
 Run:
 
@@ -667,7 +817,7 @@ uv run pytest tests/test_pi_dokobot_local_setup.py::test_dev_launcher_mentions_p
 
 Expected: fail because the script does not mention the adapter yet.
 
-- [ ] **Step 3: Add adapter and DokoBot env handling to the script**
+- [x] **Step 3: Add adapter and DokoBot env handling to the script**
 
 In `scripts/start-dev-workbench.sh`, define:
 
@@ -678,9 +828,11 @@ PI_MCP_ADAPTER_EXTENSION="$WEB_DIR/node_modules/pi-mcp-adapter/index.ts"
 After the existing Pi binary check, add:
 
 ```bash
+PI_MCP_ADAPTER_EXTENSION_ARG=""
 if [[ ! -f "$PI_MCP_ADAPTER_EXTENSION" ]]; then
-  echo "Repo-local Pi MCP adapter is missing: apps/web-svelte/node_modules/pi-mcp-adapter/index.ts" >&2
-  exit 1
+  echo "Pi MCP adapter is missing; starting Workbench with Liepin browser channel blocked." >&2
+else
+  PI_MCP_ADAPTER_EXTENSION_ARG="--extension $PI_MCP_ADAPTER_EXTENSION"
 fi
 ```
 
@@ -701,8 +853,10 @@ DOKOBOT_OBSERVED_TOOLS_JSON="${DOKOBOT_OBSERVED_TOOLS_JSON:-[]}"
 Change the generated Pi command to include the adapter extension:
 
 ```bash
-PI_COMMAND="$PI_BIN --mode rpc --no-session --extension $PI_EXTENSION --extension $PI_MCP_ADAPTER_EXTENSION --provider bailian --model $PI_MODEL"
+PI_COMMAND="$PI_BIN --mode rpc --no-session --extension $PI_EXTENSION $PI_MCP_ADAPTER_EXTENSION_ARG --provider bailian --model $PI_MODEL"
 ```
+
+This missing-adapter path intentionally produces a command that fails the `pi_agent` adapter-marker diagnostic, but the launcher must still start backend/frontend. The backend/dev diagnostics should surface `liepin_pi_mcp_adapter_missing`, while CTS remains usable.
 
 When calling `seektalent pi-agent init`, pass the configured DokoBot MCP fields once the CLI flags exist in Task 6:
 
@@ -734,7 +888,7 @@ When starting the backend, pass:
   SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON="$DOKOBOT_OBSERVED_TOOLS_JSON" \
 ```
 
-- [ ] **Step 4: Run shell syntax and launcher tests**
+- [x] **Step 4: Run shell syntax and launcher tests**
 
 Run:
 
@@ -751,7 +905,7 @@ Expected: pass.
 - Modify: `src/seektalent/cli.py`
 - Test: `tests/test_cli.py`
 
-- [ ] **Step 1: Write failing CLI tests**
+- [x] **Step 1: Write failing CLI tests**
 
 Append to `tests/test_cli.py`:
 
@@ -799,19 +953,44 @@ def test_pi_agent_init_writes_configured_dokobot_mcp_command(tmp_path: Path, cap
     assert config["mcpServers"]["dokobot"]["command"] == "dokobot-mcp"
     assert config["mcpServers"]["dokobot"]["args"] == ["--stdio"]
     assert config["mcpServers"]["dokobot"]["directTools"] == ["read_page", "click", "type_text"]
+
+
+def test_pi_agent_init_rejects_malformed_dokobot_json_without_writing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main([
+        "pi-agent",
+        "init",
+        "--project",
+        "--workspace-root",
+        str(tmp_path),
+        "--write",
+        "--dokobot-mcp-command",
+        "dokobot-mcp",
+        "--dokobot-mcp-args-json",
+        "not-json",
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().err)
+    assert exit_code == 1
+    assert payload["error_type"] == "ValueError"
+    assert "dokobot_mcp_args_json must be a JSON array of strings" in payload["error"]
+    assert not (tmp_path / ".pi" / "mcp.json").exists()
 ```
 
-- [ ] **Step 2: Run the failing CLI tests**
+- [x] **Step 2: Run the failing CLI tests**
 
 Run:
 
 ```bash
-uv run pytest tests/test_cli.py::test_pi_agent_init_requires_dokobot_mcp_command tests/test_cli.py::test_pi_agent_init_writes_configured_dokobot_mcp_command -q
+uv run pytest tests/test_cli.py::test_pi_agent_init_requires_dokobot_mcp_command tests/test_cli.py::test_pi_agent_init_writes_configured_dokobot_mcp_command tests/test_cli.py::test_pi_agent_init_rejects_malformed_dokobot_json_without_writing -q
 ```
 
-Expected: fail because the CLI flags do not exist and init still writes the fake default.
+Expected: fail because the CLI flags do not exist, init still writes the fake default, and malformed JSON is not yet routed through the CLI JSON error handler.
 
-- [ ] **Step 3: Add CLI arguments**
+- [x] **Step 3: Add CLI arguments**
 
 In the `pi-agent init` parser in `src/seektalent/cli.py`, add:
 
@@ -829,17 +1008,17 @@ def _json_string_tuple_arg(raw: str, *, field_name: str) -> tuple[str, ...]:
     try:
         loaded = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"{field_name} must be a JSON array of strings") from exc
+        raise ValueError(f"{field_name} must be a JSON array of strings") from exc
     if not isinstance(loaded, list) or not all(isinstance(item, str) and item.strip() for item in loaded):
-        raise SystemExit(f"{field_name} must be a JSON array of non-empty strings")
+        raise ValueError(f"{field_name} must be a JSON array of non-empty strings")
     return tuple(item.strip() for item in loaded)
 ```
 
-Pass the parsed values into `init_project_pi_mcp_config(...)`. The new `--dokobot-mcp-server-name` should feed the existing `dokobot_tool_name`/server-key parameter. Keep the old hidden `--dokobot-tool-name` only as backward-compatible alias if needed, but the plan and docs should use `--dokobot-mcp-server-name`.
+Pass the parsed values into `init_project_pi_mcp_config(...)`. The helper must raise `ValueError`, not `SystemExit`, so the existing `_run_exec(...)` exception handler can return status `1` and emit a single JSON error object when `--json` is set. The new `--dokobot-mcp-server-name` should feed the existing `dokobot_tool_name`/server-key parameter. Keep the old hidden `--dokobot-tool-name` only as backward-compatible alias if needed, but the plan and docs should use `--dokobot-mcp-server-name`.
 
 Update the existing `test_pi_agent_init_dry_run_does_not_write_file` and `test_pi_agent_init_write_creates_project_mcp_file` in `tests/test_cli.py`. The no-command case should now expect `exit_code == 1`, `status == "blocked"`, and `reasonCode == "liepin_pi_dokobot_mcp_command_missing"`; success cases must pass `--dokobot-mcp-command`.
 
-- [ ] **Step 4: Run CLI tests**
+- [x] **Step 4: Run CLI tests**
 
 Run:
 
@@ -858,7 +1037,7 @@ Expected: pass.
 - Test: `tests/test_liepin_pi_executor.py`
 - Test: `tests/test_liepin_pi_worker_client.py`
 
-- [ ] **Step 1: Write failing executor test**
+- [x] **Step 1: Write failing executor test**
 
 Add to `tests/test_liepin_pi_executor.py`:
 
@@ -925,21 +1104,68 @@ def test_capability_probe_blocks_missing_configured_observed_tool(tmp_path: Path
 
     assert result.ready is False
     assert result.safe_reason_code == "liepin_pi_dokobot_tool_unobserved"
+
+
+def test_capability_probe_blocks_when_expected_observed_tools_are_not_configured(tmp_path: Path) -> None:
+    del tmp_path
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "ready",
+            "read_tool_name": "dokobot_read_page",
+            "action_tool_names": ["dokobot_click", "dokobot_type_text"],
+            "proof_kind": "trusted_manifest_and_observed_tool_event",
+            "capability_manifest_ref": "artifact://protected/capability/manifest.json",
+            "tool_evidence_ref": "artifact://protected/capability/tools.json",
+            "allowed_hosts": ["liepin.com"],
+        },
+        observed_tool_names=("dokobot_read_page", "dokobot_click", "dokobot_type_text"),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=(),
+    )
+
+    assert result.ready is False
+    assert result.safe_reason_code == "liepin_pi_dokobot_mcp_tool_names_missing"
+
+
+def test_capability_probe_preserves_adapter_unavailable_stop_reason(tmp_path: Path) -> None:
+    del tmp_path
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "blocked",
+            "proof_kind": "none",
+            "allowed_hosts": [],
+            "stop_reason": "liepin_pi_mcp_adapter_unavailable",
+        },
+        observed_tool_names=(),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot_read_page",),
+    )
+
+    assert result.ready is False
+    assert result.safe_reason_code == "liepin_pi_mcp_adapter_unavailable"
 ```
 
 Use the existing `_client(...)`, `_registry(...)`, `FakeProviderKeyHasher`, and `PiLiepinExecutor` helpers from `tests/test_liepin_pi_executor.py`. Do not reference `_executor_with_result`; that helper does not exist in the current test file.
 
-- [ ] **Step 2: Run the failing executor tests**
+- [x] **Step 2: Run the failing executor tests**
 
 Run:
 
 ```bash
-uv run pytest tests/test_liepin_pi_executor.py::test_capability_probe_requires_configured_observed_dokobot_tools tests/test_liepin_pi_executor.py::test_capability_probe_blocks_missing_configured_observed_tool -q
+uv run pytest tests/test_liepin_pi_executor.py::test_capability_probe_requires_configured_observed_dokobot_tools tests/test_liepin_pi_executor.py::test_capability_probe_blocks_missing_configured_observed_tool tests/test_liepin_pi_executor.py::test_capability_probe_blocks_when_expected_observed_tools_are_not_configured tests/test_liepin_pi_executor.py::test_capability_probe_preserves_adapter_unavailable_stop_reason -q
 ```
 
 Expected: fail because `probe_capabilities` does not accept `expected_observed_tool_names`.
 
-- [ ] **Step 3: Extend executor signature**
+- [x] **Step 3: Extend executor signature**
 
 Change `PiLiepinExecutor.probe_capabilities(...)` to:
 
@@ -955,12 +1181,20 @@ def probe_capabilities(
 Inside validation, compute:
 
 ```python
-required_observed = tuple(expected_observed_tool_names) or (
-    f"{expected_dokobot_tool_name}.read",
-    f"{expected_dokobot_tool_name}.navigate",
-    f"{expected_dokobot_tool_name}.click",
-    f"{expected_dokobot_tool_name}.type_text",
-)
+if envelope.status != "ready":
+    if envelope.stop_reason == "liepin_pi_mcp_adapter_unavailable":
+        return PiLiepinCapabilityProbeResult(ready=False, safe_reason_code="liepin_pi_mcp_adapter_unavailable")
+    return PiLiepinCapabilityProbeResult(ready=False, safe_reason_code="blocked_backend_unavailable")
+
+required_observed = tuple(expected_observed_tool_names)
+if not required_observed:
+    return PiLiepinCapabilityProbeResult(
+        ready=False,
+        safe_reason_code="liepin_pi_dokobot_mcp_tool_names_missing",
+    )
+declared = {envelope.read_tool_name, *envelope.action_tool_names}
+if not set(required_observed).issubset(declared):
+    raise ValueError("required DokoBot tools were not declared")
 missing = [tool for tool in required_observed if tool not in task_result.observed_tool_names]
 if missing:
     return PiLiepinCapabilityProbeResult(ready=False, safe_reason_code="liepin_pi_dokobot_tool_unobserved")
@@ -968,9 +1202,9 @@ if missing:
 
 Keep the existing envelope, artifact-ref, and allowed-host validations.
 
-If `expected_observed_tool_names` is empty, keep the existing fallback to `dokobot.read`, `dokobot.navigate`, `dokobot.click`, and `dokobot.type_text` for backward compatibility with older tests.
+Do not fall back to `dokobot.read`, `dokobot.navigate`, `dokobot.click`, or `dokobot.type_text` when `expected_observed_tool_names` is empty. Empty expected observed tools means the live bridge is not configured.
 
-- [ ] **Step 4: Pass configured observed tools from client construction**
+- [x] **Step 4: Pass configured observed tools from client construction**
 
 In `tests/test_liepin_pi_worker_client.py`, add `from collections.abc import Sequence` if it is not already imported. Update `FakeExecutor.probe_capabilities(...)` so it accepts and records the new argument:
 
@@ -1029,7 +1263,7 @@ In `src/seektalent/providers/liepin/client.py`, when constructing `LiepinPiWorke
 
 This implementation accepts direct observed tool events only. Do not treat a generic adapter proxy tool such as `mcp` as proof of DokoBot browser readiness in this slice.
 
-- [ ] **Step 5: Run Liepin Pi tests**
+- [x] **Step 5: Run Liepin Pi tests**
 
 Run:
 
@@ -1044,9 +1278,10 @@ Expected: pass.
 **Files:**
 - Modify: `src/seektalent_ui/workbench_routes.py`
 - Modify: `apps/web-svelte/src/lib/workbench/sourceDisplay.ts`
-- Test: existing backend/source display tests
+- Test: `tests/test_workbench_liepin_browser_session_probe.py`
+- Test: existing source display tests
 
-- [ ] **Step 1: Add reason codes to backend projection**
+- [x] **Step 1: Add reason codes to backend projection**
 
 In `src/seektalent_ui/workbench_routes.py`, add these strings to `RUNTIME_SOURCE_REASON_CODES`:
 
@@ -1054,44 +1289,111 @@ In `src/seektalent_ui/workbench_routes.py`, add these strings to `RUNTIME_SOURCE
 "liepin_pi_mcp_adapter_missing",
 "liepin_pi_mcp_adapter_unavailable",
 "liepin_pi_dokobot_mcp_command_missing",
+"liepin_pi_dokobot_mcp_config_mismatch",
 "liepin_pi_dokobot_mcp_tool_names_missing",
 "liepin_pi_dokobot_tool_unobserved",
 ```
 
-- [ ] **Step 2: Add business-facing UI copy**
+- [x] **Step 2: Project recovered dev-mode setup reasons into source-run start**
 
-In `apps/web-svelte/src/lib/workbench/sourceDisplay.ts`, map all setup/adapter/tool-name failures to:
+Add a focused backend test in `tests/test_workbench_liepin_browser_session_probe.py`:
+
+```python
+from pathlib import Path
+
+from seektalent.dev_mode import DevModeComponentStatusItem, DevModeStatus
+
+
+def test_start_session_preserves_recovered_dev_mode_pi_setup_reason(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        _bootstrap_and_login(client)
+        client.app.state.dev_mode_env_diagnostics = DevModeStatus(
+            mode="raw_env_diagnostics",
+            overallStatus="needs_setup",
+            components=[
+                DevModeComponentStatusItem(
+                    name="liepin_pi_command",
+                    label="Pi RPC command",
+                    status="needs_setup",
+                    reasonCode="liepin_pi_mcp_adapter_missing",
+                )
+            ],
+            dataRoots=[],
+        )
+        session = _create_session(client, source_kinds=["cts", "liepin"])
+        _approve_triage(client, session["sessionId"])
+
+        response = client.post(
+            f"/api/workbench/sessions/{session['sessionId']}/start",
+            headers=_csrf_header(client),
+        )
+        payload = response.json()
+
+        assert response.status_code == 202, response.text
+        assert [run["sourceKind"] for run in payload["sourceRuns"]] == ["cts"]
+        assert payload["blockedSources"] == [
+            {
+                "sourceRunId": _started_source(session, "liepin")["sourceRunId"],
+                "sourceKind": "liepin",
+                "reason": "liepin_pi_mcp_adapter_missing",
+            }
+        ]
+        _session, liepin_card = _get_liepin_card(client, session["sessionId"])
+        assert liepin_card["warningCode"] == "liepin_pi_mcp_adapter_missing"
+        assert_no_probe_leaks(response.text)
+```
+
+Reuse the helpers already imported in this file from `tests.test_workbench_api`: `_client`, `_bootstrap_and_login`, `_create_session`, `_approve_triage`, `_csrf_header`, and `_started_source`. Reuse this file's existing `_get_liepin_card` and `assert_no_probe_leaks` helpers. Do not add a second fake app harness.
+
+In `src/seektalent_ui/workbench_routes.py`, add a helper near `_liepin_start_probe_error_reason(...)`:
+
+```python
+def _liepin_dev_mode_setup_reason(request: Request) -> str | None:
+    diagnostics = getattr(request.app.state, "dev_mode_env_diagnostics", None)
+    if diagnostics is None:
+        return None
+    for component in diagnostics.components:
+        code = getattr(component, "reasonCode", None)
+        if (
+            isinstance(code, str)
+            and code in RUNTIME_SOURCE_REASON_CODES
+            and code.startswith("liepin_pi_")
+            and code != "liepin_pi_disabled"
+        ):
+            return code
+    return None
+```
+
+In the `except LiepinWorkerModeError` branch of `_ensure_liepin_browser_session_ready_for_start(...)`, if `_liepin_start_probe_error_reason(exc)` returns `liepin_browser_probe_unavailable`, replace it with `_liepin_dev_mode_setup_reason(request)` when that helper returns a safe `liepin_pi_*` reason. This is required because `src/seektalent_ui/server.py` can recover from invalid `pi_agent` settings by constructing settings with `liepin_worker_mode="disabled"` while storing raw env diagnostics on `app.state.dev_mode_env_diagnostics`; the start route must preserve the original setup reason for the blocked Liepin source.
+
+- [x] **Step 3: Add business-facing UI copy**
+
+In `apps/web-svelte/src/lib/workbench/sourceDisplay.ts`, keep the existing `sourceReasonLabel(...)` string-returning helper. Map all setup/adapter/tool-name failures to business-facing strings such as:
 
 ```ts
-{
-  label: '浏览器检索通道不可用',
-  description: '请到本机设置检查浏览器助手后重试。'
-}
+'浏览器检索通道不可用，请到本机设置检查浏览器助手后重试。'
 ```
 
 Keep `liepin_browser_login_required` mapped to:
 
 ```ts
-{
-  label: '需登录猎聘',
-  description: '请在本机 Chrome 登录猎聘并保持会话有效，系统会在检索时使用该登录态。'
-}
+'请在本机 Chrome 登录猎聘并保持会话有效，系统会在检索时使用该登录态。'
 ```
 
 Do not use the words `Pi`, `DokoBot`, or `MCP` in main Workbench source card copy.
 
-Because `apps/web-svelte/src/lib/workbench/sourceDisplay.test.ts` already exists, add a mandatory case that feeds `liepin_pi_mcp_adapter_missing`, `liepin_pi_dokobot_mcp_command_missing`, and `liepin_pi_dokobot_tool_unobserved` and asserts the returned label/description do not contain `Pi`, `DokoBot`, or `MCP`.
+Because `apps/web-svelte/src/lib/workbench/sourceDisplay.test.ts` already exists, add a mandatory case that feeds `liepin_pi_mcp_adapter_missing`, `liepin_pi_dokobot_mcp_command_missing`, `liepin_pi_dokobot_mcp_config_mismatch`, and `liepin_pi_dokobot_tool_unobserved` and asserts the returned string does not contain `Pi`, `DokoBot`, or `MCP`.
 
-- [ ] **Step 3: Run focused frontend/backend checks**
+- [x] **Step 4: Run focused frontend/backend checks**
 
 Run:
 
 ```bash
-uv run pytest tests/test_workbench_routes.py -k 'runtime_source or liepin' -q
+uv run pytest tests/test_workbench_liepin_browser_session_probe.py -q
 cd apps/web-svelte && bun run test -- --run
 ```
 
-Expected: pass. If the backend test selection has no matching tests, run the nearest existing Workbench route test file that covers runtime source-state projection.
+Expected: pass.
 
 ## Task 9: Documentation And Deferred Work
 
@@ -1101,13 +1403,13 @@ Expected: pass. If the backend test selection has no matching tests, run the nea
 - Modify: `README.md`
 - Modify: `TODOS.md`
 
-- [ ] **Step 1: Document root `.env` configuration**
+- [x] **Step 1: Document root `.env` configuration**
 
 In `docs/configuration.md`, document:
 
 ```dotenv
 SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent
-SEEKTALENT_LIEPIN_PI_COMMAND=
+SEEKTALENT_LIEPIN_PI_COMMAND=pi --mode rpc --no-session
 SEEKTALENT_LIEPIN_PI_MODEL_ID=deepseek-v4-flash
 SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME=dokobot
 SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND=
@@ -1118,12 +1420,14 @@ SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=[]
 
 State explicitly:
 
+- `scripts/start-dev-workbench.sh` normally generates the full Pi command with provider and MCP adapter extensions;
+- any manual `SEEKTALENT_LIEPIN_PI_COMMAND` override for `pi_agent` must include `--mode rpc`, `--no-session`, the Bailian provider extension, and the pinned MCP adapter extension;
 - empty `SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND` means Liepin live browser channel is not configured;
 - DokoBot MCP is loaded only inside Pi;
 - Runtime/Workbench do not call DokoBot directly;
 - `scripts/start-dev-workbench.sh` uses root `.env` and passes secrets only to backend/Pi.
 
-- [ ] **Step 2: Document local verification**
+- [x] **Step 2: Document local verification**
 
 In `docs/development.md`, add:
 
@@ -1139,18 +1443,20 @@ Add a skipped-by-default live command shape:
 SEEKTALENT_LIVE_PI_AGENT=1 uv run pytest tests/test_liepin_live_pi_agent.py -q
 ```
 
-The doc must say this live smoke is expected to block with `liepin_pi_dokobot_mcp_command_missing` until a real DokoBot MCP server command/tool set is configured.
+The doc must say this live smoke is expected to block with `liepin_pi_dokobot_mcp_command_missing` or `liepin_pi_dokobot_mcp_tool_names_missing` until a real DokoBot MCP server command and observed tool-name set are configured. It may also block during adapter metadata cache warm-up/reconnect; that is a diagnostic state, not a fallback.
 
-- [ ] **Step 3: Add deferred work entry**
+- [x] **Step 3: Add deferred work entry**
 
 In `TODOS.md`, add one entry under the existing local-product/platform follow-ups:
 
 ```markdown
 - Confirm and pin the official DokoBot MCP server startup command/tool names once DokoBot exposes a stable local command or config export. Current Pi bridge refuses to fake this; it accepts explicit root `.env` command/tool settings and blocks Liepin live search until they are proven.
+- Add a BrowserBridgeConfig/capability-registry layer only after the DokoBot path is proven; keep this slice DokoBot-specific to avoid premature provider abstraction.
+- Add a protected tool-manifest handshake so Pi can report adapter version, server name, declared tools, observed tools, and allowed hosts through validated artifact refs instead of manual observed-tool env settings.
 - Add protected Pi MCP adapter proxy-proof validation if direct DokoBot tools cannot be exposed reliably. The first implementation accepts direct observed tool events only.
 ```
 
-- [ ] **Step 4: Run docs grep**
+- [x] **Step 4: Run docs grep**
 
 Run:
 
@@ -1165,7 +1471,7 @@ Expected: the deferred command-name limitation appears only in developer/config 
 **Files:**
 - No new files unless prior tasks identify missing focused tests.
 
-- [ ] **Step 1: Run Python verification**
+- [x] **Step 1: Run Python verification**
 
 Run:
 
@@ -1186,12 +1492,13 @@ uv run ruff check \
   tests/test_pi_dokobot_local_setup.py \
   tests/test_pi_external_agent.py \
   tests/test_liepin_pi_executor.py \
-  tests/test_liepin_pi_worker_client.py
+  tests/test_liepin_pi_worker_client.py \
+  tests/test_workbench_liepin_browser_session_probe.py
 ```
 
 Expected: pass.
 
-- [ ] **Step 2: Run focused tests**
+- [x] **Step 2: Run focused tests**
 
 Run:
 
@@ -1203,12 +1510,14 @@ uv run pytest \
   tests/test_liepin_pi_executor.py \
   tests/test_liepin_pi_worker_client.py \
   tests/test_dev_mode_readiness.py \
+  tests/test_workbench_liepin_browser_session_probe.py -q
+uv run pytest \
   tests/test_cli.py -k 'pi_agent or liepin_pi' -q
 ```
 
 Expected: pass.
 
-- [ ] **Step 3: Run frontend checks**
+- [x] **Step 3: Run frontend checks**
 
 Run:
 
@@ -1220,7 +1529,7 @@ bun run build
 
 Expected: pass. The existing Vite large chunk warning is acceptable if no new error appears.
 
-- [ ] **Step 4: Run static boundary checks**
+- [x] **Step 4: Run static boundary checks**
 
 Run:
 
@@ -1239,7 +1548,7 @@ rg -n "DokoBotClient|DokoBotCapabilityProbe|subprocess\\..*dokobot|dokobot_actio
 
 Expected: no matches in the new Pi/DokoBot product path and Svelte primary flow. Do not scan `src/seektalent_ui/workbench_routes.py` or generated `apps/web-svelte/src/lib/api/schema.d.ts` in this slice because existing legacy managed-browser endpoints are still present but not expanded or linked by this plan.
 
-- [ ] **Step 5: Validate generated Pi command shape without secrets**
+- [x] **Step 5: Validate generated Pi command shape without secrets**
 
 Run:
 

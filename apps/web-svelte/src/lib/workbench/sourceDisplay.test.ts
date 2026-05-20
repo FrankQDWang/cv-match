@@ -32,6 +32,11 @@ describe('source display helpers', () => {
 			'liepin_pi_account_secret_missing',
 			'liepin_pi_mcp_config_missing',
 			'liepin_pi_mcp_config_invalid',
+			'liepin_pi_mcp_adapter_missing',
+			'liepin_pi_mcp_adapter_unavailable',
+			'liepin_pi_dokobot_mcp_command_missing',
+			'liepin_pi_dokobot_mcp_config_mismatch',
+			'liepin_pi_dokobot_mcp_tool_names_missing',
 			'liepin_pi_dokobot_mcp_missing',
 			'liepin_pi_dokobot_tool_unobserved',
 			'liepin_browser_probe_unavailable'

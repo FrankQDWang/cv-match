@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import pytest
@@ -66,9 +67,18 @@ class FakeExecutor:
     entered: threading.Event | None = None
     release: threading.Event | None = None
     captured_search_kwargs: dict[str, object] | None = None
+    captured_capability_kwargs: dict[str, object] | None = None
 
-    def probe_capabilities(self, *, expected_dokobot_tool_name: str) -> PiLiepinCapabilityProbeResult:
-        del expected_dokobot_tool_name
+    def probe_capabilities(
+        self,
+        *,
+        expected_dokobot_tool_name: str,
+        expected_observed_tool_names: Sequence[str] = (),
+    ) -> PiLiepinCapabilityProbeResult:
+        self.captured_capability_kwargs = {
+            "expected_dokobot_tool_name": expected_dokobot_tool_name,
+            "expected_observed_tool_names": tuple(expected_observed_tool_names),
+        }
         return PiLiepinCapabilityProbeResult(
             ready=self.capability_ready,
             safe_reason_code=None if self.capability_ready else "blocked_backend_unavailable",
@@ -111,8 +121,13 @@ def test_pi_worker_client_maps_blocked_capability_to_worker_error() -> None:
 def test_pi_worker_client_preserves_specific_capability_reason() -> None:
     executor = FakeExecutor(capability_ready=False)
 
-    def probe_capabilities(*, expected_dokobot_tool_name: str) -> PiLiepinCapabilityProbeResult:
+    def probe_capabilities(
+        *,
+        expected_dokobot_tool_name: str,
+        expected_observed_tool_names: Sequence[str] = (),
+    ) -> PiLiepinCapabilityProbeResult:
         del expected_dokobot_tool_name
+        del expected_observed_tool_names
         return PiLiepinCapabilityProbeResult(
             ready=False,
             safe_reason_code="liepin_pi_dokobot_tool_unobserved",
@@ -125,6 +140,25 @@ def test_pi_worker_client_preserves_specific_capability_reason() -> None:
         asyncio.run(client.ensure_ready())
 
     assert error.value.code == "liepin_pi_dokobot_tool_unobserved"
+
+
+def test_pi_worker_client_passes_configured_observed_tools_to_capability_probe() -> None:
+    executor = FakeExecutor(capability_ready=True)
+    client = LiepinPiWorkerClient(
+        executor=executor,
+        session_id="session-1",
+        connection_id="connection-1",
+        provider_account_lock_key="account-1",
+        dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot_read_page", "dokobot_click", "dokobot_type_text"),
+    )
+
+    asyncio.run(client.ensure_ready())
+
+    assert executor.captured_capability_kwargs == {
+        "expected_dokobot_tool_name": "dokobot",
+        "expected_observed_tool_names": ("dokobot_read_page", "dokobot_click", "dokobot_type_text"),
+    }
 
 
 def test_pi_worker_client_preserves_failed_session_probe_reason() -> None:

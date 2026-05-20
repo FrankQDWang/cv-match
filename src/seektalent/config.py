@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ DEV_LLM_CACHE_DIR = ".seektalent/cache"
 PROD_ARTIFACTS_DIR = "~/.seektalent/artifacts"
 PROD_RUNS_DIR = "~/.seektalent/runs"
 PROD_LLM_CACHE_DIR = "~/.seektalent/cache"
+DEFAULT_LIEPIN_PI_COMMAND = "pi --mode rpc --no-session"
 PROVIDER_ENV_VARS = {
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
@@ -232,6 +234,19 @@ def _is_provider_prefixed_model_id(model_id: str) -> bool:
     return model_id.startswith(LEGACY_TEXT_LLM_PREFIXES)
 
 
+def _json_string_tuple(raw: str, *, field_name: str) -> tuple[str, ...]:
+    text = (raw or "").strip()
+    if not text:
+        return ()
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{field_name} must be a JSON array of strings") from exc
+    if not isinstance(loaded, list) or not all(isinstance(item, str) and item.strip() for item in loaded):
+        raise ValueError(f"{field_name} must be a JSON array of non-empty strings")
+    return tuple(item.strip() for item in loaded)
+
+
 def _legacy_text_llm_error(reasons: list[str]) -> TextLLMConfigMigrationError:
     detail = "; ".join(dict.fromkeys(reasons))
     return TextLLMConfigMigrationError(
@@ -352,12 +367,17 @@ class AppSettings(BaseSettings):
     liepin_worker_mode: LiepinWorkerMode = "disabled"
     liepin_allow_fake_fixture_worker: bool = False
     liepin_worker_base_url: str | None = None
-    liepin_pi_command: str = "pi --mode rpc --no-session"
+    liepin_pi_command: str = DEFAULT_LIEPIN_PI_COMMAND
     liepin_pi_timeout_seconds: int = 120
     liepin_pi_skill_path: str = "src/seektalent/providers/pi_agent/pi_skills/liepin_search_cards.md"
     liepin_pi_mcp_config_path: str | None = None
     liepin_pi_dokobot_tool_name: str = "dokobot"
     liepin_pi_model_id: str | None = None
+    liepin_dokobot_mcp_server_name: str = "dokobot"
+    liepin_dokobot_mcp_command: str | None = None
+    liepin_dokobot_mcp_args_json: str = "[]"
+    liepin_dokobot_direct_tools_json: str = "[]"
+    liepin_dokobot_observed_tools_json: str = "[]"
     liepin_worker_host: str = "127.0.0.1"
     liepin_worker_port: int = 0
     liepin_worker_startup_timeout_seconds: float = 15.0
@@ -457,13 +477,19 @@ class AppSettings(BaseSettings):
             return None
         return value
 
+    @field_validator("liepin_pi_command", mode="before")
+    @classmethod
+    def normalize_empty_liepin_pi_command(cls, value: str | None) -> str:
+        text = (value or "").strip()
+        return text or DEFAULT_LIEPIN_PI_COMMAND
+
     @field_validator(
         "liepin_worker_base_url",
-        "liepin_pi_command",
         "liepin_pi_skill_path",
         "liepin_pi_mcp_config_path",
         "liepin_pi_dokobot_tool_name",
         "liepin_pi_model_id",
+        "liepin_dokobot_mcp_command",
         "liepin_account_binding_secret",
         "liepin_stream_token_secret",
         mode="before",
@@ -473,6 +499,12 @@ class AppSettings(BaseSettings):
         if value == "":
             return None
         return value
+
+    @field_validator("liepin_dokobot_mcp_server_name", mode="before")
+    @classmethod
+    def normalize_dokobot_mcp_server_name(cls, value: str | None) -> str:
+        text = (value or "").strip()
+        return text or "dokobot"
 
     @model_validator(mode="after")
     def resolve_runtime_defaults(self) -> "AppSettings":
@@ -574,7 +606,35 @@ class AppSettings(BaseSettings):
     def liepin_pi_command_argv(self) -> tuple[str, ...]:
         from seektalent.providers.pi_agent.pi_external import build_pi_rpc_argv
 
-        return build_pi_rpc_argv(self.liepin_pi_command, skill_path=self.liepin_pi_skill_file_path)
+        required_extension_markers = (
+            ("pi_extensions/bailian_deepseek.ts", "pi-mcp-adapter/index.ts")
+            if self.liepin_worker_mode == "pi_agent"
+            else ()
+        )
+        return build_pi_rpc_argv(
+            self.liepin_pi_command,
+            skill_path=self.liepin_pi_skill_file_path,
+            required_extension_markers=required_extension_markers,
+            extension_root=self.project_root,
+        )
+
+    @property
+    def liepin_dokobot_mcp_args(self) -> tuple[str, ...]:
+        return _json_string_tuple(self.liepin_dokobot_mcp_args_json, field_name="liepin_dokobot_mcp_args_json")
+
+    @property
+    def liepin_dokobot_direct_tools(self) -> tuple[str, ...]:
+        return _json_string_tuple(
+            self.liepin_dokobot_direct_tools_json,
+            field_name="liepin_dokobot_direct_tools_json",
+        )
+
+    @property
+    def liepin_dokobot_observed_tools(self) -> tuple[str, ...]:
+        return _json_string_tuple(
+            self.liepin_dokobot_observed_tools_json,
+            field_name="liepin_dokobot_observed_tools_json",
+        )
 
     @property
     def prompt_dir(self) -> Path:

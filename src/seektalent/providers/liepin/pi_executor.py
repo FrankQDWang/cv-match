@@ -47,6 +47,18 @@ class PiLiepinResultStatus(StrEnum):
     FAILED = "failed"
 
 
+SAFE_CAPABILITY_STOP_REASONS = frozenset(
+    {
+        "liepin_pi_mcp_adapter_unavailable",
+        "liepin_pi_dokobot_mcp_command_missing",
+        "liepin_pi_dokobot_mcp_config_mismatch",
+        "liepin_pi_dokobot_mcp_tool_names_missing",
+        "liepin_pi_dokobot_mcp_missing",
+        "liepin_pi_dokobot_tool_unobserved",
+    }
+)
+
+
 @dataclass(frozen=True, kw_only=True)
 class PiLiepinCapabilityProbeResult:
     ready: bool
@@ -280,7 +292,12 @@ class PiLiepinExecutor:
             card_search=card_search,
         )
 
-    def probe_capabilities(self, *, expected_dokobot_tool_name: str) -> PiLiepinCapabilityProbeResult:
+    def probe_capabilities(
+        self,
+        *,
+        expected_dokobot_tool_name: str,
+        expected_observed_tool_names: Sequence[str] = (),
+    ) -> PiLiepinCapabilityProbeResult:
         task_result = self._client.run_json_task_result(
             json.dumps(
                 {
@@ -289,28 +306,33 @@ class PiLiepinExecutor:
                 },
                 ensure_ascii=False,
             )
-        )
+            )
         if not task_result.ok or task_result.envelope is None:
             return PiLiepinCapabilityProbeResult(ready=False, safe_reason_code="blocked_backend_unavailable")
         try:
             envelope = _PiCapabilityProbeEnvelope.model_validate(task_result.envelope)
             if envelope.status != "ready":
+                if envelope.stop_reason in SAFE_CAPABILITY_STOP_REASONS:
+                    return PiLiepinCapabilityProbeResult(
+                        ready=False,
+                        safe_reason_code=envelope.stop_reason,
+                    )
                 return PiLiepinCapabilityProbeResult(ready=False, safe_reason_code="blocked_backend_unavailable")
             for ref in (envelope.capability_manifest_ref, envelope.tool_evidence_ref):
                 validate_public_artifact_ref(ref, registry=self._artifact_registry)
-            required_tools = (
-                f"{expected_dokobot_tool_name}.read",
-                f"{expected_dokobot_tool_name}.navigate",
-                f"{expected_dokobot_tool_name}.click",
-                f"{expected_dokobot_tool_name}.type_text",
-            )
+            required_tools = tuple(expected_observed_tool_names)
+            if not required_tools:
+                return PiLiepinCapabilityProbeResult(
+                    ready=False,
+                    safe_reason_code="liepin_pi_dokobot_mcp_tool_names_missing",
+                )
             observed = set(task_result.observed_tool_names)
             declared = {envelope.read_tool_name, *envelope.action_tool_names}
             if envelope.proof_kind != "trusted_manifest_and_observed_tool_event":
                 raise ValueError("capability proof is not trusted")
             required = set(required_tools)
             if not required.issubset(declared):
-                raise ValueError("required DokoBot tools were not observed")
+                raise ValueError("required DokoBot tools were not declared")
             if not required.issubset(observed):
                 return PiLiepinCapabilityProbeResult(
                     ready=False,

@@ -77,6 +77,11 @@ OPTIONAL_RUNTIME_ENV_VARS = [
     "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH",
     "SEEKTALENT_LIEPIN_PI_DOKOBOT_TOOL_NAME",
     "SEEKTALENT_LIEPIN_PI_MODEL_ID",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON",
+    "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON",
+    "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON",
     "SEEKTALENT_LIEPIN_WORKER_HOST",
     "SEEKTALENT_LIEPIN_WORKER_PORT",
     "SEEKTALENT_LIEPIN_WORKER_STARTUP_TIMEOUT_SECONDS",
@@ -1572,11 +1577,38 @@ def _init_command(args: argparse.Namespace) -> int:
 def _pi_agent_init_command(args: argparse.Namespace) -> int:
     if not args.project:
         raise ValueError("pi-agent init currently supports --project only.")
+    dokobot_server_name = _arg_or_env(
+        args.dokobot_mcp_server_name,
+        "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME",
+        default_value="dokobot",
+    )
+    dokobot_command = _arg_or_env(
+        args.dokobot_mcp_command,
+        "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND",
+    )
+    dokobot_mcp_args_json = _arg_or_env(
+        args.dokobot_mcp_args_json,
+        "SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON",
+        default_value="[]",
+    )
+    dokobot_direct_tools_json = _arg_or_env(
+        args.dokobot_direct_tools_json,
+        "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON",
+        default_value="[]",
+    )
+    dokobot_mcp_args = _json_string_tuple_arg(dokobot_mcp_args_json, field_name="dokobot_mcp_args_json")
+    dokobot_direct_tools = _json_string_tuple_arg(
+        dokobot_direct_tools_json,
+        field_name="dokobot_direct_tools_json",
+    )
     result = init_project_pi_mcp_config(
         workspace_root=resolve_user_path(args.workspace_root),
-        dokobot_tool_name=args.dokobot_tool_name,
+        dokobot_tool_name=dokobot_server_name or args.dokobot_tool_name,
         write=args.write,
         mcp_config_path=Path(args.mcp_config_path) if args.mcp_config_path else None,
+        dokobot_mcp_command=dokobot_command,
+        dokobot_mcp_args=dokobot_mcp_args,
+        dokobot_direct_tools=dokobot_direct_tools,
     )
     if args.json_output:
         _emit_json(sys.stdout, result.to_public_payload())
@@ -1585,6 +1617,26 @@ def _pi_agent_init_command(args: argparse.Namespace) -> int:
         if result.operations:
             print("Operations: " + ", ".join(result.operations))
     return 1 if result.status == "blocked" else 0
+
+
+def _arg_or_env(value: str | None, env_key: str, *, default_value: str | None = None) -> str | None:
+    text = (value or "").strip()
+    if text and text != default_value:
+        return text
+    env_text = os.environ.get(env_key, "").strip()
+    if env_text:
+        return env_text
+    return text or default_value
+
+
+def _json_string_tuple_arg(raw: str, *, field_name: str) -> tuple[str, ...]:
+    try:
+        loaded = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{field_name} must be a JSON array of strings") from exc
+    if not isinstance(loaded, list) or not all(isinstance(item, str) and item.strip() for item in loaded):
+        raise ValueError(f"{field_name} must be a JSON array of non-empty strings")
+    return tuple(item.strip() for item in loaded)
 
 
 def _package_resource_checks() -> list[DoctorCheck]:
@@ -1722,6 +1774,11 @@ PI_LOCAL_SETUP_ENV_KEYS = {
     "SEEKTALENT_LIEPIN_PI_SKILL_PATH",
     "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH",
     "SEEKTALENT_LIEPIN_PI_DOKOBOT_TOOL_NAME",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON",
+    "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON",
+    "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON",
 }
 
 
@@ -1796,6 +1853,7 @@ def _liepin_pi_live_agent_check(settings: AppSettings | None) -> DoctorCheck:
     if settings.liepin_worker_mode != "pi_agent":
         return DoctorCheck("liepin_pi_live_agent", True, "Pi live probe disabled; liepin_worker_mode is not pi_agent.")
     try:
+        settings.liepin_dokobot_observed_tools
         worker_client = build_liepin_worker_client(settings)
 
         async def _probe() -> object:
@@ -1809,6 +1867,8 @@ def _liepin_pi_live_agent_check(settings: AppSettings | None) -> DoctorCheck:
             False,
             f"Pi live probe failed reason={exc.code or exc.setup_status or 'blocked_backend_unavailable'}.",
         )
+    except ValueError:
+        return DoctorCheck("liepin_pi_live_agent", False, "Pi live probe failed reason=liepin_pi_mcp_config_invalid.")
     safe_status = str(getattr(status, "status", "unknown"))
     if safe_status == "ready":
         return DoctorCheck("liepin_pi_live_agent", True, "Pi live probe status=ready.")
@@ -2469,6 +2529,10 @@ def build_exec_parser() -> argparse.ArgumentParser:
     pi_agent_init_parser.add_argument("--workspace-root", default=".", help="Workspace root for the project config.")
     pi_agent_init_parser.add_argument("--mcp-config-path", default=None, help=argparse.SUPPRESS)
     pi_agent_init_parser.add_argument("--dokobot-tool-name", default="dokobot", help=argparse.SUPPRESS)
+    pi_agent_init_parser.add_argument("--dokobot-mcp-server-name", default="dokobot")
+    pi_agent_init_parser.add_argument("--dokobot-mcp-command", default=None)
+    pi_agent_init_parser.add_argument("--dokobot-mcp-args-json", default="[]")
+    pi_agent_init_parser.add_argument("--dokobot-direct-tools-json", default="[]")
     write_group = pi_agent_init_parser.add_mutually_exclusive_group()
     write_group.add_argument("--dry-run", dest="write", action="store_false", default=False)
     write_group.add_argument("--write", dest="write", action="store_true")

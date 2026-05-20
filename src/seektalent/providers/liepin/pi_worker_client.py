@@ -28,18 +28,21 @@ class LiepinPiWorkerClient:
         connection_id: str,
         provider_account_lock_key: str,
         dokobot_tool_name: str = "dokobot",
+        expected_observed_tool_names: tuple[str, ...] = (),
     ) -> None:
         self._executor = executor
         self._session_id = session_id
         self._connection_id = connection_id
         self._provider_account_lock_key = provider_account_lock_key
         self._dokobot_tool_name = dokobot_tool_name
+        self._expected_observed_tool_names = expected_observed_tool_names
 
     async def ensure_ready(self, *, on_event=None) -> None:
         del on_event
         capability = await asyncio.to_thread(
             self._executor.probe_capabilities,
             expected_dokobot_tool_name=self._dokobot_tool_name,
+            expected_observed_tool_names=self._expected_observed_tool_names,
         )
         if not capability.ready:
             raise LiepinWorkerModeError(

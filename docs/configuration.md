@@ -243,11 +243,15 @@ Required live variables:
 | `SEEKTALENT_CTS_TENANT_KEY` | User-provided CTS tenant key. |
 | `SEEKTALENT_CTS_TENANT_SECRET` | User-provided CTS tenant secret. |
 | `SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent` | Enables the Pi-backed Liepin executor. |
-| `SEEKTALENT_LIEPIN_PI_COMMAND=pi --mode rpc --no-session` | Pi RPC command; do not put secrets in it. |
+| `SEEKTALENT_LIEPIN_PI_COMMAND=pi --mode rpc --no-session` | Pi RPC command; do not put secrets in it. In dev, `scripts/start-dev-workbench.sh` replaces this with the repo-local Pi binary plus the Bailian provider extension and pinned `pi-mcp-adapter` extension. Manual overrides must include `--mode rpc`, `--no-session`, the repo-owned Bailian provider extension, and the pinned MCP adapter extension. |
 | `SEEKTALENT_LIEPIN_PI_SKILL_PATH=src/seektalent/providers/pi_agent/pi_skills/liepin_search_cards.md` | Repo-owned Liepin card-search skill. |
 | `SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH=.pi/mcp.json` | Project-local Pi MCP config inspected by SeekTalent static diagnostics. |
-| `SEEKTALENT_LIEPIN_PI_DOKOBOT_TOOL_NAME=dokobot` | DokoBot MCP tool name inside Pi. |
 | `SEEKTALENT_LIEPIN_PI_MODEL_ID=deepseek-v4-flash` | Optional Pi browser-agent model override. Empty means reuse the Runtime workbench-note/scoring model from the same root `.env`. |
+| `SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME=dokobot` | Project-local Pi MCP server name. |
+| `SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND=` | Explicit DokoBot MCP server command. Empty means the Liepin browser channel is not configured. |
+| `SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON=[]` | Optional JSON array of DokoBot MCP server args. |
+| `SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON=[]` | Optional JSON array of direct Pi tool names to expose through `pi-mcp-adapter`. |
+| `SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=[]` | Required for live Liepin Pi runs: exact Pi tool-event names that prove the DokoBot browser actions were observed. Empty means the live browser channel fails closed. |
 | `SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=<local non-placeholder secret>` | Local HMAC/account-binding secret. |
 
 In dev mode, the Svelte workspace carries Pi as an npm dependency (`@earendil-works/pi-coding-agent`). Use the explicit local launcher when you want the backend and Svelte frontend to start with the repo-local Pi dependency:
@@ -256,7 +260,7 @@ In dev mode, the Svelte workspace carries Pi as an npm dependency (`@earendil-wo
 scripts/start-dev-workbench.sh
 ```
 
-The launcher exports `SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent`, sets `SEEKTALENT_LIEPIN_PI_COMMAND` to the repo-local Pi binary plus the repo-owned Bailian provider extension, creates a local account-binding secret under `.seektalent/` when needed, and initializes the project-local `.pi/mcp.json`. Pi receives the same Runtime text LLM key/base URL/model from the root `.env`; secrets are injected only into the backend/Pi process, not into the Svelte frontend. A plain `seektalent-ui-api` process only reads its explicit configuration and does not change `disabled` into `pi_agent`.
+The launcher exports `SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent`, sets `SEEKTALENT_LIEPIN_PI_COMMAND` to the repo-local Pi binary plus the repo-owned Bailian provider extension and pinned `pi-mcp-adapter` extension, creates a local account-binding secret under `.seektalent/` when needed, and initializes the project-local `.pi/mcp.json` only when the DokoBot MCP command is explicit. Pi receives the same Runtime text LLM key/base URL/model from the root `.env`; secrets are injected only into the backend/Pi process, not into the Svelte frontend. A plain `seektalent-ui-api` process only reads its explicit configuration and does not change `disabled` into `pi_agent`.
 
 Initialize the project-local Pi MCP config from the checkout:
 
@@ -264,7 +268,7 @@ Initialize the project-local Pi MCP config from the checkout:
 seektalent pi-agent init --project --write
 ```
 
-The generated `.pi/mcp.json` registers the `dokobot` MCP server for Pi. SeekTalent Runtime and Workbench do not call DokoBot directly; they use Pi RPC plus the repo-owned Liepin skill, then validate the strict JSON envelope and observed Pi tool events. `seektalent doctor --json` performs static setup checks only. Use `seektalent doctor --live-pi-agent --json` only when you intentionally want to launch the configured Pi readiness probe.
+The command requires an explicit `--dokobot-mcp-command` or `SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND`; it does not invent a default DokoBot command. The generated `.pi/mcp.json` registers the configured DokoBot MCP server for Pi. SeekTalent Runtime and Workbench do not call DokoBot directly; they use Pi RPC plus the repo-owned Liepin skill, then validate the strict JSON envelope and observed Pi tool events. `seektalent doctor --json` performs static setup checks only. Use `seektalent doctor --live-pi-agent --json` only when you intentionally want to launch the configured Pi readiness probe. If the Pi adapter metadata or direct tools have just been configured, Pi may need a reconnect/restart before the expected observed tool events appear.
 
 ## Eval Variables
 

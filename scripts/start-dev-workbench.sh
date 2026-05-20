@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEB_DIR="$ROOT/apps/web-svelte"
 PI_BIN="$WEB_DIR/node_modules/.bin/pi"
 PI_EXTENSION="$ROOT/src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts"
+PI_MCP_ADAPTER_EXTENSION="$WEB_DIR/node_modules/pi-mcp-adapter/index.ts"
 SECRET_PATH="$ROOT/.seektalent/liepin_account_binding_secret"
 BACKEND_HOST="${SEEKTALENT_DEV_BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${SEEKTALENT_DEV_BACKEND_PORT:-8012}"
@@ -23,9 +24,21 @@ if [[ ! -x "$PI_BIN" ]]; then
   (cd "$WEB_DIR" && bun install)
 fi
 
+if [[ ! -f "$PI_MCP_ADAPTER_EXTENSION" ]]; then
+  echo "Installing Svelte workspace dependencies, including the repo-local Pi MCP adapter..." >&2
+  (cd "$WEB_DIR" && bun install)
+fi
+
 if [[ ! -x "$PI_BIN" ]]; then
   echo "Repo-local Pi agent is missing after dependency install: apps/web-svelte/node_modules/.bin/pi" >&2
   exit 1
+fi
+
+PI_MCP_ADAPTER_EXTENSION_ARG=""
+if [[ ! -f "$PI_MCP_ADAPTER_EXTENSION" ]]; then
+  echo "Pi MCP adapter is missing; starting Workbench with Liepin browser channel blocked." >&2
+else
+  PI_MCP_ADAPTER_EXTENSION_ARG="--extension $PI_MCP_ADAPTER_EXTENSION"
 fi
 
 if [[ ! -f "$PI_EXTENSION" ]]; then
@@ -81,11 +94,20 @@ if [[ -z "$PI_MODEL" ]]; then
   PI_MODEL="$(env_or_file SEEKTALENT_SCORING_MODEL_ID)"
 fi
 PI_MODEL="${PI_MODEL:-deepseek-v4-flash}"
+DOKOBOT_MCP_SERVER_NAME="$(env_or_file SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME)"
+DOKOBOT_MCP_COMMAND="$(env_or_file SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND)"
+DOKOBOT_MCP_ARGS_JSON="$(env_or_file SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON)"
+DOKOBOT_DIRECT_TOOLS_JSON="$(env_or_file SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON)"
+DOKOBOT_OBSERVED_TOOLS_JSON="$(env_or_file SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON)"
+DOKOBOT_MCP_SERVER_NAME="${DOKOBOT_MCP_SERVER_NAME:-dokobot}"
+DOKOBOT_MCP_ARGS_JSON="${DOKOBOT_MCP_ARGS_JSON:-[]}"
+DOKOBOT_DIRECT_TOOLS_JSON="${DOKOBOT_DIRECT_TOOLS_JSON:-[]}"
+DOKOBOT_OBSERVED_TOOLS_JSON="${DOKOBOT_OBSERVED_TOOLS_JSON:-[]}"
 CONFIGURED_PI_COMMAND="$(env_or_file SEEKTALENT_LIEPIN_PI_COMMAND)"
 if [[ -n "$CONFIGURED_PI_COMMAND" && "$CONFIGURED_PI_COMMAND" != "pi --mode rpc --no-session" ]]; then
   PI_COMMAND="$CONFIGURED_PI_COMMAND"
 else
-  PI_COMMAND="$PI_BIN --mode rpc --no-session --extension $PI_EXTENSION --provider bailian --model $PI_MODEL"
+  PI_COMMAND="$PI_BIN --mode rpc --no-session --extension $PI_EXTENSION $PI_MCP_ADAPTER_EXTENSION_ARG --provider bailian --model $PI_MODEL"
 fi
 MCP_CONFIG_PATH="$(env_or_file SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH)"
 MCP_CONFIG_PATH="${MCP_CONFIG_PATH:-.pi/mcp.json}"
@@ -111,11 +133,19 @@ PY
   )"
 fi
 
-uv run seektalent pi-agent init \
-  --project \
-  --workspace-root "$ROOT" \
-  --mcp-config-path "$MCP_CONFIG_PATH" \
-  --write >/dev/null
+if [[ -n "$DOKOBOT_MCP_COMMAND" ]]; then
+  uv run seektalent pi-agent init \
+    --project \
+    --workspace-root "$ROOT" \
+    --mcp-config-path "$MCP_CONFIG_PATH" \
+    --dokobot-mcp-server-name "$DOKOBOT_MCP_SERVER_NAME" \
+    --dokobot-mcp-command "$DOKOBOT_MCP_COMMAND" \
+    --dokobot-mcp-args-json "$DOKOBOT_MCP_ARGS_JSON" \
+    --dokobot-direct-tools-json "$DOKOBOT_DIRECT_TOOLS_JSON" \
+    --write >/dev/null
+else
+  echo "DokoBot MCP command is not configured; starting Workbench with Liepin browser channel blocked." >&2
+fi
 
 backend_pid=""
 cleanup() {
@@ -131,6 +161,11 @@ env \
   SEEKTALENT_LIEPIN_PI_COMMAND="$PI_COMMAND" \
   SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH="$MCP_CONFIG_PATH" \
   SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET="$ACCOUNT_BINDING_SECRET" \
+  SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND="$DOKOBOT_MCP_COMMAND" \
+  SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME="$DOKOBOT_MCP_SERVER_NAME" \
+  SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON="$DOKOBOT_MCP_ARGS_JSON" \
+  SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON="$DOKOBOT_DIRECT_TOOLS_JSON" \
+  SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON="$DOKOBOT_OBSERVED_TOOLS_JSON" \
   uv run seektalent-ui-api \
     --host "$BACKEND_HOST" \
     --port "$BACKEND_PORT" \

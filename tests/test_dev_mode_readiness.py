@@ -12,6 +12,15 @@ from seektalent_ui.server import RunRegistry, _can_recover_with_dev_mode_env_dia
 from tests.settings_factory import make_settings
 
 
+def _write_pi_extension_files(root: Path) -> None:
+    provider_extension = root / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions"
+    provider_extension.mkdir(parents=True, exist_ok=True)
+    (provider_extension / "bailian_deepseek.ts").write_text("provider", encoding="utf-8")
+    adapter_extension = root / "apps" / "web-svelte" / "node_modules" / "pi-mcp-adapter"
+    adapter_extension.mkdir(parents=True, exist_ok=True)
+    (adapter_extension / "index.ts").write_text("adapter", encoding="utf-8")
+
+
 def test_raw_env_diagnostics_do_not_expose_secret_values(tmp_path: Path) -> None:
     skill_path = tmp_path / "liepin.md"
     env = {
@@ -61,12 +70,56 @@ def test_raw_env_diagnostics_reports_pi_agent_missing_config_without_appsettings
 
     assert payload.mode == "raw_env_diagnostics"
     assert payload.overallStatus == "needs_setup"
-    assert components["liepin_pi_command"].status == "configured"
-    assert components["liepin_pi_skill"].status == "configured"
+    assert components["liepin_pi_command"].status == "needs_setup"
+    assert components["liepin_pi_command"].reasonCode == "liepin_pi_mcp_adapter_missing"
+    assert components["liepin_pi_skill"].status == "needs_setup"
+    assert components["liepin_pi_skill"].reasonCode == "liepin_pi_skill_missing"
     assert components["liepin_pi_mcp_config"].status == "needs_setup"
-    assert components["liepin_pi_mcp_config"].reasonCode == "liepin_pi_mcp_config_missing"
-    assert components["liepin_pi_dokobot_mcp"].reasonCode == "liepin_pi_mcp_config_missing"
+    assert components["liepin_pi_mcp_config"].reasonCode == "liepin_pi_dokobot_mcp_command_missing"
+    assert components["liepin_pi_dokobot_mcp"].reasonCode == "liepin_pi_dokobot_mcp_command_missing"
     assert components["liepin_account_binding_secret"].status == "needs_setup"
+
+
+def test_raw_env_diagnostics_preserves_missing_pi_mcp_adapter_reason(tmp_path: Path) -> None:
+    pi_bin = tmp_path / "bin" / "pi"
+    pi_bin.parent.mkdir(parents=True)
+    pi_bin.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    pi_bin.chmod(0o755)
+    provider_extension = tmp_path / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions"
+    provider_extension.mkdir(parents=True)
+    (provider_extension / "bailian_deepseek.ts").write_text("provider", encoding="utf-8")
+    skill_path = tmp_path / "liepin_search_cards.md"
+    skill_path.write_text("Liepin skill", encoding="utf-8")
+    mcp_path = tmp_path / ".pi" / "mcp.json"
+    mcp_path.parent.mkdir(parents=True)
+    mcp_path.write_text('{"mcpServers":{"dokobot":{"command":"dokobot-mcp","args":[]}}}', encoding="utf-8")
+
+    payload = build_dev_mode_env_diagnostics(
+        {
+            "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
+            "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-binding-secret",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                f"{pi_bin} --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+            ),
+            "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill_path),
+            "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH": str(mcp_path),
+            "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND": "dokobot-mcp",
+            "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON": '["dokobot_read_page"]',
+        },
+        workspace_root=tmp_path,
+    )
+    components = {component.name: component for component in payload.components}
+    raw = json.dumps(payload.model_dump(mode="json"), sort_keys=True)
+
+    assert payload.overallStatus == "needs_setup"
+    assert components["liepin_pi_command"].status == "needs_setup"
+    assert components["liepin_pi_command"].reasonCode == "liepin_pi_mcp_adapter_missing"
+    assert components["liepin_pi_skill"].status == "configured"
+    assert components["liepin_pi_mcp_config"].status == "configured"
+    assert components["liepin_pi_dokobot_mcp"].status == "configured"
+    assert str(tmp_path) not in raw
 
 
 def test_raw_env_diagnostics_reports_configured_project_pi_mcp(tmp_path: Path) -> None:
@@ -74,15 +127,21 @@ def test_raw_env_diagnostics_reports_configured_project_pi_mcp(tmp_path: Path) -
     skill_path.write_text("Liepin skill", encoding="utf-8")
     mcp_path = tmp_path / ".pi" / "mcp.json"
     mcp_path.parent.mkdir(parents=True)
-    mcp_path.write_text('{"mcpServers":{"dokobot":{"command":"dokobot","args":[]}}}', encoding="utf-8")
+    mcp_path.write_text('{"mcpServers":{"dokobot":{"command":"dokobot-mcp","args":[]}}}', encoding="utf-8")
 
     payload = build_dev_mode_env_diagnostics(
         {
             "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
             "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-binding-secret",
-            "SEEKTALENT_LIEPIN_PI_COMMAND": "pi --mode rpc --no-session",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                "pi --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+            ),
             "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill_path),
             "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH": str(mcp_path),
+            "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND": "dokobot-mcp",
+            "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON": '["dokobot_read_page"]',
         },
         workspace_root=tmp_path,
     )
@@ -130,20 +189,28 @@ def test_server_startup_can_fallback_to_readiness_for_invalid_pi_agent_config(tm
 
 
 def test_valid_settings_status_reports_configured_components(tmp_path: Path) -> None:
+    _write_pi_extension_files(tmp_path)
     skill_path = tmp_path / "liepin_search_cards.md"
     skill_path.write_text("Liepin skill", encoding="utf-8")
     mcp_path = tmp_path / ".pi" / "mcp.json"
     mcp_path.parent.mkdir(parents=True)
-    mcp_path.write_text('{"mcpServers":{"dokobot":{"command":"dokobot","args":[]}}}', encoding="utf-8")
+    mcp_path.write_text('{"mcpServers":{"dokobot":{"command":"dokobot-mcp","args":[]}}}', encoding="utf-8")
     settings = make_settings(
         workspace_root=str(tmp_path),
         text_llm_api_key="sk-live",
         cts_tenant_key="tenant-key",
         cts_tenant_secret="tenant-secret",
         liepin_worker_mode="pi_agent",
+        liepin_pi_command=(
+            "pi --mode rpc --no-session "
+            "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+            "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+        ),
         liepin_pi_skill_path=str(skill_path),
         liepin_pi_mcp_config_path=str(mcp_path),
         liepin_account_binding_secret="non-placeholder-secret",
+        liepin_dokobot_mcp_command="dokobot-mcp",
+        liepin_dokobot_observed_tools_json='["dokobot_read_page"]',
     )
 
     payload = build_dev_mode_status(settings)
@@ -156,6 +223,53 @@ def test_valid_settings_status_reports_configured_components(tmp_path: Path) -> 
     assert components["liepin_account_binding_secret"].status == "configured"
     assert components["liepin_pi_mcp_config"].status == "configured"
     assert components["liepin_pi_dokobot_mcp"].status == "configured"
+
+
+def test_dev_mode_status_uses_configured_dokobot_mcp_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _write_pi_extension_files(tmp_path)
+    skill = tmp_path / "liepin_search_cards.md"
+    skill.write_text("Liepin skill", encoding="utf-8")
+    mcp_config = tmp_path / ".pi" / "mcp.json"
+    mcp_config.parent.mkdir()
+    mcp_config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "dokobot": {
+                        "command": "dokobot-mcp",
+                        "args": ["--stdio"],
+                        "lifecycle": "lazy",
+                        "directTools": ["read_page", "click", "type_text"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SEEKTALENT_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "pi_agent")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET", "secret")
+    monkeypatch.setenv(
+        "SEEKTALENT_LIEPIN_PI_COMMAND",
+        "pi --mode rpc --no-session "
+        "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+        "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts",
+    )
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_PI_SKILL_PATH", str(skill))
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH", str(mcp_config))
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND", "dokobot-mcp")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON", '["--stdio"]')
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON", '["read_page","click","type_text"]')
+    monkeypatch.setenv(
+        "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON",
+        '["dokobot_read_page","dokobot_click","dokobot_type_text"]',
+    )
+
+    status = build_dev_mode_status(AppSettings(_env_file=None))
+
+    components = {item.name: item for item in status.components}
+    assert components["liepin_pi_dokobot_mcp"].status == "configured"
+    assert components["liepin_pi_dokobot_mcp"].reasonCode == "configured"
 
 
 def test_dev_server_startup_does_not_bootstrap_project_pi_mcp_config(tmp_path: Path) -> None:

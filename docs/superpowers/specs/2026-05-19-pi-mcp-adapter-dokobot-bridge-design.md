@@ -139,6 +139,8 @@ SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=[]
 
 If `SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND` is empty and the repo cannot prove a supported DokoBot MCP command from local tooling, static setup reports `liepin_pi_dokobot_mcp_command_missing`. It must not write a fake executable command and must not mark the live channel configured.
 
+`SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON` is required for live `pi_agent` readiness. `directTools` is only adapter configuration; it is not proof that Runtime can observe tool execution events. Unless a future discovery step writes confirmed observed tool names back into configuration, static setup must report `liepin_pi_dokobot_mcp_tool_names_missing` when observed tool names are empty.
+
 When a command is configured, `seektalent pi-agent init --project --write` writes a Pi project override:
 
 ```json
@@ -154,7 +156,7 @@ When a command is configured, `seektalent pi-agent init --project --write` write
 }
 ```
 
-If `directTools` and the expected observed tool names are empty, this slice treats the DokoBot MCP bridge as not configured and reports `liepin_pi_dokobot_mcp_tool_names_missing`. It does not infer tool names from natural-language Pi output and does not accept the adapter proxy path in this implementation.
+If the expected observed tool names are empty, this slice treats the DokoBot MCP bridge as not configured and reports `liepin_pi_dokobot_mcp_tool_names_missing`. It does not infer tool names from natural-language Pi output, does not fall back to `dokobot.read`/`dokobot.click` defaults, and does not accept the adapter proxy path in this implementation.
 
 ### Live Capability Proof
 
@@ -168,6 +170,8 @@ Live readiness requires all of the following:
 
 Protected adapter proxy proof is deferred. It may be added later only if the adapter can emit a protected trace containing server name, original MCP tool name, safe action kind, and no raw page content, cookies, account identifiers, or filesystem paths. Until then, a proxy-only `mcp` tool observation is not enough to mark Liepin live search configured.
 
+The first run after changing `.pi/mcp.json` may need Pi adapter metadata cache warm-up or a Pi MCP reconnect before direct tools appear. That state is still blocked/degraded, not a silent fallback.
+
 ### Safe Reason Codes
 
 Add or preserve these safe codes:
@@ -177,10 +181,19 @@ Add or preserve these safe codes:
 | `liepin_pi_mcp_adapter_missing` | The Pi MCP adapter extension is not installed or not present in the configured command. |
 | `liepin_pi_mcp_adapter_unavailable` | Pi starts but the adapter cannot initialize. |
 | `liepin_pi_dokobot_mcp_command_missing` | Static setup has no proven DokoBot MCP server command. |
+| `liepin_pi_dokobot_mcp_config_mismatch` | Pi-owned `.pi/mcp.json` does not match the configured DokoBot MCP command, args, or direct tools. |
 | `liepin_pi_dokobot_mcp_tool_names_missing` | Static setup has no configured or discovered DokoBot browser tool names. |
 | `liepin_pi_dokobot_tool_unobserved` | Pi ran but required DokoBot browser tool events were not observed. |
 
 Existing safe codes from the previous slice remain valid, including `liepin_pi_command_missing`, `liepin_pi_command_invalid`, `liepin_pi_skill_missing`, `liepin_pi_mcp_config_missing`, `liepin_pi_dokobot_mcp_missing`, `liepin_browser_login_required`, `liepin_browser_probe_unavailable`, and `liepin_browser_account_mismatch`.
+
+Producer rules:
+
+- static command diagnostics emit `liepin_pi_mcp_adapter_missing` when the configured Pi command lacks the pinned MCP adapter `--extension`;
+- live readiness may emit `liepin_pi_mcp_adapter_unavailable` only when the command includes the pinned adapter marker but Pi/adapter startup fails before DokoBot tool evidence can be observed;
+- static DokoBot MCP diagnostics emit `liepin_pi_dokobot_mcp_config_mismatch` when the configured Pi-owned server entry has the right server name and command but does not match configured args or directTools;
+- if backend startup recovers from invalid `pi_agent` settings into `liepin_worker_mode=disabled` for dev-mode diagnostics, Workbench source-run start must still project the original `liepin_pi_*` setup reason into the Liepin blocked source state instead of collapsing it to generic browser probe unavailable;
+- DokoBot command/tool-name setup failures remain separate from Pi adapter failures.
 
 ### Runtime Boundary
 
@@ -206,19 +219,22 @@ The only code allowed to mention the DokoBot MCP command is static configuration
 
 - `apps/web-svelte/package.json` pins a Pi MCP adapter dependency.
 - `scripts/start-dev-workbench.sh` builds a Pi command that includes both the Bailian provider extension and the pinned MCP adapter extension.
-- `scripts/start-dev-workbench.sh` still starts the backend and frontend when the DokoBot MCP command is missing; Liepin blocks with a safe reason instead of aborting the whole dev workbench.
+- `scripts/start-dev-workbench.sh` still starts the backend and frontend when the DokoBot MCP command or MCP adapter file is missing; Liepin blocks with a safe reason instead of aborting the whole dev workbench.
 - `SEEKTALENT_LIEPIN_PI_COMMAND` generated by the dev launcher contains no provider API key or account-binding secret.
 - `AppSettings` rejects `liepin_worker_mode=pi_agent` commands that omit either the repo-owned Bailian provider extension marker or the pinned MCP adapter marker.
 - `seektalent pi-agent init --project --dry-run` reports `liepin_pi_dokobot_mcp_command_missing` when no DokoBot MCP command is configured or proven.
 - `seektalent pi-agent init --project --write` writes `.pi/mcp.json` only when a DokoBot MCP command is configured or proven.
 - `.pi/mcp.json` generation preserves unrelated MCP servers and writes `lifecycle: "lazy"`.
-- `directTools` is written only when configured/discovered, never guessed.
+- Static setup reports a mismatch instead of configured when `.pi/mcp.json` server command, args, or directTools differ from the root `.env` DokoBot MCP settings.
+- `directTools` is written only when configured/discovered, never guessed, and never treated as Runtime observed-tool proof.
+- Live `pi_agent` readiness requires non-empty configured observed tool names; directTools alone cannot mark the DokoBot bridge configured.
 - The Pi local setup portion of `seektalent doctor --json` exposes static setup reasons without local paths or secrets. Existing developer diagnostics such as local data-root posture may continue to report non-secret local paths.
 - Dev-mode readiness diagnostics consume the same root `.env` DokoBot MCP command and tool-name fields as `AppSettings`.
 - `seektalent doctor --live-pi-agent --json` distinguishes adapter missing, DokoBot command missing, DokoBot tool names missing, and observed-tool failure.
 - `PiLiepinExecutor.probe_capabilities(...)` accepts DokoBot readiness only when direct observed tool names match configured expectations.
 - CLI inspection/config discovery lists the new `SEEKTALENT_LIEPIN_DOKOBOT_*` env vars without exposing configured secrets.
 - Runtime source-state projection preserves new `liepin_pi_*` reason codes.
+- Workbench source-run start preserves the dev-mode Pi setup reason, including `liepin_pi_mcp_adapter_missing`, when backend settings recovery disables the Liepin worker.
 - CTS still starts when Liepin blocks because the Pi MCP adapter/DokoBot bridge is missing.
 - Main Workbench UI continues to use business-facing copy and does not mention `Pi`, `DokoBot`, or `MCP`.
 - Boundary tests prove Runtime/Workbench/Liepin product paths do not call DokoBot directly.
@@ -228,6 +244,8 @@ The only code allowed to mention the DokoBot MCP command is static configuration
 
 - Packaging DokoBot Chrome extension installation.
 - Supporting multiple browser helper backends.
+- Generalizing DokoBot-specific settings into a `BrowserBridgeConfig` / capability registry after the first live DokoBot path is stable.
+- Adding a protected tool-manifest handshake that lets Pi report adapter version, server name, declared tools, observed tools, and allowed hosts through validated artifacts instead of manual observed-tool env configuration.
 - Supporting user-global Pi MCP config mutation.
 - Supporting protected `pi-mcp-adapter` proxy proof when direct DokoBot tools cannot be exposed.
 - Migrating from `pi-mcp-adapter` to `pi-mcp-extension`.

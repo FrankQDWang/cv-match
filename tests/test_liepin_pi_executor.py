@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 import re
+
+import pytest
 
 from seektalent.providers.liepin.pi_executor import HmacProviderKeyHasher, PiLiepinExecutor
 from seektalent.providers.pi_agent.pi_external import PiRpcAgentClient, PiRpcTaskResult, PiRpcTaskStatus
@@ -327,9 +330,154 @@ def test_capability_probe_accepts_only_observed_dokobot_tool_evidence() -> None:
         ),
     )
 
-    result = executor.probe_capabilities(expected_dokobot_tool_name="dokobot")
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot.read", "dokobot.navigate", "dokobot.click", "dokobot.type_text"),
+    )
 
     assert result.ready is True
+
+
+def _capability_executor(
+    *,
+    envelope: dict[str, object],
+    observed_tool_names: tuple[str, ...],
+) -> PiLiepinExecutor:
+    return PiLiepinExecutor(
+        client=_client(json.dumps(envelope), observed_tool_names=observed_tool_names),
+        key_hasher=FakeProviderKeyHasher(),
+        artifact_registry=_registry(
+            "artifact://protected/capability/manifest.json",
+            "artifact://protected/capability/tools.json",
+        ),
+    )
+
+
+def test_capability_probe_requires_configured_observed_dokobot_tools(tmp_path: Path) -> None:
+    del tmp_path
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "ready",
+            "read_tool_name": "dokobot_read_page",
+            "action_tool_names": ["dokobot_click", "dokobot_type_text"],
+            "proof_kind": "trusted_manifest_and_observed_tool_event",
+            "capability_manifest_ref": "artifact://protected/capability/manifest.json",
+            "tool_evidence_ref": "artifact://protected/capability/tools.json",
+            "allowed_hosts": ["liepin.com"],
+        },
+        observed_tool_names=("dokobot_read_page", "dokobot_click", "dokobot_type_text"),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot_read_page", "dokobot_click", "dokobot_type_text"),
+    )
+
+    assert result.ready is True
+
+
+def test_capability_probe_blocks_missing_configured_observed_tool(tmp_path: Path) -> None:
+    del tmp_path
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "ready",
+            "read_tool_name": "dokobot_read_page",
+            "action_tool_names": ["dokobot_click", "dokobot_type_text"],
+            "proof_kind": "trusted_manifest_and_observed_tool_event",
+            "capability_manifest_ref": "artifact://protected/capability/manifest.json",
+            "tool_evidence_ref": "artifact://protected/capability/tools.json",
+            "allowed_hosts": ["liepin.com"],
+        },
+        observed_tool_names=("dokobot_read_page", "dokobot_click"),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot_read_page", "dokobot_click", "dokobot_type_text"),
+    )
+
+    assert result.ready is False
+    assert result.safe_reason_code == "liepin_pi_dokobot_tool_unobserved"
+
+
+def test_capability_probe_blocks_when_expected_observed_tools_are_not_configured(tmp_path: Path) -> None:
+    del tmp_path
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "ready",
+            "read_tool_name": "dokobot_read_page",
+            "action_tool_names": ["dokobot_click", "dokobot_type_text"],
+            "proof_kind": "trusted_manifest_and_observed_tool_event",
+            "capability_manifest_ref": "artifact://protected/capability/manifest.json",
+            "tool_evidence_ref": "artifact://protected/capability/tools.json",
+            "allowed_hosts": ["liepin.com"],
+        },
+        observed_tool_names=("dokobot_read_page", "dokobot_click", "dokobot_type_text"),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=(),
+    )
+
+    assert result.ready is False
+    assert result.safe_reason_code == "liepin_pi_dokobot_mcp_tool_names_missing"
+
+
+def test_capability_probe_preserves_adapter_unavailable_stop_reason(tmp_path: Path) -> None:
+    del tmp_path
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "blocked",
+            "proof_kind": "none",
+            "allowed_hosts": [],
+            "stop_reason": "liepin_pi_mcp_adapter_unavailable",
+        },
+        observed_tool_names=(),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot_read_page",),
+    )
+
+    assert result.ready is False
+    assert result.safe_reason_code == "liepin_pi_mcp_adapter_unavailable"
+
+
+@pytest.mark.parametrize(
+    "stop_reason",
+    [
+        "liepin_pi_dokobot_mcp_command_missing",
+        "liepin_pi_dokobot_mcp_config_mismatch",
+        "liepin_pi_dokobot_mcp_tool_names_missing",
+        "liepin_pi_dokobot_mcp_missing",
+        "liepin_pi_dokobot_tool_unobserved",
+    ],
+)
+def test_capability_probe_preserves_safe_dokobot_setup_stop_reason(stop_reason: str) -> None:
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "blocked",
+            "proof_kind": "none",
+            "allowed_hosts": [],
+            "stop_reason": stop_reason,
+        },
+        observed_tool_names=(),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot_read_page",),
+    )
+
+    assert result.ready is False
+    assert result.safe_reason_code == stop_reason
 
 
 def test_capability_probe_reports_unobserved_dokobot_tools_with_specific_safe_reason() -> None:
@@ -345,7 +493,10 @@ def test_capability_probe_reports_unobserved_dokobot_tools_with_specific_safe_re
         ),
     )
 
-    result = executor.probe_capabilities(expected_dokobot_tool_name="dokobot")
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot.read", "dokobot.navigate", "dokobot.click", "dokobot.type_text"),
+    )
 
     assert result.ready is False
     assert result.safe_reason_code == "liepin_pi_dokobot_tool_unobserved"
@@ -364,7 +515,10 @@ def test_capability_probe_keeps_generic_reason_when_manifest_declares_missing_to
         ),
     )
 
-    result = executor.probe_capabilities(expected_dokobot_tool_name="dokobot")
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=("dokobot.read", "dokobot.navigate", "dokobot.click", "dokobot.type_text"),
+    )
 
     assert result.ready is False
     assert result.safe_reason_code == "blocked_backend_unavailable"

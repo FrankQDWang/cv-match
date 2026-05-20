@@ -18,6 +18,13 @@ from seektalent.storage.json import sha256_json
 from tests.settings_factory import make_settings
 
 
+VALID_PI_COMMAND = (
+    "pi --mode rpc --no-session "
+    "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+    "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+)
+
+
 class FakeWorker:
     def __init__(self) -> None:
         self.search_calls: list[dict[str, object]] = []
@@ -97,7 +104,11 @@ def test_liepin_backend_posture_records_worker_modes_without_pi_agent_fallback()
 
 def test_liepin_backend_posture_records_pi_agent_as_live_mode() -> None:
     assert liepin_backend_posture(
-        make_settings(liepin_worker_mode="pi_agent", liepin_account_binding_secret="runtime-secret")
+        make_settings(
+            liepin_worker_mode="pi_agent",
+            liepin_account_binding_secret="runtime-secret",
+            liepin_pi_command=VALID_PI_COMMAND,
+        )
     ) == {"backend_mode": "pi_agent", "reason": "pi_agent"}
 
 
@@ -477,6 +488,14 @@ def test_pi_failure_codes_map_to_runtime_safe_reason_codes() -> None:
     assert runtime_safe_reason_code_from_pi_failure_code("liepin_pi_dokobot_tool_unobserved") == (
         "liepin_pi_dokobot_tool_unobserved"
     )
+    for reason_code in (
+        "liepin_pi_mcp_adapter_missing",
+        "liepin_pi_mcp_adapter_unavailable",
+        "liepin_pi_dokobot_mcp_command_missing",
+        "liepin_pi_dokobot_mcp_config_mismatch",
+        "liepin_pi_dokobot_mcp_tool_names_missing",
+    ):
+        assert runtime_safe_reason_code_from_pi_failure_code(reason_code) == reason_code
     assert runtime_safe_reason_code_from_pi_failure_code("unknown") == "failed_provider_error"
 
 
@@ -508,6 +527,7 @@ def test_liepin_runtime_lane_builds_live_store_for_pi_agent(monkeypatch, tmp_pat
         liepin_worker_mode="pi_agent",
         liepin_connector_db_path=str(tmp_path / "liepin.sqlite3"),
         liepin_account_binding_secret="runtime-secret",
+        liepin_pi_command=VALID_PI_COMMAND,
     )
 
     asyncio.run(run_liepin_source_lane(settings=settings, request=request, worker_client=FakeWorker()))

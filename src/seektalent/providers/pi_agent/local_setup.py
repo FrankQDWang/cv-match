@@ -4,7 +4,7 @@ import json
 import os
 import shlex
 import shutil
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -86,7 +86,7 @@ def build_pi_agent_local_setup_status(
     components = {
         "worker_mode": PiAgentLocalSetupComponent("configured", "configured"),
         "account_binding_secret": _account_secret_component(env),
-        "pi_command": _pi_command_component(env, which=which),
+        "pi_command": _pi_command_component(env, workspace_root=workspace, which=which),
         "pi_skill": _pi_skill_component(env, workspace_root=workspace),
         "dokobot_mcp": _dokobot_mcp_component(env, workspace_root=workspace, dokobot_tool_name=dokobot_tool_name),
     }
@@ -99,6 +99,9 @@ def init_project_pi_mcp_config(
     dokobot_tool_name: str,
     write: bool,
     mcp_config_path: Path | None = None,
+    dokobot_mcp_command: str | None = None,
+    dokobot_mcp_args: tuple[str, ...] = (),
+    dokobot_direct_tools: tuple[str, ...] = (),
 ) -> PiMcpInitResult:
     workspace = workspace_root.resolve()
     project_pi_dir = workspace / ".pi"
@@ -113,7 +116,20 @@ def init_project_pi_mcp_config(
         )
 
     server_name = dokobot_tool_name.strip() or DEFAULT_DOKOBOT_TOOL_NAME
-    expected_server = {"command": "dokobot", "args": []}
+    command = (dokobot_mcp_command or "").strip()
+    if not command:
+        return PiMcpInitResult(
+            status="blocked",
+            reason_code="liepin_pi_dokobot_mcp_command_missing",
+            changed=False,
+        )
+    expected_server: dict[str, object] = {
+        "command": command,
+        "args": list(dokobot_mcp_args),
+        "lifecycle": "lazy",
+    }
+    if dokobot_direct_tools:
+        expected_server["directTools"] = list(dokobot_direct_tools)
     if not target.exists():
         payload: dict[str, Any] = {"mcpServers": {}}
         operations = ("create_config", "add_dokobot_server")
@@ -191,6 +207,7 @@ def _account_secret_component(env: Mapping[str, str | None]) -> PiAgentLocalSetu
 def _pi_command_component(
     env: Mapping[str, str | None],
     *,
+    workspace_root: Path,
     which: Callable[[str], str | None],
 ) -> PiAgentLocalSetupComponent:
     command = _env_value(env, "SEEKTALENT_LIEPIN_PI_COMMAND") or DEFAULT_LIEPIN_PI_COMMAND
@@ -200,10 +217,18 @@ def _pi_command_component(
         return PiAgentLocalSetupComponent("invalid", "liepin_pi_command_invalid")
     if not argv or _arg_value(argv, "--mode") != "rpc" or "--no-session" not in argv or "--skill" in argv:
         return PiAgentLocalSetupComponent("invalid", "liepin_pi_command_invalid")
+    extensions = _extension_values(argv)
+    adapter_extension = _extension_matching(extensions, "pi-mcp-adapter/index.ts")
+    if adapter_extension is None:
+        return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_mcp_adapter_missing")
+    if not any("pi_extensions/bailian_deepseek.ts" in extension for extension in extensions):
+        return PiAgentLocalSetupComponent("invalid", "liepin_pi_command_invalid")
     executable = argv[0]
-    if _executable_resolves(executable, which=which):
-        return PiAgentLocalSetupComponent("configured", "configured")
-    return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_command_missing")
+    if not _executable_resolves(executable, which=which):
+        return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_command_missing")
+    if not _extension_file_exists(adapter_extension, workspace_root=workspace_root):
+        return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_mcp_adapter_missing")
+    return PiAgentLocalSetupComponent("configured", "configured")
 
 
 def _executable_resolves(executable: str, *, which: Callable[[str], str | None]) -> bool:
@@ -227,6 +252,16 @@ def _dokobot_mcp_component(
     workspace_root: Path,
     dokobot_tool_name: str,
 ) -> PiAgentLocalSetupComponent:
+    configured_server_name = _env_value(env, "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME") or dokobot_tool_name
+    configured_command = _env_value(env, "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND")
+    if not configured_command:
+        return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_dokobot_mcp_command_missing")
+    try:
+        expected_args = _json_string_tuple_env(env, "SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON")
+        expected_direct_tools = _json_string_tuple_env(env, "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON")
+        expected_observed_tools = _json_string_tuple_env(env, "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON")
+    except ValueError:
+        return PiAgentLocalSetupComponent("invalid", "liepin_pi_mcp_config_invalid")
     config_path = _resolve_optional_path(
         _env_value(env, "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH"),
         workspace_root=workspace_root,
@@ -242,9 +277,17 @@ def _dokobot_mcp_component(
     mcp_servers = payload.get("mcpServers")
     if not isinstance(mcp_servers, dict):
         return PiAgentLocalSetupComponent("invalid", "liepin_pi_mcp_config_invalid")
-    server = mcp_servers.get(dokobot_tool_name)
+    server = mcp_servers.get(configured_server_name)
     if not isinstance(server, dict) or not str(server.get("command") or "").strip():
         return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_dokobot_mcp_missing")
+    if str(server.get("command") or "").strip() != configured_command:
+        return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_dokobot_mcp_missing")
+    server_args = tuple(str(item).strip() for item in server.get("args") or ())
+    server_direct_tools = tuple(str(item).strip() for item in server.get("directTools") or ())
+    if server_args != expected_args or server_direct_tools != expected_direct_tools:
+        return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_dokobot_mcp_config_mismatch")
+    if not expected_observed_tools:
+        return PiAgentLocalSetupComponent("needs_setup", "liepin_pi_dokobot_mcp_tool_names_missing")
     return PiAgentLocalSetupComponent("configured", "configured")
 
 
@@ -257,6 +300,43 @@ def _arg_value(argv: list[str], flag: str) -> str | None:
     if next_index >= len(argv):
         return None
     return argv[next_index]
+
+
+def _extension_values(argv: Sequence[str]) -> tuple[str, ...]:
+    values: list[str] = []
+    for index, part in enumerate(argv):
+        if part == "--extension" and index + 1 < len(argv):
+            values.append(argv[index + 1])
+        elif part.startswith("--extension="):
+            values.append(part.split("=", 1)[1])
+    return tuple(values)
+
+
+def _extension_matching(extensions: Sequence[str], marker: str) -> str | None:
+    for extension in extensions:
+        if marker in extension:
+            return extension
+    return None
+
+
+def _extension_file_exists(extension: str, *, workspace_root: Path) -> bool:
+    path = Path(extension)
+    if not path.is_absolute():
+        path = resolve_path_from_root(extension, root=workspace_root)
+    return path.is_file()
+
+
+def _json_string_tuple_env(env: Mapping[str, str | None], key: str) -> tuple[str, ...]:
+    text = _env_value(env, key)
+    if text is None:
+        return ()
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{key} must be a JSON array of strings") from exc
+    if not isinstance(loaded, list) or not all(isinstance(item, str) and item.strip() for item in loaded):
+        raise ValueError(f"{key} must be a JSON array of non-empty strings")
+    return tuple(item.strip() for item in loaded)
 
 
 def _summarize(components: dict[str, PiAgentLocalSetupComponent]) -> PiAgentLocalSetupStatus:

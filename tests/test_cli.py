@@ -31,6 +31,17 @@ LIEPIN_ENV_TEMPLATE_KEYS = [
     "SEEKTALENT_LIEPIN_WORKER_MODE",
     "SEEKTALENT_LIEPIN_ALLOW_FAKE_FIXTURE_WORKER",
     "SEEKTALENT_LIEPIN_WORKER_BASE_URL",
+    "SEEKTALENT_LIEPIN_PI_COMMAND",
+    "SEEKTALENT_LIEPIN_PI_TIMEOUT_SECONDS",
+    "SEEKTALENT_LIEPIN_PI_SKILL_PATH",
+    "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH",
+    "SEEKTALENT_LIEPIN_PI_DOKOBOT_TOOL_NAME",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND",
+    "SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON",
+    "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON",
+    "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON",
+    "SEEKTALENT_LIEPIN_PI_MODEL_ID",
     "SEEKTALENT_LIEPIN_WORKER_HOST",
     "SEEKTALENT_LIEPIN_WORKER_PORT",
     "SEEKTALENT_LIEPIN_WORKER_STARTUP_TIMEOUT_SECONDS",
@@ -43,6 +54,21 @@ LIEPIN_ENV_TEMPLATE_KEYS = [
     "SEEKTALENT_LIEPIN_DEFAULT_DAILY_DETAIL_BUDGET",
     "SEEKTALENT_LIEPIN_LIVE_ENABLED",
 ]
+
+VALID_PI_COMMAND = (
+    "pi --mode rpc --no-session "
+    "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+    "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
+)
+
+
+def _write_pi_extension_files(root: Path) -> None:
+    provider_extension = root / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions"
+    provider_extension.mkdir(parents=True, exist_ok=True)
+    (provider_extension / "bailian_deepseek.ts").write_text("provider", encoding="utf-8")
+    adapter_extension = root / "apps" / "web-svelte" / "node_modules" / "pi-mcp-adapter"
+    adapter_extension.mkdir(parents=True, exist_ok=True)
+    (adapter_extension / "index.ts").write_text("adapter", encoding="utf-8")
 
 
 def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -783,7 +809,22 @@ def test_pi_agent_init_dry_run_does_not_write_file(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["pi-agent", "init", "--project", "--workspace-root", str(tmp_path), "--dry-run", "--json"]) == 0
+    assert (
+        main(
+            [
+                "pi-agent",
+                "init",
+                "--project",
+                "--workspace-root",
+                str(tmp_path),
+                "--dry-run",
+                "--dokobot-mcp-command",
+                "dokobot-mcp",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["status"] == "needs_write"
@@ -796,7 +837,22 @@ def test_pi_agent_init_write_creates_project_mcp_file(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["pi-agent", "init", "--project", "--workspace-root", str(tmp_path), "--write", "--json"]) == 0
+    assert (
+        main(
+            [
+                "pi-agent",
+                "init",
+                "--project",
+                "--workspace-root",
+                str(tmp_path),
+                "--write",
+                "--dokobot-mcp-command",
+                "dokobot-mcp",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["status"] == "written"
@@ -805,11 +861,125 @@ def test_pi_agent_init_write_creates_project_mcp_file(
     assert str(tmp_path) not in json.dumps(payload)
 
 
+def test_pi_agent_init_requires_dokobot_mcp_command(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [
+            "pi-agent",
+            "init",
+            "--project",
+            "--workspace-root",
+            str(tmp_path),
+            "--write",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["reasonCode"] == "liepin_pi_dokobot_mcp_command_missing"
+    assert not (tmp_path / ".pi" / "mcp.json").exists()
+
+
+def test_pi_agent_init_writes_configured_dokobot_mcp_command(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [
+            "pi-agent",
+            "init",
+            "--project",
+            "--workspace-root",
+            str(tmp_path),
+            "--write",
+            "--dokobot-mcp-server-name",
+            "dokobot",
+            "--dokobot-mcp-command",
+            "dokobot-mcp",
+            "--dokobot-mcp-args-json",
+            '["--stdio"]',
+            "--dokobot-direct-tools-json",
+            '["read_page","click","type_text"]',
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    config = json.loads((tmp_path / ".pi" / "mcp.json").read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert payload["reasonCode"] == "configured"
+    assert config["mcpServers"]["dokobot"]["command"] == "dokobot-mcp"
+    assert config["mcpServers"]["dokobot"]["args"] == ["--stdio"]
+    assert config["mcpServers"]["dokobot"]["directTools"] == ["read_page", "click", "type_text"]
+
+
+def test_pi_agent_init_reads_dokobot_mcp_command_from_env(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME", "dokobot")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND", "dokobot-mcp")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON", '["--stdio"]')
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON", '["read_page"]')
+
+    exit_code = main(
+        [
+            "pi-agent",
+            "init",
+            "--project",
+            "--workspace-root",
+            str(tmp_path),
+            "--write",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    config = json.loads((tmp_path / ".pi" / "mcp.json").read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert payload["reasonCode"] == "configured"
+    assert config["mcpServers"]["dokobot"]["command"] == "dokobot-mcp"
+    assert config["mcpServers"]["dokobot"]["args"] == ["--stdio"]
+    assert config["mcpServers"]["dokobot"]["directTools"] == ["read_page"]
+
+
+def test_pi_agent_init_rejects_malformed_dokobot_json_without_writing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [
+            "pi-agent",
+            "init",
+            "--project",
+            "--workspace-root",
+            str(tmp_path),
+            "--write",
+            "--dokobot-mcp-command",
+            "dokobot-mcp",
+            "--dokobot-mcp-args-json",
+            "not-json",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().err)
+    assert exit_code == 1
+    assert payload["error_type"] == "ValueError"
+    assert "dokobot_mcp_args_json must be a JSON array of strings" in payload["error"]
+    assert not (tmp_path / ".pi" / "mcp.json").exists()
+
+
 def test_doctor_json_reports_pi_local_setup_without_leaking_paths(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _write_pi_extension_files(tmp_path)
     skill = tmp_path / "liepin_search_cards.md"
     skill.write_text("Liepin skill", encoding="utf-8")
     env_file = tmp_path / ".env"
@@ -819,7 +989,8 @@ def test_doctor_json_reports_pi_local_setup_without_leaking_paths(
                 f"SEEKTALENT_WORKSPACE_ROOT={tmp_path}",
                 "SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent",
                 "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=account-secret",
-                "SEEKTALENT_LIEPIN_PI_COMMAND=missing-pi --mode rpc --no-session",
+                "SEEKTALENT_LIEPIN_PI_COMMAND="
+                + VALID_PI_COMMAND.replace("pi --mode", "missing-pi --mode", 1),
                 f"SEEKTALENT_LIEPIN_PI_SKILL_PATH={skill.name}",
             ]
         ),
@@ -843,6 +1014,7 @@ def test_doctor_resolves_relative_pi_paths_against_env_workspace_root(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _write_pi_extension_files(tmp_path)
     skill = tmp_path / "liepin_search_cards.md"
     skill.write_text("Liepin skill", encoding="utf-8")
     config = tmp_path / ".pi" / "mcp.json"
@@ -855,9 +1027,11 @@ def test_doctor_resolves_relative_pi_paths_against_env_workspace_root(
                 f"SEEKTALENT_WORKSPACE_ROOT={tmp_path}",
                 "SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent",
                 "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=account-secret",
-                "SEEKTALENT_LIEPIN_PI_COMMAND=pi --mode rpc --no-session",
+                f"SEEKTALENT_LIEPIN_PI_COMMAND={VALID_PI_COMMAND}",
                 "SEEKTALENT_LIEPIN_PI_SKILL_PATH=liepin_search_cards.md",
                 "SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH=.pi/mcp.json",
+                "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND=dokobot",
+                'SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=["dokobot.read"]',
             ]
         ),
         encoding="utf-8",
@@ -959,6 +1133,7 @@ def test_doctor_live_pi_agent_reports_safe_worker_reason(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _write_pi_extension_files(tmp_path)
     skill = tmp_path / "liepin_search_cards.md"
     skill.write_text("Liepin skill", encoding="utf-8")
     env_file = tmp_path / ".env"
@@ -971,8 +1146,10 @@ def test_doctor_live_pi_agent_reports_safe_worker_reason(
                 f"SEEKTALENT_WORKSPACE_ROOT={tmp_path}",
                 "SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent",
                 "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=account-secret",
-                "SEEKTALENT_LIEPIN_PI_COMMAND=pi --mode rpc --no-session",
+                f"SEEKTALENT_LIEPIN_PI_COMMAND={VALID_PI_COMMAND}",
                 f"SEEKTALENT_LIEPIN_PI_SKILL_PATH={skill}",
+                "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND=dokobot-mcp",
+                'SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=["dokobot.read"]',
             ]
         ),
         encoding="utf-8",
@@ -998,6 +1175,7 @@ def test_doctor_live_pi_agent_maps_login_required_to_browser_reason(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _write_pi_extension_files(tmp_path)
     skill = tmp_path / "liepin_search_cards.md"
     skill.write_text("Liepin skill", encoding="utf-8")
     env_file = tmp_path / ".env"
@@ -1010,8 +1188,10 @@ def test_doctor_live_pi_agent_maps_login_required_to_browser_reason(
                 f"SEEKTALENT_WORKSPACE_ROOT={tmp_path}",
                 "SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent",
                 "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=account-secret",
-                "SEEKTALENT_LIEPIN_PI_COMMAND=pi --mode rpc --no-session",
+                f"SEEKTALENT_LIEPIN_PI_COMMAND={VALID_PI_COMMAND}",
                 f"SEEKTALENT_LIEPIN_PI_SKILL_PATH={skill}",
+                "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND=dokobot-mcp",
+                'SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=["dokobot.read"]',
             ]
         ),
         encoding="utf-8",
@@ -1031,6 +1211,42 @@ def test_doctor_live_pi_agent_maps_login_required_to_browser_reason(
     checks = {check["name"]: check for check in payload["checks"]}
 
     assert "reason=liepin_browser_login_required" in checks["liepin_pi_live_agent"]["message"]
+
+
+def test_doctor_live_pi_agent_maps_bad_observed_tools_json_to_safe_reason(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_pi_extension_files(tmp_path)
+    skill = tmp_path / "liepin_search_cards.md"
+    skill.write_text("Liepin skill", encoding="utf-8")
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "SEEKTALENT_TEXT_LLM_API_KEY=test-key",
+                "SEEKTALENT_CTS_TENANT_KEY=cts-key",
+                "SEEKTALENT_CTS_TENANT_SECRET=cts-secret",
+                f"SEEKTALENT_WORKSPACE_ROOT={tmp_path}",
+                "SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent",
+                "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=account-secret",
+                f"SEEKTALENT_LIEPIN_PI_COMMAND={VALID_PI_COMMAND}",
+                f"SEEKTALENT_LIEPIN_PI_SKILL_PATH={skill}",
+                "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND=dokobot-mcp",
+                "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=not-json",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert main(["doctor", "--env-file", str(env_file), "--output-dir", str(tmp_path / "runs"), "--live-pi-agent", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    checks = {check["name"]: check for check in payload["checks"]}
+
+    assert payload["ok"] is False
+    assert "error" not in payload
+    assert "reason=liepin_pi_mcp_config_invalid" in checks["liepin_pi_live_agent"]["message"]
+    assert "not-json" not in json.dumps(payload)
 
 
 def test_run_json_errors_emit_single_object(
