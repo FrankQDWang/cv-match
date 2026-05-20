@@ -104,4 +104,42 @@ describe('SourceCard', () => {
 			screen.getByText('浏览器检索通道暂不可用，请确认本机应用和浏览器助手正常后重试。')
 		).toBeInTheDocument();
 	});
+
+	it('shows browser-channel setup state from source card warning before login wording', () => {
+		render(SourceCard, {
+			props: {
+				card: {
+					...liepinLoginRequiredCard,
+					warningCode: 'liepin_pi_dokobot_mcp_command_missing',
+					warningMessage: '请先在本机 Chrome 登录猎聘并保持会话有效，系统会在检索时使用该登录态。',
+					connectionStatus: 'login_required',
+					connectionWarningCode: 'login_required'
+				},
+				session: {
+					runtimeSourceState: {
+						sources: [
+							{
+								sourceKind: 'liepin',
+								status: 'blocked',
+								eventType: 'source_lane_blocked',
+								eventSeq: 2,
+								reasonCode: 'liepin_browser_login_required',
+								cardsSeenCount: 0,
+								cardsFilteredCount: 0,
+								candidatesCount: 0,
+								detailRecommendationsCount: 0,
+								detailState: null
+							}
+						]
+					}
+				} as unknown as WorkbenchSession,
+				triageApproved: false
+			}
+		});
+
+		expect(screen.getByText('通道不可用')).toBeInTheDocument();
+		expect(screen.getByText('通道未就绪')).toBeInTheDocument();
+		expect(screen.queryByText('需登录猎聘')).not.toBeInTheDocument();
+		expect(screen.getByText('浏览器检索通道缺少本地工具配置，请先完成本机检索环境设置。')).toBeInTheDocument();
+	});
 });

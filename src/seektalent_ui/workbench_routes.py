@@ -293,12 +293,14 @@ def list_sessions(
     connections: dict[str, WorkbenchSourceConnection] = {
         connection.source_kind: connection for connection in store.list_source_connections(user=user)
     }
+    liepin_setup_reason = _liepin_dev_mode_setup_reason(request)
     return WorkbenchSessionListResponse(
         sessions=[
             _session_response(
                 session,
                 connections,
                 runtime_source_state=_runtime_source_state_response(store=store, user=user, session=session),
+                liepin_setup_reason=liepin_setup_reason,
             )
             for session in store.list_workbench_sessions(user=user)
         ]
@@ -338,6 +340,7 @@ def create_session(
         session,
         connections,
         runtime_source_state=_runtime_source_state_response(store=store, user=user, session=session),
+        liepin_setup_reason=_liepin_dev_mode_setup_reason(http_request),
     )
 
 
@@ -358,6 +361,7 @@ def get_session(
         session,
         connections,
         runtime_source_state=_runtime_source_state_response(store=store, user=user, session=session),
+        liepin_setup_reason=_liepin_dev_mode_setup_reason(request),
     )
 
 
@@ -1384,7 +1388,10 @@ def _liepin_start_probe_error_reason(exc: LiepinWorkerModeError) -> str:
 def _liepin_dev_mode_setup_reason(request: Request) -> str | None:
     diagnostics = getattr(request.app.state, "dev_mode_env_diagnostics", None)
     if diagnostics is None:
-        return None
+        try:
+            diagnostics = build_dev_mode_status(_workbench_app_settings(request))
+        except (AttributeError, TypeError, ValueError):
+            return None
     components = getattr(diagnostics, "components", ())
     for component in components:
         code = getattr(component, "reasonCode", None)
@@ -1598,10 +1605,18 @@ def _session_response(
     session: WorkbenchSession,
     connections: dict[str, WorkbenchSourceConnection] | None = None,
     runtime_source_state: WorkbenchRuntimeSourceStateResponse | None = None,
+    liepin_setup_reason: str | None = None,
 ) -> WorkbenchSessionResponse:
     connections = connections or {}
     source_runs = [_source_run_response(source_run) for source_run in session.source_runs]
-    source_cards = [_source_card_response(source_run, connections.get(source_run.source_kind)) for source_run in session.source_runs]
+    source_cards = [
+        _source_card_response(
+            source_run,
+            connections.get(source_run.source_kind),
+            liepin_setup_reason=liepin_setup_reason,
+        )
+        for source_run in session.source_runs
+    ]
     return WorkbenchSessionResponse(
         sessionId=session.session_id,
         workspaceId=session.workspace_id,
@@ -1796,15 +1811,26 @@ def _source_run_response(source_run: WorkbenchSourceRun) -> WorkbenchSourceRunRe
 def _source_card_response(
     source_run: WorkbenchSourceRun,
     connection: WorkbenchSourceConnection | None = None,
+    *,
+    liepin_setup_reason: str | None = None,
 ) -> WorkbenchSourceCardResponse:
+    warning_code = source_run.warning_code
+    warning_message = source_run.warning_message
+    if (
+        source_run.source_kind == "liepin"
+        and liepin_setup_reason is not None
+        and warning_code in {None, "login_required", LIEPIN_BROWSER_LOGIN_REQUIRED_CODE}
+    ):
+        warning_code = liepin_setup_reason
+        warning_message = _liepin_start_probe_warning_message(liepin_setup_reason)
     return WorkbenchSourceCardResponse(
         sourceRunId=source_run.source_run_id,
         sourceKind=source_run.source_kind,
         label="CTS" if source_run.source_kind == "cts" else "Liepin",
         status=source_run.status,
         authState=source_run.auth_state,
-        warningCode=source_run.warning_code,
-        warningMessage=source_run.warning_message,
+        warningCode=warning_code,
+        warningMessage=warning_message,
         cardsScannedCount=source_run.cards_scanned_count,
         uniqueCandidatesCount=source_run.unique_candidates_count,
         detailOpenUsedCount=source_run.detail_open_used_count,

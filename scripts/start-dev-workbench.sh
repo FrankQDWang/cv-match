@@ -133,17 +133,7 @@ PY
   )"
 fi
 
-if [[ -n "$DOKOBOT_MCP_COMMAND" ]]; then
-  uv run seektalent pi-agent init \
-    --project \
-    --workspace-root "$ROOT" \
-    --mcp-config-path "$MCP_CONFIG_PATH" \
-    --dokobot-mcp-server-name "$DOKOBOT_MCP_SERVER_NAME" \
-    --dokobot-mcp-command "$DOKOBOT_MCP_COMMAND" \
-    --dokobot-mcp-args-json "$DOKOBOT_MCP_ARGS_JSON" \
-    --dokobot-direct-tools-json "$DOKOBOT_DIRECT_TOOLS_JSON" \
-    --write >/dev/null
-else
+if [[ -z "$DOKOBOT_MCP_COMMAND" ]]; then
   echo "DokoBot MCP command is not configured; starting Workbench with Liepin browser channel blocked." >&2
 fi
 

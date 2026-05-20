@@ -95,9 +95,9 @@ Start the local Svelte workbench with the repo-local Pi dependency and project-l
 scripts/start-dev-workbench.sh
 ```
 
-This launcher is the explicit development preset for the CTS + Liepin local Workbench. It installs Svelte dependencies when needed, loads the repo-local Bailian provider extension and pinned `pi-mcp-adapter` extension, exports the Pi-backed Liepin settings for the launched backend process, maps Pi to the same root `.env` Runtime text LLM provider/model (`deepseek-v4-flash` by default), and then starts both the backend and Svelte frontend. A plain `seektalent-ui-api` command does not mutate `.pi/mcp.json` or silently enable Liepin when `SEEKTALENT_LIEPIN_WORKER_MODE=disabled`.
+This launcher is the product development preset for the CTS + Liepin local Workbench. Pi is part of that preset, not an optional ad hoc startup flag. The launcher installs Svelte dependencies when needed, loads the repo-local Bailian provider extension and pinned `pi-mcp-adapter` extension, exports the Pi-backed Liepin settings for the launched backend process, maps Pi to the same root `.env` Runtime text LLM provider/model (`deepseek-v4-flash` by default), and then starts both the backend and Svelte frontend. A plain low-level `seektalent-ui-api` command does not mutate `.pi/mcp.json` or silently enable Liepin when `SEEKTALENT_LIEPIN_WORKER_MODE=disabled`.
 
-The launcher only initializes `.pi/mcp.json` when `SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND` is explicitly set. Live Liepin browser runs also require `SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON` to name the Pi tool events that prove DokoBot browser actions were observed. Until those values are configured and Pi has warmed/reconnected its MCP metadata, Liepin should report a blocked browser channel while CTS remains usable.
+The launcher never creates or edits `.pi/mcp.json`. Register DokoBot MCP inside Pi with the explicit `seektalent pi-agent init --project --write` setup command after the real DokoBot MCP command is known. Live Liepin browser runs also require `SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON` to name the Pi tool events that prove DokoBot browser actions were observed. Until those values are configured and Pi has warmed/reconnected its MCP metadata, Liepin should report a blocked browser channel while CTS remains usable.
 
 Static and live diagnostics:
 

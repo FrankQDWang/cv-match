@@ -764,6 +764,39 @@ def test_authenticated_session_creation_returns_default_source_cards(tmp_path: P
     assert listed[0]["sourceCards"] == payload["sourceCards"]
 
 
+def test_session_creation_projects_liepin_setup_reason_before_login_prompt(tmp_path: Path) -> None:
+    pi_bin = tmp_path / "bin" / "pi"
+    provider_extension = tmp_path / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions" / "bailian_deepseek.ts"
+    adapter_extension = tmp_path / "apps" / "web-svelte" / "node_modules" / "pi-mcp-adapter" / "index.ts"
+    skill_path = tmp_path / "src" / "seektalent" / "providers" / "pi_agent" / "pi_skills" / "liepin_search_cards.md"
+    for path in (pi_bin, provider_extension, adapter_extension, skill_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("ok\n", encoding="utf-8")
+    pi_bin.chmod(0o755)
+    client = _client(
+        tmp_path,
+        settings_overrides={
+            "liepin_worker_mode": "pi_agent",
+            "liepin_account_binding_secret": "account-binding-secret",
+            "liepin_pi_command": (
+                f"{pi_bin} --mode rpc --no-session "
+                f"--extension {provider_extension} --extension {adapter_extension}"
+            ),
+            "liepin_pi_skill_path": str(skill_path),
+            "liepin_dokobot_mcp_command": None,
+            "liepin_dokobot_observed_tools_json": "[]",
+        },
+    )
+    _bootstrap_and_login(client)
+
+    payload = _create_session(client)
+    cards = {card["sourceKind"]: card for card in payload["sourceCards"]}
+
+    assert cards["liepin"]["authState"] == "login_required"
+    assert cards["liepin"]["warningCode"] == "liepin_pi_dokobot_mcp_command_missing"
+    assert "本机 Chrome 登录猎聘" not in cards["liepin"]["warningMessage"]
+
+
 def test_session_runtime_source_state_uses_public_latest_lane_payloads(tmp_path: Path) -> None:
     client = _client(tmp_path)
     _bootstrap_and_login(client)

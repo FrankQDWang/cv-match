@@ -254,13 +254,13 @@ Required live variables:
 | `SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=[]` | Required for live Liepin Pi runs: exact Pi tool-event names that prove the DokoBot browser actions were observed. Empty means the live browser channel fails closed. |
 | `SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=<local non-placeholder secret>` | Local HMAC/account-binding secret. |
 
-In dev mode, the Svelte workspace carries Pi as an npm dependency (`@earendil-works/pi-coding-agent`). Use the explicit local launcher when you want the backend and Svelte frontend to start with the repo-local Pi dependency:
+In dev mode, the Svelte workspace carries Pi as an npm dependency (`@earendil-works/pi-coding-agent`). The local Workbench product launcher starts the backend and Svelte frontend with that repo-local Pi dependency:
 
 ```bash
 scripts/start-dev-workbench.sh
 ```
 
-The launcher exports `SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent`, sets `SEEKTALENT_LIEPIN_PI_COMMAND` to the repo-local Pi binary plus the repo-owned Bailian provider extension and pinned `pi-mcp-adapter` extension, creates a local account-binding secret under `.seektalent/` when needed, and initializes the project-local `.pi/mcp.json` only when the DokoBot MCP command is explicit. Pi receives the same Runtime text LLM key/base URL/model from the root `.env`; secrets are injected only into the backend/Pi process, not into the Svelte frontend. A plain `seektalent-ui-api` process only reads its explicit configuration and does not change `disabled` into `pi_agent`.
+The launcher exports `SEEKTALENT_LIEPIN_WORKER_MODE=pi_agent`, sets `SEEKTALENT_LIEPIN_PI_COMMAND` to the repo-local Pi binary plus the repo-owned Bailian provider extension and pinned `pi-mcp-adapter` extension, and creates a local account-binding secret under `.seektalent/` when needed. It does not create or edit `.pi/mcp.json`; registering a DokoBot MCP server for Pi is an explicit setup step. Pi receives the same Runtime text LLM key/base URL/model from the root `.env`; secrets are injected only into the backend/Pi process, not into the Svelte frontend. A plain low-level `seektalent-ui-api` process only reads its explicit configuration and does not change `disabled` into `pi_agent`.
 
 Initialize the project-local Pi MCP config from the checkout:
 

@@ -478,7 +478,8 @@ def test_dev_launcher_mentions_pinned_pi_mcp_adapter() -> None:
     assert "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON" in script
-    assert 'if [[ -n "$DOKOBOT_MCP_COMMAND" ]]' in script
+    assert "seektalent pi-agent init" not in script
+    assert "--write" not in script
     assert "DokoBot MCP command is not configured" in script
     assert "Pi MCP adapter is missing; starting Workbench with Liepin browser channel blocked." in script
     assert 'Repo-local Pi MCP adapter is missing: apps/web-svelte/node_modules/pi-mcp-adapter/index.ts" >&2\n  exit 1' not in script

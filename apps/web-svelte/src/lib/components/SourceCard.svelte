@@ -50,14 +50,12 @@
 		sourceCard: WorkbenchSourceCard,
 		runtimeReasonCode: string | null | undefined
 	) {
+		const reasonCode = sourceDisplayReason(sourceCard, runtimeReasonCode);
 		if (sourceCard.sourceKind === 'liepin') {
-			if (
-				runtimeReasonCode === 'liepin_browser_probe_unavailable' ||
-				runtimeReasonCode === 'blocked_backend_unavailable'
-			) {
+			if (isLiepinBrowserChannelReason(reasonCode)) {
 				return '通道不可用';
 			}
-			if (runtimeReasonCode === 'liepin_browser_account_mismatch') {
+			if (reasonCode === 'liepin_browser_account_mismatch') {
 				return '账号不一致';
 			}
 		}
@@ -88,12 +86,33 @@
 		return '使用本机 Chrome 登录态';
 	}
 
-	function sourceAccessLabel(sourceCard: WorkbenchSourceCard) {
+	function sourceAccessLabel(sourceCard: WorkbenchSourceCard, runtimeReasonCode: string | null | undefined) {
 		if (sourceCard.sourceKind === 'cts') return '本地库';
+		const reasonCode = sourceDisplayReason(sourceCard, runtimeReasonCode);
+		if (isLiepinBrowserChannelReason(reasonCode)) return '通道未就绪';
 		if (sourceCard.connectionStatus === 'connected') return '账号已连接';
 		if (sourceCard.connectionStatus === 'login_in_progress') return '登录中';
 		if (sourceCard.connectionStatus === 'verification_required') return '待验证';
 		return '等待 Chrome 登录态';
+	}
+
+	function isLiepinBrowserChannelReason(reasonCode: string | null | undefined) {
+		return (
+			reasonCode === 'blocked_backend_unavailable' ||
+			reasonCode === 'liepin_browser_probe_unavailable' ||
+			String(reasonCode ?? '').startsWith('liepin_pi_')
+		);
+	}
+
+	function sourceDisplayReason(
+		sourceCard: WorkbenchSourceCard,
+		runtimeReasonCode: string | null | undefined
+	) {
+		const storedReasonCode = sourceCard.warningCode ?? sourceCard.connectionWarningCode;
+		if (sourceCard.sourceKind === 'liepin' && isLiepinBrowserChannelReason(storedReasonCode)) {
+			return storedReasonCode;
+		}
+		return runtimeReasonCode ?? storedReasonCode;
 	}
 
 	function sourceWarningMessage(
@@ -101,7 +120,7 @@
 		runtimeReasonCode: string | null | undefined,
 		approved: boolean
 	) {
-		const reasonCode = runtimeReasonCode ?? sourceCard.warningCode ?? sourceCard.connectionWarningCode;
+		const reasonCode = sourceDisplayReason(sourceCard, runtimeReasonCode);
 		const reason = sourceReasonLabel(reasonCode);
 		if (sourceCard.sourceKind === 'liepin' && reason) return reason;
 		if (sourceCard.warningMessage) return sourceCard.warningMessage;
@@ -137,7 +156,7 @@
 		</span>
 	</div>
 	<div class="source-card-signal" aria-label={`${card.label} source state`}>
-		<span>{sourceAccessLabel(card)}</span>
+		<span>{sourceAccessLabel(card, runtimeLane?.reasonCode)}</span>
 		<span>{card.sourceKind === 'cts' ? '批量检索' : '顺序查看'}</span>
 		<span>{card.sourceKind === 'cts' ? '可回放' : '额度保护'}</span>
 	</div>
