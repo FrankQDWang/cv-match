@@ -42,6 +42,11 @@ PRODUCT_DOKOBOT_RAW_COMMAND_PATTERNS = (
     re.compile(r"subprocess\.\w+\([^)]*[\"']dokobot[\"']"),
     re.compile(r"\[[\"']dokobot[\"']"),
 )
+PRODUCT_OPENCLI_RAW_COMMAND_PATTERNS = (
+    re.compile(r"subprocess\.\w+\([^)]*[\"']opencli[\"']"),
+    re.compile(r"Popen\([^)]*[\"']opencli[\"']"),
+    re.compile(r"\[[\"']opencli[\"']"),
+)
 
 
 def find_direct_dokobot_boundary_violations(files: Mapping[Path, str]) -> list[str]:
@@ -53,6 +58,15 @@ def find_direct_dokobot_boundary_violations(files: Mapping[Path, str]) -> list[s
         for pattern in PRODUCT_DOKOBOT_RAW_COMMAND_PATTERNS:
             if pattern.search(text):
                 offenders.append(f"{path} directly executes dokobot")
+    return offenders
+
+
+def find_direct_opencli_boundary_violations(files: Mapping[Path, str]) -> list[str]:
+    offenders: list[str] = []
+    for path, text in files.items():
+        for pattern in PRODUCT_OPENCLI_RAW_COMMAND_PATTERNS:
+            if pattern.search(text):
+                offenders.append(f"{path} directly executes opencli")
     return offenders
 
 
@@ -252,9 +266,37 @@ def test_dokobot_product_boundary_scan_catches_runtime_violations() -> None:
     assert "src/seektalent/providers/registry.py directly executes dokobot" in findings
 
 
+def test_runtime_and_workbench_product_paths_do_not_execute_opencli_directly() -> None:
+    files = collect_dokobot_product_boundary_files(root=Path.cwd())
+
+    assert find_direct_opencli_boundary_violations(files) == []
+
+
+def test_opencli_product_boundary_scan_catches_direct_execution() -> None:
+    files = {
+        Path("src/seektalent/runtime/example.py"): "subprocess.run(['opencli', 'browser', 'status'])\n",
+        Path("src/seektalent_ui/example.py"): "Popen(['opencli'])\n",
+    }
+
+    findings = find_direct_opencli_boundary_violations(files)
+
+    assert "src/seektalent/runtime/example.py directly executes opencli" in findings
+    assert "src/seektalent_ui/example.py directly executes opencli" in findings
+
+
+def test_opencli_helper_does_not_expose_generic_browser_command_escape_hatch() -> None:
+    text = Path("src/seektalent/providers/pi_agent/opencli_browser.py").read_text(encoding="utf-8")
+
+    assert "def run_restricted_browser_command" not in text
+    assert "eval" in text
+    assert "network" in text
+    assert "upload" in text
+
+
 def test_liepin_skill_url_matcher_rejects_api_ajax_graphql_download_and_export_routes() -> None:
     skill = get_liepin_pi_skill(PiAgentTaskType.LIEPIN_SEARCH_CARDS)
 
+    assert is_liepin_skill_url_allowed(skill, "https://h.liepin.com/search/getConditionItem#session")
     assert is_liepin_skill_url_allowed(skill, "https://www.liepin.com/zhaopin/?key=python")
     assert is_liepin_skill_url_allowed(skill, "https://www.liepin.com/lptjob/")
     assert not is_liepin_skill_url_allowed(skill, "https://www.liepin.com/api/search")

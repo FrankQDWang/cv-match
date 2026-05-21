@@ -85,6 +85,8 @@ The launcher installs Svelte dependencies when needed, points `SEEKTALENT_LIEPIN
 
 The DokoBot MCP command and the Pi-observed browser tool names must be configured explicitly in the root `.env`. Until `SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND` and `SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON` are proven for the local DokoBot install, the Liepin source fails closed while CTS can still run. The launcher does not invent or write `.pi/mcp.json`.
 
+For the OpenCLI browser backend, the CLI is an explicit `apps/web-svelte` dependency and defaults to `apps/web-svelte/node_modules/.bin/opencli`. The user still installs and connects the OpenCLI Chrome extension in their own Chrome profile. Python-only or PyPI-style installs do not yet bundle the Node dependency tree; in those installs OpenCLI mode must fail closed with `liepin_opencli_command_missing` until a packaged installer or first-run dependency bootstrap exists.
+
 You can still initialize or inspect the project-local Pi MCP config explicitly:
 
 ```bash

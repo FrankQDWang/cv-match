@@ -113,11 +113,24 @@ class WorkbenchRuntimeLinkRepairResult:
     reason: str | None = None
 
 
-def _new_source_run(source_kind: Literal["cts", "liepin"]) -> WorkbenchSourceRun:
+def _new_source_run(
+    source_kind: Literal["cts", "liepin"],
+    *,
+    liepin_connection_connected: bool = False,
+) -> WorkbenchSourceRun:
     if source_kind == "cts":
         return WorkbenchSourceRun(
             source_run_id=f"src_{uuid.uuid4().hex[:16]}",
             source_kind="cts",
+            status="queued",
+            auth_state="not_required",
+            warning_code=None,
+            warning_message=None,
+        )
+    if liepin_connection_connected:
+        return WorkbenchSourceRun(
+            source_run_id=f"src_{uuid.uuid4().hex[:16]}",
+            source_kind="liepin",
             status="queued",
             auth_state="not_required",
             warning_code=None,
@@ -721,7 +734,7 @@ class WorkbenchStore:
         requested_source_kinds: list[Literal["cts", "liepin"]] = (
             source_kinds if source_kinds is not None else ["cts", "liepin"]
         )
-        source_runs = [_new_source_run(source_kind) for source_kind in requested_source_kinds]
+        source_runs: list[WorkbenchSourceRun] = []
         triage = WorkbenchRequirementTriage(
             session_id=session_id,
             status="draft",
@@ -738,6 +751,28 @@ class WorkbenchStore:
         self._initialize()
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            liepin_connection_connected = False
+            if "liepin" in requested_source_kinds:
+                liepin_connection_connected = (
+                    conn.execute(
+                        """
+                        SELECT 1
+                        FROM source_connections
+                        WHERE tenant_id = ?
+                          AND workspace_id = ?
+                          AND user_id = ?
+                          AND source_kind = 'liepin'
+                          AND status = 'connected'
+                        LIMIT 1
+                        """,
+                        (DEFAULT_TENANT_ID, user.workspace_id, user.user_id),
+                    ).fetchone()
+                    is not None
+                )
+            source_runs = [
+                _new_source_run(source_kind, liepin_connection_connected=liepin_connection_connected)
+                for source_kind in requested_source_kinds
+            ]
             conn.execute(
                 """
                 INSERT INTO sessions (
@@ -1198,11 +1233,22 @@ class WorkbenchStore:
                     """,
                     (source_run_id, session_id, user.workspace_id, user.user_id, user.user_id),
                 ).fetchone()
+                active_job = conn.execute(
+                    """
+                    SELECT 1
+                    FROM source_run_jobs
+                    WHERE source_run_id = ?
+                      AND status IN ('queued', 'running')
+                    LIMIT 1
+                    """,
+                    (source_run_id,),
+                ).fetchone()
                 if (
                     source_run_row is None
-                    or source_run_row["status"] in {"queued", "running", "completed", "failed"}
+                    or source_run_row["status"] in {"running", "completed", "failed"}
+                    or (source_run_row["status"] == "queued" and active_job is not None)
                     or not (
-                        source_run_row["status"] == "blocked"
+                        source_run_row["status"] in {"blocked", "queued"}
                         or source_run_row["auth_state"] == "login_required"
                     )
                 ):
@@ -1599,10 +1645,21 @@ class WorkbenchStore:
             ).fetchone()
             if row is None:
                 return None
+            active_job = conn.execute(
+                """
+                SELECT 1
+                FROM source_run_jobs
+                WHERE source_run_id = ?
+                  AND status IN ('queued', 'running')
+                LIMIT 1
+                """,
+                (source_run_id,),
+            ).fetchone()
             if (
                 row["source_kind"] != "liepin"
-                or row["status"] in {"queued", "running", "completed", "failed"}
-                or not (row["status"] == "blocked" or row["auth_state"] == "login_required")
+                or row["status"] in {"running", "completed", "failed"}
+                or (row["status"] == "queued" and active_job is not None)
+                or not (row["status"] in {"blocked", "queued"} or row["auth_state"] == "login_required")
             ):
                 return _source_run_from_row(row)
             conn.execute(
@@ -1615,8 +1672,8 @@ class WorkbenchStore:
                 WHERE source_run_id = ?
                   AND session_id = ?
                   AND source_kind = 'liepin'
-                  AND status NOT IN ('queued', 'running', 'completed', 'failed')
-                  AND (status = 'blocked' OR auth_state = 'login_required')
+                  AND status NOT IN ('running', 'completed', 'failed')
+                  AND (status IN ('blocked', 'queued') OR auth_state = 'login_required')
                 """,
                 (warning_code, warning_message, source_run_id, session_id),
             )
@@ -1764,6 +1821,44 @@ class WorkbenchStore:
                 conn.execute("SELECT * FROM source_runs WHERE source_run_id = ?", (source_run_id,)).fetchone()
             )
         return updated_run, job, True
+
+    def has_active_source_run_job(
+        self,
+        *,
+        user: WorkbenchUser,
+        session_id: str,
+        source_run_id: str,
+    ) -> bool:
+        self._initialize()
+        self.reconcile_expired_running_jobs()
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT 1
+                FROM source_run_jobs AS j
+                JOIN source_runs AS sr ON sr.source_run_id = j.source_run_id
+                JOIN sessions AS s ON s.session_id = sr.session_id
+                WHERE j.source_run_id = ?
+                  AND j.session_id = ?
+                  AND j.workspace_id = ?
+                  AND j.user_id = ?
+                  AND sr.workspace_id = ?
+                  AND sr.user_id = ?
+                  AND s.user_id = ?
+                  AND j.status IN ('queued', 'running')
+                LIMIT 1
+                """,
+                (
+                    source_run_id,
+                    session_id,
+                    user.workspace_id,
+                    user.user_id,
+                    user.workspace_id,
+                    user.user_id,
+                    user.user_id,
+                ),
+            ).fetchone()
+        return row is not None
 
     def claim_next_source_run_job(
         self,

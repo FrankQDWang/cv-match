@@ -45,17 +45,18 @@ def _client(
     final_text: str = "",
     *,
     observed_tool_names: tuple[str, ...] = (),
+    events: tuple[dict[str, object], ...] | None = None,
     rpc_status: PiRpcTaskStatus = PiRpcTaskStatus.SUCCEEDED,
 ) -> PiRpcAgentClient:
     skill_path = Path("src/seektalent/providers/pi_agent/pi_skills/liepin_search_cards.md")
-    events = tuple({"type": "tool_execution_start", "toolName": tool_name} for tool_name in observed_tool_names)
+    rpc_events = events or tuple({"type": "tool_execution_start", "toolName": tool_name} for tool_name in observed_tool_names)
     return PiRpcAgentClient(
         command=("pi", "--mode", "rpc", "--no-session", "--no-skills", "--skill", str(skill_path)),
         skill_path=skill_path,
         dokobot_tool_name="dokobot",
         timeout_seconds=120,
         artifact_root=Path("artifacts/pi-agent"),
-        transport=FakeRpcTransport(PiRpcTaskResult(status=rpc_status, final_text=final_text, events=events)),
+        transport=FakeRpcTransport(PiRpcTaskResult(status=rpc_status, final_text=final_text, events=rpc_events)),
     )
 
 
@@ -191,6 +192,57 @@ def test_pi_liepin_executor_sends_non_secret_session_context_to_pi_task() -> Non
     assert '"provider_account_hash": "account-hmac-1"' in prompt
     assert "session_id" not in prompt
     assert "provider_account_lock_key" not in prompt
+
+
+def test_card_envelope_preserves_opencli_safe_reason_code() -> None:
+    final_text = """
+{"schema_version":"seektalent.pi_liepin_cards.v1","status":"blocked","stop_reason":"blocked_backend_unavailable","safe_reason_code":"liepin_opencli_identity_intercept","source_run_id":"run-1","query":"python ranking","cards_seen":0,"cards_returned":0,"pages_visited":1,"action_trace_ref":"artifact://protected/pi-trace/run-1","safe_summary_refs":[],"protected_snapshot_refs":[],"cards":[]}
+""".strip()
+    executor = PiLiepinExecutor(
+        client=_client(final_text),
+        key_hasher=FakeProviderKeyHasher(),
+        artifact_registry=_registry("artifact://protected/pi-trace/run-1"),
+    )
+
+    result = executor.search_cards(
+        source_run_id="run-1",
+        keyword_query="python ranking",
+        query_terms=("python", "ranking"),
+        page_size=10,
+        max_pages=1,
+        max_cards=10,
+    )
+
+    assert result.safe_reason_code == "liepin_opencli_identity_intercept"
+
+
+def test_malformed_pi_final_answer_preserves_opencli_tool_safe_reason_code() -> None:
+    executor = PiLiepinExecutor(
+        client=_client(
+            "not json",
+            events=(
+                {
+                    "type": "tool_execution_result",
+                    "toolName": "seektalent_opencli_open_liepin_tab",
+                    "result": {"safeReasonCode": "liepin_opencli_window_policy_blocked"},
+                },
+            ),
+        ),
+        key_hasher=FakeProviderKeyHasher(),
+        artifact_registry=_registry("artifact://protected/pi-trace/run-1"),
+    )
+
+    result = executor.search_cards(
+        source_run_id="run-1",
+        keyword_query="python ranking",
+        query_terms=("python",),
+        page_size=10,
+        max_pages=1,
+        max_cards=10,
+    )
+
+    assert result.status == "blocked"
+    assert result.safe_reason_code == "liepin_opencli_window_policy_blocked"
 
 
 def test_pi_liepin_executor_rejects_business_invariant_violations() -> None:
@@ -336,6 +388,74 @@ def test_capability_probe_accepts_only_observed_dokobot_tool_evidence() -> None:
     )
 
     assert result.ready is True
+
+
+def test_capability_probe_accepts_opencli_status_and_declared_manifest_without_action_side_effects() -> None:
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "ready",
+            "read_tool_name": "seektalent_opencli_capabilities",
+            "action_tool_names": [
+                "seektalent_opencli_status",
+                "seektalent_opencli_capabilities",
+                "seektalent_opencli_open_liepin_tab",
+                "seektalent_opencli_state",
+                "seektalent_opencli_fill",
+                "seektalent_opencli_click",
+            ],
+            "proof_kind": "trusted_manifest_and_observed_tool_event",
+            "capability_manifest_ref": "artifact://protected/capability/manifest.json",
+            "tool_evidence_ref": "artifact://protected/capability/tools.json",
+            "allowed_hosts": ["www.liepin.com"],
+        },
+        observed_tool_names=(
+            "seektalent_opencli_status",
+            "seektalent_opencli_capabilities",
+        ),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=(),
+        expected_opencli_observed_tool_names=("seektalent_opencli_status", "seektalent_opencli_capabilities"),
+        expected_opencli_declared_tool_names=(
+            "seektalent_opencli_status",
+            "seektalent_opencli_capabilities",
+            "seektalent_opencli_open_liepin_tab",
+            "seektalent_opencli_state",
+            "seektalent_opencli_fill",
+            "seektalent_opencli_click",
+        ),
+    )
+
+    assert result.ready is True
+
+
+def test_capability_probe_blocks_when_opencli_tool_unobserved() -> None:
+    executor = _capability_executor(
+        envelope={
+            "schema_version": "seektalent.pi_capability_probe.v1",
+            "status": "ready",
+            "read_tool_name": "seektalent_opencli_capabilities",
+            "action_tool_names": ["seektalent_opencli_status", "seektalent_opencli_capabilities"],
+            "proof_kind": "trusted_manifest_and_observed_tool_event",
+            "capability_manifest_ref": "artifact://protected/capability/manifest.json",
+            "tool_evidence_ref": "artifact://protected/capability/tools.json",
+            "allowed_hosts": ["www.liepin.com"],
+        },
+        observed_tool_names=("seektalent_opencli_status",),
+    )
+
+    result = executor.probe_capabilities(
+        expected_dokobot_tool_name="dokobot",
+        expected_observed_tool_names=(),
+        expected_opencli_observed_tool_names=("seektalent_opencli_status", "seektalent_opencli_capabilities"),
+        expected_opencli_declared_tool_names=("seektalent_opencli_status", "seektalent_opencli_capabilities"),
+    )
+
+    assert result.ready is False
+    assert result.safe_reason_code == "liepin_opencli_status_unavailable"
 
 
 def _capability_executor(

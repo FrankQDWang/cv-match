@@ -252,6 +252,11 @@ Required live variables:
 | `SEEKTALENT_LIEPIN_DOKOBOT_MCP_ARGS_JSON=[]` | Optional JSON array of DokoBot MCP server args. |
 | `SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON=[]` | Optional JSON array of direct Pi tool names to expose through `pi-mcp-adapter`. |
 | `SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON=[]` | Required for live Liepin Pi runs: exact Pi tool-event names that prove the DokoBot browser actions were observed. Empty means the live browser channel fails closed. |
+| `SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND=disabled` | Optional Pi-internal browser action backend. `opencli` enables the OpenCLI path; Runtime and Workbench still do not call browser tools directly. |
+| `SEEKTALENT_LIEPIN_OPENCLI_COMMAND=apps/web-svelte/node_modules/.bin/opencli` | Repo-local OpenCLI CLI command. Missing binaries are reported by readiness/live checks, not by settings construction. |
+| `SEEKTALENT_LIEPIN_OPENCLI_SESSION=seektalent-liepin` | OpenCLI browser session name used inside the Pi tool wrapper. |
+| `SEEKTALENT_LIEPIN_OPENCLI_ALLOWED_HOSTS_JSON=[...]` | JSON allowlist of Liepin hosts the OpenCLI wrapper may touch. |
+| `SEEKTALENT_LIEPIN_OPENCLI_ALLOWED_START_URLS_JSON=[...]` | JSON allowlist of source-policy start URLs. Broad identity entrypoints should not be defaults. |
 | `SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET=<local non-placeholder secret>` | Local HMAC/account-binding secret. |
 
 In dev mode, the Svelte workspace carries Pi as an npm dependency (`@earendil-works/pi-coding-agent`). The local Workbench product launcher starts the backend and Svelte frontend with that repo-local Pi dependency:
@@ -269,6 +274,8 @@ seektalent pi-agent init --project --write
 ```
 
 The command requires an explicit `--dokobot-mcp-command` or `SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND`; it does not invent a default DokoBot command. The generated `.pi/mcp.json` registers the configured DokoBot MCP server for Pi. SeekTalent Runtime and Workbench do not call DokoBot directly; they use Pi RPC plus the repo-owned Liepin skill, then validate the strict JSON envelope and observed Pi tool events. `seektalent doctor --json` performs static setup checks only. Use `seektalent doctor --live-pi-agent --json` only when you intentionally want to launch the configured Pi readiness probe. If the Pi adapter metadata or direct tools have just been configured, Pi may need a reconnect/restart before the expected observed tool events appear.
+
+OpenCLI mode is automatic only for source/dev workspaces that have installed `apps/web-svelte` dependencies. A Python-only package path does not yet include the Node dependency tree or Chrome extension setup. If `apps/web-svelte/node_modules/.bin/opencli` is absent, the Liepin OpenCLI source must stay blocked with `liepin_opencli_command_missing` while CTS remains available.
 
 ## Eval Variables
 

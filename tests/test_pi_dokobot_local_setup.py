@@ -24,6 +24,18 @@ def _write_pi_extension_files(root: Path) -> None:
     (adapter_extension / "index.ts").write_text("adapter", encoding="utf-8")
 
 
+def _write_opencli_extension_files(root: Path) -> Path:
+    provider_extension = root / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions"
+    provider_extension.mkdir(parents=True, exist_ok=True)
+    (provider_extension / "bailian_deepseek.ts").write_text("provider", encoding="utf-8")
+    (provider_extension / "seektalent_opencli_browser.ts").write_text("opencli", encoding="utf-8")
+    opencli_bin = root / "apps" / "web-svelte" / "node_modules" / ".bin" / "opencli"
+    opencli_bin.parent.mkdir(parents=True, exist_ok=True)
+    opencli_bin.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    opencli_bin.chmod(0o755)
+    return opencli_bin
+
+
 def test_init_dry_run_does_not_write_project_mcp_config(tmp_path: Path) -> None:
     result = init_project_pi_mcp_config(
         workspace_root=tmp_path,
@@ -259,6 +271,60 @@ def test_reports_configured_when_pi_and_dokobot_mcp_are_declared(tmp_path: Path)
     assert str(tmp_path) not in json.dumps(public)
 
 
+def test_static_setup_reports_configured_opencli_without_dokobot_mcp(tmp_path: Path) -> None:
+    opencli_bin = _write_opencli_extension_files(tmp_path)
+    skill = tmp_path / "liepin_search_cards.md"
+    skill.write_text("Liepin skill", encoding="utf-8")
+
+    status = build_pi_agent_local_setup_status(
+        {
+            "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
+            "SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND": "opencli",
+            "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-secret",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                "pi --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/seektalent_opencli_browser.ts"
+            ),
+            "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill),
+            "SEEKTALENT_LIEPIN_OPENCLI_COMMAND": str(opencli_bin),
+        },
+        workspace_root=tmp_path,
+        which=lambda name: f"/usr/local/bin/{name}" if name == "pi" else None,
+    )
+
+    public = status.to_public_payload()
+    assert status.overall_status == "configured"
+    assert public["components"]["pi_command"]["status"] == "configured"
+    assert public["components"]["opencli_browser"]["status"] == "configured"
+    assert "dokobot_mcp" not in public["components"]
+    assert str(tmp_path) not in json.dumps(public)
+
+
+def test_static_setup_reports_missing_opencli_extension_in_opencli_mode(tmp_path: Path) -> None:
+    skill = tmp_path / "liepin_search_cards.md"
+    skill.write_text("Liepin skill", encoding="utf-8")
+
+    status = build_pi_agent_local_setup_status(
+        {
+            "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
+            "SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND": "opencli",
+            "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-secret",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                "pi --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts"
+            ),
+            "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill),
+            "SEEKTALENT_LIEPIN_OPENCLI_COMMAND": str(tmp_path / "apps/web-svelte/node_modules/.bin/opencli"),
+        },
+        workspace_root=tmp_path,
+        which=lambda name: f"/usr/local/bin/{name}" if name == "pi" else None,
+    )
+
+    assert status.overall_status == "needs_setup"
+    assert status.components["pi_command"].reason_code == "liepin_opencli_source_policy_missing"
+
+
 def test_init_reports_missing_dokobot_mcp_command_without_writing(tmp_path: Path) -> None:
     result = init_project_pi_mcp_config(
         workspace_root=tmp_path,
@@ -472,14 +538,22 @@ def test_dev_launcher_mentions_pinned_pi_mcp_adapter() -> None:
     script = Path("scripts/start-dev-workbench.sh").read_text(encoding="utf-8")
 
     assert "node_modules/pi-mcp-adapter/index.ts" in script
+    assert "node_modules/.bin/opencli" in script
+    assert "seektalent_opencli_browser.ts" in script
     assert "--extension $PI_MCP_ADAPTER_EXTENSION" in script
+    assert "--extension $PI_OPENCLI_EXTENSION" in script
     assert "PI_MCP_ADAPTER_EXTENSION_ARG" in script
+    assert 'NODE_PATH="$WEB_DIR/node_modules"' in script
+    assert "SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND" in script
+    assert "SEEKTALENT_LIEPIN_OPENCLI_COMMAND" in script
+    assert '"$OPENCLI_BIN" daemon restart' in script
+    assert "OpenCLI browser bridge daemon did not start; Liepin OpenCLI source will fail closed." in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_MCP_SERVER_NAME" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_MCP_COMMAND" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_DIRECT_TOOLS_JSON" in script
     assert "SEEKTALENT_LIEPIN_DOKOBOT_OBSERVED_TOOLS_JSON" in script
     assert "seektalent pi-agent init" not in script
     assert "--write" not in script
-    assert "DokoBot MCP command is not configured" in script
+    assert 'if [[ "$BROWSER_ACTION_BACKEND" != "opencli" && -z "$DOKOBOT_MCP_COMMAND" ]]; then' in script
     assert "Pi MCP adapter is missing; starting Workbench with Liepin browser channel blocked." in script
     assert 'Repo-local Pi MCP adapter is missing: apps/web-svelte/node_modules/pi-mcp-adapter/index.ts" >&2\n  exit 1' not in script

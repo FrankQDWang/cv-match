@@ -59,6 +59,29 @@ SAFE_CAPABILITY_STOP_REASONS = frozenset(
 )
 
 
+OPENCLI_SAFE_REASON_CODES = frozenset(
+    {
+        "liepin_opencli_backend_disabled",
+        "liepin_opencli_command_missing",
+        "liepin_opencli_extension_disconnected",
+        "liepin_opencli_status_unavailable",
+        "liepin_opencli_forbidden_command",
+        "liepin_opencli_forbidden_text",
+        "liepin_opencli_host_blocked",
+        "liepin_opencli_start_url_blocked",
+        "liepin_opencli_window_policy_blocked",
+        "liepin_opencli_budget_exhausted",
+        "liepin_opencli_timeout",
+        "liepin_opencli_login_required",
+        "liepin_opencli_identity_intercept",
+        "liepin_opencli_risk_page",
+        "liepin_opencli_unknown_modal",
+        "liepin_opencli_source_policy_missing",
+        "liepin_opencli_malformed_state",
+    }
+)
+
+
 @dataclass(frozen=True, kw_only=True)
 class PiLiepinCapabilityProbeResult:
     ready: bool
@@ -152,6 +175,7 @@ class _PiLiepinCardsEnvelope(_StrictModel):
     safe_summary_refs: list[str] = Field(default_factory=list)
     protected_snapshot_refs: list[str] = Field(default_factory=list)
     cards: list[_PiLiepinCard] = Field(default_factory=list)
+    safe_reason_code: str | None = None
 
     @model_validator(mode="after")
     def validate_counts(self) -> "_PiLiepinCardsEnvelope":
@@ -173,6 +197,8 @@ class _PiLiepinCardsEnvelope(_StrictModel):
             raise ValueError("failed card search requires a failed stop_reason")
         if self.status in {"blocked", "failed"} and self.cards_returned:
             raise ValueError("blocked or failed card search must not return cards")
+        if self.safe_reason_code is not None and self.safe_reason_code not in OPENCLI_SAFE_REASON_CODES:
+            raise ValueError("safe_reason_code must be an allowlisted OpenCLI reason")
         return self
 
 
@@ -283,7 +309,7 @@ class PiLiepinExecutor:
             )
         status = PiLiepinResultStatus(envelope.status)
         stop_reason = PiLiepinStopReason(envelope.stop_reason or PiLiepinStopReason.COMPLETED.value)
-        safe_reason = _safe_reason_for_stop(stop_reason)
+        safe_reason = envelope.safe_reason_code or _safe_reason_for_stop(stop_reason)
         return LiepinPiCardSearchResult(
             status=status,
             stop_reason=stop_reason,
@@ -297,6 +323,8 @@ class PiLiepinExecutor:
         *,
         expected_dokobot_tool_name: str,
         expected_observed_tool_names: Sequence[str] = (),
+        expected_opencli_observed_tool_names: Sequence[str] = (),
+        expected_opencli_declared_tool_names: Sequence[str] = (),
     ) -> PiLiepinCapabilityProbeResult:
         task_result = self._client.run_json_task_result(
             json.dumps(
@@ -312,7 +340,7 @@ class PiLiepinExecutor:
         try:
             envelope = _PiCapabilityProbeEnvelope.model_validate(task_result.envelope)
             if envelope.status != "ready":
-                if envelope.stop_reason in SAFE_CAPABILITY_STOP_REASONS:
+                if envelope.stop_reason in SAFE_CAPABILITY_STOP_REASONS or envelope.stop_reason in OPENCLI_SAFE_REASON_CODES:
                     return PiLiepinCapabilityProbeResult(
                         ready=False,
                         safe_reason_code=envelope.stop_reason,
@@ -320,6 +348,24 @@ class PiLiepinExecutor:
                 return PiLiepinCapabilityProbeResult(ready=False, safe_reason_code="blocked_backend_unavailable")
             for ref in (envelope.capability_manifest_ref, envelope.tool_evidence_ref):
                 validate_public_artifact_ref(ref, registry=self._artifact_registry)
+            if expected_opencli_observed_tool_names or expected_opencli_declared_tool_names:
+                if envelope.proof_kind != "trusted_manifest_and_observed_tool_event":
+                    raise ValueError("capability proof is not trusted")
+                declared = {tool for tool in (envelope.read_tool_name, *envelope.action_tool_names) if tool}
+                if not set(expected_opencli_declared_tool_names).issubset(declared):
+                    return PiLiepinCapabilityProbeResult(
+                        ready=False,
+                        safe_reason_code="liepin_opencli_status_unavailable",
+                    )
+                observed = set(task_result.observed_tool_names)
+                if not set(expected_opencli_observed_tool_names).issubset(observed):
+                    return PiLiepinCapabilityProbeResult(
+                        ready=False,
+                        safe_reason_code="liepin_opencli_status_unavailable",
+                    )
+                if not any(host == "liepin.com" or host.endswith(".liepin.com") for host in envelope.allowed_hosts):
+                    raise ValueError("Liepin host not allowed")
+                return PiLiepinCapabilityProbeResult(ready=True)
             required_tools = tuple(expected_observed_tool_names)
             if not required_tools:
                 return PiLiepinCapabilityProbeResult(
@@ -472,6 +518,20 @@ class PiLiepinExecutor:
 
 
 def _result_from_external_error(task_result: PiExternalTaskResult) -> LiepinPiCardSearchResult:
+    if task_result.safe_reason_code in OPENCLI_SAFE_REASON_CODES:
+        return LiepinPiCardSearchResult(
+            status=PiLiepinResultStatus.BLOCKED,
+            stop_reason=PiLiepinStopReason.BLOCKED_BACKEND_UNAVAILABLE,
+            safe_reason_code=task_result.safe_reason_code,
+        )
+    if task_result.error_code == PiExternalAgentErrorCode.TIMEOUT and any(
+        name.startswith("seektalent_opencli_") for name in task_result.observed_tool_names
+    ):
+        return LiepinPiCardSearchResult(
+            status=PiLiepinResultStatus.BLOCKED,
+            stop_reason=PiLiepinStopReason.BLOCKED_BACKEND_UNAVAILABLE,
+            safe_reason_code="liepin_opencli_timeout",
+        )
     stop_reason = _stop_reason_for_external_error(task_result.error_code)
     return LiepinPiCardSearchResult(
         status=PiLiepinResultStatus.BLOCKED

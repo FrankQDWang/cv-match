@@ -135,6 +135,25 @@ def _evidence(
     )
 
 
+def test_opencli_safe_reason_code_survives_runtime_public_payload() -> None:
+    event = RuntimeSourceLaneEvent(
+        schema_version="runtime_source_lane_event_v1",
+        runtime_run_id="run-1",
+        source_plan_id="plan-1",
+        source_lane_run_id="lane-1",
+        source="liepin",
+        attempt=1,
+        event_seq=1,
+        event_type="source_lane_blocked",
+        status="blocked",
+        safe_reason_code="liepin_opencli_extension_disconnected",
+    )
+
+    payload = event.to_public_payload()
+
+    assert payload["safe_reason_code"] == "liepin_opencli_extension_disconnected"
+
+
 def test_apply_source_lane_result_populates_identity_store_and_canonical_selection() -> None:
     run_state = _run_state()
     cts_result = RuntimeSourceLaneResult(

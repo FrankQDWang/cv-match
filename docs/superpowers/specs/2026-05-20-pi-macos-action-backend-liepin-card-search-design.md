@@ -343,7 +343,7 @@ Optional manual spike verification:
 ```bash
 apps/web-svelte/node_modules/.bin/opencli doctor
 printf '{}' | uv run python -m seektalent.providers.pi_agent.opencli_browser_cli status
-printf '{"url":"https://www.liepin.com/zhaopin/"}' | uv run python -m seektalent.providers.pi_agent.opencli_browser_cli open_liepin_tab
+printf '{"url":"https://h.liepin.com/search/getConditionItem#session"}' | uv run python -m seektalent.providers.pi_agent.opencli_browser_cli open_liepin_tab
 printf '{}' | uv run python -m seektalent.providers.pi_agent.opencli_browser_cli state
 ```
 

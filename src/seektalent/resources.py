@@ -29,8 +29,12 @@ def package_spec_file() -> Path:
     return PACKAGE_ROOT / DEFAULT_CTS_SPEC_NAME
 
 
+def package_repo_root() -> Path:
+    return PACKAGE_ROOT.parents[1]
+
+
 def repo_env_example_file() -> Path:
-    return PACKAGE_ROOT.parents[1] / ".env.example"
+    return package_repo_root() / ".env.example"
 
 
 def package_env_example_file() -> Path:

@@ -161,9 +161,9 @@ class LiepinStore:
                     operator_audit_owner, account_holder_authorized, human_initiated_recruiting,
                     allowed_purposes_json, retention_policy, deletion_sla_days, deletion_path,
                     raw_payload_access_scope, raw_detail_retention_allowed_after_debug,
-                    fixture_export_allowed, policy_ref, requested_purpose
+                    fixture_export_allowed, policy_ref, requested_purpose, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     gate_ref,
@@ -186,6 +186,7 @@ class LiepinStore:
                     int(gate.fixture_export_allowed),
                     gate.policy_ref,
                     purpose,
+                    _now_iso(),
                 ),
             )
         return gate_ref
@@ -884,7 +885,8 @@ class LiepinStore:
                         CHECK(raw_detail_retention_allowed_after_debug IN (0, 1)),
                     fixture_export_allowed INTEGER NOT NULL CHECK(fixture_export_allowed IN (0, 1)),
                     policy_ref TEXT NOT NULL,
-                    requested_purpose TEXT NOT NULL
+                    requested_purpose TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_liepin_gates_scope
@@ -1011,11 +1013,18 @@ class LiepinStore:
                 conn,
                 table_name="liepin_connections",
                 columns={
+                    "provider_account_hash": "TEXT",
+                    "observed_provider_account_subject": "TEXT",
                     "session_store_key_id": "TEXT",
                     "encrypted_state_sha256": "TEXT",
                     "session_updated_at": "TEXT",
                     "revoked_at": "TEXT",
                 },
+            )
+            _ensure_columns(
+                conn,
+                table_name="liepin_compliance_gates",
+                columns={"created_at": "TEXT NOT NULL DEFAULT ''"},
             )
 
     def _connect(self) -> sqlite3.Connection:

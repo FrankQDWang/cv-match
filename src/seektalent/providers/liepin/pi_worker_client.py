@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from seektalent.core.retrieval.provider_contract import SearchRequest, SearchResult
 from seektalent.providers.liepin.client import liepin_card_search_response_to_search_result
@@ -19,6 +19,10 @@ from seektalent.providers.liepin.worker_contracts import (
 )
 
 
+class OpenCliStatusProbe(Protocol):
+    def status(self) -> Any: ...
+
+
 class LiepinPiWorkerClient:
     def __init__(
         self,
@@ -29,6 +33,9 @@ class LiepinPiWorkerClient:
         provider_account_lock_key: str,
         dokobot_tool_name: str = "dokobot",
         expected_observed_tool_names: tuple[str, ...] = (),
+        expected_opencli_observed_tool_names: tuple[str, ...] = (),
+        expected_opencli_declared_tool_names: tuple[str, ...] = (),
+        opencli_status_probe: OpenCliStatusProbe | None = None,
     ) -> None:
         self._executor = executor
         self._session_id = session_id
@@ -36,19 +43,39 @@ class LiepinPiWorkerClient:
         self._provider_account_lock_key = provider_account_lock_key
         self._dokobot_tool_name = dokobot_tool_name
         self._expected_observed_tool_names = expected_observed_tool_names
+        self._expected_opencli_observed_tool_names = expected_opencli_observed_tool_names
+        self._expected_opencli_declared_tool_names = expected_opencli_declared_tool_names
+        self._uses_opencli_backend = bool(
+            expected_opencli_observed_tool_names or expected_opencli_declared_tool_names
+        )
+        self._opencli_status_probe = opencli_status_probe
+        self._ready_checked = False
 
     async def ensure_ready(self, *, on_event=None) -> None:
         del on_event
+        if self._uses_opencli_backend:
+            if self._opencli_status_probe is not None:
+                result = await asyncio.to_thread(self._opencli_status_probe.status)
+                if not result.ok:
+                    raise LiepinWorkerModeError(
+                        "Liepin OpenCLI browser channel is not ready.",
+                        code=result.safe_reason_code,
+                    )
+            self._ready_checked = True
+            return
         capability = await asyncio.to_thread(
             self._executor.probe_capabilities,
             expected_dokobot_tool_name=self._dokobot_tool_name,
             expected_observed_tool_names=self._expected_observed_tool_names,
+            expected_opencli_observed_tool_names=self._expected_opencli_observed_tool_names,
+            expected_opencli_declared_tool_names=self._expected_opencli_declared_tool_names,
         )
         if not capability.ready:
             raise LiepinWorkerModeError(
                 "Liepin PI worker is not ready.",
                 code=capability.safe_reason_code or "blocked_backend_unavailable",
             )
+        self._ready_checked = True
 
     async def search(
         self,
@@ -98,6 +125,14 @@ class LiepinPiWorkerClient:
         workspace: str | None = None,
         provider_account_hash: str | None = None,
     ) -> SessionStatus:
+        if self._uses_opencli_backend:
+            if not self._ready_checked:
+                await self.ensure_ready()
+            return SessionStatus(
+                connectionId=connection_id,
+                status="ready",
+                provider_account_hash=provider_account_hash or self._provider_account_lock_key,
+            )
         try:
             status = await asyncio.to_thread(
                 self._executor.probe_session,

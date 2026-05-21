@@ -4,9 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEB_DIR="$ROOT/apps/web-svelte"
 PI_BIN="$WEB_DIR/node_modules/.bin/pi"
+OPENCLI_BIN="$WEB_DIR/node_modules/.bin/opencli"
 PI_EXTENSION="$ROOT/src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts"
+PI_OPENCLI_EXTENSION="$ROOT/src/seektalent/providers/pi_agent/pi_extensions/seektalent_opencli_browser.ts"
 PI_MCP_ADAPTER_EXTENSION="$WEB_DIR/node_modules/pi-mcp-adapter/index.ts"
-SECRET_PATH="$ROOT/.seektalent/liepin_account_binding_secret"
 BACKEND_HOST="${SEEKTALENT_DEV_BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${SEEKTALENT_DEV_BACKEND_PORT:-8012}"
 FRONTEND_HOST="${SEEKTALENT_DEV_FRONTEND_HOST:-127.0.0.1}"
@@ -29,20 +30,23 @@ if [[ ! -f "$PI_MCP_ADAPTER_EXTENSION" ]]; then
   (cd "$WEB_DIR" && bun install)
 fi
 
+if [[ ! -x "$OPENCLI_BIN" ]]; then
+  echo "Installing Svelte workspace dependencies, including the repo-local OpenCLI browser helper..." >&2
+  (cd "$WEB_DIR" && bun install)
+fi
+
 if [[ ! -x "$PI_BIN" ]]; then
   echo "Repo-local Pi agent is missing after dependency install: apps/web-svelte/node_modules/.bin/pi" >&2
   exit 1
 fi
 
-PI_MCP_ADAPTER_EXTENSION_ARG=""
-if [[ ! -f "$PI_MCP_ADAPTER_EXTENSION" ]]; then
-  echo "Pi MCP adapter is missing; starting Workbench with Liepin browser channel blocked." >&2
-else
-  PI_MCP_ADAPTER_EXTENSION_ARG="--extension $PI_MCP_ADAPTER_EXTENSION"
-fi
-
 if [[ ! -f "$PI_EXTENSION" ]]; then
   echo "SeekTalent Pi provider extension is missing: src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts" >&2
+  exit 1
+fi
+
+if [[ ! -f "$PI_OPENCLI_EXTENSION" ]]; then
+  echo "SeekTalent Pi OpenCLI extension is missing: src/seektalent/providers/pi_agent/pi_extensions/seektalent_opencli_browser.ts" >&2
   exit 1
 fi
 
@@ -86,6 +90,9 @@ env_or_file() {
 
 WORKSPACE_ROOT="$(env_or_file SEEKTALENT_WORKSPACE_ROOT)"
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$ROOT}"
+CODE_ROOT="$(env_or_file SEEKTALENT_CODE_ROOT)"
+CODE_ROOT="${CODE_ROOT:-$ROOT}"
+SECRET_PATH="$WORKSPACE_ROOT/.seektalent/liepin_account_binding_secret"
 PI_MODEL="$(env_or_file SEEKTALENT_LIEPIN_PI_MODEL_ID)"
 if [[ -z "$PI_MODEL" ]]; then
   PI_MODEL="$(env_or_file SEEKTALENT_WORKBENCH_NOTE_WRITER_MODEL_ID)"
@@ -103,9 +110,21 @@ DOKOBOT_MCP_SERVER_NAME="${DOKOBOT_MCP_SERVER_NAME:-dokobot}"
 DOKOBOT_MCP_ARGS_JSON="${DOKOBOT_MCP_ARGS_JSON:-[]}"
 DOKOBOT_DIRECT_TOOLS_JSON="${DOKOBOT_DIRECT_TOOLS_JSON:-[]}"
 DOKOBOT_OBSERVED_TOOLS_JSON="${DOKOBOT_OBSERVED_TOOLS_JSON:-[]}"
+BROWSER_ACTION_BACKEND="$(env_or_file SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND)"
+BROWSER_ACTION_BACKEND="${BROWSER_ACTION_BACKEND:-opencli}"
+PI_MCP_ADAPTER_EXTENSION_ARG=""
+if [[ "$BROWSER_ACTION_BACKEND" != "opencli" ]]; then
+  if [[ ! -f "$PI_MCP_ADAPTER_EXTENSION" ]]; then
+    echo "Pi MCP adapter is missing; starting Workbench with Liepin browser channel blocked." >&2
+  else
+    PI_MCP_ADAPTER_EXTENSION_ARG="--extension $PI_MCP_ADAPTER_EXTENSION"
+  fi
+fi
 CONFIGURED_PI_COMMAND="$(env_or_file SEEKTALENT_LIEPIN_PI_COMMAND)"
 if [[ -n "$CONFIGURED_PI_COMMAND" && "$CONFIGURED_PI_COMMAND" != "pi --mode rpc --no-session" ]]; then
   PI_COMMAND="$CONFIGURED_PI_COMMAND"
+elif [[ "$BROWSER_ACTION_BACKEND" == "opencli" ]]; then
+  PI_COMMAND="$PI_BIN --mode rpc --no-session --extension $PI_EXTENSION --extension $PI_OPENCLI_EXTENSION --provider bailian --model $PI_MODEL"
 else
   PI_COMMAND="$PI_BIN --mode rpc --no-session --extension $PI_EXTENSION $PI_MCP_ADAPTER_EXTENSION_ARG --provider bailian --model $PI_MODEL"
 fi
@@ -115,26 +134,44 @@ ACCOUNT_BINDING_SECRET="$(env_or_file SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET)"
 if [[ -z "$ACCOUNT_BINDING_SECRET" || "$ACCOUNT_BINDING_SECRET" == "local-development" ]]; then
   mkdir -p "$(dirname "$SECRET_PATH")"
   if [[ ! -s "$SECRET_PATH" ]] || grep -qx 'local-development' "$SECRET_PATH"; then
-    uv run python - <<'PY'
+    SECRET_PATH="$SECRET_PATH" uv run python - <<'PY'
+import os
 from pathlib import Path
 import secrets
 
-path = Path(".seektalent/liepin_account_binding_secret")
+path = Path(os.environ["SECRET_PATH"])
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(f"dev-{secrets.token_hex(32)}\n", encoding="utf-8")
 PY
   fi
   ACCOUNT_BINDING_SECRET="$(
-    uv run python - <<'PY'
+    SECRET_PATH="$SECRET_PATH" uv run python - <<'PY'
+import os
 from pathlib import Path
 
-print(Path(".seektalent/liepin_account_binding_secret").read_text(encoding="utf-8").strip())
+print(Path(os.environ["SECRET_PATH"]).read_text(encoding="utf-8").strip())
 PY
   )"
 fi
 
-if [[ -z "$DOKOBOT_MCP_COMMAND" ]]; then
+if [[ "$BROWSER_ACTION_BACKEND" != "opencli" && -z "$DOKOBOT_MCP_COMMAND" ]]; then
   echo "DokoBot MCP command is not configured; starting Workbench with Liepin browser channel blocked." >&2
+fi
+
+if [[ "$BROWSER_ACTION_BACKEND" == "opencli" && ! -x "$OPENCLI_BIN" ]]; then
+  echo "OpenCLI browser helper is not installed; Liepin OpenCLI source will fail closed." >&2
+fi
+
+if [[ "$BROWSER_ACTION_BACKEND" == "opencli" && -x "$OPENCLI_BIN" ]]; then
+  OPENCLI_START_DAEMON="$(env_or_file SEEKTALENT_LIEPIN_OPENCLI_START_DAEMON)"
+  if [[ "$OPENCLI_START_DAEMON" == "1" || "$OPENCLI_START_DAEMON" == "true" ]]; then
+    echo "Starting OpenCLI browser bridge daemon for Liepin local browser actions..." >&2
+    if ! "$OPENCLI_BIN" daemon restart >&2; then
+      echo "OpenCLI browser bridge daemon did not start; Liepin OpenCLI source will fail closed." >&2
+    fi
+  elif ! "$OPENCLI_BIN" daemon status >/dev/null 2>&1; then
+    echo "OpenCLI browser bridge daemon is not running; Liepin OpenCLI source will fail closed." >&2
+  fi
 fi
 
 backend_pid=""
@@ -146,8 +183,12 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 env \
+  NODE_PATH="$WEB_DIR/node_modules" \
   SEEKTALENT_WORKSPACE_ROOT="$WORKSPACE_ROOT" \
+  SEEKTALENT_CODE_ROOT="$CODE_ROOT" \
   SEEKTALENT_LIEPIN_WORKER_MODE="pi_agent" \
+  SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND="$BROWSER_ACTION_BACKEND" \
+  SEEKTALENT_LIEPIN_OPENCLI_COMMAND="$OPENCLI_BIN" \
   SEEKTALENT_LIEPIN_PI_COMMAND="$PI_COMMAND" \
   SEEKTALENT_LIEPIN_PI_MCP_CONFIG_PATH="$MCP_CONFIG_PATH" \
   SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET="$ACCOUNT_BINDING_SECRET" \

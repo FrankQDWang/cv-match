@@ -28,6 +28,7 @@ from seektalent.providers.liepin.worker_contracts import LoginRelayCompleteResul
 from seektalent.providers.liepin.worker_contracts import LoginRelayInputResult
 from seektalent.providers.liepin.worker_contracts import LoginRelaySnapshot
 from seektalent.providers.liepin.worker_contracts import LiepinWorkerModeError
+from seektalent.providers.liepin.worker_contracts import SessionStatus
 from seektalent.providers.liepin.store import LiepinStore
 from seektalent_ui.models import WorkbenchResumeSnapshotStatus
 from seektalent_ui.server import RunRegistry, create_app
@@ -764,6 +765,28 @@ def test_authenticated_session_creation_returns_default_source_cards(tmp_path: P
     assert listed[0]["sourceCards"] == payload["sourceCards"]
 
 
+def test_session_creation_uses_existing_connected_liepin_connection(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    bootstrap = _bootstrap_and_login(client)
+    user = _workbench_user_from_bootstrap(bootstrap)
+    connection_response = client.post("/api/workbench/source-connections/liepin", headers=_csrf_header(client))
+    assert connection_response.status_code == 201, connection_response.text
+    connected = client.app.state.workbench_store.mark_liepin_connection_connected(
+        user=user,
+        connection_id=connection_response.json()["connectionId"],
+        provider_account_hash="acct_hash_123",
+    )
+    assert connected is not None
+
+    payload = _create_session(client, source_kinds=["cts", "liepin"])
+
+    cards = {card["sourceKind"]: card for card in payload["sourceCards"]}
+    assert cards["liepin"]["status"] == "queued"
+    assert cards["liepin"]["authState"] == "not_required"
+    assert cards["liepin"]["warningCode"] is None
+    assert cards["liepin"]["warningMessage"] is None
+
+
 def test_session_creation_projects_liepin_setup_reason_before_login_prompt(tmp_path: Path) -> None:
     pi_bin = tmp_path / "bin" / "pi"
     provider_extension = tmp_path / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions" / "bailian_deepseek.ts"
@@ -828,6 +851,7 @@ def test_session_runtime_source_state_uses_public_latest_lane_payloads(tmp_path:
                 "source": source,
                 "status": status,
                 "safe_counts": safe_counts,
+                "safe_reason_code": "liepin_opencli_extension_disconnected" if source == "liepin" else None,
                 "source_coverage_summary": {
                     "status": "degraded",
                     "selected_source_kinds": ["cts", "liepin"],
@@ -886,6 +910,7 @@ def test_session_runtime_source_state_uses_public_latest_lane_payloads(tmp_path:
     assert sources["cts"]["cardsSeenCount"] == 10
     assert sources["cts"]["candidatesCount"] == 10
     assert sources["liepin"]["status"] == "partial"
+    assert sources["liepin"]["reasonCode"] == "liepin_opencli_extension_disconnected"
     assert sources["liepin"]["cardsSeenCount"] == 30
     assert sources["liepin"]["cardsFilteredCount"] == 8
     assert sources["liepin"]["detailState"] == "detail_recommended"
@@ -1350,6 +1375,21 @@ class FakeLiepinCardWorkerClient:
 
     async def ensure_ready(self, *, on_event=None) -> None:
         del on_event
+
+    async def session_status(
+        self,
+        *,
+        connection_id: str,
+        tenant: str | None = None,
+        workspace: str | None = None,
+        provider_account_hash: str | None = None,
+    ) -> SessionStatus:
+        del tenant, workspace
+        return SessionStatus(
+            connectionId=connection_id,
+            status="ready",
+            providerAccountHash=provider_account_hash or "acct_hash_123",
+        )
 
     async def search(
         self,

@@ -39,6 +39,9 @@ describe('source display helpers', () => {
 			'liepin_pi_dokobot_mcp_tool_names_missing',
 			'liepin_pi_dokobot_mcp_missing',
 			'liepin_pi_dokobot_tool_unobserved',
+			'liepin_opencli_extension_disconnected',
+			'liepin_opencli_status_unavailable',
+			'liepin_opencli_host_blocked',
 			'liepin_browser_probe_unavailable'
 		];
 
@@ -48,5 +51,9 @@ describe('source display helpers', () => {
 			expect(label).not.toMatch(/Pi|DokoBot|MCP/i);
 		}
 		expect(sourceReasonLabel('liepin_browser_login_required')).toContain('本机 Chrome 登录猎聘');
+		expect(sourceReasonLabel('liepin_opencli_login_required')).toContain('登录猎聘');
+		expect(sourceReasonLabel('liepin_opencli_identity_intercept')).toContain('招聘身份');
+		expect(sourceReasonLabel('liepin_opencli_risk_page')).toContain('人工确认');
+		expect(sourceReasonLabel('liepin_opencli_extension_disconnected')).not.toMatch(/OpenCLI|CDP|MCP|DokoBot|风控/i);
 	});
 });
