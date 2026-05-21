@@ -74,10 +74,14 @@ class FakeExecutor:
         *,
         expected_dokobot_tool_name: str,
         expected_observed_tool_names: Sequence[str] = (),
+        expected_opencli_observed_tool_names: Sequence[str] = (),
+        expected_opencli_declared_tool_names: Sequence[str] = (),
     ) -> PiLiepinCapabilityProbeResult:
         self.captured_capability_kwargs = {
             "expected_dokobot_tool_name": expected_dokobot_tool_name,
             "expected_observed_tool_names": tuple(expected_observed_tool_names),
+            "expected_opencli_observed_tool_names": tuple(expected_opencli_observed_tool_names),
+            "expected_opencli_declared_tool_names": tuple(expected_opencli_declared_tool_names),
         }
         return PiLiepinCapabilityProbeResult(
             ready=self.capability_ready,
@@ -98,6 +102,21 @@ class FakeExecutor:
         if self.session_result is None:
             return PiLiepinSessionProbeResult(status="login_required", connection_id=connection_id)
         return self.session_result
+
+
+@dataclass
+class FakeOpenCliStatusProbe:
+    ok: bool = True
+    safe_reason_code: str = "configured"
+    calls: int = 0
+
+    def status(self):
+        self.calls += 1
+        return type(
+            "OpenCliStatus",
+            (),
+            {"ok": self.ok, "safe_reason_code": self.safe_reason_code},
+        )()
 
 
 def _client(executor: FakeExecutor) -> LiepinPiWorkerClient:
@@ -125,9 +144,13 @@ def test_pi_worker_client_preserves_specific_capability_reason() -> None:
         *,
         expected_dokobot_tool_name: str,
         expected_observed_tool_names: Sequence[str] = (),
+        expected_opencli_observed_tool_names: Sequence[str] = (),
+        expected_opencli_declared_tool_names: Sequence[str] = (),
     ) -> PiLiepinCapabilityProbeResult:
         del expected_dokobot_tool_name
         del expected_observed_tool_names
+        del expected_opencli_observed_tool_names
+        del expected_opencli_declared_tool_names
         return PiLiepinCapabilityProbeResult(
             ready=False,
             safe_reason_code="liepin_pi_dokobot_tool_unobserved",
@@ -158,7 +181,57 @@ def test_pi_worker_client_passes_configured_observed_tools_to_capability_probe()
     assert executor.captured_capability_kwargs == {
         "expected_dokobot_tool_name": "dokobot",
         "expected_observed_tool_names": ("dokobot_read_page", "dokobot_click", "dokobot_type_text"),
+        "expected_opencli_observed_tool_names": (),
+        "expected_opencli_declared_tool_names": (),
     }
+
+
+def test_pi_worker_client_uses_opencli_status_probe_without_llm_capability_probe() -> None:
+    executor = FakeExecutor(capability_ready=True)
+    status_probe = FakeOpenCliStatusProbe()
+    client = LiepinPiWorkerClient(
+        executor=executor,
+        session_id="session",
+        connection_id="connection",
+        provider_account_lock_key="lock",
+        dokobot_tool_name="dokobot",
+        expected_observed_tool_names=(),
+        expected_opencli_observed_tool_names=("seektalent_opencli_status", "seektalent_opencli_capabilities"),
+        expected_opencli_declared_tool_names=(
+            "seektalent_opencli_status",
+            "seektalent_opencli_capabilities",
+            "seektalent_opencli_open_liepin_tab",
+            "seektalent_opencli_state",
+            "seektalent_opencli_fill",
+            "seektalent_opencli_click",
+        ),
+        opencli_status_probe=status_probe,
+    )
+
+    asyncio.run(client.ensure_ready())
+
+    assert status_probe.calls == 1
+    assert executor.captured_capability_kwargs is None
+
+
+def test_pi_worker_client_maps_opencli_status_probe_failure_to_worker_error() -> None:
+    client = LiepinPiWorkerClient(
+        executor=FakeExecutor(),
+        session_id="session",
+        connection_id="connection",
+        provider_account_lock_key="lock",
+        expected_opencli_observed_tool_names=("seektalent_opencli_status",),
+        expected_opencli_declared_tool_names=("seektalent_opencli_status",),
+        opencli_status_probe=FakeOpenCliStatusProbe(
+            ok=False,
+            safe_reason_code="liepin_opencli_extension_disconnected",
+        ),
+    )
+
+    with pytest.raises(LiepinWorkerModeError) as error:
+        asyncio.run(client.ensure_ready())
+
+    assert error.value.code == "liepin_opencli_extension_disconnected"
 
 
 def test_pi_worker_client_preserves_failed_session_probe_reason() -> None:
@@ -301,3 +374,23 @@ def test_session_status_exposes_ready_provider_hash_for_workbench_account_compar
 
     assert status.status == "ready"
     assert status.provider_account_hash == "other-acct"
+
+
+def test_opencli_session_status_uses_connection_bound_hash_without_pi_session_probe() -> None:
+    executor = FakeExecutor()
+    client = LiepinPiWorkerClient(
+        executor=executor,
+        session_id="session-1",
+        connection_id="connection-1",
+        provider_account_lock_key="opencli-lock",
+        expected_opencli_observed_tool_names=("seektalent_opencli_status",),
+        expected_opencli_declared_tool_names=("seektalent_opencli_status",),
+    )
+
+    status = asyncio.run(
+        client.session_status(connection_id="connection-1", provider_account_hash="wb-account-hash")
+    )
+
+    assert status.status == "ready"
+    assert status.provider_account_hash == "wb-account-hash"
+    assert executor.captured_capability_kwargs is None

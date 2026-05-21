@@ -115,6 +115,18 @@ def test_liepin_backend_posture_records_worker_modes_without_pi_agent_fallback()
     }
 
 
+def test_pi_failure_codes_preserve_opencli_safe_reason_codes() -> None:
+    assert (
+        runtime_safe_reason_code_from_pi_failure_code("liepin_opencli_extension_disconnected")
+        == "liepin_opencli_extension_disconnected"
+    )
+    assert (
+        runtime_safe_reason_code_from_pi_failure_code("liepin_opencli_login_required")
+        == "liepin_opencli_login_required"
+    )
+    assert runtime_safe_reason_code_from_pi_failure_code("liepin_opencli_risk_page") == "liepin_opencli_risk_page"
+
+
 def test_liepin_backend_posture_records_pi_agent_as_live_mode(tmp_path: Path) -> None:
     _write_pi_command_fixtures(tmp_path)
     assert liepin_backend_posture(

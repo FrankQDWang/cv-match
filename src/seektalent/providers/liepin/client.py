@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shlex
+import sys
 from typing import Any
 from typing import Callable, Protocol
 from typing import TypeVar
@@ -551,6 +553,11 @@ def build_liepin_pi_worker_client(settings: AppSettings) -> LiepinWorkerClient:
     from seektalent.llm import resolve_text_llm_api_key, resolve_text_llm_base_url
     from seektalent.providers.liepin.pi_executor import HmacProviderKeyHasher, PiLiepinExecutor
     from seektalent.providers.liepin.pi_worker_client import LiepinPiWorkerClient
+    from seektalent.providers.pi_agent.opencli_browser import (
+        OpenCliBrowserConfig,
+        OpenCliBrowserRunner,
+        default_liepin_opencli_policy,
+    )
     from seektalent.providers.pi_agent.payload_firewall import LocalPiArtifactRegistry
     from seektalent.providers.pi_agent.pi_external import PiRpcAgentClient
 
@@ -561,6 +568,30 @@ def build_liepin_pi_worker_client(settings: AppSettings) -> LiepinWorkerClient:
             "liepin_account_binding_secret is required when liepin_worker_mode=pi_agent.",
             code="blocked_backend_unavailable",
         )
+    opencli_env: dict[str, str] = {}
+    if settings.liepin_browser_action_backend == "opencli":
+        opencli_env = {
+            "NODE_PATH": str(settings.code_base_root / "apps" / "web-svelte" / "node_modules"),
+            "SEEKTALENT_PYTHON": sys.executable,
+            "PYTHONPATH": str(settings.code_base_root / "src"),
+            "SEEKTALENT_WORKSPACE_ROOT": str(settings.project_root),
+            "SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND": "opencli",
+            "SEEKTALENT_LIEPIN_OPENCLI_COMMAND": shlex.join(settings.liepin_opencli_command_argv),
+            "SEEKTALENT_LIEPIN_OPENCLI_SESSION": settings.liepin_opencli_session,
+            "SEEKTALENT_LIEPIN_OPENCLI_ALLOWED_HOSTS_JSON": json.dumps(list(settings.liepin_opencli_allowed_hosts)),
+            "SEEKTALENT_LIEPIN_OPENCLI_ALLOWED_START_URLS_JSON": json.dumps(
+                list(settings.liepin_opencli_allowed_start_urls)
+            ),
+            "SEEKTALENT_LIEPIN_OPENCLI_MAX_ACTIONS_PER_TASK": str(settings.liepin_opencli_max_actions_per_task),
+            "SEEKTALENT_LIEPIN_OPENCLI_MAX_PAGES_PER_TASK": str(settings.liepin_opencli_max_pages_per_task),
+            "SEEKTALENT_LIEPIN_OPENCLI_MAX_CARDS_PER_TASK": str(settings.liepin_opencli_max_cards_per_task),
+            "SEEKTALENT_LIEPIN_OPENCLI_TIMEOUT_SECONDS": str(settings.liepin_opencli_timeout_seconds),
+            "SEEKTALENT_LIEPIN_OPENCLI_LEASE_DIR": str(settings.project_root / ".seektalent" / "opencli_leases"),
+            "SEEKTALENT_LIEPIN_OPENCLI_IDLE_CLOSE_SECONDS": str(settings.liepin_opencli_idle_close_seconds),
+            "SEEKTALENT_LIEPIN_OPENCLI_CLOSE_BLANK_WINDOW": (
+                "true" if settings.liepin_opencli_close_blank_window else "false"
+            ),
+        }
     artifact_registry = LocalPiArtifactRegistry(settings.artifacts_path)
     client = PiRpcAgentClient(
         command=settings.liepin_pi_command_argv,
@@ -572,20 +603,63 @@ def build_liepin_pi_worker_client(settings: AppSettings) -> LiepinWorkerClient:
             "SEEKTALENT_PI_BAILIAN_API_KEY": resolve_text_llm_api_key(settings) or "",
             "SEEKTALENT_PI_BAILIAN_BASE_URL": resolve_text_llm_base_url(settings),
             "SEEKTALENT_PI_BAILIAN_MODEL_ID": settings.liepin_pi_model_id or settings.workbench_note_writer_model_id,
+            **opencli_env,
         },
+        browser_backend_description=(
+            "SeekTalent OpenCLI browser tools: seektalent_opencli_search_liepin_cards, "
+            "seektalent_opencli_status, seektalent_opencli_capabilities"
+            if settings.liepin_browser_action_backend == "opencli"
+            else None
+        ),
     )
     executor = PiLiepinExecutor(
         client=client,
         key_hasher=HmacProviderKeyHasher(settings.liepin_account_binding_secret, material_resolver=artifact_registry),
         artifact_registry=artifact_registry,
     )
+    opencli_status_probe = None
+    if settings.liepin_browser_action_backend == "opencli":
+        opencli_status_probe = OpenCliBrowserRunner(
+            config=OpenCliBrowserConfig(
+                command=settings.liepin_opencli_command_argv,
+                session=settings.liepin_opencli_session,
+                timeout_seconds=settings.liepin_opencli_timeout_seconds,
+                lease_dir=settings.project_root / ".seektalent" / "opencli_leases",
+                idle_close_seconds=settings.liepin_opencli_idle_close_seconds,
+                close_blank_window=settings.liepin_opencli_close_blank_window,
+                policy=default_liepin_opencli_policy(
+                    allowed_hosts=settings.liepin_opencli_allowed_hosts,
+                    allowed_start_urls=settings.liepin_opencli_allowed_start_urls,
+                ),
+            )
+        )
     return LiepinPiWorkerClient(
         executor=executor,
         session_id="local-pi-agent",
         connection_id="liepin-pi-agent",
         provider_account_lock_key="liepin-pi-agent",
         dokobot_tool_name=settings.liepin_pi_dokobot_tool_name,
-        expected_observed_tool_names=settings.liepin_dokobot_observed_tools,
+        expected_observed_tool_names=(
+            () if settings.liepin_browser_action_backend == "opencli" else settings.liepin_dokobot_observed_tools
+        ),
+        expected_opencli_observed_tool_names=(
+            ("seektalent_opencli_status", "seektalent_opencli_capabilities")
+            if settings.liepin_browser_action_backend == "opencli"
+            else ()
+        ),
+        expected_opencli_declared_tool_names=(
+            (
+                "seektalent_opencli_status",
+                "seektalent_opencli_capabilities",
+                "seektalent_opencli_open_liepin_tab",
+                "seektalent_opencli_state",
+                "seektalent_opencli_fill",
+                "seektalent_opencli_click",
+            )
+            if settings.liepin_browser_action_backend == "opencli"
+            else ()
+        ),
+        opencli_status_probe=opencli_status_probe,
     )
 
 

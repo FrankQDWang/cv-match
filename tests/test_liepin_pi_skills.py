@@ -19,8 +19,9 @@ def test_search_skill_has_route_redaction_failure_pacing_and_evidence() -> None:
     assert skill.skill_id == "liepin.search_cards.v1"
     assert skill.task_type == PiAgentTaskType.LIEPIN_SEARCH_CARDS
     assert skill.allowed_url_hosts == ("www.liepin.com", "h.liepin.com")
+    assert "/search/getConditionItem" in skill.pre_action_allowed_route_patterns
     assert "/zhaopin/" in skill.pre_action_allowed_route_patterns
-    assert "/zhaopin/" in skill.post_action_expected_route_patterns
+    assert "/search/getConditionItem" in skill.post_action_expected_route_patterns
     assert skill.redaction_policy_id == "liepin-card-redaction-v1"
     assert PiAgentFailureCode.RISK_CONTROL in skill.failure_codes
     assert PiAgentCompletionReason.PAGE_EXHAUSTED in skill.completion_reasons
@@ -36,7 +37,7 @@ def test_detail_skill_requires_runtime_grant_and_redacted_evidence() -> None:
     assert skill.evidence_requirement == "redacted_text_snapshot"
     assert PiAgentFailureCode.DETAIL_OPEN_GRANT_MISSING in skill.failure_codes
     assert skill.allowed_actions == (PiAgentActionType.LIEPIN_OPEN_DETAIL_AFTER_APPROVAL,)
-    assert skill.pre_action_allowed_route_patterns == ("/zhaopin/", "/lptjob/")
+    assert skill.pre_action_allowed_route_patterns == ("/search/getConditionItem", "/zhaopin/", "/lptjob/")
     assert skill.post_action_expected_route_patterns == ("/resume/showresumedetail/", "/candidate/detail/")
 
 
@@ -73,6 +74,7 @@ def test_unknown_skill_raises_key_error() -> None:
 def test_skill_url_matcher_rejects_non_liepin_host_and_api_routes() -> None:
     skill = get_liepin_pi_skill(PiAgentTaskType.LIEPIN_SEARCH_CARDS)
 
+    assert is_liepin_skill_url_allowed(skill, "https://h.liepin.com/search/getConditionItem#session")
     assert is_liepin_skill_url_allowed(skill, "https://www.liepin.com/zhaopin/")
     assert not is_liepin_skill_url_allowed(skill, "https://evil.com/zhaopin/")
     assert not is_liepin_skill_url_allowed(skill, "https://www.liepin.com/api/search")
@@ -90,6 +92,7 @@ def test_root_route_pattern_only_matches_root_path() -> None:
 def test_open_detail_skill_uses_pre_and_post_route_phases() -> None:
     skill = get_liepin_pi_skill(PiAgentTaskType.LIEPIN_OPEN_DETAIL_AFTER_APPROVAL)
 
+    assert is_liepin_skill_url_allowed(skill, "https://h.liepin.com/search/getConditionItem#session", phase="pre")
     assert is_liepin_skill_url_allowed(skill, "https://www.liepin.com/zhaopin/", phase="pre")
     assert not is_liepin_skill_url_allowed(skill, "https://www.liepin.com/zhaopin/", phase="post")
     assert is_liepin_skill_url_allowed(skill, "https://www.liepin.com/resume/showresumedetail/123", phase="post")

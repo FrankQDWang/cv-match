@@ -21,6 +21,18 @@ def _write_pi_extension_files(root: Path) -> None:
     (adapter_extension / "index.ts").write_text("adapter", encoding="utf-8")
 
 
+def _write_opencli_extension_files(root: Path) -> Path:
+    provider_extension = root / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions"
+    provider_extension.mkdir(parents=True, exist_ok=True)
+    (provider_extension / "bailian_deepseek.ts").write_text("provider", encoding="utf-8")
+    (provider_extension / "seektalent_opencli_browser.ts").write_text("opencli", encoding="utf-8")
+    opencli_bin = root / "apps" / "web-svelte" / "node_modules" / ".bin" / "opencli"
+    opencli_bin.parent.mkdir(parents=True, exist_ok=True)
+    opencli_bin.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    opencli_bin.chmod(0o755)
+    return opencli_bin
+
+
 def test_raw_env_diagnostics_do_not_expose_secret_values(tmp_path: Path) -> None:
     skill_path = tmp_path / "liepin.md"
     env = {
@@ -151,6 +163,70 @@ def test_raw_env_diagnostics_reports_configured_project_pi_mcp(tmp_path: Path) -
     assert components["liepin_pi_mcp_config"].status == "configured"
     assert components["liepin_pi_dokobot_mcp"].status == "configured"
     assert str(tmp_path) not in raw
+
+
+def test_raw_env_diagnostics_reports_configured_opencli_without_pi_mcp(tmp_path: Path) -> None:
+    opencli_bin = _write_opencli_extension_files(tmp_path)
+    pi_bin = tmp_path / "apps" / "web-svelte" / "node_modules" / ".bin" / "pi"
+    pi_bin.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    pi_bin.chmod(0o755)
+    skill_path = tmp_path / "liepin_search_cards.md"
+    skill_path.write_text("Liepin skill", encoding="utf-8")
+
+    payload = build_dev_mode_env_diagnostics(
+        {
+            "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
+            "SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND": "opencli",
+            "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-binding-secret",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                f"{pi_bin} --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/seektalent_opencli_browser.ts"
+            ),
+            "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill_path),
+            "SEEKTALENT_LIEPIN_OPENCLI_COMMAND": str(opencli_bin),
+        },
+        workspace_root=tmp_path,
+    )
+    components = {component.name: component for component in payload.components}
+    raw = json.dumps(payload.model_dump(mode="json"), sort_keys=True)
+
+    assert components["liepin_pi_command"].status == "configured"
+    assert components["liepin_opencli_browser"].status == "configured"
+    assert "liepin_pi_mcp_config" not in components
+    assert "liepin_pi_dokobot_mcp" not in components
+    assert str(tmp_path) not in raw
+
+
+def test_raw_env_diagnostics_reports_missing_opencli_command_without_pi_mcp_noise(tmp_path: Path) -> None:
+    _write_opencli_extension_files(tmp_path)
+    pi_bin = tmp_path / "apps" / "web-svelte" / "node_modules" / ".bin" / "pi"
+    pi_bin.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    pi_bin.chmod(0o755)
+    skill_path = tmp_path / "liepin_search_cards.md"
+    skill_path.write_text("Liepin skill", encoding="utf-8")
+
+    payload = build_dev_mode_env_diagnostics(
+        {
+            "SEEKTALENT_LIEPIN_WORKER_MODE": "pi_agent",
+            "SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND": "opencli",
+            "SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET": "account-binding-secret",
+            "SEEKTALENT_LIEPIN_PI_COMMAND": (
+                f"{pi_bin} --mode rpc --no-session "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+                "--extension src/seektalent/providers/pi_agent/pi_extensions/seektalent_opencli_browser.ts"
+            ),
+            "SEEKTALENT_LIEPIN_PI_SKILL_PATH": str(skill_path),
+            "SEEKTALENT_LIEPIN_OPENCLI_COMMAND": str(tmp_path / "missing-opencli"),
+        },
+        workspace_root=tmp_path,
+    )
+    components = {component.name: component for component in payload.components}
+
+    assert payload.overallStatus == "needs_setup"
+    assert components["liepin_opencli_browser"].status == "needs_setup"
+    assert components["liepin_opencli_browser"].reasonCode == "liepin_opencli_command_missing"
+    assert "liepin_pi_dokobot_mcp" not in components
 
 
 def test_raw_env_diagnostics_reports_invalid_pi_command(tmp_path: Path) -> None:

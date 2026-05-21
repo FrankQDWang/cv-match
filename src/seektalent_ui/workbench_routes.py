@@ -145,6 +145,23 @@ RUNTIME_SOURCE_REASON_CODES = {
     "liepin_pi_dokobot_mcp_tool_names_missing",
     "liepin_pi_dokobot_mcp_missing",
     "liepin_pi_dokobot_tool_unobserved",
+    "liepin_opencli_backend_disabled",
+    "liepin_opencli_command_missing",
+    "liepin_opencli_extension_disconnected",
+    "liepin_opencli_status_unavailable",
+    "liepin_opencli_forbidden_command",
+    "liepin_opencli_forbidden_text",
+    "liepin_opencli_host_blocked",
+    "liepin_opencli_start_url_blocked",
+    "liepin_opencli_window_policy_blocked",
+    "liepin_opencli_budget_exhausted",
+    "liepin_opencli_timeout",
+    "liepin_opencli_login_required",
+    "liepin_opencli_identity_intercept",
+    "liepin_opencli_risk_page",
+    "liepin_opencli_unknown_modal",
+    "liepin_opencli_source_policy_missing",
+    "liepin_opencli_malformed_state",
     "runtime_failed",
 }
 
@@ -946,10 +963,19 @@ async def start_session_source_runs(
     for source_run in session.source_runs:
         if source_run.status in {"completed", "failed"}:
             continue
+        liepin_has_active_job = source_run.source_kind == "liepin" and store.has_active_source_run_job(
+            user=user,
+            session_id=session_id,
+            source_run_id=source_run.source_run_id,
+        )
         if (
             source_run.source_kind == "liepin"
-            and source_run.status not in {"queued", "running"}
-            and (source_run.status == "blocked" or source_run.auth_state == "login_required")
+            and not liepin_has_active_job
+            and source_run.status != "running"
+            and (
+                source_run.status in {"blocked", "queued"}
+                or source_run.auth_state == "login_required"
+            )
         ):
             probe = await _ensure_liepin_browser_session_ready_for_start(
                 request=request,
@@ -1110,6 +1136,10 @@ def _liepin_worker_client(request: Request):
     client = getattr(request.app.state, "liepin_worker_client", None)
     if client is not None:
         return client
+    runner = getattr(request.app.state, "workbench_job_runner", None)
+    runner_client = getattr(runner, "liepin_worker_client", None)
+    if runner_client is not None:
+        return runner_client
     app_settings = getattr(request.app.state, "settings", None)
     if app_settings is None:
         raise HTTPException(status_code=500, detail="Liepin worker settings are not available.")
@@ -1180,7 +1210,7 @@ def _ensure_workbench_liepin_provider_connection(
             actor_id=user.user_id,
             connection_id=connection.connection_id,
         )
-        if existing is not None and existing.compliance_gate_ref == connection.compliance_gate_ref:
+        if existing is None or existing.compliance_gate_ref == connection.compliance_gate_ref:
             return connection.compliance_gate_ref
     gate = ComplianceGate(
         tenant_id=DEFAULT_TENANT_ID,
@@ -1257,26 +1287,104 @@ async def _ensure_liepin_browser_session_ready_for_start(
     source_run_id: str,
 ) -> _LiepinStartProbeResult:
     connection, _created = store.get_or_create_liepin_source_connection(user=user)
-    try:
-        _workbench_app_settings(request).liepin_dokobot_observed_tools
-    except ValueError:
-        if store.mark_liepin_connection_login_required(
-            user=user,
-            connection_id=connection.connection_id,
-            warning_code="liepin_pi_mcp_config_invalid",
-            warning_message=_liepin_start_probe_warning_message("liepin_pi_mcp_config_invalid"),
-            session_id=session_id,
-            source_run_id=source_run_id,
-        ) is None:
-            return _LiepinStartProbeResult(ready=True)
-        return _LiepinStartProbeResult(
-            ready=False,
-            reason_code="liepin_pi_mcp_config_invalid",
-            warning_message=_liepin_start_probe_warning_message("liepin_pi_mcp_config_invalid"),
-        )
+    settings = _workbench_app_settings(request)
+    if settings.liepin_browser_action_backend != "opencli":
+        try:
+            settings.liepin_dokobot_observed_tools
+        except ValueError:
+            if store.mark_liepin_connection_login_required(
+                user=user,
+                connection_id=connection.connection_id,
+                warning_code="liepin_pi_mcp_config_invalid",
+                warning_message=_liepin_start_probe_warning_message("liepin_pi_mcp_config_invalid"),
+                session_id=session_id,
+                source_run_id=source_run_id,
+            ) is None:
+                return _LiepinStartProbeResult(ready=True)
+            return _LiepinStartProbeResult(
+                ready=False,
+                reason_code="liepin_pi_mcp_config_invalid",
+                warning_message=_liepin_start_probe_warning_message("liepin_pi_mcp_config_invalid"),
+            )
     try:
         worker_client = _liepin_worker_client(request)
         await worker_client.ensure_ready()
+        if settings.liepin_browser_action_backend == "opencli":
+            if connection.provider_account_hash:
+                status: SessionStatus = await worker_client.session_status(
+                    connection_id=connection.connection_id,
+                    tenant=DEFAULT_TENANT_ID,
+                    workspace=user.workspace_id,
+                    provider_account_hash=connection.provider_account_hash,
+                )
+                if status.status != "ready":
+                    if store.mark_liepin_connection_login_required(
+                        user=user,
+                        connection_id=connection.connection_id,
+                        warning_code=LIEPIN_BROWSER_LOGIN_REQUIRED_CODE,
+                        warning_message=LIEPIN_BROWSER_LOGIN_REQUIRED_MESSAGE,
+                        session_id=session_id,
+                        source_run_id=source_run_id,
+                    ) is None:
+                        return _LiepinStartProbeResult(ready=True)
+                    return _liepin_probe_login_required_result()
+                if not status.provider_account_hash:
+                    if store.mark_liepin_connection_login_required(
+                        user=user,
+                        connection_id=connection.connection_id,
+                        warning_code=LIEPIN_BROWSER_PROBE_UNAVAILABLE_CODE,
+                        warning_message=LIEPIN_BROWSER_PROBE_UNAVAILABLE_MESSAGE,
+                        session_id=session_id,
+                        source_run_id=source_run_id,
+                    ) is None:
+                        return _LiepinStartProbeResult(ready=True)
+                    return _liepin_probe_unavailable_result()
+                if connection.provider_account_hash != status.provider_account_hash:
+                    if store.mark_liepin_connection_login_required(
+                        user=user,
+                        connection_id=connection.connection_id,
+                        warning_code=LIEPIN_BROWSER_ACCOUNT_MISMATCH_CODE,
+                        warning_message=LIEPIN_BROWSER_ACCOUNT_MISMATCH_MESSAGE,
+                        session_id=session_id,
+                        source_run_id=source_run_id,
+                    ) is None:
+                        return _LiepinStartProbeResult(ready=True)
+                    return _liepin_probe_account_mismatch_result()
+            provider_account_hash = connection.provider_account_hash or _workbench_provider_account_hash(
+                user=user,
+                connection_id=connection.connection_id,
+            )
+            compliance_gate_ref = _ensure_workbench_liepin_provider_connection(
+                settings=settings,
+                user=user,
+                connection=connection,
+                provider_account_hash=provider_account_hash,
+            )
+            _record_workbench_liepin_provider_session(
+                settings=settings,
+                user=user,
+                connection_id=connection.connection_id,
+                compliance_gate_ref=compliance_gate_ref,
+                provider_account_hash=provider_account_hash,
+            )
+            updated_connection = store.mark_liepin_connection_connected_for_source_run(
+                user=user,
+                connection_id=connection.connection_id,
+                session_id=session_id,
+                source_run_id=source_run_id,
+                provider_account_hash=provider_account_hash,
+                compliance_gate_ref=compliance_gate_ref,
+            )
+            if updated_connection is None:
+                store.block_source_run_for_start_probe(
+                    user=user,
+                    session_id=session_id,
+                    source_run_id=source_run_id,
+                    warning_code=LIEPIN_BROWSER_PROBE_UNAVAILABLE_CODE,
+                    warning_message=LIEPIN_BROWSER_PROBE_UNAVAILABLE_MESSAGE,
+                )
+                return _liepin_probe_unavailable_result()
+            return _LiepinStartProbeResult(ready=True)
         status: SessionStatus = await worker_client.session_status(
             connection_id=connection.connection_id,
             tenant=DEFAULT_TENANT_ID,
@@ -1344,15 +1452,14 @@ async def _ensure_liepin_browser_session_ready_for_start(
             return _LiepinStartProbeResult(ready=True)
         return _liepin_probe_account_mismatch_result()
 
-    app_settings = _workbench_app_settings(request)
     compliance_gate_ref = _ensure_workbench_liepin_provider_connection(
-        settings=app_settings,
+        settings=settings,
         user=user,
         connection=connection,
         provider_account_hash=status.provider_account_hash,
     )
     _record_workbench_liepin_provider_session(
-        settings=app_settings,
+        settings=settings,
         user=user,
         connection_id=connection.connection_id,
         compliance_gate_ref=compliance_gate_ref,
@@ -1380,7 +1487,9 @@ async def _ensure_liepin_browser_session_ready_for_start(
 
 def _liepin_start_probe_error_reason(exc: LiepinWorkerModeError) -> str:
     code = str(exc.code or "").strip()
-    if code in RUNTIME_SOURCE_REASON_CODES and (code.startswith("liepin_pi_") or code.startswith("liepin_browser_")):
+    if code in RUNTIME_SOURCE_REASON_CODES and (
+        code.startswith("liepin_pi_") or code.startswith("liepin_browser_") or code.startswith("liepin_opencli_")
+    ):
         return code
     return LIEPIN_BROWSER_PROBE_UNAVAILABLE_CODE
 
@@ -1398,8 +1507,8 @@ def _liepin_dev_mode_setup_reason(request: Request) -> str | None:
         if (
             isinstance(code, str)
             and code in RUNTIME_SOURCE_REASON_CODES
-            and code.startswith("liepin_pi_")
-            and code != "liepin_pi_disabled"
+            and (code.startswith("liepin_pi_") or code.startswith("liepin_opencli_"))
+            and code not in {"liepin_pi_disabled", "liepin_opencli_backend_disabled"}
         ):
             return code
     return None

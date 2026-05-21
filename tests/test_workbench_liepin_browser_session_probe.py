@@ -381,6 +381,76 @@ def test_start_session_maps_bad_observed_tools_json_to_safe_reason(tmp_path: Pat
         assert "not-json" not in response.text
 
 
+def test_start_session_opencli_mode_does_not_validate_dokobot_observed_tools(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        _bootstrap_and_login(client)
+        worker = ProbeLiepinWorker(
+            status="ready",
+            readiness_error=LiepinWorkerModeError(
+                "OpenCLI extension disconnected: /secret/path",
+                code="liepin_opencli_extension_disconnected",
+            ),
+        )
+        _install_probe_worker(client, worker)
+        client.app.state.settings.liepin_browser_action_backend = "opencli"
+        client.app.state.settings.liepin_dokobot_observed_tools_json = "not-json"
+
+        session = _create_session(client, source_kinds=["cts", "liepin"])
+        _approve_triage(client, session["sessionId"])
+
+        response = client.post(
+            f"/api/workbench/sessions/{session['sessionId']}/start",
+            headers=_csrf_header(client),
+        )
+        payload = response.json()
+
+        assert response.status_code == 202, response.text
+        assert worker.readiness_calls == 1
+        assert worker.probe_calls == []
+        assert [run["sourceKind"] for run in payload["sourceRuns"]] == ["cts"]
+        assert payload["blockedSources"] == [
+            {
+                "sourceRunId": _started_source(session, "liepin")["sourceRunId"],
+                "sourceKind": "liepin",
+                "reason": "liepin_opencli_extension_disconnected",
+            }
+        ]
+        _session, liepin_card = _get_liepin_card(client, session["sessionId"])
+        assert liepin_card["warningCode"] == "liepin_opencli_extension_disconnected"
+        assert "not-json" not in response.text
+        assert_no_probe_leaks(response.text)
+
+
+def test_start_session_opencli_mode_queues_liepin_after_channel_readiness_without_session_probe(
+    tmp_path: Path,
+) -> None:
+    with _client(tmp_path) as client:
+        _bootstrap_and_login(client)
+        worker = ProbeLiepinWorker(status="login_required", provider_account_hash=None)
+        _install_probe_worker(client, worker)
+        client.app.state.settings.liepin_browser_action_backend = "opencli"
+
+        session = _create_session(client, source_kinds=["cts", "liepin"])
+        _approve_triage(client, session["sessionId"])
+
+        response = client.post(
+            f"/api/workbench/sessions/{session['sessionId']}/start",
+            headers=_csrf_header(client),
+        )
+
+        assert response.status_code == 202, response.text
+        payload = response.json()
+        assert [run["sourceKind"] for run in payload["sourceRuns"]] == ["cts", "liepin"]
+        assert payload["blockedSources"] == []
+        assert worker.readiness_calls == 1
+        assert worker.probe_calls == []
+
+        _session_payload, liepin_card = _get_liepin_card(client, session["sessionId"])
+        assert liepin_card["status"] in {"queued", "running"}
+        assert liepin_card["authState"] == "not_required"
+        assert liepin_card["warningCode"] is None
+
+
 def test_start_session_blocks_liepin_when_probe_backend_is_unavailable(tmp_path) -> None:
     with _client(tmp_path) as client:
         _bootstrap_and_login(client)

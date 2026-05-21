@@ -92,13 +92,12 @@ The OpenCLI backend is the only read/action surface for this spike. It may use t
 - `browser <session> tab select`
 - `browser <session> click`
 - `browser <session> fill`
-- `browser <session> type`
 - `browser <session> scroll`
 - `browser <session> wait text`
 - `browser <session> wait selector`
 - `browser <session> wait time`
 
-The wrapper must reject every other command.
+The wrapper must reject every other command. Raw `type`, `eval`, network inspection, cookies, storage, uploads, downloads, provider APIs, and generic shell escape hatches are out of scope for this slice.
 
 For this first slice, first navigation must use the tab-scoped path:
 
@@ -120,6 +119,12 @@ receive Runtime Liepin card-search task
   -> repeat until page/card/action/time budget is terminal
   -> return one strict JSON envelope to Runtime
 ```
+
+The extension must enforce this observe/action alternation, not just ask the model to follow it:
+
+- after `open_liepin_tab`, mutating tools such as fill, click, and scroll are blocked until `state` returns a non-terminal allowlisted page state;
+- after each mutating action, the next mutating action is blocked until `state` is called again and returns a non-terminal state;
+- terminal states such as login-required, identity selection, captcha, risk page, unknown modal, contact/chat/payment/download prompts, or out-of-policy hosts lock the task with the matching safe reason code until a new `open_liepin_tab` resets the task.
 
 Runtime does not send low-level click refs, selectors, or URLs beyond bounded source strategy inputs. Pi may choose OpenCLI refs/selectors inside the source policy. The final Runtime-visible output remains the existing Liepin card envelope.
 
@@ -211,6 +216,7 @@ New safe reason codes:
 - `liepin_opencli_extension_disconnected`
 - `liepin_opencli_status_unavailable`
 - `liepin_opencli_forbidden_command`
+- `liepin_opencli_forbidden_text`
 - `liepin_opencli_host_blocked`
 - `liepin_opencli_start_url_blocked`
 - `liepin_opencli_window_policy_blocked`
@@ -223,7 +229,31 @@ New safe reason codes:
 - `liepin_opencli_source_policy_missing`
 - `liepin_opencli_malformed_state`
 
-Main Workbench copy maps these to generic browser-channel states. Developer diagnostics may show the safe reason code but must not show local paths, raw OpenCLI output, cookies, storage, or full page text.
+Main Workbench copy maps these to generic browser-channel states. Developer diagnostics may show the safe reason code but must not show local paths, raw OpenCLI output, cookies, storage, or full page text. Runtime public serializers must allow these codes explicitly; otherwise they are treated as unknown and the Workbench source state becomes misleading.
+
+### Capability Probe Contract
+
+Capability probing must not click, fill, scroll, or navigate a real provider page just to prove action tools exist. In OpenCLI mode, Pi must invoke a side-effect-free SeekTalent status/capabilities tool and the Runtime probe validates:
+
+- the status/capabilities tool was observed in the Pi RPC tool event stream;
+- the returned capability manifest declares the required OpenCLI action/read tools;
+- the returned manifest includes the restricted backend name and Liepin source policy;
+- no page action tool is executed during capability probing.
+
+Observed `fill`/`click` events are not required for readiness and should not be produced by readiness checks.
+
+### Deterministic State Classification
+
+Pi may reason over bounded page observations, but helper code must still provide hard stop classification before the next action. The OpenCLI helper must classify URL/text state and block before action when it detects:
+
+- non-allowlisted host;
+- broad Liepin identity entrypoint or identity/account intercept;
+- login required;
+- captcha, verification, or security/risk page;
+- payment, contact, chat, download, or resume detail prompt;
+- unknown modal or unsupported route.
+
+The helper returns a `liepin_opencli_*` safe reason code for these states. Skill text alone is not enough to satisfy this requirement.
 
 ### Security Boundary
 
@@ -265,21 +295,32 @@ The final Pi response remains `seektalent.pi_liepin_cards.v1`:
 - card summaries;
 - safe stop reason.
 
+Backend-specific OpenCLI stop detail must be carried in an optional allowlisted `safe_reason_code` field on the strict card envelope. Do not put `liepin_opencli_*` values into `stop_reason`; `stop_reason` remains the generic status class (`blocked_backend_unavailable`, `blocked_login_required`, `partial_timeout`, and similar). Runtime must prefer the envelope `safe_reason_code` when present and valid, and fall back to the generic `stop_reason` mapping otherwise.
+
 OpenCLI state text is an input to Pi reasoning, not a public Runtime payload. Public events contain counts and safe reason codes, not page text.
+
+OpenCLI mode must be independent from the previous DokoBot/MCP setup. In OpenCLI mode, static readiness and Pi command validation must require the repo-owned provider extension and the repo-owned OpenCLI extension, and must not require `pi-mcp-adapter`, `.pi/mcp.json`, or DokoBot MCP configuration. Non-OpenCLI modes may keep the existing DokoBot/MCP diagnostics.
+
+The OpenCLI helper and CLI entrypoint must parse command strings with shell-safe argv parsing, not whitespace splitting. The Pi TypeScript extension must be syntax/build checked, must drain both stdout and stderr from the helper subprocess with bounded buffers, and must return safe JSON on subprocess errors.
+
+Main UI copy must group OpenCLI safe reason codes into business-facing categories. It should distinguish browser-channel readiness, Chrome Liepin login, Liepin identity/page confirmation, and out-of-scope pages, without mentioning OpenCLI, CDP, MCP, DokoBot, debugger internals, or risk-control wording.
 
 ## Acceptance Criteria
 
 - OpenCLI CLI package is an explicit project dependency and can be resolved from the repo dependency tree.
 - User-installed OpenCLI Chrome extension is required and diagnosed safely.
 - Pi command includes the repo-owned OpenCLI extension when `SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND=opencli`.
-- Pi capability probe requires the SeekTalent OpenCLI status tool when OpenCLI mode is enabled.
+- Pi capability probe requires the side-effect-free SeekTalent OpenCLI status/capability tool when OpenCLI mode is enabled.
+- Capability probing does not execute click, fill, scroll, or provider-page navigation tools.
 - DokoBot is not required for the OpenCLI mode.
 - Runtime and Workbench do not import, execute, or shell out to OpenCLI.
 - Pi tools expose only restricted OpenCLI read/action commands.
 - Pi observation tools return bounded sanitized page observations to Pi, while public payloads contain only safe counts/reasons.
+- OpenCLI helper has deterministic hard-stop state classification for login, identity intercept, captcha/risk, blocked hosts/routes, and contact/chat/download/payment prompts.
+- Once a terminal hard-stop state is observed, the Pi OpenCLI extension must block subsequent page actions until a new source tab task is opened.
 - Forbidden OpenCLI commands are rejected by tests.
 - Liepin card search skill describes OpenCLI read/action loop and stop states.
-- The backend uses tab-scoped `tab new` / `tab select` for the source tab and does not intentionally create standalone Chrome windows.
+- The backend uses tab-scoped `tab list` / `tab select` / `tab new` for the source tab, reuses the source tab when possible, and does not intentionally create standalone Chrome windows.
 - Wrong identity/login/risk states block only Liepin; CTS remains independent.
 - Main Workbench UI contains no OpenCLI/CDP/debugger/MCP/DokoBot/risk-control internal copy.
 - Safe reason codes flow from Pi/Liepin runtime to Workbench source state.
@@ -290,9 +331,10 @@ OpenCLI state text is an input to Pi reasoning, not a public Runtime payload. Pu
 Required automated verification:
 
 ```bash
-uv run pytest tests/test_liepin_config.py tests/test_pi_opencli_browser.py tests/test_liepin_pi_executor.py tests/test_liepin_pi_worker_client.py tests/test_dev_mode_readiness.py tests/test_pi_agent_boundaries.py -q
-uv run ruff check src/seektalent/config.py src/seektalent/providers/pi_agent src/seektalent/providers/liepin tests/test_liepin_config.py tests/test_pi_opencli_browser.py tests/test_liepin_pi_executor.py tests/test_liepin_pi_worker_client.py tests/test_dev_mode_readiness.py tests/test_pi_agent_boundaries.py
+uv run pytest tests/test_liepin_config.py tests/test_pi_opencli_browser.py tests/test_liepin_pi_executor.py tests/test_liepin_pi_worker_client.py tests/test_liepin_runtime_source_lane.py tests/test_runtime_source_lanes.py tests/test_dev_mode_readiness.py tests/test_pi_external_agent.py tests/test_pi_agent_boundaries.py -q
+uv run ruff check src/seektalent/config.py src/seektalent/runtime/source_lanes.py src/seektalent/providers/pi_agent src/seektalent/providers/liepin tests/test_liepin_config.py tests/test_pi_opencli_browser.py tests/test_liepin_pi_executor.py tests/test_liepin_pi_worker_client.py tests/test_liepin_runtime_source_lane.py tests/test_runtime_source_lanes.py tests/test_dev_mode_readiness.py tests/test_pi_external_agent.py tests/test_pi_agent_boundaries.py
 cd apps/web-svelte && bun install --frozen-lockfile && bun run check && bun run test
+cd apps/web-svelte && bun build ../../src/seektalent/providers/pi_agent/pi_extensions/seektalent_opencli_browser.ts --outfile /tmp/seektalent-opencli-extension.js
 git diff --check docs/superpowers/specs/2026-05-20-pi-macos-action-backend-liepin-card-search-design.md docs/superpowers/plans/2026-05-20-pi-macos-action-backend-liepin-card-search.md
 ```
 
@@ -300,13 +342,14 @@ Optional manual spike verification:
 
 ```bash
 apps/web-svelte/node_modules/.bin/opencli doctor
-apps/web-svelte/node_modules/.bin/opencli browser seektalent-liepin tab new https://www.liepin.com/zhaopin/
-apps/web-svelte/node_modules/.bin/opencli browser seektalent-liepin state
-apps/web-svelte/node_modules/.bin/opencli browser seektalent-liepin find --css 'input[placeholder="搜索职位、公司"]'
+printf '{}' | uv run python -m seektalent.providers.pi_agent.opencli_browser_cli status
+printf '{"url":"https://h.liepin.com/search/getConditionItem#session"}' | uv run python -m seektalent.providers.pi_agent.opencli_browser_cli open_liepin_tab
+printf '{}' | uv run python -m seektalent.providers.pi_agent.opencli_browser_cli state
 ```
 
 Manual spike rules:
 
+- Product verification uses the SeekTalent helper CLI or Pi tool path, not raw site-specific OpenCLI selectors.
 - Use a harmless keyword.
 - Do not open detail pages.
 - Do not use `eval`, `network`, cookie/storage, downloads, or site adapters.
@@ -319,3 +362,5 @@ Manual spike rules:
 - Boss read-only/human-in-loop source plan.
 - Approved-detail lease execution through a separate detail lane.
 - Native stdin-safe browser bridge if keyword argv exposure becomes unacceptable.
+- Generic source policy compiler for future sources after Liepin proves the OpenCLI spike.
+- Full BrowserBridgeRunner abstraction for replacing OpenCLI with a self-owned browser extension.

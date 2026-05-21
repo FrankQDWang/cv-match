@@ -35,6 +35,29 @@ from seektalent.runtime.source_lanes import (
 )
 
 
+OPENCLI_SAFE_REASON_CODES = frozenset(
+    {
+        "liepin_opencli_backend_disabled",
+        "liepin_opencli_command_missing",
+        "liepin_opencli_extension_disconnected",
+        "liepin_opencli_status_unavailable",
+        "liepin_opencli_forbidden_command",
+        "liepin_opencli_forbidden_text",
+        "liepin_opencli_host_blocked",
+        "liepin_opencli_start_url_blocked",
+        "liepin_opencli_window_policy_blocked",
+        "liepin_opencli_budget_exhausted",
+        "liepin_opencli_timeout",
+        "liepin_opencli_login_required",
+        "liepin_opencli_identity_intercept",
+        "liepin_opencli_risk_page",
+        "liepin_opencli_unknown_modal",
+        "liepin_opencli_source_policy_missing",
+        "liepin_opencli_malformed_state",
+    }
+)
+
+
 def liepin_backend_posture(settings: AppSettings) -> dict[str, str]:
     worker_mode = settings.liepin_worker_mode
     if worker_mode == "pi_agent":
@@ -677,6 +700,8 @@ def runtime_safe_reason_code_from_pi_failure_code(
     cards_collected: bool = False,
 ) -> str:
     value = str(getattr(failure_code, "value", failure_code or ""))
+    if value in OPENCLI_SAFE_REASON_CODES:
+        return value
     if value in {
         "liepin_pi_disabled",
         "liepin_pi_command_missing",

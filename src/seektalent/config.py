@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,7 @@ from seektalent.core.runtime_context import RuntimeContext
 from seektalent.resources import (
     DEFAULT_CTS_SPEC_NAME,
     package_prompt_dir,
+    package_repo_root,
     package_spec_file,
     resolve_path_from_root,
     resolve_user_path,
@@ -35,6 +37,7 @@ TextLLMEndpointKind = Literal[
 TextLLMEndpointRegion = Literal["beijing", "singapore"]
 ProviderName = Literal["cts", "liepin"]
 LiepinWorkerMode = Literal["disabled", "fake_fixture", "managed_local", "external_http", "pi_agent"]
+LiepinBrowserActionBackend = Literal["disabled", "opencli"]
 DEV_ARTIFACTS_DIR = "artifacts"
 DEV_RUNS_DIR = "runs"
 DEV_LLM_CACHE_DIR = ".seektalent/cache"
@@ -42,6 +45,8 @@ PROD_ARTIFACTS_DIR = "~/.seektalent/artifacts"
 PROD_RUNS_DIR = "~/.seektalent/runs"
 PROD_LLM_CACHE_DIR = "~/.seektalent/cache"
 DEFAULT_LIEPIN_PI_COMMAND = "pi --mode rpc --no-session"
+DEFAULT_LIEPIN_OPENCLI_COMMAND = "apps/web-svelte/node_modules/.bin/opencli"
+DEFAULT_LIEPIN_OPENCLI_SESSION = "seektalent-liepin"
 PROVIDER_ENV_VARS = {
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
@@ -378,6 +383,17 @@ class AppSettings(BaseSettings):
     liepin_dokobot_mcp_args_json: str = "[]"
     liepin_dokobot_direct_tools_json: str = "[]"
     liepin_dokobot_observed_tools_json: str = "[]"
+    liepin_browser_action_backend: LiepinBrowserActionBackend = "disabled"
+    liepin_opencli_command: str = DEFAULT_LIEPIN_OPENCLI_COMMAND
+    liepin_opencli_session: str = DEFAULT_LIEPIN_OPENCLI_SESSION
+    liepin_opencli_allowed_hosts_json: str = '["www.liepin.com","h.liepin.com","c.liepin.com","lpt.liepin.com"]'
+    liepin_opencli_allowed_start_urls_json: str = '["https://h.liepin.com/search/getConditionItem#session"]'
+    liepin_opencli_max_actions_per_task: int = 80
+    liepin_opencli_max_pages_per_task: int = 1
+    liepin_opencli_max_cards_per_task: int = 20
+    liepin_opencli_timeout_seconds: int = 20
+    liepin_opencli_idle_close_seconds: int = 120
+    liepin_opencli_close_blank_window: bool = True
     liepin_worker_host: str = "127.0.0.1"
     liepin_worker_port: int = 0
     liepin_worker_startup_timeout_seconds: float = 15.0
@@ -432,6 +448,7 @@ class AppSettings(BaseSettings):
     search_no_progress_limit: int = 2
     runtime_mode: RuntimeMode = "dev"
     workspace_root: str | None = None
+    code_root: str | None = None
     workbench_enabled: bool = True
     workbench_legacy_liepin_login_relay_enabled: bool = False
     artifacts_dir: str | None = None
@@ -470,7 +487,7 @@ class AppSettings(BaseSettings):
             return None
         return value
 
-    @field_validator("workspace_root", "artifacts_dir", "runs_dir", "llm_cache_dir", mode="before")
+    @field_validator("workspace_root", "code_root", "artifacts_dir", "runs_dir", "llm_cache_dir", mode="before")
     @classmethod
     def normalize_empty_local_path_string(cls, value: str | None) -> str | None:
         if value == "":
@@ -482,6 +499,24 @@ class AppSettings(BaseSettings):
     def normalize_empty_liepin_pi_command(cls, value: str | None) -> str:
         text = (value or "").strip()
         return text or DEFAULT_LIEPIN_PI_COMMAND
+
+    @field_validator("liepin_browser_action_backend", mode="before")
+    @classmethod
+    def normalize_liepin_browser_action_backend(cls, value: str | None) -> str:
+        text = (value or "disabled").strip().lower()
+        return text or "disabled"
+
+    @field_validator("liepin_opencli_command", mode="before")
+    @classmethod
+    def normalize_liepin_opencli_command(cls, value: str | None) -> str:
+        text = (value or "").strip()
+        return text or DEFAULT_LIEPIN_OPENCLI_COMMAND
+
+    @field_validator("liepin_opencli_session", mode="before")
+    @classmethod
+    def normalize_liepin_opencli_session(cls, value: str | None) -> str:
+        text = (value or "").strip()
+        return text or DEFAULT_LIEPIN_OPENCLI_SESSION
 
     @field_validator(
         "liepin_worker_base_url",
@@ -557,6 +592,14 @@ class AppSettings(BaseSettings):
             raise ValueError("liepin_pi_timeout_seconds must be > 0")
         if self.liepin_default_daily_detail_budget < 0:
             raise ValueError("liepin_default_daily_detail_budget must be >= 0")
+        if min(
+            self.liepin_opencli_max_actions_per_task,
+            self.liepin_opencli_max_pages_per_task,
+            self.liepin_opencli_max_cards_per_task,
+            self.liepin_opencli_timeout_seconds,
+            self.liepin_opencli_idle_close_seconds,
+        ) < 1:
+            raise ValueError("OpenCLI Liepin budgets and timeout must be >= 1")
         return self
 
     @model_validator(mode="after")
@@ -569,6 +612,12 @@ class AppSettings(BaseSettings):
             if not self.liepin_account_binding_secret or self.liepin_account_binding_secret == "local-development":
                 raise ValueError("liepin_account_binding_secret must be set to a non-placeholder value for pi_agent")
             self.liepin_pi_command_argv
+        if self.liepin_browser_action_backend == "opencli":
+            if not self.liepin_opencli_allowed_hosts:
+                raise ValueError("liepin_opencli_allowed_hosts_json must not be empty")
+            if not self.liepin_opencli_allowed_start_urls:
+                raise ValueError("liepin_opencli_allowed_start_urls_json must not be empty")
+            self.liepin_opencli_command_argv
         return self
 
     @model_validator(mode="after")
@@ -586,15 +635,24 @@ class AppSettings(BaseSettings):
         return self.runtime_context.workspace_root
 
     @property
+    def code_base_root(self) -> Path:
+        if self.code_root:
+            return resolve_user_path(self.code_root).resolve(strict=False)
+        return package_repo_root()
+
+    @property
     def runtime_context(self) -> RuntimeContext:
         return RuntimeContext.from_value(self.workspace_root)
 
     def resolve_workspace_path(self, value: str) -> Path:
         return resolve_path_from_root(value, root=self.project_root)
 
+    def resolve_code_path(self, value: str) -> Path:
+        return resolve_path_from_root(value, root=self.code_base_root)
+
     @property
     def liepin_pi_skill_file_path(self) -> Path:
-        return self.resolve_workspace_path(self.liepin_pi_skill_path)
+        return self.resolve_code_path(self.liepin_pi_skill_path)
 
     @property
     def liepin_pi_mcp_config_file_path(self) -> Path | None:
@@ -606,16 +664,21 @@ class AppSettings(BaseSettings):
     def liepin_pi_command_argv(self) -> tuple[str, ...]:
         from seektalent.providers.pi_agent.pi_external import build_pi_rpc_argv
 
-        required_extension_markers = (
-            ("pi_extensions/bailian_deepseek.ts", "pi-mcp-adapter/index.ts")
-            if self.liepin_worker_mode == "pi_agent"
-            else ()
-        )
+        required_extension_markers: tuple[str, ...] = ()
+        if self.liepin_worker_mode == "pi_agent":
+            required_extension_markers = (
+                (
+                    "pi_extensions/bailian_deepseek.ts",
+                    "pi_extensions/seektalent_opencli_browser.ts",
+                )
+                if self.liepin_browser_action_backend == "opencli"
+                else ("pi_extensions/bailian_deepseek.ts", "pi-mcp-adapter/index.ts")
+            )
         return build_pi_rpc_argv(
             self.liepin_pi_command,
             skill_path=self.liepin_pi_skill_file_path,
             required_extension_markers=required_extension_markers,
-            extension_root=self.project_root,
+            extension_root=self.code_base_root,
         )
 
     @property
@@ -635,6 +698,30 @@ class AppSettings(BaseSettings):
             self.liepin_dokobot_observed_tools_json,
             field_name="liepin_dokobot_observed_tools_json",
         )
+
+    @property
+    def liepin_opencli_allowed_hosts(self) -> tuple[str, ...]:
+        return _json_string_tuple(
+            self.liepin_opencli_allowed_hosts_json,
+            field_name="liepin_opencli_allowed_hosts_json",
+        )
+
+    @property
+    def liepin_opencli_allowed_start_urls(self) -> tuple[str, ...]:
+        return _json_string_tuple(
+            self.liepin_opencli_allowed_start_urls_json,
+            field_name="liepin_opencli_allowed_start_urls_json",
+        )
+
+    @property
+    def liepin_opencli_command_argv(self) -> tuple[str, ...]:
+        argv = tuple(shlex.split(self.liepin_opencli_command))
+        if not argv:
+            argv = (DEFAULT_LIEPIN_OPENCLI_COMMAND,)
+        command = Path(argv[0])
+        if not command.is_absolute():
+            command = self.resolve_code_path(str(command))
+        return (str(command), *argv[1:])
 
     @property
     def prompt_dir(self) -> Path:

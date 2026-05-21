@@ -14,12 +14,18 @@ VALID_PI_COMMAND = (
     "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
     "--extension apps/web-svelte/node_modules/pi-mcp-adapter/index.ts"
 )
+VALID_OPENCLI_PI_COMMAND = (
+    "pi --mode rpc --no-session "
+    "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
+    "--extension src/seektalent/providers/pi_agent/pi_extensions/seektalent_opencli_browser.ts"
+)
 
 
 def _write_pi_extension_files(root: Path) -> None:
     provider_extension = root / "src" / "seektalent" / "providers" / "pi_agent" / "pi_extensions"
     provider_extension.mkdir(parents=True, exist_ok=True)
     (provider_extension / "bailian_deepseek.ts").write_text("provider", encoding="utf-8")
+    (provider_extension / "seektalent_opencli_browser.ts").write_text("opencli", encoding="utf-8")
     adapter_extension = root / "apps" / "web-svelte" / "node_modules" / "pi-mcp-adapter"
     adapter_extension.mkdir(parents=True, exist_ok=True)
     (adapter_extension / "index.ts").write_text("adapter", encoding="utf-8")
@@ -59,7 +65,7 @@ def test_pi_agent_rejects_missing_rpc_no_session_or_skill(tmp_path: Path) -> Non
         )
 
 
-def test_pi_agent_resolves_relative_skill_path_from_workspace_root(tmp_path: Path) -> None:
+def test_pi_agent_resolves_relative_skill_path_from_code_root(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     _write_pi_extension_files(workspace)
     skill_path = workspace / "src/seektalent/providers/pi_agent/pi_skills/liepin_search_cards.md"
@@ -70,7 +76,7 @@ def test_pi_agent_resolves_relative_skill_path_from_workspace_root(tmp_path: Pat
     try:
         settings = AppSettings(
             _env_file=None,
-            workspace_root=str(workspace),
+            code_root=str(workspace),
             liepin_worker_mode="pi_agent",
             liepin_pi_command=VALID_PI_COMMAND,
             liepin_pi_skill_path="src/seektalent/providers/pi_agent/pi_skills/liepin_search_cards.md",
@@ -96,9 +102,9 @@ def test_pi_agent_uses_explicit_repo_local_pi_dependency_path(tmp_path: Path) ->
     pi_bin.chmod(0o755)
 
     settings = AppSettings(
-        _env_file=None,
-        workspace_root=str(workspace),
-        liepin_worker_mode="pi_agent",
+            _env_file=None,
+            code_root=str(workspace),
+            liepin_worker_mode="pi_agent",
         liepin_pi_command=(
             f"{pi_bin} --mode rpc --no-session "
             "--extension src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts "
@@ -193,12 +199,52 @@ def test_pi_agent_command_accepts_required_provider_and_mcp_adapter_extensions(
     monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "pi_agent")
     monkeypatch.setenv("SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET", "account-secret")
     monkeypatch.setenv("SEEKTALENT_LIEPIN_PI_COMMAND", VALID_PI_COMMAND)
-    monkeypatch.setenv("SEEKTALENT_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("SEEKTALENT_CODE_ROOT", str(tmp_path))
 
     settings = AppSettings(_env_file=None)
 
     assert "src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts" in settings.liepin_pi_command_argv
     assert "apps/web-svelte/node_modules/pi-mcp-adapter/index.ts" in settings.liepin_pi_command_argv
+
+
+def test_pi_agent_command_accepts_required_provider_and_opencli_extensions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_pi_extension_files(tmp_path)
+    skill_path = tmp_path / "src" / "seektalent" / "providers" / "pi_agent" / "pi_skills"
+    skill_path.mkdir(parents=True)
+    (skill_path / "liepin_search_cards.md").write_text("skill", encoding="utf-8")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "pi_agent")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND", "opencli")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET", "account-secret")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_PI_COMMAND", VALID_OPENCLI_PI_COMMAND)
+    monkeypatch.setenv("SEEKTALENT_CODE_ROOT", str(tmp_path))
+
+    settings = AppSettings(_env_file=None)
+
+    assert "src/seektalent/providers/pi_agent/pi_extensions/bailian_deepseek.ts" in settings.liepin_pi_command_argv
+    assert "src/seektalent/providers/pi_agent/pi_extensions/seektalent_opencli_browser.ts" in (
+        settings.liepin_pi_command_argv
+    )
+
+
+def test_pi_agent_opencli_command_rejects_missing_opencli_extension(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_pi_extension_files(tmp_path)
+    skill_path = tmp_path / "src" / "seektalent" / "providers" / "pi_agent" / "pi_skills"
+    skill_path.mkdir(parents=True)
+    (skill_path / "liepin_search_cards.md").write_text("skill", encoding="utf-8")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "pi_agent")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND", "opencli")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_ACCOUNT_BINDING_SECRET", "account-secret")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_PI_COMMAND", VALID_PI_COMMAND)
+    monkeypatch.setenv("SEEKTALENT_CODE_ROOT", str(tmp_path))
+
+    with pytest.raises(ValueError, match="required extension"):
+        AppSettings(_env_file=None)
 
 
 def test_empty_pi_mcp_config_path_normalizes_to_none(tmp_path: Path) -> None:
@@ -231,6 +277,87 @@ def test_liepin_dokobot_mcp_config_defaults_to_unproven(monkeypatch: pytest.Monk
     assert settings.liepin_dokobot_mcp_args == ()
     assert settings.liepin_dokobot_direct_tools == ()
     assert settings.liepin_dokobot_observed_tools == ()
+
+
+def test_liepin_opencli_backend_defaults_to_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "disabled")
+    monkeypatch.delenv("SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND", raising=False)
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.liepin_browser_action_backend == "disabled"
+    assert settings.liepin_opencli_command == "apps/web-svelte/node_modules/.bin/opencli"
+    assert settings.liepin_opencli_session == "seektalent-liepin"
+    assert settings.liepin_opencli_allowed_hosts == (
+        "www.liepin.com",
+        "h.liepin.com",
+        "c.liepin.com",
+        "lpt.liepin.com",
+    )
+    assert settings.liepin_opencli_allowed_start_urls == ("https://h.liepin.com/search/getConditionItem#session",)
+    assert settings.liepin_opencli_max_actions_per_task == 80
+    assert settings.liepin_opencli_max_pages_per_task == 1
+    assert settings.liepin_opencli_max_cards_per_task == 20
+    assert settings.liepin_opencli_idle_close_seconds == 120
+    assert settings.liepin_opencli_close_blank_window is True
+
+
+def test_liepin_opencli_backend_validates_json_and_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "disabled")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND", "opencli")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_OPENCLI_ALLOWED_HOSTS_JSON", '["www.liepin.com"]')
+    monkeypatch.setenv(
+        "SEEKTALENT_LIEPIN_OPENCLI_ALLOWED_START_URLS_JSON",
+        '["https://h.liepin.com/search/getConditionItem#session"]',
+    )
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_OPENCLI_MAX_ACTIONS_PER_TASK", "12")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_OPENCLI_MAX_PAGES_PER_TASK", "1")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_OPENCLI_MAX_CARDS_PER_TASK", "10")
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.liepin_browser_action_backend == "opencli"
+    assert settings.liepin_opencli_allowed_hosts == ("www.liepin.com",)
+    assert settings.liepin_opencli_allowed_start_urls == ("https://h.liepin.com/search/getConditionItem#session",)
+    assert settings.liepin_opencli_max_actions_per_task == 12
+    assert settings.liepin_opencli_max_pages_per_task == 1
+    assert settings.liepin_opencli_max_cards_per_task == 10
+
+
+def test_liepin_opencli_backend_rejects_empty_start_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "disabled")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND", "opencli")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_OPENCLI_ALLOWED_START_URLS_JSON", "[]")
+
+    with pytest.raises(ValueError, match="liepin_opencli_allowed_start_urls_json must not be empty"):
+        AppSettings(_env_file=None)
+
+
+def test_liepin_opencli_command_resolves_from_code_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    binary = workspace / "apps/web-svelte/node_modules/.bin/opencli"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv("SEEKTALENT_CODE_ROOT", str(workspace))
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "disabled")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND", "opencli")
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.liepin_opencli_command_argv == (str(binary),)
+
+
+def test_liepin_opencli_empty_command_uses_default_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_WORKER_MODE", "disabled")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_BROWSER_ACTION_BACKEND", "disabled")
+    monkeypatch.setenv("SEEKTALENT_LIEPIN_OPENCLI_COMMAND", "")
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.liepin_opencli_command == "apps/web-svelte/node_modules/.bin/opencli"
 
 
 def test_liepin_dokobot_mcp_json_fields_are_normalized(monkeypatch: pytest.MonkeyPatch) -> None:

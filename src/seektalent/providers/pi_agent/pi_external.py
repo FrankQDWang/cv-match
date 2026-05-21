@@ -8,7 +8,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, cast
@@ -32,6 +32,29 @@ class PiRpcTaskStatus(StrEnum):
     UI_REQUESTED = "ui_requested"
     FAILED = "failed"
     MISSING_AGENT_END = "missing_agent_end"
+
+
+_OPENCLI_SAFE_TOOL_REASON_CODES = frozenset(
+    {
+        "liepin_opencli_backend_disabled",
+        "liepin_opencli_command_missing",
+        "liepin_opencli_extension_disconnected",
+        "liepin_opencli_status_unavailable",
+        "liepin_opencli_forbidden_command",
+        "liepin_opencli_forbidden_text",
+        "liepin_opencli_host_blocked",
+        "liepin_opencli_start_url_blocked",
+        "liepin_opencli_window_policy_blocked",
+        "liepin_opencli_budget_exhausted",
+        "liepin_opencli_timeout",
+        "liepin_opencli_login_required",
+        "liepin_opencli_identity_intercept",
+        "liepin_opencli_risk_page",
+        "liepin_opencli_unknown_modal",
+        "liepin_opencli_source_policy_missing",
+        "liepin_opencli_malformed_state",
+    }
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -61,6 +84,7 @@ class PiExternalTaskResult:
     ok: bool
     envelope: dict[str, object] | None = None
     error_code: PiExternalAgentErrorCode | None = None
+    safe_reason_code: str | None = None
     safe_message: str = ""
     observed_tool_names: tuple[str, ...] = ()
     events: tuple[dict[str, object], ...] = ()
@@ -226,6 +250,7 @@ class PiRpcAgentClient:
         dokobot_tool_name: str,
         timeout_seconds: int,
         artifact_root: Path,
+        browser_backend_description: str | None = None,
         env: Mapping[str, str] | None = None,
         transport: PiRpcTransport | None = None,
     ) -> None:
@@ -238,6 +263,7 @@ class PiRpcAgentClient:
         self._command = command
         self._skill_path = skill_path
         self._dokobot_tool_name = dokobot_tool_name
+        self._browser_backend_description = browser_backend_description
         self._timeout_seconds = timeout_seconds
         self._artifact_root = artifact_root
         self._artifact_root.mkdir(parents=True, exist_ok=True)
@@ -255,19 +281,41 @@ class PiRpcAgentClient:
         return result.envelope
 
     def run_json_task_result(self, prompt: str) -> PiExternalTaskResult:
+        result = self._run_json_task_result_once(prompt, strict_retry=False)
+        if result.ok or result.error_code != PiExternalAgentErrorCode.MALFORMED_OUTPUT:
+            return result
+        retry_result = self._run_json_task_result_once(prompt, strict_retry=True)
+        if not retry_result.ok and retry_result.safe_reason_code is None and result.safe_reason_code is not None:
+            return replace(retry_result, safe_reason_code=result.safe_reason_code)
+        return retry_result
+
+    def _run_json_task_result_once(self, prompt: str, *, strict_retry: bool) -> PiExternalTaskResult:
+        task_name = _task_name_from_prompt(prompt)
         command = PiRpcCommand(
             argv=self._command,
             timeout_seconds=self._timeout_seconds,
             artifact_root=self._artifact_root,
             env={**self._env, "SEEKTALENT_PI_ARTIFACT_ROOT": str(self._artifact_root)},
         )
-        rpc_result = self._transport.request(command, prompt=self._build_prompt(prompt))
+        rpc_result = self._transport.request(command, prompt=self._build_prompt(prompt, strict_retry=strict_retry))
         observed_tool_names = _observed_tool_names(rpc_result.events)
+        safe_reason_code = _safe_tool_reason_code(rpc_result.events)
         safe_events = _safe_rpc_events(rpc_result.events)
+        if task_name == "liepin.search_cards":
+            tool_envelope = _strict_cards_envelope_from_tool_events(rpc_result.events)
+            if tool_envelope is not None:
+                return PiExternalTaskResult(
+                    ok=True,
+                    envelope=tool_envelope,
+                    safe_reason_code=safe_reason_code,
+                    observed_tool_names=observed_tool_names,
+                    events=safe_events,
+                )
         if rpc_result.status != PiRpcTaskStatus.SUCCEEDED:
             return PiExternalTaskResult(
                 ok=False,
                 error_code=_external_code_for_rpc_status(rpc_result.status),
+                safe_reason_code=safe_reason_code,
                 safe_message=_safe_external_message(rpc_result.safe_message),
                 observed_tool_names=observed_tool_names,
                 events=safe_events,
@@ -275,21 +323,53 @@ class PiRpcAgentClient:
         try:
             envelope = parse_strict_json_object(rpc_result.final_text)
         except ValueError:
+            tool_envelope = _strict_cards_envelope_from_tool_events(rpc_result.events)
+            if tool_envelope is not None:
+                return PiExternalTaskResult(
+                    ok=True,
+                    envelope=tool_envelope,
+                    safe_reason_code=safe_reason_code,
+                    observed_tool_names=observed_tool_names,
+                    events=safe_events,
+                )
             return PiExternalTaskResult(
                 ok=False,
                 error_code=PiExternalAgentErrorCode.MALFORMED_OUTPUT,
+                safe_reason_code=safe_reason_code,
                 safe_message="pi output did not contain exactly one valid JSON envelope",
                 observed_tool_names=observed_tool_names,
                 events=safe_events,
             )
-        return PiExternalTaskResult(ok=True, envelope=envelope, observed_tool_names=observed_tool_names, events=safe_events)
+        return PiExternalTaskResult(
+            ok=True,
+            envelope=envelope,
+            safe_reason_code=safe_reason_code,
+            observed_tool_names=observed_tool_names,
+            events=safe_events,
+        )
 
-    def _build_prompt(self, prompt: str) -> str:
+    def _build_prompt(self, prompt: str, *, strict_retry: bool = False) -> str:
+        backend_line = (
+            f"Required browser backend inside Pi: {self._browser_backend_description}\n"
+            if self._browser_backend_description
+            else f"Required DokoBot tool inside Pi: {self._dokobot_tool_name}\n"
+        )
+        task_contract = _task_contract_for_prompt(prompt)
+        retry_line = (
+            "STRICT JSON RETRY: your previous final answer was rejected because it was not exactly one raw JSON "
+            "object. Return the final answer as raw JSON only. Do not include prose, markdown fences, code blocks, "
+            "or explanations.\n"
+            if strict_retry
+            else ""
+        )
         return (
             f"Required loaded skill path: {self._skill_path}\n"
-            f"Required DokoBot tool inside Pi: {self._dokobot_tool_name}\n"
+            f"{backend_line}"
             f"Required artifact root: {self._artifact_root}\n"
             "Write every artifact://protected/... and artifact://public-summary/... ref to that root before returning final JSON.\n"
+            "Final answer must be exactly one raw JSON object. No prose, markdown fences, code blocks, or explanations.\n"
+            f"{task_contract}"
+            f"{retry_line}"
             f"{prompt}"
         )
 
@@ -347,6 +427,95 @@ def _safe_external_message(message: str) -> str:
     return message or "pi rpc failed"
 
 
+def _task_name_from_prompt(prompt: str) -> str | None:
+    try:
+        task = json.loads(prompt)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(task, dict):
+        return None
+    task_name = task.get("task")
+    return task_name if isinstance(task_name, str) else None
+
+
+def _task_contract_for_prompt(prompt: str) -> str:
+    task_name = _task_name_from_prompt(prompt)
+    if task_name == "liepin.probe_capabilities":
+        return (
+            "For task liepin.probe_capabilities, call the safe browser status tool and capability manifest tool only. "
+            "Do not click, type, scroll, navigate, or open a page for this probe. "
+            "Return exactly this schema: "
+            '{"schema_version":"seektalent.pi_capability_probe.v1","status":"ready|blocked|failed",'
+            '"pi_version":null,"read_tool_name":"<capability tool name or read tool name>",'
+            '"action_tool_names":["<declared safe browser tool names>"],'
+            '"proof_kind":"trusted_manifest_and_observed_tool_event|none",'
+            '"capability_manifest_ref":"artifact://protected/pi-capability/manifest.json",'
+            '"tool_evidence_ref":"artifact://protected/pi-capability/tool-events.json",'
+            '"allowed_hosts":["www.liepin.com"],"stop_reason":null}. '
+            "If the status or capability tool is unavailable, use status blocked, proof_kind none, empty tool lists, "
+            "empty allowed_hosts, and an allowlisted stop_reason such as liepin_opencli_status_unavailable.\n"
+        )
+    if task_name == "liepin.probe_session":
+        return (
+            "For task liepin.probe_session, return exactly this schema: "
+            '{"schema_version":"seektalent.pi_liepin_session_probe.v1","status":"ready|login_required|revoked|missing|failed",'
+            '"connection_id":"<input connection_id>","provider_account_material_ref":null,'
+            '"page_origin":null,"stop_reason":null}. '
+            "Only status ready may include provider_account_material_ref. Never include cookies, tokens, localStorage, "
+            "sessionStorage, raw account identifiers, phone numbers, or email addresses.\n"
+        )
+    if task_name == "liepin.search_cards":
+        return (
+            "For task liepin.search_cards, Call seektalent_opencli_search_liepin_cards exactly once with sourceRunId, "
+            "query, maxPages, and maxCards from the input task, then return that tool result exactly as the final raw "
+            "JSON object. Do not call read, bash, provider APIs, cookies, storage, network, eval, download, upload, "
+            "contact, chat, payment, detail pages, or low-level browser tools for this task. The tool result already "
+            "matches seektalent.pi_liepin_cards.v1 exactly.\n"
+        )
+    return ""
+
+
+def _strict_cards_envelope_from_tool_events(events: tuple[dict[str, object], ...]) -> dict[str, object] | None:
+    for event in reversed(events[:100]):
+        tool_name = event.get("toolName") or event.get("tool_name")
+        if tool_name != "seektalent_opencli_search_liepin_cards":
+            continue
+        envelope = _cards_envelope_from_value(event)
+        if envelope is not None:
+            return envelope
+    return None
+
+
+def _cards_envelope_from_value(value: object, *, depth: int = 0) -> dict[str, object] | None:
+    if depth > 8:
+        return None
+    if isinstance(value, Mapping):
+        schema = value.get("schema_version")
+        if schema == "seektalent.pi_liepin_cards.v1":
+            return dict(value)
+        for item in value.values():
+            envelope = _cards_envelope_from_value(item, depth=depth + 1)
+            if envelope is not None:
+                return envelope
+        return None
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        for item in value:
+            envelope = _cards_envelope_from_value(item, depth=depth + 1)
+            if envelope is not None:
+                return envelope
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped[0] not in "[{" or len(stripped) > 200000:
+            return None
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return None
+        return _cards_envelope_from_value(parsed, depth=depth + 1)
+    return None
+
+
 def _observed_tool_names(events: tuple[dict[str, object], ...]) -> tuple[str, ...]:
     names: list[str] = []
     for event in events:
@@ -357,6 +526,48 @@ def _observed_tool_names(events: tuple[dict[str, object], ...]) -> tuple[str, ..
         if isinstance(tool_name, str) and tool_name and tool_name not in names:
             names.append(tool_name)
     return tuple(names)
+
+
+def _safe_tool_reason_code(events: tuple[dict[str, object], ...]) -> str | None:
+    for event in reversed(events[:100]):
+        tool_name = event.get("toolName") or event.get("tool_name")
+        if not isinstance(tool_name, str) or not tool_name.startswith("seektalent_opencli_"):
+            continue
+        reason = _safe_reason_code_from_value(event)
+        if reason is not None:
+            return reason
+    return None
+
+
+def _safe_reason_code_from_value(value: object, *, depth: int = 0) -> str | None:
+    if depth > 6:
+        return None
+    if isinstance(value, Mapping):
+        for key in ("safeReasonCode", "safe_reason_code"):
+            reason = value.get(key)
+            if isinstance(reason, str) and reason in _OPENCLI_SAFE_TOOL_REASON_CODES:
+                return reason
+        for item in value.values():
+            reason = _safe_reason_code_from_value(item, depth=depth + 1)
+            if reason is not None:
+                return reason
+        return None
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        for item in value:
+            reason = _safe_reason_code_from_value(item, depth=depth + 1)
+            if reason is not None:
+                return reason
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped[0] not in "[{" or len(stripped) > 20000:
+            return None
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return None
+        return _safe_reason_code_from_value(parsed, depth=depth + 1)
+    return None
 
 
 def _safe_rpc_events(events: tuple[dict[str, object], ...]) -> tuple[dict[str, object], ...]:
