@@ -331,7 +331,8 @@ def extract_liepin_card_summaries(text: str, *, max_cards: int) -> tuple[dict[st
         if not _looks_like_liepin_card(block):
             continue
         summary = _safe_card_summary_from_block(block)
-        fingerprint = hashlib.sha256(summary["normalized_card_text"].encode("utf-8")).hexdigest()
+        normalized_card_text = str(summary["normalized_card_text"])
+        fingerprint = hashlib.sha256(normalized_card_text.encode("utf-8")).hexdigest()
         if fingerprint in seen:
             continue
         seen.add(fingerprint)
@@ -365,7 +366,7 @@ def _looks_like_liepin_card(block: str) -> bool:
     if any(marker in block for marker in ("筛选", "搜索职位", "搜索公司", "高级搜索", "登录", "验证码")):
         return False
     has_profile_fact = bool(re.search(r"\b\d{2}\s*岁\b|工作\s*\d+\s*年|\d+\s*年经验", block))
-    has_role = "求职期望" in block or "·" in block or re.search(r"\d{4}[./-]\d{2}", block)
+    has_role = bool("求职期望" in block or "·" in block or re.search(r"\d{4}[./-]\d{2}", block))
     has_education = any(marker in block for marker in ("本科", "硕士", "博士", "大专", "统招"))
     return has_profile_fact and has_role and has_education
 

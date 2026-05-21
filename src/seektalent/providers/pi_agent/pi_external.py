@@ -490,10 +490,11 @@ def _cards_envelope_from_value(value: object, *, depth: int = 0) -> dict[str, ob
     if depth > 8:
         return None
     if isinstance(value, Mapping):
-        schema = value.get("schema_version")
+        mapping = cast(Mapping[str, object], value)
+        schema = mapping.get("schema_version")
         if schema == "seektalent.pi_liepin_cards.v1":
-            return dict(value)
-        for item in value.values():
+            return dict(mapping)
+        for item in mapping.values():
             envelope = _cards_envelope_from_value(item, depth=depth + 1)
             if envelope is not None:
                 return envelope
@@ -543,11 +544,12 @@ def _safe_reason_code_from_value(value: object, *, depth: int = 0) -> str | None
     if depth > 6:
         return None
     if isinstance(value, Mapping):
+        mapping = cast(Mapping[str, object], value)
         for key in ("safeReasonCode", "safe_reason_code"):
-            reason = value.get(key)
+            reason = mapping.get(key)
             if isinstance(reason, str) and reason in _OPENCLI_SAFE_TOOL_REASON_CODES:
                 return reason
-        for item in value.values():
+        for item in mapping.values():
             reason = _safe_reason_code_from_value(item, depth=depth + 1)
             if reason is not None:
                 return reason

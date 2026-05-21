@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from seektalent.providers.pi_agent.opencli_browser import (
@@ -89,19 +90,35 @@ def _run_action(runner: OpenCliBrowserRunner, action: str, payload: dict[str, ob
     if action == "scroll":
         return runner.scroll(direction=str(payload.get("direction") or ""))
     if action == "wait_time":
-        return runner.wait_time(seconds=int(payload.get("seconds") or 1))
+        return runner.wait_time(seconds=_payload_int(payload, "seconds", default=1))
     if action == "search_cards":
         return runner.search_liepin_cards(
             source_run_id=str(payload.get("sourceRunId") or payload.get("source_run_id") or ""),
             query=str(payload.get("query") or ""),
-            max_pages=int(payload.get("maxPages") or payload.get("max_pages") or 1),
-            max_cards=int(payload.get("maxCards") or payload.get("max_cards") or 10),
+            max_pages=_payload_int(payload, "maxPages", "max_pages", default=1),
+            max_cards=_payload_int(payload, "maxCards", "max_cards", default=10),
         )
     if action == "cleanup_idle_lease":
         return runner.cleanup_idle_lease(force=bool(payload.get("force") or False))
     if action == "watch_idle_lease":
         return runner.watch_idle_lease()
     raise OpenCliBrowserError("liepin_opencli_forbidden_command")
+
+
+def _payload_int(payload: Mapping[str, object], *keys: str, default: int) -> int:
+    for key in keys:
+        value = payload.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str) and value.strip():
+            return int(value)
+    return default
 
 
 def _json_tuple(value: str | None, *, default: tuple[str, ...]) -> tuple[str, ...]:
